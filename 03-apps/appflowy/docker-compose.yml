@@ -33,7 +33,7 @@ services:
     restart: unless-stopped
     environment:
       - AF_CLOUD_URL=https://appflowy-cloud.${DOMAIN}
-      - APPFLOWY_BASE_URL==https://appflowy.${DOMAIN}
+      - APPFLOWY_BASE_URL=https://appflowy.${DOMAIN}
       - APPFLOWY_GOTRUE_BASE_URL=${APPFLOWY_GOTRUE_BASE_URL}
       - APPFLOWY_API_BASE_URL=${APPFLOWY_GOTRUE_EXTERNAL_URL}
       - APPFLOWY_WS_BASE_URL=${APPFLOWY_WS_BASE_URL}
