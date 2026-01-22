@@ -1,6 +1,6 @@
 services:
   appflowy-cloud:
-    image: appflowyinc/appflowy-cloud:latest
+    image: appflowyinc/appflowy_cloud:latest
     container_name: appflowy-cloud
     restart: unless-stopped
     environment:
@@ -31,7 +31,7 @@ services:
       - "traefik.http.services.af-cloud.loadbalancer.server.port=8000"
 
   appflowy-web:
-    image: appflowyinc/appflowy-web:latest
+    image: appflowyinc/appflowy_web:latest
     container_name: appflowy-web
     restart: unless-stopped
     environment:
