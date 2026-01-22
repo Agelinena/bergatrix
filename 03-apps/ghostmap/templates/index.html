@@ -1,0 +1,581 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#121212">
+    <title>GhostMap</title>
+    <link rel="manifest" href="/static/manifest.json">
+    <link rel="apple-touch-icon" href="/static/icons/logo-original.png">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <style>
+        :root {
+            --bg-color: #121212;
+            --surface-color: #1e1e1e;
+            --primary-color: #bb86fc;
+            --primary-variant: #3700b3;
+            --secondary-color: #03dac6;
+            --text-primary: #ffffff;
+            --text-secondary: #b0b0b0;
+            --error-color: #cf6679;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-primary);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 400px;
+            text-align: center;
+        }
+
+        h1 {
+            font-weight: 300;
+            letter-spacing: 2px;
+            margin-bottom: 40px;
+            font-size: 2.5rem;
+            color: var(--text-primary);
+            text-transform: uppercase;
+        }
+
+        .input-group {
+            position: relative;
+            margin-bottom: 30px;
+            width: 100%;
+        }
+
+        input {
+            width: 100%;
+            padding: 15px 20px;
+            font-size: 1.1rem;
+            background-color: var(--surface-color);
+            border: 2px solid transparent;
+            border-radius: 12px;
+            color: var(--text-primary);
+            outline: none;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+        }
+
+        input:focus {
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 4px rgba(187, 134, 252, 0.2);
+        }
+
+        button {
+            width: 100%;
+            padding: 16px;
+            font-size: 1.1rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            background: linear-gradient(135deg, var(--primary-color), var(--primary-variant));
+            color: #000;
+            border: none;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            box-shadow: 0 4px 15px rgba(187, 134, 252, 0.4);
+        }
+
+        button:active {
+            transform: scale(0.98);
+        }
+
+        button:disabled {
+            opacity: 0.7;
+            cursor: not-allowed;
+            filter: grayscale(0.5);
+        }
+
+        .status {
+            margin-top: 20px;
+            min-height: 24px;
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+        }
+
+        .error {
+            color: var(--error-color);
+        }
+
+        /* Loading Spinner */
+        .spinner {
+            display: none;
+            width: 24px;
+            height: 24px;
+            border: 3px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top-color: #fff;
+            animation: spin 1s ease-in-out infinite;
+            margin: 0 auto;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        /* Result Card */
+        .result-card {
+            display: none;
+            background-color: var(--surface-color);
+            border-radius: 12px;
+            padding: 20px;
+            margin-top: 30px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5);
+            text-align: left;
+            animation: slideUp 0.3s ease-out;
+        }
+
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .result-label {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 5px;
+        }
+
+        .result-address {
+            font-size: 1.2rem;
+            color: var(--text-primary);
+            margin-bottom: 20px;
+            line-height: 1.4;
+        }
+
+        .action-btn {
+            width: 100%;
+            padding: 16px;
+            font-size: 1.1rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            background: linear-gradient(135deg, var(--secondary-color), #018786);
+            color: #000;
+            border: none;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            box-shadow: 0 4px 15px rgba(3, 218, 198, 0.4);
+            text-decoration: none;
+            display: block;
+            text-align: center;
+        }
+
+        .action-btn:active {
+            transform: scale(0.98);
+        }
+
+        /* History Section */
+        .history-section {
+            display: none;
+            margin-top: 40px;
+            width: 100%;
+            animation: fadeIn 0.5s ease;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+            }
+
+            to {
+                opacity: 1;
+            }
+        }
+
+        .history-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            padding: 0 5px;
+        }
+
+        .history-header h3 {
+            font-size: 1.1rem;
+            color: var(--text-secondary);
+            font-weight: 400;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .clear-history-btn {
+            background: none;
+            border: none;
+            color: var(--error-color);
+            cursor: pointer;
+            font-size: 0.9rem;
+            padding: 5px;
+            width: auto;
+            box-shadow: none;
+            opacity: 0.8;
+            transition: opacity 0.2s;
+        }
+
+        .clear-history-btn:hover {
+            opacity: 1;
+        }
+
+        .history-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .history-item {
+            background-color: rgba(30, 30, 30, 0.6);
+            backdrop-filter: blur(5px);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+            padding: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: transform 0.2s, background-color 0.2s;
+        }
+
+        .history-item:hover {
+            transform: translateY(-2px);
+            background-color: rgba(30, 30, 30, 0.9);
+        }
+
+        .history-content {
+            flex: 1;
+            margin-right: 15px;
+            overflow: hidden;
+        }
+
+        .history-address {
+            display: block;
+            font-size: 1rem;
+            color: var(--text-primary);
+            margin-bottom: 4px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .history-time {
+            display: block;
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+        }
+
+        .history-action-btn {
+            background: var(--primary-color);
+            color: #000;
+            border: none;
+            border-radius: 50%;
+            width: 36px;
+            height: 36px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            font-size: 1.2rem;
+            transition: background 0.2s;
+            text-decoration: none;
+            flex-shrink: 0;
+        }
+
+        .history-action-btn:hover {
+            background: var(--primary-variant);
+            color: #fff;
+        }
+
+        .delete-item-btn {
+            background: none;
+            border: none;
+            color: #555;
+            cursor: pointer;
+            padding: 0 0 0 10px;
+            font-size: 1.2rem;
+            width: auto;
+            box-shadow: none;
+        }
+
+        .delete-item-btn:hover {
+            color: var(--error-color);
+        }
+
+        /* Map icon SVG */
+        .icon-map {
+            width: 20px;
+            height: 20px;
+            fill: currentColor;
+        }
+
+        /* Footer */
+        .footer {
+            margin-top: 50px;
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            opacity: 0.5;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="container">
+        <h1>GhostMap</h1>
+
+        <div class="input-group">
+            <input type="text" id="addressInput" placeholder="Digite o endereço..." autocomplete="off" autofocus>
+        </div>
+
+        <button id="searchBtn" onclick="searchRoute()">
+            <span id="btnText">Buscar Endereço</span>
+            <div class="spinner" id="spinner"></div>
+        </button>
+
+        <!-- Result Card -->
+        <div id="resultCard" class="result-card">
+            <div class="result-label">Endereço Encontrado</div>
+            <div id="foundAddress" class="result-address"></div>
+            <a id="openMapBtn" href="#" class="action-btn">Abrir no Mapa</a>
+        </div>
+
+        <!-- History Section -->
+        <div id="historySection" class="history-section">
+            <div class="history-header">
+                <h3>Histórico</h3>
+                <button onclick="clearHistory()" class="clear-history-btn">Limpar Tudo</button>
+            </div>
+            <div id="historyList" class="history-list">
+                <!-- Items will be injected here -->
+            </div>
+        </div>
+
+        <div class="status" id="statusMessage"></div>
+
+        <div class="footer">
+            Privacy First • Local Search
+        </div>
+    </div>
+
+    <script>
+        const addressInput = document.getElementById('addressInput');
+        const searchBtn = document.getElementById('searchBtn');
+        const btnText = document.getElementById('btnText');
+        const spinner = document.getElementById('spinner');
+        const statusMessage = document.getElementById('statusMessage');
+        const resultCard = document.getElementById('resultCard');
+        const foundAddress = document.getElementById('foundAddress');
+        const openMapBtn = document.getElementById('openMapBtn');
+        const historySection = document.getElementById('historySection');
+        const historyList = document.getElementById('historyList');
+
+        // PWA Service Worker Registration (Optional for basic PWA)
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                // We're just registering a simple sw if you decide to add caching later
+            });
+        }
+
+        // Allow Enter key to submit
+        addressInput.addEventListener('keypress', function (e) {
+            if (e.key === 'Enter') {
+                searchRoute();
+            }
+        });
+
+        async function searchRoute() {
+            const address = addressInput.value.trim();
+            if (!address) {
+                showStatus('Por favor, digite um endereço.', 'error');
+                resultCard.style.display = 'none';
+                return;
+            }
+
+            setLoading(true);
+            showStatus('Buscando coordenadas...', '');
+            resultCard.style.display = 'none';
+
+            try {
+                const response = await fetch('/search', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ address: address })
+                });
+
+                const data = await response.json();
+
+                if (response.ok && data.success) {
+                    showStatus('', '');
+                    foundAddress.textContent = data.address;
+
+                    // Generate link
+                    const mapLink = generateMapLink(data.lat, data.lon);
+
+                    // Set current result button
+                    setMapButton(openMapBtn, mapLink);
+
+                    resultCard.style.display = 'block';
+
+                    // Save to history
+                    addToHistory(data.address, data.lat, data.lon);
+
+                } else {
+                    showStatus(data.error || 'Endereço não encontrado.', 'error');
+                }
+
+            } catch (error) {
+                console.error('Error:', error);
+                showStatus('Erro de conexão com o servidor.', 'error');
+            } finally {
+                setLoading(false);
+            }
+        }
+
+        function isMobile() {
+            return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+        }
+
+        function generateMapLink(lat, lon) {
+            if (isMobile()) {
+                // Mobile: geo URI
+                return `geo:${lat},${lon}?q=${lat},${lon}`;
+            } else {
+                // Desktop: OSM with marker
+                return `https://www.openstreetmap.org/?mlat=${lat}&mlon=${lon}&zoom=17`;
+            }
+        }
+
+        function setMapButton(element, link) {
+            element.href = link;
+            if (isMobile()) {
+                element.removeAttribute('target');
+            } else {
+                element.setAttribute('target', '_blank');
+            }
+        }
+
+        // --- History Logic ---
+
+        function loadHistory() {
+            const history = JSON.parse(localStorage.getItem('ghostMapHistory') || '[]');
+
+            if (history.length > 0) {
+                historySection.style.display = 'block';
+                historyList.innerHTML = '';
+
+                history.forEach((item, index) => {
+                    const link = generateMapLink(item.lat, item.lon);
+                    const targetAttr = isMobile() ? '' : 'target="_blank"';
+                    const date = new Date(item.timestamp);
+                    const formattedDate = date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+                    const div = document.createElement('div');
+                    div.className = 'history-item';
+                    div.innerHTML = `
+                        <div class="history-content">
+                            <span class="history-address">${item.address}</span>
+                            <span class="history-time">${formattedDate}</span>
+                        </div>
+                        <a href="${link}" ${targetAttr} class="history-action-btn">
+                           <svg viewBox="0 0 24 24" class="icon-map">
+                                <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/>
+                           </svg>
+                        </a>
+                        <button onclick="removeFromHistory(${index})" class="delete-item-btn">&times;</button>
+                    `;
+                    historyList.appendChild(div);
+                });
+            } else {
+                historySection.style.display = 'none';
+            }
+        }
+
+        function addToHistory(address, lat, lon) {
+            const history = JSON.parse(localStorage.getItem('ghostMapHistory') || '[]');
+
+            // Remove exact duplicates to bubble up
+            const existingIndex = history.findIndex(h => h.address === address);
+            if (existingIndex > -1) {
+                history.splice(existingIndex, 1);
+            }
+
+            history.unshift({
+                address: address,
+                lat: lat,
+                lon: lon,
+                timestamp: new Date().getTime()
+            });
+
+            // Limit to 10 items
+            if (history.length > 10) history.pop();
+
+            localStorage.setItem('ghostMapHistory', JSON.stringify(history));
+            loadHistory();
+        }
+
+        window.removeFromHistory = function (index) {
+            const history = JSON.parse(localStorage.getItem('ghostMapHistory') || '[]');
+            history.splice(index, 1);
+            localStorage.setItem('ghostMapHistory', JSON.stringify(history));
+            loadHistory();
+        }
+
+        window.clearHistory = function () {
+            if (confirm('Tem certeza que deseja limpar todo o histórico?')) {
+                localStorage.removeItem('ghostMapHistory');
+                loadHistory();
+            }
+        }
+
+        function setLoading(isLoading) {
+            searchBtn.disabled = isLoading;
+            if (isLoading) {
+                btnText.style.display = 'none';
+                spinner.style.display = 'block';
+            } else {
+                btnText.style.display = 'block';
+                spinner.style.display = 'none';
+            }
+        }
+
+        function showStatus(msg, type) {
+            statusMessage.textContent = msg;
+            statusMessage.className = 'status ' + type;
+        }
+
+        // Initialize
+        loadHistory();
+
+    </script>
+</body>
+
+</html>

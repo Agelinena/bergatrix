@@ -1,0 +1,28 @@
+services:
+  cloudbeaver:
+    image: dbeaver/cloudbeaver:latest
+    container_name: cloudbeaver
+    restart: unless-stopped
+    volumes:
+      - ${STORAGE_PATH}/cloudbeaver:/opt/cloudbeaver/workspace
+    networks:
+      - bergatrix-proxy       # Para o Traefik levar o tráfego
+      - bergatrix-db-internal # Para ele alcançar o Postgres Global
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=bergatrix-proxy"
+      - "traefik.http.routers.cloudbeaver.rule=Host(`db.${DOMAIN}`)"
+      - "traefik.http.routers.cloudbeaver.entrypoints=websecure"
+      - "traefik.http.routers.cloudbeaver.tls=true"
+      - "traefik.http.routers.cloudbeaver.tls.certresolver=letsencrypt"
+      # CAMADA DE SEGURANÇA:
+      # 1. internal-only: Só abre se você estiver no Tailscale
+      # 2. authentik: Só abre se você estiver logado no seu SSO
+      - "traefik.http.routers.cloudbeaver.middlewares=internal-only@docker,authentik@docker"
+      - "traefik.http.services.cloudbeaver.loadbalancer.server.port=8978"
+
+networks:
+  bergatrix-proxy:
+    external: true
+  bergatrix-db-internal:
+    external: true

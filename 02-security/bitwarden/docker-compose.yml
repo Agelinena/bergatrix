@@ -1,0 +1,44 @@
+services:
+  vaultwarden:
+    image: vaultwarden/server:latest
+    container_name: bitwarden
+    restart: unless-stopped
+    volumes:
+      - ${STORAGE_PATH}/vaultwarden:/data
+    networks:
+      - bergatrix-proxy
+    environment:
+      - SIGNUPS_ALLOWED=false
+      - TZ=America/Sao_Paulo
+      - WEBSOCKET_ENABLED=true
+      - ADMIN_TOKEN=${ADMIN_TOKEN}
+      - DOMAIN=https://bitwarden.${DOMAIN}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=bergatrix-proxy"
+      
+      # --- Roteador Principal ---
+      - "traefik.http.routers.vaultwarden-router.rule=Host(`bitwarden.${DOMAIN}`)"
+      - "traefik.http.routers.vaultwarden-router.entrypoints=websecure"
+      - "traefik.http.routers.vaultwarden-router.tls=true"
+      - "traefik.http.routers.vaultwarden-router.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.vaultwarden-router.service=vaultwarden-service"
+      - "traefik.http.routers.vaultwarden-router.middlewares=internal-only@docker"
+      
+      # --- Roteador WebSocket ---
+      - "traefik.http.routers.vaultwarden-ws-router.rule=Host(`bitwarden.${DOMAIN}`) && PathPrefix(`/notifications/hub`)"
+      - "traefik.http.routers.vaultwarden-ws-router.entrypoints=websecure"
+      - "traefik.http.routers.vaultwarden-ws-router.tls=true"
+      - "traefik.http.routers.vaultwarden-ws-router.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.vaultwarden-ws-router.service=vaultwarden-ws-service"
+      # Ativa a proteção local também no WebSocket
+      - "traefik.http.routers.vaultwarden-ws-router.middlewares=internal-only@docker"
+
+      # --- Definição de Serviços ---
+      - "traefik.http.services.vaultwarden-service.loadbalancer.server.port=80"
+      - "traefik.http.services.vaultwarden-ws-service.loadbalancer.server.port=3012"
+
+networks:
+  bergatrix-proxy:
+    name: bergatrix-proxy
+    external: true

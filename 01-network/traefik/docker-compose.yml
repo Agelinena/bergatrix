@@ -1,0 +1,30 @@
+services:
+  traefik:
+    image: traefik:v3.6.2
+    container_name: traefik
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - bergatrix-proxy
+    ports:
+      - 80:80
+      - 443:443
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./config/traefik.yml:/traefik.yml:ro
+      - ./config/acme.json:/acme.json
+    environment:
+      - CF_DNS_API_TOKEN=${CF_DNS_API_TOKEN}
+      - CF_API_EMAIL=${CF_EMAIL}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.middlewares.internal-only.ipallowlist.sourcerange=127.0.0.1/32, 192.168.0.0/16, 172.16.0.0/12, 100.64.0.0/10"
+
+networks:
+  bergatrix-proxy:
+    name: bergatrix-proxy
+    external: true

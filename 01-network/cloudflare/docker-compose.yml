@@ -1,0 +1,13 @@
+services:
+  cloudflare:
+    image: cloudflare/cloudflared:latest
+    container_name: cloudflare
+    restart: unless-stopped
+    networks:
+      - traefik
+    command: tunnel --no-autoupdate run --token ${CF_TUNNEL_ID}
+
+networks:
+  traefik:
+    name: bergatrix-proxy
+    external: true
