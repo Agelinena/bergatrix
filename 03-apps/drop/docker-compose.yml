@@ -1,0 +1,23 @@
+services:
+  drop:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: drop
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - bergatrix-proxy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.drop-router.rule=Host(`drop.${DOMAIN}`)"
+      - "traefik.http.routers.drop-router.entrypoints=websecure"
+      - "traefik.http.routers.drop-router.tls=true"
+      - "traefik.http.routers.drop-router.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.drop-router.service=drop-service"
+      - "traefik.http.services.drop-service.loadbalancer.server.port=8000"
+
+networks:
+  bergatrix-proxy:
+    external: true

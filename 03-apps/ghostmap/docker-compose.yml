@@ -1,0 +1,41 @@
+services:
+  whoogle:
+    image: benbusby/whoogle-search
+    container_name: whoogle
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges
+    environment:
+      - WHOOGLE_CONFIG_COUNTRY=${WHOOGLE_CONFIG_COUNTRY:-BR}
+      - WHOOGLE_CONFIG_LANGUAGE=${WHOOGLE_CONFIG_LANGUAGE:-lang_pt}
+      - WHOOGLE_CONFIG_TOR=${WHOOGLE_CONFIG_TOR:-0}
+      - WHOOGLE_CONFIG_ANON_VIEW=${WHOOGLE_CONFIG_ANON_VIEW:-1}
+      - WHOOGLE_CONFIG_DISABLE=1
+    networks:
+      - ghost-network
+
+  ghostmap:
+    build: .
+    container_name: ghostmap
+    restart: unless-stopped
+    depends_on:
+      - whoogle
+    volumes:
+      - ${STORAGE_PATH}/ghostmap:/app/data
+    networks:
+      - ghost-network
+      - bergatrix-proxy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=bergatrix-proxy"
+      - "traefik.http.routers.ghostmap-router.rule=Host(`ghostmap.${DOMAIN}`)"
+      - "traefik.http.routers.ghostmap-router.entrypoints=websecure"
+      - "traefik.http.routers.ghostmap-router.service=ghostmap-service"
+      - "traefik.http.routers.ghostmap-router.tls=true"
+      - "traefik.http.routers.ghostmap-router.tls.certresolver=letsencrypt"
+      - "traefik.http.services.ghostmap-service.loadbalancer.server.port=5000"
+
+networks:
+  ghost-network:
+  bergatrix-proxy:
+    external: true

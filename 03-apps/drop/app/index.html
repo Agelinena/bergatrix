@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Drop - Transferência Segura</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <style type="text/tailwindcss">
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #0f172a;
+            color: #e2e8f0;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        .btn-primary {
+            @apply w-full py-4 rounded-xl font-bold text-lg transition transform hover:scale-105 shadow-lg;
+        }
+    </style>
+</head>
+
+<body class="flex items-center justify-center min-h-screen p-4">
+    <div
+        class="w-full max-w-md p-6 bg-slate-800 rounded-2xl shadow-xl border border-slate-700 relative overflow-hidden">
+
+        <!-- HEADER -->
+        <div class="text-center mb-8">
+            <h1
+                class="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 to-emerald-400">
+                Drop</h1>
+            <p class="text-slate-400 text-sm">Transferência Segura & Efêmera</p>
+        </div>
+
+        <!-- SELEÇÃO DE MODO -->
+        <div id="mode-selection" class="space-y-4">
+            <button onclick="initReceiver()" class="btn-primary bg-indigo-600 hover:bg-indigo-500 text-white">
+                📥 Receber
+            </button>
+            <button onclick="initSender()" class="btn-primary bg-emerald-600 hover:bg-emerald-500 text-white">
+                📤 Enviar
+            </button>
+        </div>
+
+        <!-- MODO RECEPTOR -->
+        <div id="receiver-mode" class="hidden text-center space-y-6">
+            <div class="bg-slate-900/50 p-4 rounded-xl border border-slate-700">
+                <p class="text-xs text-slate-400 uppercase tracking-wider mb-2">Seu Código de Conexão</p>
+                <div id="display-code" class="text-4xl font-mono font-bold text-white tracking-widest select-all"></div>
+            </div>
+
+            <div class="flex justify-center p-4 bg-white rounded-xl mx-auto w-fit shadow-inner">
+                <div id="qrcode"></div>
+            </div>
+
+            <div id="status" class="text-sm font-mono text-yellow-500 animate-pulse">Aguardando conexão...</div>
+
+            <div id="received-area"
+                class="hidden mt-6 p-4 bg-slate-900 rounded-lg border border-indigo-500/30 text-left space-y-3">
+                <label class="text-xs text-indigo-400 font-semibold">MENSAGEM RECEBIDA:</label>
+
+                <div class="relative">
+                    <input type="password" id="decrypted-content" readonly
+                        class="w-full bg-slate-800/50 rounded-lg px-4 py-3 outline-none font-mono text-white text-lg pr-24 transition focus:bg-slate-800">
+
+                    <div class="absolute right-2 top-1/2 -translate-y-1/2 flex gap-1">
+                        <button onclick="toggleVisibility()"
+                            class="p-2 text-slate-400 hover:text-white rounded-lg hover:bg-slate-700 transition"
+                            title="Mostrar/Esconder">
+                            👁️
+                        </button>
+                        <button onclick="copyToClipboard()"
+                            class="p-2 text-indigo-400 hover:text-indigo-300 rounded-lg hover:bg-slate-700 transition"
+                            title="Copiar">
+                            📋
+                        </button>
+                    </div>
+                </div>
+
+                <button onclick="clearClipboard()"
+                    class="w-full py-2 text-xs font-bold text-red-400 hover:text-red-300 border border-red-900/30 hover:bg-red-900/20 rounded-lg transition flex items-center justify-center gap-2">
+                    🗑️ Limpar Área de Transferência
+                </button>
+            </div>
+
+            <button onclick="resetApp()" class="text-xs text-slate-500 hover:text-slate-300 underline">Sair /
+                Novo</button>
+        </div>
+
+        <!-- MODO EMISSOR -->
+        <div id="sender-mode" class="hidden space-y-6">
+            <div id="sender-connect-step">
+                <h2 class="text-xl font-bold text-center mb-4">Conectar ao Receptor</h2>
+
+                <div id="reader" class="rounded-lg overflow-hidden mb-4"></div>
+
+                <button id="start-scan-btn" onclick="startScanner()"
+                    class="w-full py-3 bg-slate-700 hover:bg-slate-600 rounded-lg font-bold mb-4">
+                    📷 Ler QR Code
+                </button>
+
+                <p class="text-center text-xs text-slate-500 mb-2">- OU -</p>
+
+                <input type="text" id="sender-code-input" placeholder="Digite o Código" maxlength="8"
+                    class="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-3 text-center font-mono uppercase tracking-widest focus:border-emerald-500 outline-none transition mb-4">
+
+                <button onclick="connectSenderManual()"
+                    class="w-full py-3 bg-emerald-600 hover:bg-emerald-500 rounded-lg font-bold text-white">
+                    Conectar
+                </button>
+            </div>
+
+            <div id="sender-message-step" class="hidden space-y-4">
+                <div class="flex justify-between items-center">
+                    <span class="text-xs font-mono text-emerald-400">🟢 Conectado: <span
+                            id="connected-code"></span></span>
+                </div>
+
+                <textarea id="secret-input" rows="5"
+                    class="w-full p-4 bg-slate-900 rounded-lg border border-slate-700 focus:border-emerald-500 focus:outline-none transition text-white font-mono"
+                    placeholder="Digite sua mensagem aqui..."></textarea>
+
+                <button id="send-btn" onclick="encryptAndSend()"
+                    class="w-full py-4 bg-emerald-600 hover:bg-emerald-700 rounded-lg font-bold transition text-white shadow-lg shadow-emerald-900/20">
+                    🔒 Enviar Agora
+                </button>
+                <div id="sender-status" class="text-center text-sm h-6 font-bold"></div>
+            </div>
+
+            <button onclick="resetApp()"
+                class="block w-full text-center text-xs text-slate-500 hover:text-slate-300 underline mt-4">Cancelar</button>
+        </div>
+    </div>
+
+    <script>
+        // --- CONFIG & STATE ---
+        const STATE_KEY = 'drop_app_state';
+        let appState = {
+            mode: null, // 'receiver' | 'sender'
+            code: null,
+            sessionId: null,
+            keyJwk: null,
+            timestamp: 0
+        };
+        let ws = null;
+        let html5QrCode = null;
+
+        // --- CRYPTO UTILS ---
+        async function deriveKeyAndId(code) {
+            const enc = new TextEncoder();
+            const keyMaterial = await window.crypto.subtle.importKey(
+                "raw", enc.encode(code), { name: "PBKDF2" }, false, ["deriveBits", "deriveKey"]
+            );
+
+            // Derive Encryption Key
+            const key = await window.crypto.subtle.deriveKey(
+                {
+                    name: "PBKDF2",
+                    salt: enc.encode("drop-secure-salt"), // Fixed salt for simplicity in this demo
+                    iterations: 100000,
+                    hash: "SHA-256"
+                },
+                keyMaterial,
+                { name: "AES-GCM", length: 256 },
+                true,
+                ["encrypt", "decrypt"]
+            );
+
+            // Derive Session ID (Hash of code)
+            const hashBuffer = await window.crypto.subtle.digest("SHA-256", enc.encode(code));
+            const hashArray = Array.from(new Uint8Array(hashBuffer));
+            const sessionId = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+
+            return { key, sessionId };
+        }
+
+        async function encrypt(msg, key) {
+            const iv = window.crypto.getRandomValues(new Uint8Array(12));
+            const encoded = new TextEncoder().encode(msg);
+            const ciphertext = await window.crypto.subtle.encrypt({ name: "AES-GCM", iv: iv }, key, encoded);
+            return btoa(String.fromCharCode(...iv) + String.fromCharCode(...new Uint8Array(ciphertext)));
+        }
+
+        async function decrypt(packBase64, key) {
+            const pack = Uint8Array.from(atob(packBase64), c => c.charCodeAt(0));
+            const iv = pack.slice(0, 12);
+            const ciphertext = pack.slice(12);
+            const decrypted = await window.crypto.subtle.decrypt({ name: "AES-GCM", iv: iv }, key, ciphertext);
+            return new TextDecoder().decode(decrypted);
+        }
+
+        async function exportKey(key) {
+            return await window.crypto.subtle.exportKey("jwk", key);
+        }
+
+        async function importKey(jwk) {
+            return await window.crypto.subtle.importKey("jwk", jwk, { name: "AES-GCM" }, true, ["encrypt", "decrypt"]);
+        }
+
+        // --- APP LOGIC ---
+
+        function generateCode() {
+            const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // No I, O, 0, 1
+            let result = '';
+            for (let i = 0; i < 8; i++) {
+                result += chars.charAt(Math.floor(Math.random() * chars.length));
+            }
+            return result;
+        }
+
+        function saveState() {
+            appState.timestamp = Date.now();
+            localStorage.setItem(STATE_KEY, JSON.stringify(appState));
+        }
+
+        function clearState() {
+            localStorage.removeItem(STATE_KEY);
+            appState = { mode: null, code: null, sessionId: null, keyJwk: null, timestamp: 0 };
+        }
+
+        async function loadState() {
+            const saved = localStorage.getItem(STATE_KEY);
+            if (saved) {
+                const parsed = JSON.parse(saved);
+                // 10 min expiration
+                if (Date.now() - parsed.timestamp < 10 * 60 * 1000) {
+                    appState = parsed;
+                    return true;
+                } else {
+                    clearState();
+                }
+            }
+            return false;
+        }
+
+        async function init() {
+            // Check URL hash first (QR Scan entry)
+            if (window.location.hash.length > 1) {
+                const code = window.location.hash.substring(1).replace('code=', '');
+                if (code) {
+                    await setupSender(code);
+                    return;
+                }
+            }
+
+            // Check localStorage
+            if (await loadState()) {
+                if (appState.mode === 'receiver') {
+                    await restoreReceiver();
+                } else if (appState.mode === 'sender') {
+                    await restoreSender();
+                }
+            }
+        }
+
+        function showScreen(id) {
+            ['mode-selection', 'receiver-mode', 'sender-mode'].forEach(s => document.getElementById(s).classList.add('hidden'));
+            document.getElementById(id).classList.remove('hidden');
+        }
+
+        // --- RECEIVER FLOW ---
+
+        async function initReceiver() {
+            const code = generateCode();
+            const { key, sessionId } = await deriveKeyAndId(code);
+
+            appState.mode = 'receiver';
+            appState.code = code;
+            appState.sessionId = sessionId;
+            appState.keyJwk = await exportKey(key);
+            saveState();
+
+            await restoreReceiver();
+        }
+
+        async function restoreReceiver() {
+            showScreen('receiver-mode');
+            document.getElementById('display-code').textContent = appState.code;
+
+            // Generate QR
+            const qrUrl = `${window.location.origin}/#code=${appState.code}`;
+            document.getElementById('qrcode').innerHTML = "";
+            new QRCode(document.getElementById("qrcode"), { text: qrUrl, width: 180, height: 180 });
+
+            connectWebSocket();
+        }
+
+        function connectWebSocket() {
+            if (ws) ws.close();
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            ws = new WebSocket(`${protocol}//${window.location.host}/ws/${appState.sessionId}`);
+            const status = document.getElementById('status');
+
+            ws.onopen = () => {
+                status.textContent = "🟢 Aguardando conexão segura...";
+                status.className = "text-sm font-mono text-emerald-500 animate-pulse";
+
+                // Keep-alive ping
+                setInterval(() => { if (ws.readyState === 1) ws.send("ping"); }, 30000);
+            };
+
+            ws.onmessage = async (event) => {
+                if (event.data === "ping") return;
+
+                status.textContent = "🔒 Pacote recebido! Descriptografando...";
+                try {
+                    const key = await importKey(appState.keyJwk);
+                    const decrypted = await decrypt(event.data, key);
+
+                    document.getElementById('received-area').classList.remove('hidden');
+                    document.getElementById('decrypted-content').value = decrypted;
+                    status.textContent = "✅ Mensagem recebida com sucesso!";
+                    status.className = "text-sm font-mono text-emerald-500 font-bold";
+
+                    // Optional: Vibrate
+                    if (navigator.vibrate) navigator.vibrate(200);
+                } catch (e) {
+                    console.error(e);
+                    status.textContent = "❌ Erro na descriptografia.";
+                    status.className = "text-sm font-mono text-red-500";
+                }
+            };
+
+            ws.onclose = (e) => {
+                if (e.code === 1008) {
+                    status.textContent = "⚠️ Sessão ocupada (outro aba aberta?)";
+                } else {
+                    status.textContent = "🔴 Desconectado.";
+                }
+                status.className = "text-sm font-mono text-red-500";
+            };
+        }
+
+        // --- SENDER FLOW ---
+
+        async function initSender() {
+            showScreen('sender-mode');
+            document.getElementById('sender-connect-step').classList.remove('hidden');
+            document.getElementById('sender-message-step').classList.add('hidden');
+        }
+
+        async function connectSenderManual() {
+            const code = document.getElementById('sender-code-input').value.toUpperCase();
+            if (code.length === 8) {
+                await setupSender(code);
+            } else {
+                alert("Código inválido");
+            }
+        }
+
+        async function setupSender(code) {
+            const { key, sessionId } = await deriveKeyAndId(code);
+
+            appState.mode = 'sender';
+            appState.code = code;
+            appState.sessionId = sessionId;
+            appState.keyJwk = await exportKey(key);
+            saveState();
+
+            await restoreSender();
+        }
+
+        async function restoreSender() {
+            showScreen('sender-mode');
+            document.getElementById('sender-connect-step').classList.add('hidden');
+            document.getElementById('sender-message-step').classList.remove('hidden');
+            document.getElementById('connected-code').textContent = appState.code;
+
+            // Stop scanner if running
+            if (html5QrCode && html5QrCode.isScanning) {
+                await html5QrCode.stop();
+            }
+        }
+
+        async function encryptAndSend() {
+            const btn = document.getElementById('send-btn');
+            const status = document.getElementById('sender-status');
+            const secret = document.getElementById('secret-input').value;
+
+            if (!secret) return;
+            btn.disabled = true;
+            btn.innerHTML = "⏳ Enviando...";
+
+            try {
+                const key = await importKey(appState.keyJwk);
+                const encrypted = await encrypt(secret, key);
+
+                const response = await fetch(`/api/send/${appState.sessionId}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ encrypted_payload: encrypted })
+                });
+
+                const resData = await response.json();
+
+                if (response.ok) {
+                    status.textContent = "✅ Enviado com sucesso!";
+                    status.className = "text-center text-sm text-emerald-500 font-bold";
+                    document.getElementById('secret-input').value = "";
+                    setTimeout(() => { status.textContent = ""; btn.innerHTML = "🔒 Enviar Outro"; btn.disabled = false; }, 2000);
+                } else {
+                    throw new Error(resData.detail || "Falha no envio");
+                }
+            } catch (e) {
+                status.textContent = `❌ Erro: ${e.message}`;
+                status.className = "text-center text-sm text-red-500 font-bold";
+                btn.disabled = false;
+                btn.innerHTML = "🔒 Tentar Novamente";
+            }
+        }
+
+        // --- SCANNER ---
+
+        function startScanner() {
+            document.getElementById('start-scan-btn').classList.add('hidden');
+            html5QrCode = new Html5Qrcode("reader");
+            html5QrCode.start(
+                { facingMode: "environment" },
+                { fps: 10, qrbox: { width: 250, height: 250 } },
+                (decodedText, decodedResult) => {
+                    // Handle success
+                    console.log(`Scan result: ${decodedText}`);
+                    if (decodedText.includes('#code=')) {
+                        const code = decodedText.split('#code=')[1];
+                        html5QrCode.stop().then(() => {
+                            setupSender(code);
+                        });
+                    }
+                },
+                (errorMessage) => {
+                    // parse error, ignore
+                }
+            ).catch(err => {
+                alert("Erro ao iniciar câmera: " + err);
+                document.getElementById('start-scan-btn').classList.remove('hidden');
+            });
+        }
+
+        // --- UTILS ---
+
+        function resetApp() {
+            clearState();
+            if (ws) ws.close();
+            window.location.hash = "";
+            location.reload();
+        }
+
+        function toggleVisibility() {
+            const input = document.getElementById('decrypted-content');
+            input.type = input.type === 'password' ? 'text' : 'password';
+        }
+
+        function copyToClipboard() {
+            const copyText = document.getElementById("decrypted-content");
+            navigator.clipboard.writeText(copyText.value).then(() => {
+                // Feedback visual temporário
+                const originalBg = copyText.style.backgroundColor;
+                copyText.style.backgroundColor = '#22c55e33'; // Green tint
+                setTimeout(() => copyText.style.backgroundColor = originalBg, 200);
+            });
+        }
+
+        function clearClipboard() {
+            if (navigator.clipboard && window.isSecureContext) {
+                navigator.clipboard.writeText("").then(() => {
+                    alert("Área de transferência limpa!");
+                }).catch(err => {
+                    console.error("Falha ao limpar clipboard", err);
+                    alert("Erro ao limpar. Permissão negada?");
+                });
+            } else {
+                alert("Funcionalidade não suportada neste navegador/contexto.");
+            }
+        }
+
+        // Start
+        init();
+
+    </script>
+</body>
+
+</html>

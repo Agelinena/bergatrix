@@ -1,0 +1,15 @@
+http:
+  routers:
+    dashboard:
+      rule: "Host(`{SUBDOMAIN_TRAEFIK_DASHBOARD}`)"
+      service: api@internal
+      entryPoints:
+        - websecure
+      tls: {}
+      priority: 100
+
+  middlewares:
+    auth:
+      basicAuth:
+        users:
+          - "${TRAEFIK_USER}:${TRAEFIK_PASSWORD}"
