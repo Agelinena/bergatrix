@@ -1,5 +1,5 @@
 log:
-  level: DEBUG
+  level: INFO
 
 entryPoints:
   web:
@@ -38,9 +38,9 @@ certificatesResolvers:
     acme:
       storage: "/acme.json"
       dnsChallenge:
-        provider: cloudflare
+        provider: desec
         propagation:
-          delayBeforeChecks: "20s"
+          delayBeforeChecks: "30s"
         resolvers:
           - "1.1.1.1:53"
           - "1.0.0.1:53"
