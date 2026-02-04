@@ -18,11 +18,11 @@ services:
       - ./config/traefik.yml:/traefik.yml:ro
       - ./config/acme.json:/acme.json
     environment:
-      - CF_DNS_API_TOKEN=${CF_DNS_API_TOKEN}
-      - CF_API_EMAIL=${CF_EMAIL}
+      - DESEC_TOKEN=seu_token_do_desec_aqui
+      - DESEC_DOMAIN=dominio
     labels:
       - "traefik.enable=true"
-      - "traefik.http.middlewares.internal-only.ipallowlist.sourcerange=127.0.0.1/32, 192.168.0.0/16, 172.16.0.0/12, 100.64.0.0/10"
+      - "traefik.http.middlewares.internal-only.ipallowlist.sourcerange=127.0.0.1/32, 192.168.0.0/16, 172.16.0.0/12, 100.64.0.0/10, 10.8.0.0/24"
 
 networks:
   bergatrix-proxy:
