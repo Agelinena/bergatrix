@@ -3,6 +3,7 @@
 .env
 .env.*
 !.env.example
+AdGuardHome.yaml
 
 # === Credenciais e Certificados ===
 # Bloqueia chaves privadas e certificados (Traefik/Cloudflare)
@@ -14,6 +15,7 @@
 ssh_keys/
 secrets/
 **/acme.json
+
 
 # === Infraestrutura e Volumes ===
 # Não versão dados persistentes (bancos de dados, uploads)
