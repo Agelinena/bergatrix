@@ -17,16 +17,17 @@ services:
       - APPFLOWY_WEB_URL=${APPFLOWY_WEB_URL}
       - APPFLOWY_ACCESS_CONTROL_SECRET=${APPFLOWY_ACCESS_CONTROL_SECRET}
       - APPFLOWY_GOTRUE_JWT_SECRET=${APPFLOWY_GOTRUE_JWT_SECRET}
-      - REDIS_URL=redis://redis:6379
+      - APPFLOWY_REDIS_URI=redis://redis:6379
     depends_on:
       postgres:
         condition: service_healthy
+      redis:
+        condition: service_healthy # ← CORREÇÃO: aguarda Redis estar pronto
     networks:
       - bergatrix-proxy
       - af-internal
     labels:
       - "traefik.enable=true"
-      # Corrigido o ponto antes do ${DOMAIN}
       - "traefik.http.routers.af-cloud.rule=Host(`appflowy-cloud.${DOMAIN}`)"
       - "traefik.http.routers.af-cloud.entrypoints=websecure"
       - "traefik.http.routers.af-cloud.tls=true"
@@ -46,12 +47,10 @@ services:
       - bergatrix-proxy
     labels:
       - "traefik.enable=true"
-      # Alinhado com a URL do seu .env
       - "traefik.http.routers.appflowy-web.rule=Host(`appflowyflow.${DOMAIN}`)"
       - "traefik.http.routers.appflowy-web.entrypoints=websecure"
       - "traefik.http.routers.appflowy-web.tls=true"
       - "traefik.http.routers.appflowy-web.tls.certresolver=letsencrypt"
-      # Porta corrigida para 3000
       - "traefik.http.services.appflowy-web.loadbalancer.server.port=3000"
 
   postgres:
@@ -90,9 +89,12 @@ services:
     image: redis:7-alpine
     container_name: redis
     restart: unless-stopped
-    depends_on:
-      postgres:
-        condition: service_healthy
+    healthcheck:
+      # ← CORREÇÃO: healthcheck adicionado
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 5s
+      timeout: 3s
+      retries: 5
     networks:
       - af-internal
 
