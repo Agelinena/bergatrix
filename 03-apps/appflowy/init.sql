@@ -9,6 +9,11 @@ CREATE SCHEMA IF NOT EXISTS auth;
 
 -- Create stub users table to satisfy AppFlowy migrations
 CREATE TABLE IF NOT EXISTS auth.users (
-    id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
-    email text UNIQUE
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    email TEXT UNIQUE,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    deleted_at TIMESTAMPTZ,
+    raw_app_meta_data JSONB DEFAULT '{}'::jsonb,
+    raw_user_meta_data JSONB DEFAULT '{}'::jsonb,
+    is_super_admin BOOLEAN DEFAULT FALSE
 );
