@@ -87,7 +87,6 @@ services:
       - af-internal
 
   redis:
-    condition: service_started
     image: redis:7-alpine
     container_name: redis
     restart: unless-stopped
