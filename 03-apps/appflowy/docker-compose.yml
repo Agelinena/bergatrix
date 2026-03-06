@@ -17,10 +17,7 @@ services:
       - APPFLOWY_WEB_URL=${APPFLOWY_WEB_URL}
       - APPFLOWY_ACCESS_CONTROL_SECRET=${APPFLOWY_ACCESS_CONTROL_SECRET}
       - APPFLOWY_GOTRUE_JWT_SECRET=${APPFLOWY_GOTRUE_JWT_SECRET}
-      - APPFLOWY_REDIS_URL=redis://redis:6379
-      - APPFLOWY_REDIS_PRIMARY_URL=redis://redis:6379
-      - APPFLOWY_REDIS_REPLICA_URLS=redis://redis:6379
-      - APPFLOWY_REDIS_ADMIN_ADDR=redis:6379
+      - REDIS_URL=redis://redis:6379
     depends_on:
       postgres:
         condition: service_healthy
@@ -66,7 +63,7 @@ services:
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
       - POSTGRES_DB=${POSTGRES_DB}
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -93,6 +90,11 @@ services:
     image: redis:7-alpine
     container_name: redis
     restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
     networks:
       - af-internal
 
