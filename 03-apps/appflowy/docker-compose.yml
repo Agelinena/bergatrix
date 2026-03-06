@@ -7,6 +7,7 @@ services:
       - APPFLOWY_DATABASE_URL=postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       - APPFLOWY_GOTRUE_DB_DATABASE_URL=postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       - APPFLOWY_GOTRUE_EXTERNAL_URL=${APPFLOWY_GOTRUE_EXTERNAL_URL}
+      - APPFLOWY_GOTRUE_BASE_URL=http://gotrue:9999
       - APPFLOWY_WEB_URL=${APPFLOWY_WEB_URL}
       - APPFLOWY_ACCESS_CONTROL_SECRET=${APPFLOWY_ACCESS_CONTROL_SECRET}
       - APPFLOWY_GOTRUE_JWT_SECRET=${APPFLOWY_GOTRUE_JWT_SECRET}
@@ -18,7 +19,6 @@ services:
       - APPFLOWY_S3_ACCESS_KEY=${MINIO_ROOT_USER}
       - APPFLOWY_S3_SECRET_KEY=${MINIO_ROOT_PASSWORD}
       - APPFLOWY_S3_PRESIGNED_URL_ENDPOINT=${APPFLOWY_WEB_URL}/minio-api
-      - APPFLOWY_GOTRUE_BASE_URL=http://gotrue:9999 # ← aponta para o serviço interno
     depends_on:
       postgres:
         condition: service_healthy
@@ -44,16 +44,23 @@ services:
     container_name: gotrue
     restart: unless-stopped
     environment:
-      - GOTRUE_SITE_URL=${APPFLOWY_WEB_URL}
-      - GOTRUE_URI_ALLOW_LIST=*
-      - GOTRUE_DISABLE_SIGNUP=false
+      - GOTRUE_SITE_URL=appflowy-flutter://
+      - GOTRUE_URI_ALLOW_LIST=**
+      - GOTRUE_DISABLE_SIGNUP=${GOTRUE_DISABLE_SIGNUP:-false}
       - GOTRUE_JWT_SECRET=${APPFLOWY_GOTRUE_JWT_SECRET}
       - GOTRUE_JWT_EXP=7200
+      - GOTRUE_JWT_ADMIN_GROUP_NAME=supabase_admin
       - GOTRUE_DB_DRIVER=postgres
       - DATABASE_URL=postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
-      - PORT=9999
       - API_EXTERNAL_URL=${APPFLOWY_GOTRUE_EXTERNAL_URL}
-      - GOTRUE_MAILER_AUTOCONFIRM=true # desativa confirmação de email (ajuste se necessário)
+      - PORT=9999
+      - GOTRUE_MAILER_AUTOCONFIRM=true
+      - GOTRUE_MAILER_URLPATHS_CONFIRMATION=/gotrue/verify
+      - GOTRUE_MAILER_URLPATHS_INVITE=/gotrue/verify
+      - GOTRUE_MAILER_URLPATHS_RECOVERY=/gotrue/verify
+      - GOTRUE_MAILER_URLPATHS_EMAIL_CHANGE=/gotrue/verify
+      - GOTRUE_ADMIN_EMAIL=${GOTRUE_ADMIN_EMAIL}
+      - GOTRUE_ADMIN_PASSWORD=${GOTRUE_ADMIN_PASSWORD}
     depends_on:
       postgres:
         condition: service_healthy
