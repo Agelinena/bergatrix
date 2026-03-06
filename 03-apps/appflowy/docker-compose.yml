@@ -15,15 +15,18 @@ services:
       - APPFLOWY_S3_USE_MINIO=true
       - APPFLOWY_S3_MINIO_URL=http://minio:9000
       - APPFLOWY_S3_BUCKET=appflowy
-      - APPFLOWY_S3_ACCESS_KEY=${MINIO_ROOT_USER} # ← usa MINIO_ROOT_USER
-      - APPFLOWY_S3_SECRET_KEY=${MINIO_ROOT_PASSWORD} # ← usa MINIO_ROOT_PASSWORD
+      - APPFLOWY_S3_ACCESS_KEY=${MINIO_ROOT_USER}
+      - APPFLOWY_S3_SECRET_KEY=${MINIO_ROOT_PASSWORD}
       - APPFLOWY_S3_PRESIGNED_URL_ENDPOINT=${APPFLOWY_WEB_URL}/minio-api
+      - APPFLOWY_GOTRUE_BASE_URL=http://gotrue:9999 # ← aponta para o serviço interno
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
       minio:
+        condition: service_healthy
+      gotrue:
         condition: service_healthy
     networks:
       - bergatrix-proxy
@@ -35,6 +38,32 @@ services:
       - "traefik.http.routers.af-cloud.tls=true"
       - "traefik.http.routers.af-cloud.tls.certresolver=letsencrypt"
       - "traefik.http.services.af-cloud.loadbalancer.server.port=8000"
+
+  gotrue:
+    image: appflowyinc/gotrue:latest
+    container_name: gotrue
+    restart: unless-stopped
+    environment:
+      - GOTRUE_SITE_URL=${APPFLOWY_WEB_URL}
+      - GOTRUE_URI_ALLOW_LIST=*
+      - GOTRUE_DISABLE_SIGNUP=false
+      - GOTRUE_JWT_SECRET=${APPFLOWY_GOTRUE_JWT_SECRET}
+      - GOTRUE_JWT_EXP=7200
+      - GOTRUE_DB_DRIVER=postgres
+      - DATABASE_URL=postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      - PORT=9999
+      - API_EXTERNAL_URL=${APPFLOWY_GOTRUE_EXTERNAL_URL}
+      - GOTRUE_MAILER_AUTOCONFIRM=true # desativa confirmação de email (ajuste se necessário)
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:9999/health" ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - af-internal
 
   appflowy-web:
     image: appflowyinc/appflowy_web:latest
@@ -80,8 +109,8 @@ services:
     restart: unless-stopped
     command: server /data --console-address ":9001"
     environment:
-      - MINIO_ROOT_USER=${MINIO_ROOT_USER} # mesmo valor que APPFLOWY_S3_ACCESS_KEY
-      - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD} # mesmo valor que APPFLOWY_S3_SECRET_KEY
+      - MINIO_ROOT_USER=${MINIO_ROOT_USER}
+      - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD}
     healthcheck:
       test: [ "CMD", "curl", "-f", "http://localhost:9000/minio/health/live" ]
       interval: 5s
