@@ -3,6 +3,11 @@ services:
     image: appflowyinc/appflowy_cloud:latest
     container_name: appflowy-cloud
     restart: unless-stopped
+    healthcheck:
+      test: "curl --fail http://127.0.0.1:8000/api/health || exit 1"
+      interval: 5s
+      timeout: 5s
+      retries: 12
     environment:
       - APPFLOWY_DATABASE_URL=postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       - APPFLOWY_GOTRUE_DB_DATABASE_URL=postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
@@ -20,13 +25,13 @@ services:
       - APPFLOWY_S3_SECRET_KEY=${MINIO_ROOT_PASSWORD}
       - APPFLOWY_S3_PRESIGNED_URL_ENDPOINT=${APPFLOWY_WEB_URL}/minio-api
     depends_on:
+      gotrue:
+        condition: service_healthy
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
       minio:
-        condition: service_healthy
-      gotrue:
         condition: service_healthy
     networks:
       - bergatrix-proxy
@@ -42,11 +47,22 @@ services:
   gotrue:
     image: appflowyinc/gotrue:latest
     container_name: gotrue
-    restart: unless-stopped
+    restart: on-failure
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: "curl --fail http://127.0.0.1:9999/health || exit 1"
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 40s # ← crítico: dá tempo para as migrations rodarem
     environment:
+      - GOTRUE_ADMIN_EMAIL=${GOTRUE_ADMIN_EMAIL}
+      - GOTRUE_ADMIN_PASSWORD=${GOTRUE_ADMIN_PASSWORD}
+      - GOTRUE_DISABLE_SIGNUP=${GOTRUE_DISABLE_SIGNUP:-false}
       - GOTRUE_SITE_URL=appflowy-flutter://
       - GOTRUE_URI_ALLOW_LIST=**
-      - GOTRUE_DISABLE_SIGNUP=${GOTRUE_DISABLE_SIGNUP:-false}
       - GOTRUE_JWT_SECRET=${APPFLOWY_GOTRUE_JWT_SECRET}
       - GOTRUE_JWT_EXP=7200
       - GOTRUE_JWT_ADMIN_GROUP_NAME=supabase_admin
@@ -59,16 +75,6 @@ services:
       - GOTRUE_MAILER_URLPATHS_INVITE=/gotrue/verify
       - GOTRUE_MAILER_URLPATHS_RECOVERY=/gotrue/verify
       - GOTRUE_MAILER_URLPATHS_EMAIL_CHANGE=/gotrue/verify
-      - GOTRUE_ADMIN_EMAIL=${GOTRUE_ADMIN_EMAIL}
-      - GOTRUE_ADMIN_PASSWORD=${GOTRUE_ADMIN_PASSWORD}
-    depends_on:
-      postgres:
-        condition: service_healthy
-    healthcheck:
-      test: [ "CMD", "curl", "-f", "http://localhost:9999/health" ]
-      interval: 5s
-      timeout: 5s
-      retries: 10
     networks:
       - af-internal
 
