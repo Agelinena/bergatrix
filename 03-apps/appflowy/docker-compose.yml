@@ -15,7 +15,7 @@ services:
       - APPFLOWY_GOTRUE_BASE_URL=http://gotrue:9999
       - APPFLOWY_WEB_URL=${APPFLOWY_WEB_URL}
       - APPFLOWY_ACCESS_CONTROL_SECRET=${APPFLOWY_ACCESS_CONTROL_SECRET}
-      - APPFLOWY_GOTRUE_JWT_SECRET=${APPFLOWY_GOTRUE_JWT_SECRET}
+      - APPFLOWY_GOTRUE_JWT_SECRET=${GOTRUE_JWT_SECRET}
       - APPFLOWY_REDIS_URI=redis://redis:6379
       - APPFLOWY_ACCESS_CONTROL_ANYONE_CAN_CREATE_SERVER=false
       - APPFLOWY_S3_USE_MINIO=true
@@ -45,7 +45,7 @@ services:
       - "traefik.http.services.af-cloud.loadbalancer.server.port=8000"
 
   gotrue:
-    image: appflowyinc/gotrue:latest
+    image: appflowyinc/gotrue:0.8.7 # ← versão específica, evita bug do latest
     container_name: gotrue
     restart: on-failure
     depends_on:
@@ -56,16 +56,15 @@ services:
       interval: 5s
       timeout: 5s
       retries: 12
-      start_period: 40s # ← crítico: dá tempo para as migrations rodarem
+      start_period: 40s
     environment:
       - GOTRUE_ADMIN_EMAIL=${GOTRUE_ADMIN_EMAIL}
       - GOTRUE_ADMIN_PASSWORD=${GOTRUE_ADMIN_PASSWORD}
       - GOTRUE_DISABLE_SIGNUP=${GOTRUE_DISABLE_SIGNUP:-false}
       - GOTRUE_SITE_URL=appflowy-flutter://
       - GOTRUE_URI_ALLOW_LIST=**
-      - GOTRUE_JWT_SECRET=${APPFLOWY_GOTRUE_JWT_SECRET}
+      - GOTRUE_JWT_SECRET=${GOTRUE_JWT_SECRET} # ← nome correto conforme oficial
       - GOTRUE_JWT_EXP=7200
-      - GOTRUE_JWT_ADMIN_GROUP_NAME=supabase_admin
       - GOTRUE_DB_DRIVER=postgres
       - DATABASE_URL=postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       - API_EXTERNAL_URL=${APPFLOWY_GOTRUE_EXTERNAL_URL}
