@@ -1,0 +1,26 @@
+services:
+  siyuan:
+    image: b3log/siyuan
+    container_name: siyuan
+    restart: unless-stopped
+    user: "1000:1000"
+    command:
+      - "--workspace=/siyuan/workspace"
+      - "--accessAuthCode=${SIYUAN_ACCESS_AUTH_CODE}"
+    environment:
+      - TZ=${TZ:-America/Sao_Paulo}
+    volumes:
+      - ${STORAGE_PATH}/siyuan/workspace:/siyuan/workspace
+    networks:
+      - bergatrix-proxy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.siyuan.rule=Host(`siyuan.${DOMAIN}`)"
+      - "traefik.http.routers.siyuan.entrypoints=websecure"
+      - "traefik.http.routers.siyuan.tls=true"
+      - "traefik.http.routers.siyuan.tls.certresolver=letsencrypt"
+      - "traefik.http.services.siyuan.loadbalancer.server.port=6806"
+
+networks:
+  bergatrix-proxy:
+    external: true
