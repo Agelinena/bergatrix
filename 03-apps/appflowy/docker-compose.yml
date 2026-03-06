@@ -59,7 +59,7 @@ services:
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
       - POSTGRES_DB=${POSTGRES_DB}
     volumes:
-      - ./pgdata:/var/lib/postgresql/data
+      - ${STORAGE_PATH}/appflowy/postgres:/var/lib/postgresql/data
     networks:
       - af-internal
 
@@ -72,7 +72,7 @@ services:
       - MINIO_ROOT_USER=${MINIO_ROOT_USER}
       - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD}
     volumes:
-      - ./minio_data:/data
+      - ${STORAGE_PATH}/appflowy/minio:/data
     networks:
       - af-internal
 
