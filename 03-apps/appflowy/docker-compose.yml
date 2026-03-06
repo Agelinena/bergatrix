@@ -20,6 +20,7 @@ services:
       - APPFLOWY_REDIS_URL=redis://redis:6379
       - APPFLOWY_REDIS_PRIMARY_URL=redis://redis:6379
       - APPFLOWY_REDIS_REPLICA_URLS=redis://redis:6379
+      - APPFLOWY_REDIS_ADMIN_ADDR=redis:6379
     depends_on:
       postgres:
         condition: service_healthy
