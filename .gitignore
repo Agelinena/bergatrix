@@ -3,7 +3,7 @@
 .env
 .env.*
 !.env.example
-AdGuardHome.yaml
+**/AdGuardHome.yaml
 
 # === Credenciais e Certificados ===
 # Bloqueia chaves privadas e certificados (Traefik/Cloudflare)
