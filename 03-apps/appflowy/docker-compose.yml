@@ -22,7 +22,9 @@ services:
       postgres:
         condition: service_healthy
       redis:
-        condition: service_healthy # ← CORREÇÃO: aguarda Redis estar pronto
+        condition: service_healthy
+      minio:
+        condition: service_healthy # ← NOVO: aguarda MinIO estar pronto
     networks:
       - bergatrix-proxy
       - af-internal
@@ -80,6 +82,12 @@ services:
     environment:
       - MINIO_ROOT_USER=${MINIO_ROOT_USER}
       - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD}
+    healthcheck:
+      # ← NOVO: healthcheck no MinIO
+      test: [ "CMD", "curl", "-f", "http://localhost:9000/minio/health/live" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
     volumes:
       - ${STORAGE_PATH}/appflowy/minio:/data
     networks:
@@ -90,7 +98,6 @@ services:
     container_name: redis
     restart: unless-stopped
     healthcheck:
-      # ← CORREÇÃO: healthcheck adicionado
       test: [ "CMD", "redis-cli", "ping" ]
       interval: 5s
       timeout: 3s
