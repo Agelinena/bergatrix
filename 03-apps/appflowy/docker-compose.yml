@@ -24,6 +24,10 @@ services:
       - APPFLOWY_S3_ACCESS_KEY=${MINIO_ROOT_USER}
       - APPFLOWY_S3_SECRET_KEY=${MINIO_ROOT_PASSWORD}
       - APPFLOWY_S3_PRESIGNED_URL_ENDPOINT=${APPFLOWY_WEB_URL}/minio-api
+      - APPFLOWY_GOTRUE_BASE_URL=http://gotrue:9999
+      - APPFLOWY_REDIS_REPLICA_URLS=redis://redis:6379
+      - APPFLOWY_REDIS_PRIMARY_URL=redis://redis:6379
+      - APPFLOWY_REDIS_URL=redis://redis:6379
     depends_on:
       gotrue:
         condition: service_healthy
@@ -45,7 +49,7 @@ services:
       - "traefik.http.services.af-cloud.loadbalancer.server.port=8000"
 
   gotrue:
-    image: appflowyinc/gotrue:0.8.7 # ← versão específica, evita bug do latest
+    image: appflowyinc/gotrue:latest
     container_name: gotrue
     restart: on-failure
     depends_on:
@@ -63,10 +67,10 @@ services:
       - GOTRUE_DISABLE_SIGNUP=${GOTRUE_DISABLE_SIGNUP:-false}
       - GOTRUE_SITE_URL=appflowy-flutter://
       - GOTRUE_URI_ALLOW_LIST=**
-      - GOTRUE_JWT_SECRET=${GOTRUE_JWT_SECRET} # ← nome correto conforme oficial
+      - GOTRUE_JWT_SECRET=${GOTRUE_JWT_SECRET}
       - GOTRUE_JWT_EXP=7200
       - GOTRUE_DB_DRIVER=postgres
-      - DATABASE_URL=postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      - DATABASE_URL=postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?search_path=auth,public
       - API_EXTERNAL_URL=${APPFLOWY_GOTRUE_EXTERNAL_URL}
       - PORT=9999
       - GOTRUE_MAILER_AUTOCONFIRM=true
@@ -83,11 +87,12 @@ services:
     restart: unless-stopped
     environment:
       - APPFLOWY_BASE_URL=${APPFLOWY_WEB_URL}
-      - APPFLOWY_GOTRUE_BASE_URL=${APPFLOWY_GOTRUE_BASE_URL}
-      - APPFLOWY_API_BASE_URL=${APPFLOWY_GOTRUE_EXTERNAL_URL}
+      - APPFLOWY_API_BASE_URL=https://appflowy-cloud.bergaestudio.xyz
+      - APPFLOWY_GOTRUE_BASE_URL=http://gotrue:9999
       - APPFLOWY_WS_BASE_URL=${APPFLOWY_WS_BASE_URL}
     networks:
       - bergatrix-proxy
+      - af-internal
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.appflowy-web.rule=Host(`appflowyflow.${DOMAIN}`)"
