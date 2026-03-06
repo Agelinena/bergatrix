@@ -17,8 +17,9 @@ services:
       - APPFLOWY_WEB_URL=${APPFLOWY_WEB_URL}
       - APPFLOWY_ACCESS_CONTROL_SECRET=${APPFLOWY_ACCESS_CONTROL_SECRET}
       - APPFLOWY_GOTRUE_JWT_SECRET=${APPFLOWY_GOTRUE_JWT_SECRET}
-      - APPFLOWY_REDIS_REPLICA_URLS=redis://redis:6379
+      - APPFLOWY_REDIS_URL=redis://redis:6379
       - APPFLOWY_REDIS_PRIMARY_URL=redis://redis:6379
+      - APPFLOWY_REDIS_REPLICA_URLS=redis://redis:6379
     depends_on:
       postgres:
         condition: service_healthy
