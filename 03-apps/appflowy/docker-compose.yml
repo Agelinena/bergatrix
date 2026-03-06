@@ -3,7 +3,6 @@ services:
     image: appflowyinc/appflowy_cloud:latest
     container_name: appflowy-cloud
     restart: unless-stopped
-    command: ["sh", "-c", "export APPFLOWY_REDIS_URL=redis://redis:6379 && /app/appflowy_cloud"]
     environment:
       - APPFLOWY_DATABASE_URL=postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       - APPFLOWY_GOTRUE_DB_DATABASE_URL=postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
