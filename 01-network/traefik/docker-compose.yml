@@ -22,7 +22,7 @@ services:
       - DESEC_DOMAIN=${DOMAIN}
     labels:
       - "traefik.enable=true"
-      - "traefik.http.middlewares.internal-only.ipallowlist.sourcerange=127.0.0.1/32, ::1/128, 192.168.10.0/24, fd6d:f154:e57d::/64, 100.64.0.0/10, 192.168.3.0/24"
+      - "traefik.http.middlewares.internal-only.ipallowlist.sourcerange=127.0.0.1/32, ::1/128, 192.168.10.0/24, fd6d:f154:e57d::/64, 100.64.0.0/10"
 
 networks:
   bergatrix-proxy:
