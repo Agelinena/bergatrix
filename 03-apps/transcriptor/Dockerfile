@@ -29,7 +29,7 @@ RUN pip install torch --index-url https://download.pytorch.org/whl/cu121
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Baixa o modelo do Whisper no momento do Build para evitar problemas de DNS no Runtime
+# Baixa o modelo na CPU (apenas para download!). O código no main.py carregará na GPU durante o uso.
 RUN python3 -c "import whisper; whisper.load_model('small', device='cpu')"
 
 # Copia o código da aplicação
