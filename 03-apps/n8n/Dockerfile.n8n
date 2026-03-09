@@ -1,0 +1,32 @@
+FROM n8nio/n8n:latest
+
+USER root
+
+# Instalar dependências para Python, Chromium (Playwright) e utilitários
+RUN apk add --no-cache \
+    python3 \
+    py3-pip \
+    py3-cryptography \
+    zip \
+    gnupg \
+    chromium \
+    nss \
+    freetype \
+    harfbuzz \
+    ca-certificates \
+    ttf-freefont
+
+# Configurar ambiente virtual Python e ferramentas
+RUN python3 -m venv /opt/venv \
+    && . /opt/venv/bin/activate \
+    && pip install --no-cache-dir youtube-transcript-api yt-dlp cryptography
+
+# Instalar Playwright e módulos de criptografia no Node
+RUN npm install -g playwright crypto-js bcryptjs
+
+# Configurar variáveis de ambiente do Python e Playwright
+ENV PATH="/opt/venv/bin:$PATH" \
+    PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 \
+    PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium-browser
+
+USER node

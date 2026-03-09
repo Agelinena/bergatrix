@@ -1,0 +1,33 @@
+services:
+  n8n:
+    build:
+      context: .
+      dockerfile: Dockerfile.n8n
+    container_name: n8n
+    restart: unless-stopped
+    environment:
+      - N8N_HOST=${N8N_DOMAIN}
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=https
+      - NODE_ENV=production
+      - WEBHOOK_URL=https://${N8N_DOMAIN}/
+      - GENERIC_TIMEZONE=${TIMEZONE}
+      - VUE_APP_EXPLORE_DISABLE=true
+      - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY}
+      - NODE_FUNCTION_ALLOW_BUILTIN=crypto,fs,path,os,child_process
+      - NODE_FUNCTION_ALLOW_EXTERNAL=playwright,crypto-js,bcryptjs
+      - NODE_PATH=/usr/local/lib/node_modules
+    volumes:
+      - ${N8N_DATA_DIR}:/home/node/.n8n
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.n8n-service.rule=Host(`${N8N_DOMAIN}`)"
+      - "traefik.http.routers.n8n-service.entrypoints=websecure"
+      - "traefik.http.routers.n8n-service.tls.certresolver=production"
+      - "traefik.http.services.n8n-service.loadbalancer.server.port=5678"
+    networks:
+      - bergatrix-proxy
+
+networks:
+  bergatrix-proxy:
+    external: true
