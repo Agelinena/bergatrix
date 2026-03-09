@@ -237,7 +237,10 @@ async def lifespan(app: FastAPI):
         logging.info(f"Carregando modelo Whisper no dispositivo: {device}")
         WHISPER_MODEL = whisper.load_model("small", device=device)
         logging.info("Modelo Whisper carregado com sucesso.")
-    except Exception as e: logging.critical(f"NÃO FOI POSSÍVEL CARREGAR O MODELO WHISPER: {e}")
+    except Exception as e:
+        logging.critical(f"NÃO FOI POSSÍVEL CARREGAR O MODELO WHISPER: {e}")
+        import traceback
+        logging.critical(traceback.format_exc())
     
     # <<< MUDANÇA AQUI: Reativando o scheduler >>>
     scheduler = AsyncIOScheduler()
