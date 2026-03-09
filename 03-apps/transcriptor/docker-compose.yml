@@ -13,8 +13,6 @@ services:
       - API_KEY=${API_KEY}
       - NVIDIA_VISIBLE_DEVICES=all
       - ROOT_DIR=${ROOT_DIR}
-    dns:
-      - 192.168.10.112
     runtime: nvidia
     volumes:
       - ${TRANSCRIPTOR_DATA_DIR}:/app/data
