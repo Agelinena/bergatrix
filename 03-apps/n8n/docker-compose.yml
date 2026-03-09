@@ -17,6 +17,8 @@ services:
       - NODE_FUNCTION_ALLOW_BUILTIN=crypto,fs,path,os,child_process
       - NODE_FUNCTION_ALLOW_EXTERNAL=playwright,crypto-js,bcryptjs
       - NODE_PATH=/usr/local/lib/node_modules
+      - N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=false
+      - N8N_PROXY_HOPS=1
     volumes:
       - ${N8N_DATA_DIR}:/home/node/.n8n
     labels:
@@ -25,6 +27,9 @@ services:
       - "traefik.http.routers.n8n-service.entrypoints=websecure"
       - "traefik.http.routers.n8n-service.tls.certresolver=production"
       - "traefik.http.services.n8n-service.loadbalancer.server.port=5678"
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
     networks:
       - bergatrix-proxy
 
