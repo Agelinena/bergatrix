@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="pt-BR" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Transcriptor AI</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css"/>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <main class="container">
+        <header>
+            <h1><a href="/" style="text-decoration: none;">🎙️ Transcriptor AI</a></h1>
+            <p>Faça upload de áudio/vídeo ou cole um link para transcrever.</p>
+        </header>
+
+        <div class="grid">
+            <section id="main-content">
+                <article>
+                    <form id="upload-form">
+                        <label for="url"><strong>Link do Vídeo/Áudio</strong></label>
+                        <input type="url" id="url" name="url" placeholder="https://youtube.com/watch?v=...">
+                        
+                        <div class="center-text">ou</div>
+
+                        <label for="file"><strong>Upload de Arquivo</strong></label>
+                        <input type="file" id="file" name="file">
+                        
+                        <button type="submit" id="submit-btn" aria-busy="false">Transcrever</button>
+                    </form>
+                </article>
+
+                <article id="transcription-output" class="hidden">
+                    <header>
+                        <h3 id="transcription-title">Transcrição</h3>
+                    </header>
+                    <div class="tab-buttons">
+                        <button class="secondary" data-tab="simple">Texto Simples</button>
+                        <button class="secondary outline" data-tab="timestamp">Com Timestamps</button>
+                    </div>
+                    <div id="simple-content" class="transcription-content">
+                        <pre><code id="simple-text"></code></pre>
+                    </div>
+                    <div id="timestamp-content" class="transcription-content hidden">
+                        <pre><code id="timestamp-text"></code></pre>
+                    </div>
+                    <footer>
+                        <button class="copy-btn">Copiar</button>
+                        <a href="#" id="download-simple" role="button" class="contrast" download>Baixar (.txt)</a>
+                        <a href="#" id="download-timestamp" role="button" class="contrast hidden" download>Baixar (.txt)</a>
+                    </footer>
+                </article>
+            </section>
+
+            <aside id="history-sidebar">
+                <h3>Histórico</h3>
+                <div id="history-list">
+                    <p>Nenhuma transcrição recente.</p>
+                </div>
+            </aside>
+        </div>
+    </main>
+    <script src="/static/js/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,43 @@
+version: '3.8'
+
+services:
+  transcriptor:
+    build:
+      context: .
+      network: host
+    container_name: transcriptor
+    restart: unless-stopped
+    shm_size: 8gb
+    command: uvicorn main:app --host 0.0.0.0 --port 8000
+    environment:
+      - API_KEY=${API_KEY}
+      - NVIDIA_VISIBLE_DEVICES=all
+      - ROOT_DIR=${ROOT_DIR}
+    runtime: nvidia
+    volumes:
+      - ${TRANSCRIPTOR_DATA_DIR}:/app/data
+      - ${ROOT_DIR}:/media
+    networks:
+      - bergatrix-proxy
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [ gpu ]
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=bergatrix-proxy"
+      - "traefik.http.routers.transcriptor.rule=Host(`transcriptor.${DOMAIN}`)"
+      - "traefik.http.routers.transcriptor.entrypoints=websecure"
+      - "traefik.http.routers.transcriptor.tls.certresolver=production"
+      - "traefik.http.routers.transcriptor.middlewares=transcriptor-buffering"
+      - "traefik.http.middlewares.transcriptor-buffering.buffering.maxRequestBodyBytes=200000000"
+      - "traefik.http.middlewares.transcriptor-buffering.buffering.memRequestBodyBytes=200000000"
+      - "traefik.http.routers.transcriptor.service=transcriptor-service"
+      - "traefik.http.services.transcriptor-service.loadbalancer.server.port=8000"
+
+networks:
+  bergatrix-proxy:
+    external: true
