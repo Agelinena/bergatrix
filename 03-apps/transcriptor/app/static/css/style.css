@@ -177,3 +177,26 @@ header h1 a {
 .progress-step.failed ~ .progress-step::after {
     background-color: var(--pico-del-color);
 }
+
+.history-item-meta {
+    margin: 0.25rem 0 0.5rem 0;
+    font-size: 0.75rem;
+}
+
+.model-badge {
+    display: inline-block;
+    padding: 0.15em 0.5em;
+    font-size: 0.75em;
+    font-weight: 600;
+    border-radius: 0.25rem;
+    background-color: var(--pico-secondary-background);
+    color: var(--pico-secondary);
+    border: 1px solid var(--pico-secondary-border);
+}
+
+.error-msg {
+    font-size: 0.75rem;
+    color: var(--pico-del-color);
+    margin: 0.5rem 0 0 0;
+    word-break: break-word;
+}

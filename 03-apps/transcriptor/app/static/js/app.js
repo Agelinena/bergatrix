@@ -57,6 +57,9 @@ document.addEventListener('DOMContentLoaded', () => {
                         displayTranscription(data.job_id);
                     }
                 }
+                if (data.status === 'failed' && data.error) {
+                    job.error = data.error;
+                }
                 break;
         }
         renderHistory();
@@ -119,7 +122,11 @@ document.addEventListener('DOMContentLoaded', () => {
                     <div class="history-item-title">${job.original_filename.substring(0, 40)}...</div>
                     <button class="delete-btn" data-job-id="${jobId}">&times;</button>
                 </div>
+                <div class="history-item-meta">
+                    <span class="model-badge">🤖 ${job.model_name || 'small'}</span>
+                </div>
                 ${renderProgressBar(job.status)}
+                ${job.status === 'failed' && job.error ? `<p class="error-msg">⚠️ ${job.error.substring(0, 120)}</p>` : ''}
             `;
             
             item.addEventListener('click', (e) => {
