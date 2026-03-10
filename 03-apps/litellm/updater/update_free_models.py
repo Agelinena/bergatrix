@@ -115,7 +115,8 @@ def add_model(proxy_name: str, openrouter_id: str) -> bool:
         "model_name": proxy_name,
         "litellm_params": {
             "model": f"openrouter/{openrouter_id}",
-            "api_key": "os.environ/OPENROUTER_API_KEY",
+            # Via API REST o LiteLLM não resolve os.environ/ — passar o valor real da env var
+            "api_key": OPENROUTER_KEY,
             "api_base": "https://openrouter.ai/api/v1",
         },
         "model_info": {
@@ -198,14 +199,19 @@ def sync_once():
 # ─── Entry point ──────────────────────────────────────────────────────────────
 
 def wait_for_litellm(max_wait: int = 120, interval: int = 5):
-    """Aguarda o LiteLLM ficar disponível antes de iniciar o loop."""
-    log.info(f"Aguardando LiteLLM em {LITELLM_URL}/health ...")
+    """Aguarda o LiteLLM ficar disponível antes de iniciar o loop.
+    
+    Usa /health/liveliness (não requer auth) em vez de /health (protegido por master_key).
+    Fallback para /health com Bearer token caso o endpoint restrito seja o único disponível.
+    """
+    log.info(f"Aguardando LiteLLM em {LITELLM_URL} ...")
     elapsed = 0
     while elapsed < max_wait:
         try:
-            r = requests.get(f"{LITELLM_URL}/health", timeout=5)
+            # /health/liveliness não requer autorização
+            r = requests.get(f"{LITELLM_URL}/health/liveliness", timeout=5)
             if r.status_code < 500:
-                log.info("LiteLLM disponível. Iniciando loop de sync.")
+                log.info(f"LiteLLM disponível (status {r.status_code}). Iniciando loop de sync.")
                 return
         except requests.RequestException:
             pass
