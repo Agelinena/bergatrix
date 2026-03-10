@@ -124,8 +124,32 @@ class Translator:
         return ["\n\n".join(c) for c in chunks]
 
     def parse_translation(self, raw: str) -> dict:
-        pattern = re.compile(r"(\d+)\s*\n.*?\n(.*?)(?=\n\s*\d+\s*\n|\Z)", re.DOTALL)
-        return {idx: text.strip() for idx, text in pattern.findall(raw)}
+        """
+        Parseia o SRT traduzido retornado pela IA.
+        Usa split por linha em branco para ser robusto contra variações de formato.
+        Retorna { "1": "texto traduzido", "2": "texto traduzido", ... }
+        """
+        result = {}
+        # Remove possíveis marcadores de código (```srt ... ```)
+        clean = re.sub(r"```[a-zA-Z]*\n?", "", raw).strip()
+        blocks = re.split(r"\n\s*\n", clean)
+
+        for block in blocks:
+            lines = block.strip().splitlines()
+            if not lines:
+                continue
+            # Primeira linha deve ser o índice numérico
+            idx_line = lines[0].strip()
+            if not idx_line.isdigit():
+                continue
+            # Segunda linha deve ser o timestamp (opcional, mas pulamos)
+            if len(lines) < 3:
+                continue
+            # O texto começa na linha 3 em diante (após index + timestamp)
+            text_lines = lines[2:]
+            result[idx_line] = "\n".join(text_lines).strip()
+
+        return result
 
     def merge_and_save(self, original_srt_path: str, translated_map: dict, output_path: str) -> bool:
         try:

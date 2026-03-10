@@ -55,15 +55,31 @@ def _find_movie(filepath: str) -> dict | None:
 
 
 def _find_episode(filepath: str) -> dict | None:
+    """Busca o episódio no Bazarr: primeiro lista séries, depois busca episódios por série."""
+    target = os.path.normpath(filepath)
     try:
         with httpx.Client(timeout=15) as c:
-            r = c.get(f"{BAZARR_URL}/api/episodes", headers=_headers(),
+            r = c.get(f"{BAZARR_URL}/api/series", headers=_headers(),
                       params={"start": 0, "length": -1})
             r.raise_for_status()
-        target = os.path.normpath(filepath)
-        for ep in r.json().get("data", []):
-            if os.path.normpath(ep.get("path", "")) == target:
-                return ep
+            series_list = r.json().get("data", [])
+
+        for series in series_list:
+            sonarr_id = series.get("sonarrSeriesId") or series.get("id")
+            if not sonarr_id:
+                continue
+            try:
+                with httpx.Client(timeout=15) as c:
+                    r = c.get(f"{BAZARR_URL}/api/episodes", headers=_headers(),
+                              params={"seriesid[]": sonarr_id})
+                    if r.status_code != 200:
+                        continue
+                    episodes = r.json().get("data", [])
+                for ep in episodes:
+                    if os.path.normpath(ep.get("path", "")) == target:
+                        return ep
+            except Exception:
+                continue
     except Exception as e:
         logger.warning(f"Bazarr: erro ao buscar episódios — {e}")
     return None
