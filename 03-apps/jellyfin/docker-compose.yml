@@ -221,6 +221,8 @@ services:
     environment:
       - PUID=${PUID}
       - PGID=${PGID}
+      - BAZARR_URL=${BAZARR_URL:-http://bazarr:6767}
+      - BAZARR_API_KEY=${BAZARR_API_KEY}
     volumes:
       - ${STORAGE_PATH}:/media
       - ./app/jobs:/app/jobs
@@ -265,8 +267,9 @@ services:
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
       - OPENROUTER_MODEL=${OPENROUTER_MODEL}
       - SCAN_INTERVAL=${SCAN_INTERVAL:-3600}
-      - NVIDIA_VISIBLE_DEVICES=all
-      - NVIDIA_DRIVER_CAPABILITIES=all
+      - BAZARR_URL=${BAZARR_URL:-http://bazarr:6767}
+      - BAZARR_API_KEY=${BAZARR_API_KEY}
+      - BAZARR_WAIT_SECONDS=${BAZARR_WAIT_SECONDS:-60}
       - PUID=${PUID}
       - PGID=${PGID}
     deploy:

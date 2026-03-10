@@ -1,5 +1,3 @@
 python-dotenv
 watchdog
 httpx
-pytesseract
-pgsrip

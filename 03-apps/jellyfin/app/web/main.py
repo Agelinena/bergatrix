@@ -10,6 +10,7 @@ from fastapi import FastAPI, Request, Form, HTTPException, Query
 from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+import bazarr as bazarr_client
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -323,6 +324,18 @@ async def trigger_translate(
                 </div>
             </div>
         """)
+
+
+@app.post("/api/bazarr-search")
+async def bazarr_search(filepath: str = Form(...)):
+    """Aciona busca de legenda PT-BR no Bazarr para o arquivo especificado."""
+    if not filepath.startswith(MEDIA_ROOT):
+        raise HTTPException(status_code=403, detail="Acesso negado")
+    if not os.path.exists(filepath):
+        raise HTTPException(status_code=404, detail="Arquivo não encontrado")
+
+    result = bazarr_client.search_subtitle(filepath)
+    return JSONResponse(content=result)
 
 
 @app.post("/api/scan")

@@ -94,22 +94,45 @@
             </div>
 
             <!-- Rodapé -->
-            <div class="p-6 border-t border-gray-700 flex justify-end space-x-3">
-                <button @click="close()" class="px-4 py-2 rounded-lg bg-gray-700 hover:bg-gray-600 text-sm transition">
-                    Cancelar
-                </button>
-                <button @click="submitTranslation()" :disabled="submitting"
-                        class="px-5 py-2 rounded-lg bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-sm font-medium transition flex items-center space-x-2">
-                    <svg x-show="!submitting" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                              d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129"/>
-                    </svg>
-                    <svg x-show="submitting" class="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
-                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
-                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
-                    </svg>
-                    <span x-text="submitting ? 'Enviando...' : 'Traduzir'"></span>
-                </button>
+            <div class="p-6 border-t border-gray-700 flex flex-col space-y-3">
+                <!-- Linha Bazarr -->
+                <div class="flex items-center justify-between">
+                    <span class="text-xs text-gray-500">Tentar primeiro o Bazarr (legendas prontas):</span>
+                    <button @click="bazarSearch()" :disabled="bazarLoading || submitting"
+                            class="px-4 py-1.5 rounded-lg bg-blue-700 hover:bg-blue-600 disabled:opacity-50 text-sm font-medium transition flex items-center space-x-2">
+                        <svg x-show="!bazarLoading" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                        </svg>
+                        <svg x-show="bazarLoading" class="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                        </svg>
+                        <span x-text="bazarLoading ? 'Buscando...' : 'Buscar no Bazarr'"></span>
+                    </button>
+                </div>
+                <!-- Resultado Bazarr -->
+                <div x-show="bazarResult" class="text-xs px-3 py-2 rounded-lg"
+                     :class="bazarResult && bazarResult.success ? 'bg-green-900/40 text-green-300 border border-green-800' : 'bg-red-900/40 text-red-300 border border-red-800'"
+                     x-text="bazarResult ? bazarResult.message : ''">
+                </div>
+                <!-- Linha Traduzir com IA -->
+                <div class="flex justify-end space-x-3 pt-1">
+                    <button @click="close()" class="px-4 py-2 rounded-lg bg-gray-700 hover:bg-gray-600 text-sm transition">
+                        Cancelar
+                    </button>
+                    <button @click="submitTranslation()" :disabled="submitting"
+                            class="px-5 py-2 rounded-lg bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-sm font-medium transition flex items-center space-x-2">
+                        <svg x-show="!submitting" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                  d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129"/>
+                        </svg>
+                        <svg x-show="submitting" class="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                        </svg>
+                        <span x-text="submitting ? 'Enviando...' : 'Traduzir com IA'"></span>
+                    </button>
+                </div>
             </div>
         </div>
     </div>
@@ -358,6 +381,8 @@
                 open: false,
                 loading: false,
                 submitting: false,
+                bazarLoading: false,
+                bazarResult: null,
                 filepath: '',
                 filename: '',
                 subtitles: [],
@@ -368,6 +393,7 @@
                     this.filename = filename;
                     this.subtitles = [];
                     this.selectedIndex = null;
+                    this.bazarResult = null;
                     this.open = true;
                     this.fetchSubtitles(filepath);
                 },
@@ -389,12 +415,29 @@
                     }
                 },
 
+                async bazarSearch() {
+                    if (!this.filepath || this.bazarLoading) return;
+                    this.bazarLoading = true;
+                    this.bazarResult = null;
+                    try {
+                        const formData = new FormData();
+                        formData.append('filepath', this.filepath);
+                        const resp = await fetch('/api/bazarr-search', { method: 'POST', body: formData });
+                        this.bazarResult = await resp.json();
+                    } catch (e) {
+                        this.bazarResult = { success: false, message: 'Erro de conexão com o servidor.' };
+                    } finally {
+                        this.bazarLoading = false;
+                    }
+                },
+
                 close() {
                     this.open = false;
                     this.filepath = '';
                     this.filename = '';
                     this.subtitles = [];
                     this.selectedIndex = null;
+                    this.bazarResult = null;
                     this.submitting = false;
                 },
 
@@ -421,6 +464,7 @@
                 }
             }));
         });
+
 
         // Delegação de evento: todos os botões .translate-btn usam data-attributes
         // Isso evita problemas com paths especiais (parênteses, espaços, aspas)

@@ -1,17 +1,8 @@
 FROM python:3.11-slim
 
-# Dependências do sistema: ffmpeg, git, tesseract-ocr e idiomas
+# ffmpeg para extração de streams de legenda
 RUN apt-get update && apt-get install -y \
     ffmpeg \
-    git \
-    tesseract-ocr \
-    tesseract-ocr-por \
-    tesseract-ocr-eng \
-    tesseract-ocr-spa \
-    tesseract-ocr-fra \
-    tesseract-ocr-deu \
-    tesseract-ocr-ita \
-    libtesseract-dev \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
