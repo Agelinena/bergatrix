@@ -280,6 +280,7 @@ services:
               count: 1
               capabilities: [ gpu ]
     networks:
+      - bergatrix-proxy
       - media-network
 
   optimizer:
