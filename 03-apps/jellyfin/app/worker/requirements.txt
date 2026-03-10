@@ -1,8 +1,5 @@
-watchdog
-google-generativeai
-
-requests
-ffmpeg-python
-pymongo
 python-dotenv
-langdetect
+watchdog
+httpx
+pytesseract
+pgsrip

@@ -1,22 +1,28 @@
-FROM python:3.10-slim
+FROM python:3.11-slim
 
-# Install system dependencies
+# Dependências do sistema: ffmpeg, git, tesseract-ocr e idiomas
 RUN apt-get update && apt-get install -y \
     ffmpeg \
     git \
+    tesseract-ocr \
+    tesseract-ocr-por \
+    tesseract-ocr-eng \
+    tesseract-ocr-spa \
+    tesseract-ocr-fra \
+    tesseract-ocr-deu \
+    tesseract-ocr-ita \
+    libtesseract-dev \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Install Python dependencies
+# Dependências Python
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy application code
+# Código da aplicação
 COPY . .
 
-# Set environment variables
 ENV PYTHONUNBUFFERED=1
 
-# Run the worker
 CMD ["python", "main.py"]

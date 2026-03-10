@@ -6,6 +6,9 @@ services:
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
     volumes:
       - ${STORAGE_PATH}/config/jellyfin:/config
       - ${STORAGE_PATH}:/media/
@@ -37,6 +40,9 @@ services:
     image: fallenbagel/jellyseerr:latest
     container_name: catalogo
     restart: unless-stopped
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
     volumes:
       - ${STORAGE_PATH}/config/catalogo:/app/config
     environment:
@@ -60,6 +66,9 @@ services:
     image: lscr.io/linuxserver/qbittorrent:version-4.6.0-r0
     container_name: qbittorrent
     restart: unless-stopped
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
     volumes:
       - ${STORAGE_PATH}/config/qbittorrent:/config
       - ${STORAGE_PATH}/downloads:/downloads
@@ -81,6 +90,9 @@ services:
     image: lscr.io/linuxserver/sonarr
     container_name: sonarr
     restart: unless-stopped
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
     environment:
       - PUID=${PUID}
       - PGID=${PGID}
@@ -101,6 +113,9 @@ services:
     image: lscr.io/linuxserver/radarr
     container_name: radarr
     restart: unless-stopped
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
     environment:
       - PUID=${PUID}
       - PGID=${PGID}
@@ -121,6 +136,9 @@ services:
     image: lscr.io/linuxserver/prowlarr
     container_name: prowlarr
     restart: unless-stopped
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
     environment:
       - PUID=${PUID}
       - PGID=${PGID}
@@ -139,6 +157,9 @@ services:
     image: lscr.io/linuxserver/bazarr
     container_name: bazarr
     restart: unless-stopped
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
     environment:
       - PUID=${PUID}
       - PGID=${PGID}
@@ -155,28 +176,13 @@ services:
       - "traefik.http.routers.bazarr-router.middlewares=internal-only@docker"
       - "traefik.http.services.bazarr-service.loadbalancer.server.port=6767"
 
-  jackett:
-    image: lscr.io/linuxserver/jackett
-    container_name: jackett
-    restart: unless-stopped
-    environment:
-      - PUID=${PUID}
-      - PGID=${PGID}
-    volumes:
-      - ${STORAGE_PATH}/config/jackett:/config
-    networks:
-      - bergatrix-proxy
-      - media-network
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.jackett-router.rule=Host(`jackett.${DOMAIN}`)"
-      - "traefik.http.routers.jackett-router.middlewares=internal-only@docker"
-      - "traefik.http.services.jackett-service.loadbalancer.server.port=9117"
-
   solvearr:
     image: nabilak/solvearr
     container_name: solvearr
     restart: unless-stopped
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
     networks:
       - bergatrix-proxy
       - media-network
@@ -190,6 +196,9 @@ services:
     build: ./app/web
     container_name: legendarr-web
     restart: unless-stopped
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
     environment:
       - PUID=${PUID}
       - PGID=${PGID}
@@ -211,6 +220,9 @@ services:
     image: ghcr.io/recyclarr/recyclarr:latest
     container_name: recyclarr
     restart: unless-stopped
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
     user: ${PUID}:${PGID}
     volumes:
       - ${STORAGE_PATH}/config/recyclarr:/config
@@ -223,11 +235,16 @@ services:
     build: ./app/worker
     container_name: legendarr-worker
     restart: unless-stopped
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
     volumes:
       - ${STORAGE_PATH}:/media
       - ./app/jobs:/app/jobs
+      - ./app/stats:/app/stats
     environment:
-      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+      - OPENROUTER_MODEL=${OPENROUTER_MODEL}
       - NVIDIA_VISIBLE_DEVICES=all
       - NVIDIA_DRIVER_CAPABILITIES=all
       - PUID=${PUID}
@@ -246,6 +263,9 @@ services:
     build: ./app/optimizer
     container_name: optimizer
     restart: unless-stopped
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
     volumes:
       - ${STORAGE_PATH}:/media
       - ./app/stats:/app/stats

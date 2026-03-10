@@ -1,201 +1,179 @@
+import os
 import time
-import re
+import httpx
 import logging
-import google.generativeai as genai
+import re
 from .utils import save_subtitle
 
 logger = logging.getLogger(__name__)
 
+OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
+CHUNK_DURATION = 900  # 15 minutos por chunk
+
+
 class Translator:
-    def __init__(self, api_key):
-        genai.configure(api_key=api_key)
-        self.models = ['gemini-2.5-flash', 'gemini-1.5-pro', 'gemini-2.0-flash-exp', 'gemini-1.5-flash' ]
-        self.current_model_index = 0
+    def __init__(self):
+        self.api_key = os.environ.get("OPENROUTER_API_KEY", "")
+        self.model = os.environ.get("OPENROUTER_MODEL", "deepseek/deepseek-v3-0324")
 
-    def get_model(self):
-        model_name = self.models[self.current_model_index]
-        return genai.GenerativeModel(model_name), model_name
+        if not self.api_key:
+            raise ValueError("OPENROUTER_API_KEY não encontrada nas variáveis de ambiente.")
 
-    def rotate_model(self):
-        self.current_model_index = (self.current_model_index + 1) % len(self.models)
-        return self.models[self.current_model_index]
+        logger.info(f"Translator inicializado com modelo: {self.model}")
 
-    def extract_timestamps(self, srt_content):
-        """
-        Extracts timestamps from SRT content.
-        Returns a list of (index, timestamp_line, start_seconds, end_seconds).
-        """
+    def _call_api(self, text_content: str) -> str | None:
+        """Chama a API do OpenRouter com retry simples (3 tentativas)."""
+        prompt = (
+            "Você é um tradutor profissional de legendas (SRT). "
+            "Traduza o conteúdo abaixo para Português do Brasil (pt-br). "
+            "Adapte gírias e expressões para o contexto brasileiro. "
+            "NÃO altere a quantidade de linhas de diálogo. "
+            "Retorne APENAS o texto traduzido no formato SRT, sem explicações."
+        )
+
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+            "HTTP-Referer": "https://github.com/legendarr",
+            "X-Title": "Legendarr",
+        }
+
+        payload = {
+            "model": self.model,
+            "messages": [
+                {"role": "system", "content": prompt},
+                {"role": "user", "content": text_content},
+            ],
+        }
+
+        for attempt in range(1, 4):
+            try:
+                logger.info(f"[Tentativa {attempt}/3] Enviando chunk para OpenRouter ({self.model})...")
+                with httpx.Client(timeout=120.0) as client:
+                    response = client.post(OPENROUTER_API_URL, headers=headers, json=payload)
+
+                if response.status_code == 200:
+                    data = response.json()
+                    return data["choices"][0]["message"]["content"]
+                elif response.status_code == 429:
+                    wait = 30 * attempt
+                    logger.warning(f"Rate limit (429). Aguardando {wait}s...")
+                    time.sleep(wait)
+                else:
+                    logger.error(f"Erro HTTP {response.status_code}: {response.text[:300]}")
+                    time.sleep(5 * attempt)
+
+            except httpx.TimeoutException:
+                logger.warning(f"Timeout na tentativa {attempt}. Aguardando 10s...")
+                time.sleep(10)
+            except Exception as e:
+                logger.error(f"Erro inesperado na tentativa {attempt}: {e}")
+                time.sleep(5)
+
+        logger.error("Todas as 3 tentativas falharam.")
+        return None
+
+    # ------------------------------------------------------------------ #
+    # Helpers de parsing SRT                                               #
+    # ------------------------------------------------------------------ #
+
+    def parse_timestamp(self, ts: str) -> float:
+        h, m, s_ms = ts.split(":")
+        s, ms = s_ms.split(",")
+        return int(h) * 3600 + int(m) * 60 + int(s) + int(ms) / 1000.0
+
+    def extract_timestamps(self, srt_content: str):
+        pattern = re.compile(r"(\d+)\s*\n(\d{2}:\d{2}:\d{2},\d{3}) --> (\d{2}:\d{2}:\d{2},\d{3})")
         timestamps = []
-        pattern = re.compile(r'(\d+)\s*\n(\d{2}:\d{2}:\d{2},\d{3}) --> (\d{2}:\d{2}:\d{2},\d{3})')
-        matches = pattern.findall(srt_content)
-        
-        for index, start_str, end_str in matches:
-            start_sec = self.parse_timestamp(start_str)
-            end_sec = self.parse_timestamp(end_str)
+        for index, start_str, end_str in pattern.findall(srt_content):
             timestamps.append({
-                'index': index,
-                'timestamp_line': f"{start_str} --> {end_str}",
-                'start': start_sec,
-                'end': end_sec
+                "index": index,
+                "timestamp_line": f"{start_str} --> {end_str}",
+                "start": self.parse_timestamp(start_str),
+                "end": self.parse_timestamp(end_str),
             })
         return timestamps
 
-    def parse_timestamp(self, timestamp_str):
-        """Converts HH:MM:SS,mmm to seconds."""
-        h, m, s_ms = timestamp_str.split(':')
-        s, ms = s_ms.split(',')
-        return int(h) * 3600 + int(m) * 60 + int(s) + int(ms) / 1000.0
-
-    def translate_with_retry(self, text_content):
-        """
-        Translates content with robust retry and model fallback logic.
-        """
-        prompt = """
-Você é um tradutor profissional de legendas (SRT). Traduza o conteúdo abaixo para Português do Brasil (pt-br). 
-Adapte gírias e expressões para o contexto brasileiro. 
-NÃO altere a quantidade de linhas de diálogo. 
-Retorne apenas o texto traduzido no formato SRT.
-"""
-        full_prompt = f"{prompt}\n\n{text_content}"
-        
-        while True:
-            model, model_name = self.get_model()
-            logger.info(f"Attempting translation with model: {model_name}")
-            
-            try:
-                response = model.generate_content(full_prompt)
-                return response.text
-            except Exception as e:
-                error_str = str(e)
-                # Handle Quota (429) AND Not Found (404) by rotating
-                if "429" in error_str or "quota" in error_str.lower() or "404" in error_str:
-                    logger.warning(f"Error {error_str} on {model_name}. Rotating model...")
-                    
-                    # Check if we completed a full cycle (back to start)
-                    next_model = self.rotate_model()
-                    if next_model == self.models[0]:
-                        logger.warning("All models exhausted. Waiting 5 minutes before retrying...")
-                        time.sleep(300)
-                    else:
-                        # Small delay before switching
-                        time.sleep(2)
-                else:
-                    logger.error(f"Non-recoverable error on {model_name}: {e}")
-                    # For other errors, we might want to retry or fail. 
-                    # If it's a server error (500), maybe retry?
-                    # For now, let's wait a bit and retry same model once? 
-                    # Or just return None to skip chunk (risky).
-                    # Let's try to rotate for ANY error for robustness, but log it.
-                    logger.warning(f"Unknown error on {model_name}, rotating anyway...")
-                    self.rotate_model()
-                    time.sleep(5)
-
-    def parse_translation(self, raw_translation):
-        """
-        Parses the raw translation from Gemini using the loose parsing regex.
-        """
-        pattern = re.compile(r'(\d+)\s*\n.*?\n(.*?)(?=\n\s*\d+\s*\n|\Z)', re.DOTALL)
-        matches = pattern.findall(raw_translation)
-        return {index: text.strip() for index, text in matches}
-
-    def merge_and_save(self, original_srt_path, translated_text_map, output_path):
-        """
-        Merges original timestamps with translated text.
-        """
-        try:
-            with open(original_srt_path, 'r', encoding='utf-8') as f:
-                original_content = f.read()
-
-            # Re-extract simply for merging
-            pattern = re.compile(r'(\d+)\s*\n(\d{2}:\d{2}:\d{2},\d{3} --> \d{2}:\d{2}:\d{2},\d{3})')
-            matches = pattern.findall(original_content)
-            
-            # Validation: Check for line count mismatch
-            if len(matches) != len(translated_text_map):
-                logger.warning(f"Line count mismatch! Original: {len(matches)}, Translated: {len(translated_text_map)}. Some subtitles may be missing or empty.")
-
-            final_srt = []
-            for index, timecode in matches:
-                text = translated_text_map.get(index, "")
-                final_srt.append(f"{index}\n{timecode}\n{text}\n")
-            
-            final_content = "\n".join(final_srt)
-            return save_subtitle(final_content, output_path)
-
-        except Exception as e:
-            logger.error(f"Error merging subtitles: {e}")
-            return False
-
-    def split_content_by_time(self, content, chunk_duration=900): # 15 minutes
-        """
-        Splits content into chunks based on time duration.
-        """
+    def split_content_by_time(self, content: str, chunk_duration: int = CHUNK_DURATION):
         timestamps = self.extract_timestamps(content)
         if not timestamps:
             return []
 
-        chunks = []
-        current_chunk = []
-        chunk_start_time = timestamps[0]['start']
-        
-        # We need to map indices to the actual text block
-        # Let's parse the full content into a map first
-        blocks = re.split(r'\n\s*\n', content.strip())
+        blocks = re.split(r"\n\s*\n", content.strip())
         text_map = {}
         for block in blocks:
-            parts = block.strip().split('\n')
+            parts = block.strip().split("\n")
             if len(parts) >= 3:
-                idx = parts[0].strip()
-                text_map[idx] = block
+                text_map[parts[0].strip()] = block
+
+        chunks, current_chunk = [], []
+        chunk_start_time = timestamps[0]["start"]
 
         for ts in timestamps:
-            if ts['start'] - chunk_start_time > chunk_duration:
+            if ts["start"] - chunk_start_time > chunk_duration:
                 if current_chunk:
                     chunks.append(current_chunk)
                 current_chunk = []
-                chunk_start_time = ts['start']
-            
-            idx = ts['index']
-            if idx in text_map:
-                current_chunk.append(text_map[idx])
+                chunk_start_time = ts["start"]
+            if ts["index"] in text_map:
+                current_chunk.append(text_map[ts["index"]])
 
         if current_chunk:
             chunks.append(current_chunk)
-            
-        return ["\n\n".join(chunk) for chunk in chunks]
 
-    def process(self, source_srt_path, output_path):
-        """
-        Main translation workflow: Chunk -> Translate -> Merge.
-        """
-        logger.info(f"Starting translation for {source_srt_path}")
-        
+        return ["\n\n".join(c) for c in chunks]
+
+    def parse_translation(self, raw: str) -> dict:
+        pattern = re.compile(r"(\d+)\s*\n.*?\n(.*?)(?=\n\s*\d+\s*\n|\Z)", re.DOTALL)
+        return {idx: text.strip() for idx, text in pattern.findall(raw)}
+
+    def merge_and_save(self, original_srt_path: str, translated_map: dict, output_path: str) -> bool:
         try:
-            with open(source_srt_path, 'r', encoding='utf-8') as f:
-                content = f.read()
-            
-            # 1. Split into 15-minute chunks
-            chunks = self.split_content_by_time(content)
-            logger.info(f"Split content into {len(chunks)} chunks (approx 15 mins each).")
-            
-            full_translated_map = {}
-            
-            for i, chunk in enumerate(chunks, 1):
-                logger.info(f"Translating chunk {i}/{len(chunks)}")
-                
-                # 2. Translate Chunk with Retry
-                raw_translation = self.translate_with_retry(chunk)
-                
-                if raw_translation:
-                    # 3. Parse Chunk
-                    chunk_map = self.parse_translation(raw_translation)
-                    full_translated_map.update(chunk_map)
-                else:
-                    logger.error(f"Failed to translate chunk {i}. Skipping.")
+            with open(original_srt_path, "r", encoding="utf-8") as f:
+                original_content = f.read()
 
-            # 4. Merge & Save
-            return self.merge_and_save(source_srt_path, full_translated_map, output_path)
+            pattern = re.compile(r"(\d+)\s*\n(\d{2}:\d{2}:\d{2},\d{3} --> \d{2}:\d{2}:\d{2},\d{3})")
+            matches = pattern.findall(original_content)
+
+            if len(matches) != len(translated_map):
+                logger.warning(
+                    f"Discrepância de linhas: original={len(matches)}, traduzido={len(translated_map)}"
+                )
+
+            final_srt = [f"{idx}\n{tc}\n{translated_map.get(idx, '')}\n" for idx, tc in matches]
+            return save_subtitle("\n".join(final_srt), output_path)
 
         except Exception as e:
-            logger.error(f"Translation process failed: {e}")
+            logger.error(f"Erro ao fazer merge das legendas: {e}")
+            return False
+
+    # ------------------------------------------------------------------ #
+    # Ponto de entrada principal                                           #
+    # ------------------------------------------------------------------ #
+
+    def process(self, source_srt_path: str, output_path: str) -> bool:
+        """Chunk → Traduz via OpenRouter → Merge → Salva."""
+        logger.info(f"Iniciando tradução: {source_srt_path}")
+
+        try:
+            with open(source_srt_path, "r", encoding="utf-8") as f:
+                content = f.read()
+
+            chunks = self.split_content_by_time(content)
+            logger.info(f"Conteúdo dividido em {len(chunks)} chunk(s) de ~15min.")
+
+            full_map: dict = {}
+
+            for i, chunk in enumerate(chunks, 1):
+                logger.info(f"Traduzindo chunk {i}/{len(chunks)}...")
+                raw = self._call_api(chunk)
+                if raw:
+                    full_map.update(self.parse_translation(raw))
+                else:
+                    logger.error(f"Chunk {i} falhou — será ignorado.")
+
+            return self.merge_and_save(source_srt_path, full_map, output_path)
+
+        except Exception as e:
+            logger.error(f"Processo de tradução falhou: {e}")
             return False
