@@ -58,8 +58,29 @@ class JobProcessor:
                     force=force,
                     stream_index=stream_index,
                 )
+            elif job_type == "scan":
+                logger.info("Executando varredura manual da biblioteca...")
+                from core.scanner import _has_subtitle, MEDIA_EXTENSIONS
+                watch_dirs = ["/media/filmes", "/media/series"]
+                import os as _os
+                count = 0
+                for d in watch_dirs:
+                    if not _os.path.exists(d):
+                        continue
+                    for root, _, files in _os.walk(d):
+                        for fname in files:
+                            if not fname.lower().endswith(MEDIA_EXTENSIONS):
+                                continue
+                            if ".temp." in fname:
+                                continue
+                            fp = _os.path.join(root, fname)
+                            if not _has_subtitle(fp):
+                                self.pipeline.process_file(fp)
+                                count += 1
+                logger.info(f"Varredura manual concluída: {count} arquivos sem legenda processados.")
             else:
                 logger.warning(f"Tipo de job desconhecido '{job_type}' — ignorado.")
+
 
             # Job concluído: remove o arquivo
             os.remove(job_filepath)

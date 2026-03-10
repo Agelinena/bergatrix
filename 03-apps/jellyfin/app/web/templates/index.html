@@ -124,14 +124,27 @@
                 </svg>
                 <h1 class="text-2xl font-bold tracking-tight text-white">Legendarr <span class="text-xs text-purple-400 font-mono ml-1">v2.0</span></h1>
             </div>
-            <button class="bg-gray-700 hover:bg-gray-600 text-gray-200 px-4 py-2 rounded-lg text-sm font-medium transition flex items-center space-x-2"
-                    onclick="window.location.reload()">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                          d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
-                </svg>
-                <span>Refresh</span>
-            </button>
+            <div class="flex items-center space-x-3">
+                <!-- Forçar Scan -->
+                <button id="scan-btn"
+                        class="bg-indigo-700 hover:bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition flex items-center space-x-2"
+                        onclick="triggerScan(this)">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                              d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                    </svg>
+                    <span>Forçar Scan</span>
+                </button>
+                <!-- Refresh -->
+                <button class="bg-gray-700 hover:bg-gray-600 text-gray-200 px-4 py-2 rounded-lg text-sm font-medium transition flex items-center space-x-2"
+                        onclick="window.location.reload()">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                              d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                    </svg>
+                    <span>Refresh</span>
+                </button>
+            </div>
         </div>
     </header>
 
@@ -422,6 +435,27 @@
                 }));
             }
         });
+
+        // Forçar Scan
+        async function triggerScan(btn) {
+            btn.disabled = true;
+            btn.querySelector('span').textContent = 'Enviando...';
+            try {
+                const resp = await fetch('/api/scan', { method: 'POST' });
+                if (resp.ok) {
+                    const toast = document.createElement('div');
+                    toast.className = 'bg-indigo-600 text-white p-4 rounded shadow-lg mb-4';
+                    toast.textContent = '🔍 Varredura agendada! Acompanhe os logs do worker.';
+                    document.getElementById('toast-container').appendChild(toast);
+                    setTimeout(() => toast.remove(), 5000);
+                }
+            } catch(e) {
+                console.error('Erro ao agendar scan:', e);
+            } finally {
+                btn.disabled = false;
+                btn.querySelector('span').textContent = 'Forçar Scan';
+            }
+        }
     </script>
 
 </body>

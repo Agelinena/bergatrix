@@ -72,40 +72,46 @@ class Scanner:
         self.watch_dirs = watch_dirs
         self.observer = Observer()
 
+    def _run_scan(self):
+        """Executa uma varredura completa e processa arquivos sem legenda PT-BR."""
+        logger.info(f"━━ Iniciando varredura ━━")
+        count_found = 0
+        count_queued = 0
+
+        for watch_dir in self.watch_dirs:
+            if not os.path.exists(watch_dir):
+                continue
+            for root, _, files in os.walk(watch_dir):
+                for fname in files:
+                    if not fname.lower().endswith(MEDIA_EXTENSIONS):
+                        continue
+                    if ".temp." in fname:
+                        continue
+                    filepath = os.path.join(root, fname)
+                    count_found += 1
+                    if not _has_subtitle(filepath):
+                        logger.info(f"  Sem legenda PT-BR: {fname} — agendando tradução")
+                        try:
+                            self.pipeline.process_file(filepath)
+                            count_queued += 1
+                        except Exception as e:
+                            logger.error(f"  Erro ao processar {fname}: {e}")
+
+        logger.info(
+            f"━━ Varredura concluída: {count_found} verificados, "
+            f"{count_queued} sem legenda processados ━━"
+        )
+
     def _periodic_scan(self):
-        """
-        Varredura completa a cada SCAN_INTERVAL segundos.
-        Enfileira para tradução apenas arquivos que ainda não têm legenda PT-BR.
-        """
+        """Roda o scan imediatamente e depois repete a cada SCAN_INTERVAL segundos."""
+        # Scan inicial (logo após o watchdog iniciar)
+        logger.info(f"Executando scan inicial...")
+        self._run_scan()
+
         while True:
+            logger.info(f"Próximo scan automático em {PERIODIC_SCAN_INTERVAL}s.")
             time.sleep(PERIODIC_SCAN_INTERVAL)
-            logger.info(f"━━ Varredura periódica iniciada (intervalo: {PERIODIC_SCAN_INTERVAL}s) ━━")
-            count_found = 0
-            count_queued = 0
-
-            for watch_dir in self.watch_dirs:
-                if not os.path.exists(watch_dir):
-                    continue
-                for root, _, files in os.walk(watch_dir):
-                    for fname in files:
-                        if not fname.lower().endswith(MEDIA_EXTENSIONS):
-                            continue
-                        if ".temp." in fname:
-                            continue
-                        filepath = os.path.join(root, fname)
-                        count_found += 1
-                        if not _has_subtitle(filepath):
-                            logger.info(f"  Sem legenda PT-BR: {fname} — agendando tradução")
-                            try:
-                                self.pipeline.process_file(filepath)
-                                count_queued += 1
-                            except Exception as e:
-                                logger.error(f"  Erro ao processar {fname}: {e}")
-
-            logger.info(
-                f"━━ Varredura concluída: {count_found} arquivos verificados, "
-                f"{count_queued} sem legenda processados ━━"
-            )
+            self._run_scan()
 
     def start(self):
         # Watchdog: monitora eventos em tempo real

@@ -325,6 +325,20 @@ async def trigger_translate(
         """)
 
 
+@app.post("/api/scan")
+async def trigger_scan():
+    """Força uma varredura imediata de toda a biblioteca de mídia."""
+    job_id = str(uuid.uuid4())
+    job = {"id": job_id, "type": "scan", "status": "pending"}
+    try:
+        with open(os.path.join(JOBS_DIR, f"{job_id}.json"), "w") as f:
+            json.dump(job, f)
+        return JSONResponse(content={"status": "ok", "message": "Varredura agendada."})
+    except Exception as e:
+        logger.error(f"Erro ao criar job de scan: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.post("/api/refresh-cache")
 async def refresh_cache():
     scan_media(force=True)
