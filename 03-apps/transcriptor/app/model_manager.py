@@ -7,11 +7,18 @@ logger = logging.getLogger(__name__)
 
 VALID_MODELS = ["small", "distil-large-v3", "large-v3"]
 
-# Approximate VRAM requirement per model in GB (float16)
+# Approximate VRAM requirement per model in GB (int8_float16)
 MODEL_VRAM_GB = {
     "small": 1.0,
     "distil-large-v3": 3.0,
     "large-v3": 6.0,
+}
+
+# Map friendly model names to HuggingFace repo IDs
+MODEL_REPO_IDS = {
+    "small": "small",
+    "distil-large-v3": "distil-whisper/distil-large-v3",
+    "large-v3": "large-v3",
 }
 
 
@@ -58,7 +65,8 @@ class ModelManager:
 
         # Load new model
         device = "cuda" if torch.cuda.is_available() else "cpu"
-        compute_type = "float16" if device == "cuda" else "int8"
+        # int8_float16 = mixed precision (wider GPU compatibility than pure float16)
+        compute_type = "int8_float16" if device == "cuda" else "int8"
 
         logger.info(
             f"MODEL MANAGER: Carregando modelo '{model_name}' no dispositivo '{device}' "
@@ -66,7 +74,8 @@ class ModelManager:
         )
 
         try:
-            self._model = WhisperModel(model_name, device=device, compute_type=compute_type)
+            repo_id = MODEL_REPO_IDS[model_name]
+            self._model = WhisperModel(repo_id, device=device, compute_type=compute_type)
             self._current_model_name = model_name
             logger.info(f"MODEL MANAGER: Modelo '{model_name}' carregado com sucesso.")
             return self._model
