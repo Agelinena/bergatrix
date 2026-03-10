@@ -1,0 +1,36 @@
+model_list:
+  # Wildcard: qualquer modelo OpenRouter pago (passado como "openrouter/<provider>/<model>")
+  - model_name: "openrouter/*"
+    litellm_params:
+      model: "openrouter/*"
+      api_key: os.environ/OPENROUTER_API_KEY
+      api_base: https://openrouter.ai/api/v1
+
+  # DeepSeek V3 paid — alias explícito para chamadas simples por nome
+  - model_name: deepseek-v3
+    litellm_params:
+      model: openrouter/deepseek/deepseek-v3-0324
+      api_key: os.environ/OPENROUTER_API_KEY
+      api_base: https://openrouter.ai/api/v1
+
+  # Nota: modelos :free são gerenciados dinamicamente pelo sidecar litellm-updater.
+  # Eles aparecem no DB com prefixo "or-free/" e são sincronizados a cada LITELLM_SYNC_INTERVAL.
+
+router_settings:
+  routing_strategy: least-busy
+  num_retries: 3
+  retry_after: 5
+  allowed_fails: 1
+  cooldown_time: 60
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY
+  database_url: os.environ/DATABASE_URL
+  store_model_in_db: true
+
+  # UI com autenticação por usuário/senha
+  ui_access_mode: "username_password"
+
+  # Logs de uso por virtual key
+  disable_reset_budget: false
+  store_prompts_in_spend_logs: false

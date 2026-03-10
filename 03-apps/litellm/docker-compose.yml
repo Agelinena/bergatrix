@@ -1,0 +1,73 @@
+services:
+  litellm-db:
+    image: postgres:16-alpine
+    container_name: litellm-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: litellm
+      POSTGRES_PASSWORD: ${LITELLM_DB_PASSWORD}
+      POSTGRES_DB: litellm
+    volumes:
+      - ${LITELLM_DATA_DIR}:/var/lib/postgresql/data
+    networks:
+      - litellm-internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U litellm -d litellm"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  litellm:
+    image: ghcr.io/berriai/litellm:main-latest
+    container_name: litellm
+    restart: unless-stopped
+    depends_on:
+      litellm-db:
+        condition: service_healthy
+    command: ["--config", "/app/config.yaml", "--port", "4000", "--detailed_debug"]
+    volumes:
+      - ./config.yaml:/app/config.yaml:ro
+    environment:
+      DATABASE_URL: postgresql://litellm:${LITELLM_DB_PASSWORD}@litellm-db:5432/litellm
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
+      LITELLM_SALT_KEY: ${LITELLM_SALT_KEY}
+      UI_USERNAME: ${LITELLM_UI_USERNAME}
+      UI_PASSWORD: ${LITELLM_UI_PASSWORD}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
+    networks:
+      - litellm-internal
+      - bergatrix-proxy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.litellm.rule=Host(`llm.${DOMAIN}`)"
+      - "traefik.http.routers.litellm.entrypoints=websecure"
+      - "traefik.http.routers.litellm.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.litellm.middlewares=internal-only@docker"
+      - "traefik.http.services.litellm.loadbalancer.server.port=4000"
+
+  litellm-updater:
+    build: ./updater
+    container_name: litellm-updater
+    restart: unless-stopped
+    depends_on:
+      - litellm
+    environment:
+      LITELLM_URL: http://litellm:4000
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
+      SYNC_INTERVAL: ${LITELLM_SYNC_INTERVAL:-3600}
+    networks:
+      - litellm-internal  # acessa http://litellm:4000
+      - litellm-egress    # acessa https://openrouter.ai (requer saída à internet)
+
+networks:
+  litellm-internal:
+    driver: bridge
+    internal: true   # DB isolado: sem saída à internet
+
+  litellm-egress:
+    driver: bridge   # Saída à internet para o sidecar (fetch OpenRouter)
+
+  bergatrix-proxy:
+    external: true
