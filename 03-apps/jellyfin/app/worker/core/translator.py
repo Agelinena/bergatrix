@@ -14,7 +14,7 @@ CHUNK_DURATION = 900  # 15 minutos por chunk
 class Translator:
     def __init__(self):
         self.api_key = os.environ.get("OPENROUTER_API_KEY", "")
-        self.model = os.environ.get("OPENROUTER_MODEL", "deepseek/deepseek-v3-0324")
+        self.model = os.environ.get("OPENROUTER_MODEL", "deepseek/deepseek-v3")
 
         if not self.api_key:
             raise ValueError("OPENROUTER_API_KEY não encontrada nas variáveis de ambiente.")

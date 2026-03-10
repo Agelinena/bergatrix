@@ -14,12 +14,7 @@
         ::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 4px; }
         ::-webkit-scrollbar-thumb:hover { background: #6b7280; }
         [x-cloak] { display: none !important; }
-
-        /* Modal overlay */
-        .modal-overlay {
-            background: rgba(0,0,0,0.7);
-            backdrop-filter: blur(4px);
-        }
+        .modal-overlay { background: rgba(0,0,0,0.7); backdrop-filter: blur(4px); }
     </style>
 </head>
 
@@ -28,55 +23,67 @@
     <!-- Toast Container -->
     <div id="toast-container" class="fixed top-5 right-5 z-50 flex flex-col items-end space-y-2"></div>
 
-    <!-- Modal de Seleção de Legenda -->
-    <div x-data="subtitleModal()" x-show="open" x-cloak
+    <!--
+        Modal de Seleção de Legenda.
+        Comunicação via window.dispatchEvent — evita problemas com Alpine.$data() e paths especiais.
+    -->
+    <div x-data="subtitleModal()"
+         x-show="open"
+         x-cloak
+         @open-subtitle-modal.window="openFor($event.detail.filepath, $event.detail.filename)"
          class="fixed inset-0 z-50 flex items-center justify-center modal-overlay"
          @keydown.escape.window="close()">
         <div class="bg-gray-800 rounded-2xl border border-gray-600 shadow-2xl w-full max-w-lg mx-4" @click.stop>
-            <div class="p-6 border-b border-gray-700 flex justify-between items-center">
-                <div>
+            <div class="p-6 border-b border-gray-700 flex justify-between items-start">
+                <div class="min-w-0 pr-4">
                     <h2 class="text-lg font-bold text-white">Selecionar Legenda</h2>
-                    <p class="text-sm text-gray-400 truncate max-w-xs" x-text="filename"></p>
+                    <p class="text-sm text-gray-400 truncate" x-text="filename"></p>
                 </div>
-                <button @click="close()" class="text-gray-400 hover:text-white transition">
+                <button @click="close()" class="text-gray-400 hover:text-white transition flex-shrink-0">
                     <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
                     </svg>
                 </button>
             </div>
 
-            <!-- Lista de streams -->
+            <!-- Corpo do modal -->
             <div class="p-6 max-h-80 overflow-y-auto">
-                <div x-show="loading" class="flex justify-center py-8">
+                <!-- Carregando -->
+                <div x-show="loading" class="flex flex-col items-center py-8 space-y-3">
                     <svg class="animate-spin h-8 w-8 text-purple-400" fill="none" viewBox="0 0 24 24">
                         <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
                         <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
                     </svg>
+                    <p class="text-sm text-gray-400">Lendo streams do arquivo...</p>
                 </div>
+
+                <!-- Nenhuma legenda -->
                 <div x-show="!loading && subtitles.length === 0" class="text-center text-gray-400 py-8">
                     <p class="text-sm">Nenhuma legenda encontrada no arquivo.</p>
                     <p class="text-xs mt-1 text-gray-500">Você pode traduzir mesmo assim (auto-detect).</p>
                 </div>
+
+                <!-- Lista de streams -->
                 <div x-show="!loading" class="space-y-2">
                     <!-- Opção Auto -->
-                    <label class="flex items-center space-x-3 p-3 rounded-lg border border-gray-700 hover:border-purple-500 cursor-pointer transition"
-                           :class="{'border-purple-500 bg-purple-900/20': selectedIndex === null}">
+                    <label class="flex items-center space-x-3 p-3 rounded-lg border cursor-pointer transition"
+                           :class="selectedIndex === null ? 'border-purple-500 bg-purple-900/20' : 'border-gray-700 hover:border-purple-500'">
                         <input type="radio" :checked="selectedIndex === null" @change="selectedIndex = null" class="accent-purple-500">
                         <div>
                             <p class="text-sm font-medium text-white">🤖 Auto-detect</p>
-                            <p class="text-xs text-gray-400">O sistema escolhe a melhor legenda</p>
+                            <p class="text-xs text-gray-400">O sistema escolhe a melhor legenda disponível</p>
                         </div>
                     </label>
 
                     <!-- Streams disponíveis -->
                     <template x-for="sub in subtitles" :key="sub.index">
-                        <label class="flex items-center space-x-3 p-3 rounded-lg border border-gray-700 hover:border-purple-500 cursor-pointer transition"
-                               :class="{'border-purple-500 bg-purple-900/20': selectedIndex === sub.index}">
+                        <label class="flex items-center space-x-3 p-3 rounded-lg border cursor-pointer transition"
+                               :class="selectedIndex === sub.index ? 'border-purple-500 bg-purple-900/20' : 'border-gray-700 hover:border-purple-500'">
                             <input type="radio" :checked="selectedIndex === sub.index" @change="selectedIndex = sub.index" class="accent-purple-500">
                             <div class="flex-grow min-w-0">
                                 <p class="text-sm font-medium text-white truncate" x-text="sub.label"></p>
                                 <div class="flex items-center space-x-2 mt-0.5">
-                                    <span class="text-xs text-gray-500" x-text="`Stream ${sub.index}`"></span>
+                                    <span class="text-xs text-gray-500" x-text="'Stream ' + sub.index"></span>
                                     <span x-show="sub.is_bitmap" class="text-xs bg-orange-900/50 text-orange-300 px-1.5 py-0.5 rounded border border-orange-800">OCR</span>
                                     <span x-show="sub.is_text" class="text-xs bg-blue-900/50 text-blue-300 px-1.5 py-0.5 rounded border border-blue-800">Texto</span>
                                 </div>
@@ -86,18 +93,22 @@
                 </div>
             </div>
 
-            <!-- Rodapé do modal -->
+            <!-- Rodapé -->
             <div class="p-6 border-t border-gray-700 flex justify-end space-x-3">
                 <button @click="close()" class="px-4 py-2 rounded-lg bg-gray-700 hover:bg-gray-600 text-sm transition">
                     Cancelar
                 </button>
-                <button @click="submitTranslation()" :disabled="loading"
+                <button @click="submitTranslation()" :disabled="submitting"
                         class="px-5 py-2 rounded-lg bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-sm font-medium transition flex items-center space-x-2">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg x-show="!submitting" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                               d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129"/>
                     </svg>
-                    <span>Traduzir</span>
+                    <svg x-show="submitting" class="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                    </svg>
+                    <span x-text="submitting ? 'Enviando...' : 'Traduzir'"></span>
                 </button>
             </div>
         </div>
@@ -129,7 +140,6 @@
 
         <!-- Stats Overview -->
         <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-            <!-- Storage Saved -->
             <div class="bg-gradient-to-br from-gray-800 to-gray-900 rounded-xl border border-gray-700 p-6 flex items-center space-x-4 shadow-lg">
                 <div class="p-3 bg-green-900/30 rounded-full text-green-400">
                     <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -137,13 +147,12 @@
                     </svg>
                 </div>
                 <div>
-                    <h2 class="text-gray-400 text-sm font-medium uppercase tracking-wide">Storage Économisé</h2>
+                    <h2 class="text-gray-400 text-sm font-medium uppercase tracking-wide">Storage Economizado</h2>
                     <p class="text-3xl font-bold text-white">{{ data.stats.formatted_saved }}</p>
                     <p class="text-xs text-gray-500 mt-0.5">via HEVC optimizer</p>
                 </div>
             </div>
 
-            <!-- Total Traduzido -->
             <div class="bg-gradient-to-br from-gray-800 to-gray-900 rounded-xl border border-gray-700 p-6 flex items-center space-x-4 shadow-lg">
                 <div class="p-3 bg-purple-900/30 rounded-full text-purple-400">
                     <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -158,12 +167,10 @@
                 </div>
             </div>
 
-            <!-- Filmes + Séries -->
             <div class="bg-gradient-to-br from-gray-800 to-gray-900 rounded-xl border border-gray-700 p-6 flex items-center space-x-4 shadow-lg">
                 <div class="p-3 bg-blue-900/30 rounded-full text-blue-400">
                     <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                              d="M4 6h16M4 10h16M4 14h16M4 18h16"/>
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"/>
                     </svg>
                 </div>
                 <div>
@@ -177,12 +184,12 @@
         <!-- Tabs -->
         <div class="flex space-x-6 border-b border-gray-700 mb-8">
             <button @click="activeTab = 'movies'"
-                    :class="{ 'border-purple-500 text-purple-400': activeTab === 'movies', 'border-transparent text-gray-400 hover:text-gray-300': activeTab !== 'movies' }"
+                    :class="activeTab === 'movies' ? 'border-purple-500 text-purple-400' : 'border-transparent text-gray-400 hover:text-gray-300'"
                     class="pb-3 px-2 text-lg font-medium border-b-2 transition focus:outline-none">
                 🎬 Filmes
             </button>
             <button @click="activeTab = 'series'"
-                    :class="{ 'border-purple-500 text-purple-400': activeTab === 'series', 'border-transparent text-gray-400 hover:text-gray-300': activeTab !== 'series' }"
+                    :class="activeTab === 'series' ? 'border-purple-500 text-purple-400' : 'border-transparent text-gray-400 hover:text-gray-300'"
                     class="pb-3 px-2 text-lg font-medium border-b-2 transition focus:outline-none">
                 📺 Séries
             </button>
@@ -193,7 +200,6 @@
             <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
                 {% for movie in data.movies %}
                 <div class="bg-gray-800 rounded-xl overflow-hidden shadow-lg hover:shadow-2xl transition transform hover:-translate-y-1 border border-gray-700 group relative">
-                    <!-- Poster -->
                     <div class="aspect-[2/3] bg-gray-900 relative">
                         {% if movie.poster %}
                         <img src="/api/image?path={{ movie.poster }}" alt="{{ movie.name }}" class="w-full h-full object-cover">
@@ -205,13 +211,10 @@
                             </svg>
                         </div>
                         {% endif %}
-                        <!-- Status Badge -->
                         <div class="absolute top-2 right-2 bg-black bg-opacity-70 backdrop-blur-sm rounded-full px-2 py-1 text-xs font-bold shadow-sm">
                             {{ movie.status }}
                         </div>
                     </div>
-
-                    <!-- Content -->
                     <div class="p-4">
                         <div class="flex justify-between items-start mb-1">
                             <h3 class="text-white font-semibold truncate flex-grow" title="{{ movie.name }}">{{ movie.name }}</h3>
@@ -223,10 +226,11 @@
                         </div>
                         <p class="text-gray-400 text-xs truncate mb-3">{{ movie.filename }}</p>
 
-                        <!-- Botão Traduzir (abre modal) -->
+                        <!-- Botão usa data-attributes para evitar escape de paths especiais -->
                         <button type="button"
-                                onclick="window.openSubtitleModal('{{ movie.path }}', '{{ movie.name }}')"
-                                class="w-full bg-purple-600 hover:bg-purple-700 text-white py-2 rounded-lg text-sm font-medium transition flex items-center justify-center space-x-1">
+                                class="translate-btn w-full bg-purple-600 hover:bg-purple-700 text-white py-2 rounded-lg text-sm font-medium transition flex items-center justify-center space-x-1"
+                                data-filepath="{{ movie.path }}"
+                                data-filename="{{ movie.name }}">
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                                       d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129"/>
@@ -249,7 +253,6 @@
             <div class="space-y-6">
                 {% for series_name, series_data in data.series.items() %}
                 <div class="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden" x-data="{ expanded: false }">
-                    <!-- Series Header -->
                     <div class="p-4 flex items-center space-x-4 cursor-pointer hover:bg-gray-750 transition" @click="expanded = !expanded">
                         <div class="w-12 h-16 bg-gray-900 rounded overflow-hidden flex-shrink-0">
                             {% if series_data.poster %}
@@ -274,7 +277,6 @@
                         </div>
                     </div>
 
-                    <!-- Seasons & Episodes -->
                     <div x-show="expanded" x-collapse class="bg-gray-900 border-t border-gray-700">
                         {% for season_name, episodes in series_data.seasons.items() %}
                         <div class="p-4">
@@ -283,22 +285,24 @@
                                 {% for ep in episodes %}
                                 <div class="bg-gray-800 rounded-lg p-3 border border-gray-700 flex items-center justify-between group hover:border-purple-500/50 transition">
                                     <div class="flex items-center space-x-3 overflow-hidden">
-                                        <span class="text-lg">{{ ep.status }}</span>
+                                        <span class="text-lg flex-shrink-0">{{ ep.status }}</span>
                                         <div class="min-w-0">
                                             <p class="text-sm font-medium text-white truncate" title="{{ ep.name }}">{{ ep.name }}</p>
                                             <div class="flex items-center space-x-2">
                                                 <p class="text-xs text-gray-500 truncate">{{ ep.filename }}</p>
                                                 {% if ep.optimization %}
-                                                <span class="px-1.5 py-0.5 bg-green-900/50 text-green-400 text-[10px] rounded border border-green-800 font-mono whitespace-nowrap" title="Otimizado">
+                                                <span class="px-1.5 py-0.5 bg-green-900/50 text-green-400 text-[10px] rounded border border-green-800 font-mono whitespace-nowrap">
                                                     ⚡ -{{ ep.optimization.formatted_saved }}
                                                 </span>
                                                 {% endif %}
                                             </div>
                                         </div>
                                     </div>
+                                    <!-- Botão episódio: data-attributes para paths seguros -->
                                     <button type="button"
-                                            onclick="window.openSubtitleModal('{{ ep.path }}', '{{ ep.name }}')"
-                                            class="bg-gray-700 hover:bg-purple-600 text-white p-2 rounded-md transition opacity-0 group-hover:opacity-100 focus:opacity-100 flex-shrink-0"
+                                            class="translate-btn bg-gray-700 hover:bg-purple-600 text-white p-2 rounded-md transition opacity-0 group-hover:opacity-100 focus:opacity-100 flex-shrink-0"
+                                            data-filepath="{{ ep.path }}"
+                                            data-filename="{{ ep.name }}"
                                             title="Traduzir legenda">
                                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
@@ -331,29 +335,42 @@
 
     <script>
         // ------------------------------------------------------------------ //
-        // Alpine component — Modal de seleção de legenda                       //
+        // Alpine component — Modal de Legenda                                //
+        //                                                                    //
+        // Usa window.dispatchEvent para comunicação — funciona corretamente  //
+        // com Alpine lazy-init e evita problemas de escape com paths.        //
         // ------------------------------------------------------------------ //
         document.addEventListener('alpine:init', () => {
             Alpine.data('subtitleModal', () => ({
                 open: false,
                 loading: false,
+                submitting: false,
                 filepath: '',
                 filename: '',
                 subtitles: [],
                 selectedIndex: null,
 
-                async fetchSubtitles(filepath) {
-                    this.loading = true;
+                openFor(filepath, filename) {
+                    this.filepath = filepath;
+                    this.filename = filename;
                     this.subtitles = [];
                     this.selectedIndex = null;
+                    this.open = true;
+                    this.fetchSubtitles(filepath);
+                },
+
+                async fetchSubtitles(filepath) {
+                    this.loading = true;
                     try {
-                        const resp = await fetch(`/api/subtitles?filepath=${encodeURIComponent(filepath)}`);
+                        const resp = await fetch('/api/subtitles?filepath=' + encodeURIComponent(filepath));
                         if (resp.ok) {
                             const data = await resp.json();
                             this.subtitles = data.subtitles || [];
+                        } else {
+                            console.error('Erro ao buscar legendas:', resp.status, await resp.text());
                         }
                     } catch (e) {
-                        console.error('Erro ao buscar legendas:', e);
+                        console.error('Erro de rede ao buscar legendas:', e);
                     } finally {
                         this.loading = false;
                     }
@@ -365,11 +382,12 @@
                     this.filename = '';
                     this.subtitles = [];
                     this.selectedIndex = null;
+                    this.submitting = false;
                 },
 
                 async submitTranslation() {
-                    if (!this.filepath) return;
-                    this.loading = true;
+                    if (!this.filepath || this.submitting) return;
+                    this.submitting = true;
 
                     const formData = new FormData();
                     formData.append('filepath', this.filepath);
@@ -381,28 +399,29 @@
                     try {
                         const resp = await fetch('/api/translate', { method: 'POST', body: formData });
                         const html = await resp.text();
-                        const toastContainer = document.getElementById('toast-container');
-                        toastContainer.insertAdjacentHTML('beforeend', html);
+                        document.getElementById('toast-container').insertAdjacentHTML('beforeend', html);
                     } catch (e) {
                         console.error('Erro ao iniciar tradução:', e);
                     } finally {
-                        this.loading = false;
                         this.close();
                     }
                 }
             }));
         });
 
-        // Função global chamada pelos botões de tradução
-        window.openSubtitleModal = function(filepath, filename) {
-            const modal = Alpine.$data(document.querySelector('[x-data="subtitleModal()"]'));
-            if (modal) {
-                modal.filepath = filepath;
-                modal.filename = filename;
-                modal.open = true;
-                modal.fetchSubtitles(filepath);
+        // Delegação de evento: todos os botões .translate-btn usam data-attributes
+        // Isso evita problemas com paths especiais (parênteses, espaços, aspas)
+        document.addEventListener('click', function(e) {
+            const btn = e.target.closest('.translate-btn');
+            if (!btn) return;
+            const filepath = btn.dataset.filepath;
+            const filename = btn.dataset.filename;
+            if (filepath) {
+                window.dispatchEvent(new CustomEvent('open-subtitle-modal', {
+                    detail: { filepath, filename }
+                }));
             }
-        };
+        });
     </script>
 
 </body>
