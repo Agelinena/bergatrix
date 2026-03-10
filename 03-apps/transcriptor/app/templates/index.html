@@ -10,7 +10,12 @@
 <body>
     <main class="container">
         <header>
-            <h1><a href="/" style="text-decoration: none;">🎙️ Transcriptor AI</a></h1>
+            <div class="header-title">
+                <div class="waveform-icon" aria-hidden="true">
+                    <span></span><span></span><span></span><span></span><span></span>
+                </div>
+                <h1><a href="/" style="text-decoration: none;">Transcriptor AI</a></h1>
+            </div>
             <p>Faça upload de áudio/vídeo ou cole um link para transcrever.</p>
         </header>
 
@@ -29,7 +34,7 @@
                         <label for="model-select"><strong>Modelo de Transcrição</strong></label>
                         <select id="model-select" name="model_name">
                             <option value="small">⚡ Small — Rápido, baixo VRAM (~1GB)</option>
-                            <option value="distil-large-v3">⚖️ Distil Large v3 — Equilibrado (~3GB)</option>
+                            <option value="medium">⚖️ Medium — Equilibrado, precisão melhor (~2.5GB)</option>
                             <option value="large-v3">🎯 Large v3 — Máxima qualidade (~6GB)</option>
                         </select>
                         
@@ -53,8 +58,8 @@
                     </div>
                     <footer>
                         <button class="copy-btn">Copiar</button>
-                        <a href="#" id="download-simple" role="button" class="contrast" download>Baixar (.txt)</a>
-                        <a href="#" id="download-timestamp" role="button" class="contrast hidden" download>Baixar (.txt)</a>
+                        <a href="#" id="download-simple" role="button" class="contrast" download>⬇ Baixar .txt</a>
+                        <a href="#" id="download-timestamp" role="button" class="contrast hidden" download>⬇ Baixar .vtt</a>
                     </footer>
                 </article>
             </section>

@@ -1,4 +1,5 @@
 import os
+import re
 import uuid
 import asyncio
 import subprocess
@@ -13,13 +14,17 @@ from typing import Literal
 import torch
 import aiofiles
 import json
-from fastapi import FastAPI, Request, UploadFile, File, Form, HTTPException, WebSocket, WebSocketDisconnect, Security, Body
+from fastapi import FastAPI, Request, UploadFile, File, Form, HTTPException, WebSocket, WebSocketDisconnect, Security, Response
 from fastapi.security import APIKeyHeader
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from pydantic import BaseModel
+from itsdangerous import URLSafeSerializer, BadSignature
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 
 from model_manager import model_manager, VALID_MODELS
 
@@ -36,12 +41,74 @@ DB_FILE = os.path.join(DATA_DIR, "transcriptions.json")
 
 DEFAULT_MODEL = "small"
 
-# --- Fila e Lock ---
+# Limite de upload: 500 MB
+MAX_UPLOAD_BYTES = 500 * 1024 * 1024
+
+# --- Validação de secrets obrigatórios no startup ---
+API_KEY = os.getenv("API_KEY", "")
+SECRET_KEY = os.getenv("SECRET_KEY", "")
+
+# --- Cookie Signer ---
+_signer: URLSafeSerializer | None = None
+
+def get_signer() -> URLSafeSerializer:
+    if _signer is None:
+        raise RuntimeError("Signer não inicializado.")
+    return _signer
+
+def sign_user_id(user_id: str) -> str:
+    return get_signer().dumps(user_id)
+
+def verify_user_id(signed: str) -> str | None:
+    """Verifica a assinatura e retorna o user_id limpo, ou None se inválido."""
+    try:
+        value = get_signer().loads(signed)
+        # Garante que é um UUID válido
+        uuid.UUID(str(value))
+        return str(value)
+    except (BadSignature, ValueError, AttributeError):
+        return None
+
+def get_signed_user_id(request: Request) -> str | None:
+    """Extrai e valida o user_id assinado do cookie."""
+    signed = request.cookies.get("user_id")
+    if not signed:
+        return None
+    return verify_user_id(signed)
+
+# --- Sanitização de mensagens de erro ---
+_INTERNAL_PATH_RE = re.compile(r'/[a-zA-Z0-9_./-]{3,}')
+
+def sanitize_error(msg: str) -> str:
+    """Remove paths internos de mensagens de erro antes de expor ao cliente."""
+    sanitized = _INTERNAL_PATH_RE.sub('[path]', str(msg))
+    return sanitized[:400]  # trunca para não vazar stacks longas
+
+# --- Validação de URL (anti-SSRF) ---
+_ALLOWED_URL_SCHEMES = ('http://', 'https://')
+
+def validate_url(url: str) -> str:
+    """Garante que a URL usa apenas http/https e não é uma URL local."""
+    u = url.strip()
+    if not any(u.lower().startswith(s) for s in _ALLOWED_URL_SCHEMES):
+        raise HTTPException(status_code=400, detail="URL inválida. Apenas http:// e https:// são permitidos.")
+    # Bloqueia IPs locais / loopback / metadados de cloud
+    blocked = ('localhost', '127.', '0.0.0.0', '169.254.', '::1', 'metadata.google', 'metadata.aws')
+    lower = u.lower()
+    if any(b in lower for b in blocked):
+        raise HTTPException(status_code=400, detail="URL aponta para endereço não permitido.")
+    return u
+
+# --- Fila, Lock GPU e Lock do DB ---
 task_queue = asyncio.Queue()
 transcription_lock = asyncio.Lock()
+db_lock = asyncio.Lock()
 
-# --- Helpers ---
-def read_db():
+# --- Rate Limiter ---
+limiter = Limiter(key_func=get_remote_address)
+
+# --- Helpers DB ---
+def _read_db_sync() -> dict:
     try:
         with open(DB_FILE, 'r', encoding='utf-8') as f:
             data = json.load(f)
@@ -51,11 +118,25 @@ def read_db():
     except (FileNotFoundError, json.JSONDecodeError):
         return {}
 
-def write_db(data):
+def _write_db_sync(data: dict):
     with open(DB_FILE, 'w', encoding='utf-8') as f:
         json.dump(data, f, indent=4)
 
-def get_db_mtime():
+def read_db() -> dict:
+    return _read_db_sync()
+
+def write_db(data: dict):
+    _write_db_sync(data)
+
+async def read_db_safe() -> dict:
+    async with db_lock:
+        return _read_db_sync()
+
+async def write_db_safe(data: dict):
+    async with db_lock:
+        _write_db_sync(data)
+
+def get_db_mtime() -> float:
     try:
         return os.path.getmtime(DB_FILE)
     except FileNotFoundError:
@@ -71,16 +152,22 @@ async def run_command(command: list):
     )
     stdout, stderr = await process.communicate()
     if process.returncode != 0:
-        raise RuntimeError(f"Command failed with error: {stderr.decode()}")
+        raise RuntimeError(f"Command failed: {stderr.decode()[:200]}")
 
 
-# --- Lógica do Worker Interno ---
-async def process_transcription(job_id: str, file_path: str | None, url: str | None, is_local: bool = False, model_name: str = DEFAULT_MODEL):
-    db = read_db()
+# --- Lógica do Worker ---
+async def process_transcription(
+    job_id: str,
+    file_path: str | None,
+    url: str | None,
+    is_local: bool = False,
+    model_name: str = DEFAULT_MODEL
+):
+    db = await read_db_safe()
     try:
-        logging.info(f"WORKER [{job_id}]: Iniciando processamento com modelo '{model_name}'.")
+        logging.info(f"WORKER [{job_id}]: Iniciando com modelo '{model_name}'.")
         db[job_id]["status"] = "processing"
-        write_db(db)
+        await write_db_safe(db)
 
         audio_path = None
         if url:
@@ -99,88 +186,65 @@ async def process_transcription(job_id: str, file_path: str | None, url: str | N
         if not audio_path:
             raise ValueError("Caminho do áudio não definido.")
 
-        db = read_db()
+        db = await read_db_safe()
         db[job_id]["status"] = "transcribing"
-        write_db(db)
+        await write_db_safe(db)
 
         async with transcription_lock:
-            logging.info(f"WORKER [{job_id}]: GPU lock adquirido. Carregando modelo '{model_name}'...")
+            logging.info(f"WORKER [{job_id}]: GPU lock adquirido. Carregando '{model_name}'...")
             loop = asyncio.get_event_loop()
 
             try:
-                # Load model (unloads previous if different) and transcribe in thread executor
                 def transcribe():
                     model = model_manager.load(model_name)
-                    
-                    # Parâmetros de 'Rédea Curta' para o modelo
                     segments, info = model.transcribe(
                         audio_path,
                         language="pt",
-                        task="transcribe",         # Explicitamente NÃO traduzir
+                        task="transcribe",
                         beam_size=5,
-                        best_of=5,                 # Melhora a escolha da melhor frase
+                        best_of=5,
                         vad_filter=True,
-                        # VAD Tuning: Ignora pausas menores que 2 segundos (evita timestamps picados)
-                        vad_parameters=dict(
-                            min_silence_duration_ms=2000, 
-                            speech_pad_ms=400
-                        ),
-                        # Prompt forte para 'setar' o cérebro da IA no PT-BR
+                        vad_parameters=dict(min_silence_duration_ms=2000, speech_pad_ms=400),
                         initial_prompt="Transcrição fiel em português do Brasil. Sem tradução. Mantendo a pontuação natural.",
-                        # Impede que o modelo tente adivinhar o que vem depois se o áudio sumir
-                        condition_on_previous_text=False, 
-                        # Se o modelo tiver 60% de certeza que é silêncio, ele cala a boca
+                        condition_on_previous_text=False,
                         no_speech_threshold=0.6,
-                        # Temperaturas menores evitam 'alucinações' criativas
                         temperature=0
                     )
-                    
-                    seg_list = list(segments)
-                    return seg_list, info
+                    return list(segments), info
 
                 segments, info = await loop.run_in_executor(None, transcribe)
 
             except RuntimeError as e:
-                # OOM or model load failure
-                error_message = str(e)
-                logging.error(f"WORKER [{job_id}]: Falha ao carregar modelo: {error_message}")
-                db = read_db()
+                error_message = sanitize_error(str(e))
+                logging.error(f"WORKER [{job_id}]: Falha de GPU: {e}")
+                db = await read_db_safe()
                 db[job_id]["status"] = "failed"
                 db[job_id]["error"] = error_message
-                write_db(db)
-                # Propagate to outer except to hit the WebSocket notification
+                await write_db_safe(db)
                 raise
 
-        # Build transcript strings from segments
-        # Build transcript strings from segments
         vtt_lines = ["WEBVTT\n"]
         simple_lines = []
         current_paragraph = ""
 
         for seg in segments:
-            # Formatação VTT (Mantém igual para legendas)
             start = _format_vtt_time(seg.start)
             end = _format_vtt_time(seg.end)
-            vtt_lines.append(f"{start} --> {end}")
-            vtt_lines.append(seg.text.strip())
-            vtt_lines.append("")
-
-            # Lógica para o texto simples (Agrupa até ~300 caracteres antes de quebrar linha)
+            vtt_lines.extend([f"{start} --> {end}", seg.text.strip(), ""])
             text_chunk = seg.text.strip()
             if len(current_paragraph) + len(text_chunk) < 300:
                 current_paragraph += " " + text_chunk
             else:
                 simple_lines.append(current_paragraph.strip())
                 current_paragraph = text_chunk
-        
-        # Adiciona o último pedaço
+
         if current_paragraph:
             simple_lines.append(current_paragraph.strip())
 
         vtt_content = "\n".join(vtt_lines)
-        simple_text = "\n\n".join(simple_lines) # Quebra com linha dupla entre parágrafos
+        simple_text = "\n\n".join(simple_lines)
 
-        timestamp_path = os.path.join(TRANSCRIPTIONS_DIR, f"{job_id}_timestamp.txt")
+        timestamp_path = os.path.join(TRANSCRIPTIONS_DIR, f"{job_id}_timestamp.vtt")
         simple_path = os.path.join(TRANSCRIPTIONS_DIR, f"{job_id}_simple.txt")
 
         with open(timestamp_path, 'w', encoding='utf-8') as f:
@@ -188,26 +252,28 @@ async def process_transcription(job_id: str, file_path: str | None, url: str | N
         with open(simple_path, 'w', encoding='utf-8') as f:
             f.write(simple_text)
 
-        db = read_db()
-        db[job_id]["timestamp_path"] = timestamp_path
-        db[job_id]["simple_path"] = simple_path
-        db[job_id]["status"] = "completed"
-        write_db(db)
-
-        logging.info(f"WORKER [{job_id}]: Transcrição concluída.")
+        db = await read_db_safe()
+        db[job_id].update({
+            "timestamp_path": timestamp_path,
+            "simple_path": simple_path,
+            "status": "completed",
+            "completed_at": datetime.now().isoformat()
+        })
+        await write_db_safe(db)
+        logging.info(f"WORKER [{job_id}]: Concluído.")
         os.remove(audio_path)
         gc.collect()
 
     except Exception as e:
-        logging.error(f"WORKER [{job_id}]: Falha no processamento: {e}", exc_info=True)
-        db = read_db()
-        db[job_id]["status"] = "failed"
-        db[job_id]["error"] = str(e)
-        write_db(db)
+        logging.error(f"WORKER [{job_id}]: Falha: {e}", exc_info=True)
+        db = await read_db_safe()
+        if job_id in db:
+            db[job_id]["status"] = "failed"
+            db[job_id]["error"] = sanitize_error(str(e))
+            await write_db_safe(db)
 
 
 def _format_vtt_time(seconds: float) -> str:
-    """Convert float seconds to VTT timestamp HH:MM:SS.mmm"""
     hours = int(seconds // 3600)
     minutes = int((seconds % 3600) // 60)
     secs = seconds % 60
@@ -215,7 +281,7 @@ def _format_vtt_time(seconds: float) -> str:
 
 
 async def queue_consumer():
-    logging.info("Consumidor de fila iniciado. Aguardando tarefas.")
+    logging.info("Queue consumer iniciado.")
     while True:
         task = await task_queue.get()
         asyncio.create_task(process_transcription(
@@ -228,7 +294,7 @@ async def queue_consumer():
         task_queue.task_done()
 
 
-# --- Gerenciador de WebSocket ---
+# --- WebSocket Manager ---
 class ConnectionManager:
     def __init__(self):
         self.active_connections: dict[str, WebSocket] = {}
@@ -238,27 +304,26 @@ class ConnectionManager:
         self.active_connections[user_id] = websocket
 
     def disconnect(self, user_id: str):
-        if user_id in self.active_connections:
-            del self.active_connections[user_id]
+        self.active_connections.pop(user_id, None)
 
     async def send_personal_message(self, message: dict, user_id: str):
-        if user_id in self.active_connections:
+        ws = self.active_connections.get(user_id)
+        if ws:
             try:
-                await self.active_connections[user_id].send_json(message)
+                await ws.send_json(message)
             except Exception:
                 self.disconnect(user_id)
 
 
 manager = ConnectionManager()
-
-DB_STATE_CACHE = {}
-LAST_DB_MTIME = 0
+DB_STATE_CACHE: dict = {}
+LAST_DB_MTIME: float = 0
 
 
 async def status_updater():
     global DB_STATE_CACHE, LAST_DB_MTIME
-    logging.info("WEB: Iniciando rotina de atualização de status em tempo real.")
-    DB_STATE_CACHE = read_db()
+    logging.info("Status updater iniciado.")
+    DB_STATE_CACHE = await read_db_safe()   # ← usa lock
     LAST_DB_MTIME = get_db_mtime()
 
     while True:
@@ -266,15 +331,19 @@ async def status_updater():
         try:
             current_mtime = get_db_mtime()
             if current_mtime > LAST_DB_MTIME:
-                current_db = read_db()
+                current_db = await read_db_safe()   # ← usa lock
                 if current_db != DB_STATE_CACHE:
                     for job_id, new_details in current_db.items():
                         old_details = DB_STATE_CACHE.get(job_id, {})
                         user_id = new_details.get("user_id")
                         if new_details.get("status") != old_details.get("status") and user_id:
                             status = new_details["status"]
-                            logging.info(f"WEB: Job {job_id} mudou para '{status}'.")
-                            message = {"type": "status_update", "job_id": job_id, "status": status}
+                            message = {
+                                "type": "status_update",
+                                "job_id": job_id,
+                                "status": status,
+                                "completed_at": new_details.get("completed_at")
+                            }
                             if status == "completed":
                                 try:
                                     with open(new_details['simple_path'], 'r', encoding='utf-8') as f:
@@ -289,52 +358,60 @@ async def status_updater():
                     DB_STATE_CACHE = copy.deepcopy(current_db)
                     LAST_DB_MTIME = current_mtime
         except Exception as e:
-            logging.error(f"WEB: Erro na rotina de atualização: {e}")
+            logging.error(f"Status updater erro: {e}")
 
 
 # --- Limpeza Agendada ---
 def cleanup_old_files():
-    logging.info("WEB: Rodando tarefa de limpeza de arquivos antigos...")
     cutoff = datetime.now() - timedelta(days=30)
     db = read_db()
     jobs_to_delete = [
-        job_id for job_id, details in db.items()
-        if datetime.fromisoformat(details.get("timestamp", "1970-01-01T00:00:00")) < cutoff
+        jid for jid, d in db.items()
+        if datetime.fromisoformat(d.get("timestamp", "1970-01-01T00:00:00")) < cutoff
     ]
-    if not jobs_to_delete:
-        return
-    for job_id in jobs_to_delete:
-        details = db.pop(job_id, {})
+    for jid in jobs_to_delete:
+        d = db.pop(jid, {})
         for key in ["timestamp_path", "simple_path"]:
-            if (path := details.get(key)) and os.path.exists(path):
+            if (path := d.get(key)) and os.path.exists(path):
                 try:
                     os.remove(path)
                 except OSError as e:
-                    logging.error(f"WEB: Erro ao remover arquivo {path}: {e}")
-    write_db(db)
-    logging.info(f"WEB: Limpeza de {len(jobs_to_delete)} tarefas concluída.")
+                    logging.error(f"Cleanup erro {path}: {e}")
+    if jobs_to_delete:
+        write_db(db)
+        logging.info(f"Cleanup: {len(jobs_to_delete)} tarefas removidas.")
 
 
 async def update_ytdlp():
-    logging.info("SYSTEM: Iniciando atualização diária do yt-dlp...")
+    logging.info("SYSTEM: Atualizando yt-dlp...")
     try:
         await run_command([sys.executable, "-m", "pip", "install", "--upgrade", "--no-cache-dir", "yt-dlp"])
-        logging.info("SYSTEM: yt-dlp atualizado com sucesso.")
+        logging.info("SYSTEM: yt-dlp atualizado.")
     except Exception as e:
         logging.error(f"SYSTEM: Falha ao atualizar yt-dlp: {e}")
 
 
-# --- Ciclo de Vida da Aplicação ---
+# --- Ciclo de Vida ---
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Warm-up: pre-load the default model
-    logging.info(f"STARTUP: Pré-carregando modelo padrão '{DEFAULT_MODEL}'...")
+    global _signer
+
+    # Validação de secrets obrigatórios
+    if not API_KEY:
+        raise RuntimeError("FATAL: variável de ambiente 'API_KEY' não definida. Aborting.")
+    if not SECRET_KEY:
+        raise RuntimeError("FATAL: variável de ambiente 'SECRET_KEY' não definida. Aborting.")
+
+    _signer = URLSafeSerializer(SECRET_KEY, salt="transcriptor-user-id")
+    logging.info("STARTUP: Signer inicializado.")
+
+    logging.info(f"STARTUP: Pré-carregando modelo '{DEFAULT_MODEL}'...")
     try:
         loop = asyncio.get_event_loop()
         await loop.run_in_executor(None, lambda: model_manager.load(DEFAULT_MODEL))
-        logging.info("STARTUP: Modelo padrão carregado com sucesso.")
+        logging.info("STARTUP: Modelo padrão carregado.")
     except Exception as e:
-        logging.critical(f"STARTUP: Falha ao carregar modelo padrão: {e}", exc_info=True)
+        logging.critical(f"STARTUP: Falha ao carregar modelo: {e}", exc_info=True)
 
     scheduler = AsyncIOScheduler()
     scheduler.add_job(cleanup_old_files, 'interval', hours=1, misfire_grace_time=300)
@@ -348,10 +425,11 @@ async def lifespan(app: FastAPI):
 
 # --- App ---
 app = FastAPI(lifespan=lifespan)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")), name="static")
 templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 
-API_KEY = os.getenv("API_KEY", "chave-secreta-padrao")
 api_key_header = APIKeyHeader(name="X-API-Key")
 
 
@@ -367,6 +445,30 @@ async def get_api_key(api_key_header: str = Security(api_key_header)):
         raise HTTPException(status_code=401, detail="Chave de API inválida.")
 
 
+# --- Session ---
+@app.get("/init-session")
+async def init_session(request: Request, response: Response):
+    """Gera um user_id autenticado via cookie assinado (server-side)."""
+    # Reutiliza sessão existente e válida
+    existing = get_signed_user_id(request)
+    if existing:
+        return JSONResponse({"user_id": existing})
+
+    new_user_id = str(uuid.uuid4())
+    signed = sign_user_id(new_user_id)
+    resp = JSONResponse({"user_id": new_user_id})
+    resp.set_cookie(
+        key="user_id",
+        value=signed,
+        max_age=31536000,
+        httponly=True,       # não acessível via JS — previne XSS
+        samesite="lax",
+        secure=True,         # apenas HTTPS
+        path="/"
+    )
+    return resp
+
+
 # --- Endpoints Web ---
 @app.get("/", response_class=HTMLResponse)
 async def read_root(request: Request):
@@ -374,30 +476,50 @@ async def read_root(request: Request):
 
 
 @app.post("/transcribe", status_code=202)
+@limiter.limit("5/minute")
 async def handle_transcription_request(
     request: Request,
     file: UploadFile = File(None),
     url: str = Form(None),
     model_name: str = Form(DEFAULT_MODEL)
 ):
+    user_id = get_signed_user_id(request)
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Sessão inválida ou expirada. Recarregue a página.")
+
     if model_name not in VALID_MODELS:
         raise HTTPException(status_code=400, detail=f"Modelo inválido. Opções: {VALID_MODELS}")
 
-    user_id = request.cookies.get("user_id")
-    if not user_id:
-        raise HTTPException(status_code=400, detail="User ID não encontrado.")
+    # Validação de URL (anti-SSRF)
+    if url:
+        url = validate_url(url)
 
     job_id = str(uuid.uuid4())
-    original_filename = (file.filename if file and file.filename else url) or "Job"
     file_path = None
 
     if file and file.filename:
+        # [FIX] Path traversal: usar apenas o basename, nunca o path completo
+        safe_filename = os.path.basename(file.filename)
+        if not safe_filename:
+            raise HTTPException(status_code=400, detail="Nome de arquivo inválido.")
+
+        original_filename: str = safe_filename[:200]
         file_path = os.path.join(UPLOADS_DIR, f"{job_id}_{original_filename}")
+
+        # [FIX] Limite de tamanho: lê em chunks e rejeita se exceder
+        bytes_written = 0
         async with aiofiles.open(file_path, 'wb') as out_file:
             while chunk := await file.read(1024 * 1024):
+                bytes_written += len(chunk)
+                if bytes_written > MAX_UPLOAD_BYTES:
+                    await out_file.close()
+                    os.remove(file_path)
+                    raise HTTPException(status_code=413, detail=f"Arquivo excede o limite de {MAX_UPLOAD_BYTES // 1024 // 1024}MB.")
                 await out_file.write(chunk)
+    else:
+        original_filename = (url or "Job")[:200]
 
-    db = read_db()
+    db = await read_db_safe()
     db[job_id] = {
         "user_id": user_id,
         "original_filename": original_filename,
@@ -405,31 +527,37 @@ async def handle_transcription_request(
         "status": "queued",
         "timestamp": datetime.now().isoformat()
     }
-    write_db(db)
+    await write_db_safe(db)
     await task_queue.put({"job_id": job_id, "file_path": file_path, "url": url, "model_name": model_name})
     await manager.send_personal_message({"type": "new_job", "job": db[job_id], "job_id": job_id}, user_id)
     return JSONResponse(content={"message": "Tarefa enfileirada!", "job_id": job_id})
 
 
 @app.get("/history/{user_id}")
-async def get_history(user_id: str):
-    db, cutoff, user_jobs = read_db(), datetime.now() - timedelta(hours=24), {}
+async def get_history(user_id: str, request: Request):
+    # [FIX] IDOR: só retorna histórico do user_id autenticado pelo cookie
+    authed_user_id = get_signed_user_id(request)
+    if not authed_user_id or authed_user_id != user_id:
+        raise HTTPException(status_code=403, detail="Acesso negado.")
+
+    db = await read_db_safe()
+    cutoff = datetime.now() - timedelta(hours=24)
+    user_jobs = {}
     for job_id, details in db.items():
         if details.get("user_id") == user_id:
             try:
-                ts_str = details.get("timestamp", "1970-01-01T00:00:00")
-                if datetime.fromisoformat(ts_str) >= cutoff:
+                if datetime.fromisoformat(details.get("timestamp", "1970-01-01T00:00:00")) >= cutoff:
                     user_jobs[job_id] = details
             except ValueError:
                 continue
     for details in user_jobs.values():
         if details.get('status') == 'completed':
             try:
-                if (simple_path := details.get('simple_path')) and os.path.exists(simple_path):
-                    with open(simple_path, 'r', encoding='utf-8') as f:
+                if (p := details.get('simple_path')) and os.path.exists(p):
+                    with open(p, 'r', encoding='utf-8') as f:
                         details['transcription_simple'] = f.read()
-                if (timestamp_path := details.get('timestamp_path')) and os.path.exists(timestamp_path):
-                    with open(timestamp_path, 'r', encoding='utf-8') as f:
+                if (p := details.get('timestamp_path')) and os.path.exists(p):
+                    with open(p, 'r', encoding='utf-8') as f:
                         details['transcription_timestamp'] = f.read()
             except Exception:
                 details['status'] = 'archived'
@@ -438,10 +566,10 @@ async def get_history(user_id: str):
 
 @app.delete("/job/{job_id}", status_code=204)
 async def delete_job(job_id: str, request: Request):
-    user_id = request.cookies.get("user_id")
+    user_id = get_signed_user_id(request)
     if not user_id:
-        raise HTTPException(status_code=403)
-    db = read_db()
+        raise HTTPException(status_code=401)
+    db = await read_db_safe()
     job = db.get(job_id)
     if not job or job.get("user_id") != user_id:
         raise HTTPException(status_code=404)
@@ -452,11 +580,64 @@ async def delete_job(job_id: str, request: Request):
             except OSError:
                 pass
     del db[job_id]
-    write_db(db)
+    await write_db_safe(db)
+
+
+@app.get("/download/{job_id}/simple")
+async def download_simple(job_id: str, request: Request):
+    """Download da transcrição em texto simples (.txt)."""
+    # [FIX] IDOR: verifica autoria do job via cookie assinado
+    user_id = get_signed_user_id(request)
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Sessão inválida.")
+    db = await read_db_safe()
+    job = db.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404)
+    if job.get("user_id") != user_id:
+        raise HTTPException(status_code=403, detail="Acesso negado.")
+    if job.get("status") != "completed":
+        raise HTTPException(status_code=409, detail="Transcrição ainda não concluída.")
+    path = job.get("simple_path")
+    if not path or not os.path.exists(path):
+        raise HTTPException(status_code=404, detail="Arquivo não encontrado.")
+    original = job.get("original_filename", "transcricao")
+    safe_name = "".join(c for c in os.path.splitext(original)[0] if c.isalnum() or c in " _-")[:60].strip()
+    return FileResponse(path, media_type="text/plain; charset=utf-8", filename=f"{safe_name or 'transcricao'}_simples.txt")
+
+
+@app.get("/download/{job_id}/timestamp")
+async def download_timestamp(job_id: str, request: Request):
+    """Download da transcrição com timestamps no formato WebVTT (.vtt)."""
+    user_id = get_signed_user_id(request)
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Sessão inválida.")
+    db = await read_db_safe()
+    job = db.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404)
+    if job.get("user_id") != user_id:
+        raise HTTPException(status_code=403, detail="Acesso negado.")
+    if job.get("status") != "completed":
+        raise HTTPException(status_code=409, detail="Transcrição ainda não concluída.")
+    path = job.get("timestamp_path")
+    if not path or not os.path.exists(path):
+        raise HTTPException(status_code=404, detail="Arquivo não encontrado.")
+    original = job.get("original_filename", "transcricao")
+    safe_name = "".join(c for c in os.path.splitext(original)[0] if c.isalnum() or c in " _-")[:60].strip()
+    return FileResponse(path, media_type="text/vtt; charset=utf-8", filename=f"{safe_name or 'transcricao'}_timestamps.vtt")
 
 
 @app.websocket("/ws/{user_id}")
 async def websocket_endpoint(websocket: WebSocket, user_id: str):
+    # [FIX] IDOR: valida que o user_id do path corresponde ao cookie assinado
+    signed = websocket.cookies.get("user_id")
+    verified = verify_user_id(signed) if signed else None
+    if not verified or verified != user_id:
+        await websocket.close(code=4001)
+        logging.warning(f"WS: Tentativa de conexão não autorizada para user_id={user_id}")
+        return
+
     await manager.connect(user_id, websocket)
     try:
         while True:
@@ -467,43 +648,60 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
 
 # --- Endpoints API v1 (Async) ---
 @app.post("/api/v1/submit", response_model=APIResponse, tags=["API V1 (Async)"])
+@limiter.limit("10/minute")
 async def api_submit_job(
+    request: Request,
     url: str = Form(...),
     model_name: str = Form(DEFAULT_MODEL),
     api_key: str = Security(get_api_key)
 ):
     if model_name not in VALID_MODELS:
         raise HTTPException(status_code=400, detail=f"Modelo inválido. Opções: {VALID_MODELS}")
+    url = validate_url(url)
     job_id = str(uuid.uuid4())
-    db = read_db()
-    db[job_id] = {"user_id": "api_user", "original_filename": url, "model_name": model_name, "status": "queued", "timestamp": datetime.now().isoformat()}
-    write_db(db)
+    db = await read_db_safe()
+    db[job_id] = {"user_id": "api_user", "original_filename": url[:200], "model_name": model_name, "status": "queued", "timestamp": datetime.now().isoformat()}
+    await write_db_safe(db)
     await task_queue.put({"job_id": job_id, "file_path": None, "url": url, "model_name": model_name})
     return APIResponse(status="queued", job_id=job_id)
 
 
 @app.post("/api/v1/submit-file", response_model=APIResponse, tags=["API V1 (Async)"])
+@limiter.limit("10/minute")
 async def api_submit_file_job(
+    request: Request,
     file: UploadFile = File(...),
     model_name: str = Form(DEFAULT_MODEL),
     api_key: str = Security(get_api_key)
 ):
     if model_name not in VALID_MODELS:
         raise HTTPException(status_code=400, detail=f"Modelo inválido. Opções: {VALID_MODELS}")
-    job_id, original_filename = str(uuid.uuid4()), file.filename or "Job"
-    file_path = os.path.join(UPLOADS_DIR, f"{job_id}_{original_filename}")
+
+    safe_filename = os.path.basename(file.filename or "upload")[:200]
+    file_path = os.path.join(UPLOADS_DIR, f"{str(uuid.uuid4())}_{safe_filename}")
+
+    bytes_written = 0
+    job_id = str(uuid.uuid4())
     async with aiofiles.open(file_path, 'wb') as out_file:
         while chunk := await file.read(1024 * 1024):
+            bytes_written += len(chunk)
+            if bytes_written > MAX_UPLOAD_BYTES:
+                await out_file.close()
+                os.remove(file_path)
+                raise HTTPException(status_code=413, detail="Arquivo muito grande.")
             await out_file.write(chunk)
-    db = read_db()
-    db[job_id] = {"user_id": "api_user", "original_filename": original_filename, "model_name": model_name, "status": "queued", "timestamp": datetime.now().isoformat()}
-    write_db(db)
+
+    db = await read_db_safe()
+    db[job_id] = {"user_id": "api_user", "original_filename": safe_filename, "model_name": model_name, "status": "queued", "timestamp": datetime.now().isoformat()}
+    await write_db_safe(db)
     await task_queue.put({"job_id": job_id, "file_path": file_path, "url": None, "model_name": model_name})
     return APIResponse(status="queued", job_id=job_id)
 
 
 @app.post("/api/v1/submit-local", response_model=APIResponse, tags=["API V1 (Async)"])
+@limiter.limit("10/minute")
 async def api_submit_local_job(
+    request: Request,
     file_path: str = Form(...),
     model_name: str = Form(DEFAULT_MODEL),
     api_key: str = Security(get_api_key)
@@ -513,16 +711,18 @@ async def api_submit_local_job(
 
     allowed_dir = os.getenv("ROOT_DIR", "/media")
     normalized_path = os.path.abspath(file_path)
-    if not normalized_path.startswith(allowed_dir):
-        raise HTTPException(status_code=403, detail="Acesso negado: o arquivo deve estar dentro do diretório de mídia permitido.")
-    if not os.path.exists(normalized_path):
+
+    # [FIX] Usar os.sep para evitar bypass com "/mediaevil/..."
+    if not normalized_path.startswith(allowed_dir.rstrip(os.sep) + os.sep):
+        raise HTTPException(status_code=403, detail="Acesso negado.")
+    if not os.path.isfile(normalized_path):
         raise HTTPException(status_code=404, detail="Arquivo local não encontrado.")
 
     job_id = str(uuid.uuid4())
     original_filename = os.path.basename(normalized_path)
-    db = read_db()
+    db = await read_db_safe()
     db[job_id] = {"user_id": "api_user", "original_filename": original_filename, "model_name": model_name, "status": "queued", "timestamp": datetime.now().isoformat()}
-    write_db(db)
+    await write_db_safe(db)
     await task_queue.put({"job_id": job_id, "file_path": normalized_path, "url": None, "is_local": True, "model_name": model_name})
     return APIResponse(status="queued", job_id=job_id)
 
@@ -533,7 +733,7 @@ async def api_get_result(
     timestamp_type: Literal['simple', 'timestamp'] = 'simple',
     api_key: str = Security(get_api_key)
 ):
-    db = read_db()
+    db = await read_db_safe()
     job = db.get(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job ID não encontrado.")
@@ -542,7 +742,7 @@ async def api_get_result(
         return APIResponse(status=status, job_id=job_id, error=job.get("error"))
     file_path = job.get(f"{timestamp_type}_path")
     if not file_path or not os.path.exists(file_path):
-        return APIResponse(status="failed", error="Arquivo de transcrição não encontrado.", job_id=job_id)
+        return APIResponse(status="failed", error="Arquivo não encontrado.", job_id=job_id)
     async with aiofiles.open(file_path, 'r', encoding='utf-8') as f:
         transcription_text = await f.read()
     return APIResponse(status="completed", transcription=transcription_text, job_id=job_id)

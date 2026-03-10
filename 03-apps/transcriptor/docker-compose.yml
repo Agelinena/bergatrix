@@ -11,13 +11,17 @@ services:
     command: uvicorn main:app --host 0.0.0.0 --port 8000
     environment:
       - API_KEY=${API_KEY}
+      - SECRET_KEY=${SECRET_KEY}
       - NVIDIA_VISIBLE_DEVICES=all
       - HF_TOKEN=${HF_TOKEN}
       - COMPUTE_TYPE=int8
+      - ROOT_DIR=/media
     runtime: nvidia
     volumes:
       - ${TRANSCRIPTOR_DATA_DIR}transcriptor:/app/data
-      - ${TRANSCRIPTOR_DATA_DIR}transcriptor/models:/app/models
+      - ${TRANSCRIPTOR_DATA_DIR}transcriptor/models/whisper-small:/app/models/whisper-small
+      - ${TRANSCRIPTOR_DATA_DIR}transcriptor/models/whisper-medium:/app/models/whisper-medium
+      - ${TRANSCRIPTOR_DATA_DIR}transcriptor/models/whisper-large-v3:/app/models/whisper-large-v3
     networks:
       - bergatrix-proxy
     deploy:

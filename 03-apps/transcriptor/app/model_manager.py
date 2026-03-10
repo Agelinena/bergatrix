@@ -6,19 +6,19 @@ from faster_whisper import WhisperModel
 
 logger = logging.getLogger(__name__)
 
-VALID_MODELS = ["small", "distil-large-v3", "large-v3"]
+VALID_MODELS = ["small", "medium", "large-v3"]
 
-# VRAM estimada por modelo (usando int8_float16)
+# VRAM estimada por modelo (usando int8)
 MODEL_VRAM_GB = {
     "small": 1.0,
-    "distil-large-v3": 3.0,
+    "medium": 2.5,
     "large-v3": 6.0,
 }
 
 # Mapeamento para as pastas locais montadas via volume no Docker
 MODEL_PATHS = {
     "small": "/app/models/whisper-small",
-    "distil-large-v3": "/app/models/distil-large-v3",
+    "medium": "/app/models/whisper-medium",
     "large-v3": "/app/models/whisper-large-v3",
 }
 
@@ -65,11 +65,12 @@ class ModelManager:
 
         # Configuração de dispositivo e precisão
         device = "cuda" if torch.cuda.is_available() else "cpu"
-        
-        # Prioriza a variável de ambiente do Docker Compose
-        compute_type = os.getenv("COMPUTE_TYPE")
-        if not compute_type:
-            compute_type = "int8_float16" if device == "cuda" else "int8"
+
+        # int8 é obrigatório para respeitar o limite de 6GB da GTX 1060
+        # Prioriza a variável de ambiente, mas força int8 como padrão seguro
+        compute_type = os.getenv("COMPUTE_TYPE", "int8")
+        if device == "cpu":
+            compute_type = "int8"
 
         model_path = MODEL_PATHS.get(model_name)
 
@@ -81,15 +82,15 @@ class ModelManager:
         try:
             # Carrega o modelo usando o caminho local
             self._model = WhisperModel(
-                model_path, 
-                device=device, 
+                model_path,
+                device=device,
                 compute_type=compute_type,
                 local_files_only=True  # Garante que não tentará baixar nada
             )
             self._current_model_name = model_name
             logger.info(f"MODEL MANAGER: Modelo '{model_name}' carregado com sucesso.")
             return self._model
-            
+
         except RuntimeError as e:
             if "out of memory" in str(e).lower() or "cuda" in str(e).lower():
                 gc.collect()
