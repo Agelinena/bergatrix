@@ -36,7 +36,8 @@ services:
       - "traefik.http.routers.jellyfin-router.tls.certresolver=letsencrypt"
       - "traefik.http.services.jellyfin-service.loadbalancer.server.port=8096"
 
-  catalogo: # Jellyseerr
+  catalogo:
+    # Jellyseerr
     image: fallenbagel/jellyseerr:latest
     container_name: catalogo
     restart: unless-stopped
@@ -191,6 +192,21 @@ services:
       - "traefik.http.routers.solvearr-router.rule=Host(`solvearr.${DOMAIN}`)"
       - "traefik.http.routers.solvearr-router.middlewares=internal-only@docker"
       - "traefik.http.services.solvearr-service.loadbalancer.server.port=8191"
+
+  flaresolverr:
+    image: ghcr.io/flaresolverr/flaresolverr:latest
+    container_name: flaresolverr
+    environment:
+      - LOG_LEVEL=info
+    restart: unless-stopped
+    networks:
+      - bergatrix-proxy
+      - media-network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.flaresolverr-router.rule=Host(`flaresolverr.${DOMAIN}`)"
+      - "traefik.http.routers.flaresolverr-router.middlewares=internal-only@docker"
+      - "traefik.http.services.flaresolverr-service.loadbalancer.server.port=8191"
 
   legendarr-web:
     build: ./app/web
