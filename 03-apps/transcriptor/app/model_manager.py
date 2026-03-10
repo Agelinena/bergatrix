@@ -14,11 +14,12 @@ MODEL_VRAM_GB = {
     "large-v3": 6.0,
 }
 
-# Map friendly model names to HuggingFace repo IDs
+# Map friendly model names to CTranslate2-converted HuggingFace repo IDs
+# faster-whisper requires models pre-converted to CTranslate2 format
 MODEL_REPO_IDS = {
-    "small": "small",
-    "distil-large-v3": "distil-whisper/distil-large-v3",
-    "large-v3": "large-v3",
+    "small": "Systran/faster-whisper-small",
+    "distil-large-v3": "Systran/faster-distil-whisper-large-v3",
+    "large-v3": "Systran/faster-whisper-large-v3",
 }
 
 

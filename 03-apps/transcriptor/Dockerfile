@@ -30,11 +30,12 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Baixa TODOS os modelos durante o build para evitar dependência de internet no runtime
+# Usa repos Systran/* que já são convertidos no formato CTranslate2 (exigido pelo faster-whisper)
 RUN python3 -c "\
 from faster_whisper import WhisperModel; \
-print('Baixando small...'); WhisperModel('small', device='cpu', compute_type='int8'); \
-print('Baixando distil-large-v3...'); WhisperModel('distil-whisper/distil-large-v3', device='cpu', compute_type='int8'); \
-print('Baixando large-v3...'); WhisperModel('large-v3', device='cpu', compute_type='int8'); \
+print('Baixando small...'); WhisperModel('Systran/faster-whisper-small', device='cpu', compute_type='int8'); \
+print('Baixando distil-large-v3...'); WhisperModel('Systran/faster-distil-whisper-large-v3', device='cpu', compute_type='int8'); \
+print('Baixando large-v3...'); WhisperModel('Systran/faster-whisper-large-v3', device='cpu', compute_type='int8'); \
 print('Todos os modelos baixados!')"
 
 # Copia o código da aplicação
