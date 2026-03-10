@@ -111,13 +111,30 @@ async def process_transcription(job_id: str, file_path: str | None, url: str | N
                 # Load model (unloads previous if different) and transcribe in thread executor
                 def transcribe():
                     model = model_manager.load(model_name)
+                    
+                    # Parâmetros de 'Rédea Curta' para o modelo
                     segments, info = model.transcribe(
                         audio_path,
                         language="pt",
+                        task="transcribe",         # Explicitamente NÃO traduzir
+                        beam_size=5,
+                        best_of=5,                 # Melhora a escolha da melhor frase
                         vad_filter=True,
-                        beam_size=5
+                        # VAD Tuning: Ignora pausas menores que 2 segundos (evita timestamps picados)
+                        vad_parameters=dict(
+                            min_silence_duration_ms=2000, 
+                            speech_pad_ms=400
+                        ),
+                        # Prompt forte para 'setar' o cérebro da IA no PT-BR
+                        initial_prompt="Transcrição fiel em português do Brasil. Sem tradução. Mantendo a pontuação natural.",
+                        # Impede que o modelo tente adivinhar o que vem depois se o áudio sumir
+                        condition_on_previous_text=False, 
+                        # Se o modelo tiver 60% de certeza que é silêncio, ele cala a boca
+                        no_speech_threshold=0.6,
+                        # Temperaturas menores evitam 'alucinações' criativas
+                        temperature=0
                     )
-                    # Consume the generator synchronously
+                    
                     seg_list = list(segments)
                     return seg_list, info
 
@@ -135,18 +152,33 @@ async def process_transcription(job_id: str, file_path: str | None, url: str | N
                 raise
 
         # Build transcript strings from segments
+        # Build transcript strings from segments
         vtt_lines = ["WEBVTT\n"]
         simple_lines = []
+        current_paragraph = ""
+
         for seg in segments:
+            # Formatação VTT (Mantém igual para legendas)
             start = _format_vtt_time(seg.start)
             end = _format_vtt_time(seg.end)
             vtt_lines.append(f"{start} --> {end}")
             vtt_lines.append(seg.text.strip())
             vtt_lines.append("")
-            simple_lines.append(seg.text.strip())
+
+            # Lógica para o texto simples (Agrupa até ~300 caracteres antes de quebrar linha)
+            text_chunk = seg.text.strip()
+            if len(current_paragraph) + len(text_chunk) < 300:
+                current_paragraph += " " + text_chunk
+            else:
+                simple_lines.append(current_paragraph.strip())
+                current_paragraph = text_chunk
+        
+        # Adiciona o último pedaço
+        if current_paragraph:
+            simple_lines.append(current_paragraph.strip())
 
         vtt_content = "\n".join(vtt_lines)
-        simple_text = "\n".join(simple_lines)
+        simple_text = "\n\n".join(simple_lines) # Quebra com linha dupla entre parágrafos
 
         timestamp_path = os.path.join(TRANSCRIPTIONS_DIR, f"{job_id}_timestamp.txt")
         simple_path = os.path.join(TRANSCRIPTIONS_DIR, f"{job_id}_simple.txt")

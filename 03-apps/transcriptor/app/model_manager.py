@@ -1,33 +1,32 @@
 import gc
 import logging
 import torch
+import os
 from faster_whisper import WhisperModel
 
 logger = logging.getLogger(__name__)
 
 VALID_MODELS = ["small", "distil-large-v3", "large-v3"]
 
-# Approximate VRAM requirement per model in GB (int8_float16)
+# VRAM estimada por modelo (usando int8_float16)
 MODEL_VRAM_GB = {
     "small": 1.0,
     "distil-large-v3": 3.0,
     "large-v3": 6.0,
 }
 
-# Map friendly model names to CTranslate2-converted HuggingFace repo IDs
-# faster-whisper requires models pre-converted to CTranslate2 format
-MODEL_REPO_IDS = {
-    "small": "Systran/faster-whisper-small",
-    "distil-large-v3": "Systran/faster-distil-whisper-large-v3",
-    "large-v3": "Systran/faster-whisper-large-v3",
+# Mapeamento para as pastas locais montadas via volume no Docker
+MODEL_PATHS = {
+    "small": "/app/models/whisper-small",
+    "distil-large-v3": "/app/models/distil-large-v3",
+    "large-v3": "/app/models/whisper-large-v3",
 }
 
-
 class ModelManager:
-    """Singleton that manages a single faster-whisper model in GPU VRAM.
+    """Singleton que gerencia os modelos do faster-whisper na VRAM da GPU.
 
-    Handles safe unloading of the previous model before loading the next one,
-    ensuring the 6GB VRAM budget is never exceeded by two concurrent models.
+    Garante que apenas um modelo esteja carregado por vez para respeitar o 
+    limite de VRAM do servidor.
     """
 
     _instance = None
@@ -40,19 +39,19 @@ class ModelManager:
         return cls._instance
 
     def load(self, model_name: str) -> WhisperModel:
-        """Load the requested model, unloading the current one if different."""
+        """Carrega o modelo solicitado, descarregando o anterior se necessário."""
 
         if model_name not in VALID_MODELS:
             raise ValueError(
                 f"Modelo inválido: '{model_name}'. Opções: {VALID_MODELS}"
             )
 
-        # Already loaded — return immediately
+        # Se já estiver carregado, retorna imediatamente
         if self._current_model_name == model_name and self._model is not None:
             logger.info(f"MODEL MANAGER: Modelo '{model_name}' já está carregado. Reutilizando.")
             return self._model
 
-        # Unload previous model to free VRAM
+        # Descarrega o modelo anterior para liberar VRAM
         if self._model is not None:
             logger.info(
                 f"MODEL MANAGER: Descarregando modelo '{self._current_model_name}' para liberar VRAM..."
@@ -64,30 +63,41 @@ class ModelManager:
             torch.cuda.empty_cache()
             logger.info("MODEL MANAGER: VRAM liberada.")
 
-        # Load new model
+        # Configuração de dispositivo e precisão
         device = "cuda" if torch.cuda.is_available() else "cpu"
-        # int8_float16 = mixed precision (wider GPU compatibility than pure float16)
-        compute_type = "int8_float16" if device == "cuda" else "int8"
+        
+        # Prioriza a variável de ambiente do Docker Compose
+        compute_type = os.getenv("COMPUTE_TYPE")
+        if not compute_type:
+            compute_type = "int8_float16" if device == "cuda" else "int8"
+
+        model_path = MODEL_PATHS.get(model_name)
 
         logger.info(
-            f"MODEL MANAGER: Carregando modelo '{model_name}' no dispositivo '{device}' "
-            f"(compute_type={compute_type})..."
+            f"MODEL MANAGER: Carregando modelo '{model_name}' de '{model_path}' "
+            f"no dispositivo '{device}' (compute_type={compute_type})..."
         )
 
         try:
-            repo_id = MODEL_REPO_IDS[model_name]
-            self._model = WhisperModel(repo_id, device=device, compute_type=compute_type)
+            # Carrega o modelo usando o caminho local
+            self._model = WhisperModel(
+                model_path, 
+                device=device, 
+                compute_type=compute_type,
+                local_files_only=True  # Garante que não tentará baixar nada
+            )
             self._current_model_name = model_name
             logger.info(f"MODEL MANAGER: Modelo '{model_name}' carregado com sucesso.")
             return self._model
+            
         except RuntimeError as e:
             if "out of memory" in str(e).lower() or "cuda" in str(e).lower():
                 gc.collect()
                 torch.cuda.empty_cache()
                 raise RuntimeError(
-                    f"VRAM insuficiente para carregar o modelo '{model_name}'. "
+                    f"Erro de GPU/VRAM ao carregar o modelo '{model_name}'. "
                     f"Requer aprox. {MODEL_VRAM_GB.get(model_name, '?')}GB. "
-                    f"Tente o modelo 'small'."
+                    f"Detalhes: {str(e)}"
                 ) from e
             raise
 
@@ -95,6 +105,5 @@ class ModelManager:
     def current_model_name(self) -> str | None:
         return self._current_model_name
 
-
-# Global singleton instance
+# Instância singleton global
 model_manager = ModelManager()

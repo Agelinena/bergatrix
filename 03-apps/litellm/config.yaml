@@ -1,42 +1,19 @@
 model_list:
-  # 1. WILDCARD: Permite chamar QUALQUER modelo do OpenRouter (Pago)
-  # Chamada via API: model="openrouter/anthropic/claude-3-opus"
-  - model_name: "openrouter/*"
-    litellm_params:
-      model: "openrouter/*"
-      api_key: "os.environ/OPENROUTER_API_KEY"
-      api_base: "https://openrouter.ai/api/v1"
-
-  # 2. ALIAS FIXO: DeepSeek V3 (Pago)
+  # Modelos estáticos — aliases fixos não gerenciados pelo sidecar
   - model_name: "deepseek-v3"
     litellm_params:
       model: "openrouter/deepseek/deepseek-v3"
       api_key: "os.environ/OPENROUTER_API_KEY"
+      api_base: "https://openrouter.ai/api/v1"
 
 router_settings:
   routing_strategy: "least-busy"
   num_retries: 3
-  retry_after: 5
-  allowed_fails: 1
-  cooldown_time: 60
-  enable_pre_call_checks: true
+  allowed_fails: 2        # após 2 falhas, pausa o modelo temporariamente
+  cooldown_time: 120      # segundos fora após falhas consecutivas
 
 general_settings:
   master_key: "os.environ/LITELLM_MASTER_KEY"
   database_url: "os.environ/DATABASE_URL"
-  
-  # CONFIGURAÇÕES DE PERSISTÊNCIA (Ativa a criação das tabelas no DB)
   store_model_in_db: true
   load_models_from_db: true
-  proxy_batch_write_at: 1
-  
-  # SINCRONIZAÇÃO: Frequência para ler novos modelos ":free" injetados pelo updater
-  sync_frequency: 60 
-
-  # INTERFACE E AUTENTICAÇÃO
-  ui_access_mode: "username_password"
-  allow_user_auth_db: true
-
-  # LOGS E BUDGETS
-  disable_reset_budget: false
-  store_prompts_in_spend_logs: false

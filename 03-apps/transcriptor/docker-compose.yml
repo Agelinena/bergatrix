@@ -12,11 +12,12 @@ services:
     environment:
       - API_KEY=${API_KEY}
       - NVIDIA_VISIBLE_DEVICES=all
-      - ROOT_DIR=${ROOT_DIR}
+      - HF_TOKEN=${HF_TOKEN}
+      - COMPUTE_TYPE=int8
     runtime: nvidia
     volumes:
-      - ${TRANSCRIPTOR_DATA_DIR}:/app/data
-      - ${ROOT_DIR}:/media
+      - ${TRANSCRIPTOR_DATA_DIR}transcriptor:/app/data
+      - ${TRANSCRIPTOR_DATA_DIR}transcriptor/models:/app/models
     networks:
       - bergatrix-proxy
     deploy:

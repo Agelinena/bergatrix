@@ -1,0 +1,45 @@
+services:
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: open-webui
+    restart: unless-stopped
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
+    volumes:
+      - ${OPENWEBUI_DATA_DIR}:/app/backend/data
+    environment:
+      # ─── Identidade ─────────────────────────────────────────────────────────
+      WEBUI_SECRET_KEY: ${WEBUI_SECRET_KEY}
+      WEBUI_NAME: "Bergatrix AI"
+
+      # ─── Backend: LiteLLM como OpenAI-compatible endpoint ───────────────────
+      # Aponta para o LiteLLM proxy via rede interna bergatrix-proxy
+      OPENAI_API_BASE_URL: http://litellm:4000/v1
+      OPENAI_API_KEY: ${LITELLM_MASTER_KEY}
+
+      # Desativa Ollama (não estamos usando localmente)
+      ENABLE_OLLAMA_API: "false"
+
+      # ─── Auth ───────────────────────────────────────────────────────────────
+      # Desativa signup público — apenas contas criadas pelo admin entram
+      ENABLE_SIGNUP: "false"
+      # Primeiro login cria a conta admin automaticamente
+      WEBUI_AUTH: "true"
+
+      # ─── Modelo padrão ──────────────────────────────────────────────────────
+      DEFAULT_MODELS: "deepseek-v3"
+
+    networks:
+      - bergatrix-proxy  # acessa Traefik + litellm:4000
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.openwebui.rule=Host(`chat.${DOMAIN}`)"
+      - "traefik.http.routers.openwebui.entrypoints=websecure"
+      - "traefik.http.routers.openwebui.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.openwebui.middlewares=internal-only@docker"
+      - "traefik.http.services.openwebui.loadbalancer.server.port=8080"
+
+networks:
+  bergatrix-proxy:
+    external: true
