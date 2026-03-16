@@ -27,6 +27,11 @@ services:
           - wazuh.indexer
     volumes:
       - ${STORAGE_PATH}/wazuh/indexer:/var/lib/opensearch/data
+      - ./certs/node-1.pem:/usr/share/wazuh-indexer/certs/wazuh-indexer.pem
+      - ./certs/node-1-key.pem:/usr/share/wazuh-indexer/certs/wazuh-indexer-key.pem
+      - ./certs/admin.pem:/usr/share/wazuh-indexer/certs/admin.pem
+      - ./certs/admin-key.pem:/usr/share/wazuh-indexer/certs/admin-key.pem
+      - ./certs/root-ca.pem:/usr/share/wazuh-indexer/certs/root-ca.pem
     env_file:
       - .env
 
@@ -54,6 +59,9 @@ services:
     volumes:
       - ${STORAGE_PATH}/wazuh/manager_etc:/var/ossec/etc
       - ${STORAGE_PATH}/wazuh/manager_logs:/var/ossec/logs
+      - ./certs/wazuh-1.pem:/etc/filebeat/certs/wazuh-server.crt
+      - ./certs/wazuh-1-key.pem:/etc/filebeat/certs/wazuh-server.key
+      - ./certs/root-ca.pem:/etc/filebeat/certs/root-ca.pem
     networks:
       wazuh-internal:
         aliases:
@@ -84,6 +92,14 @@ services:
       - DASHBOARD_PASSWORD=${WAZUH_PASSWORD}
       - API_USERNAME=wazuh-wui
       - API_PASSWORD=${WAZUH_API_PASSWORD}
+      - OPENSEARCH_SSL_CERTIFICATEAUTHORITIES=/usr/share/wazuh-dashboard/certs/root-ca.pem
+      - SERVER_SSL_ENABLED=true
+      - SERVER_SSL_CERTIFICATE=/usr/share/wazuh-dashboard/certs/wazuh-dashboard.pem
+      - SERVER_SSL_KEY=/usr/share/wazuh-dashboard/certs/wazuh-dashboard-key.pem
+    volumes:
+      - ./certs/dashboard.pem:/usr/share/wazuh-dashboard/certs/wazuh-dashboard.pem
+      - ./certs/dashboard-key.pem:/usr/share/wazuh-dashboard/certs/wazuh-dashboard-key.pem
+      - ./certs/root-ca.pem:/usr/share/wazuh-dashboard/certs/root-ca.pem
     dns:
       - 8.8.8.8
       - 1.1.1.1
