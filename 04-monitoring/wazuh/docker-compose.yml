@@ -1,0 +1,78 @@
+services:
+  wazuh-indexer:
+    image: wazuh/wazuh-indexer:4.7.2
+    container_name: wazuh-indexer
+    restart: unless-stopped
+    environment:
+      - OPENSEARCH_JAVA_OPTS=-Xms1g -Xmx1g
+      - INDEXER_USERNAME=admin
+      - INDEXER_PASSWORD=${WAZUH_PASSWORD}
+    networks:
+      - wazuh-internal
+    volumes:
+      - ${STORAGE_PATH}/wazuh/indexer:/var/lib/opensearch/data
+    env_file:
+      - .env
+
+  wazuh-manager:
+    image: wazuh/wazuh-manager:4.7.2
+    container_name: wazuh-manager
+    restart: unless-stopped
+    depends_on:
+      - wazuh-indexer
+    environment:
+      - INDEXER_URL=https://wazuh-indexer:9200
+      - INDEXER_USERNAME=admin
+      - INDEXER_PASSWORD=${WAZUH_PASSWORD}
+      - FILEBEAT_SSL_VERIFICATION_MODE=none
+    volumes:
+      - ${STORAGE_PATH}/wazuh/manager_etc:/var/ossec/etc
+      - ${STORAGE_PATH}/wazuh/manager_logs:/var/ossec/logs
+    networks:
+      - wazuh-internal
+    ports:
+      - "1514:1514/tcp"   # Recebimento de eventos dos agentes (TCP)
+      - "1515:1515/tcp"   # Registro de novos agentes
+    env_file:
+      - .env
+
+  wazuh-dashboard:
+    image: wazuh/wazuh-dashboard:4.7.2
+    container_name: wazuh-dashboard
+    restart: unless-stopped
+    depends_on:
+      - wazuh-indexer
+      - wazuh-manager
+    networks:
+      - bergatrix-proxy
+      - wazuh-internal
+    environment:
+      - INDEXER_USERNAME=admin
+      - INDEXER_PASSWORD=${WAZUH_PASSWORD}
+      - WAZUH_API_URL=https://wazuh-manager
+      - DASHBOARD_USERNAME=admin
+      - DASHBOARD_PASSWORD=${WAZUH_PASSWORD}
+      - API_USERNAME=wazuh-wui
+      - API_PASSWORD=${WAZUH_API_PASSWORD}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=bergatrix-proxy"
+      - "traefik.http.routers.wazuh.rule=Host(`wazuh.${DOMAIN}`)"
+      - "traefik.http.routers.wazuh.entrypoints=websecure"
+      - "traefik.http.routers.wazuh.tls=true"
+      - "traefik.http.routers.wazuh.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.wazuh.middlewares=internal-only@docker,authentik@docker"
+      - "traefik.http.services.wazuh.loadbalancer.server.port=5601"
+      - "traefik.http.services.wazuh.loadbalancer.server.scheme=https"
+      # O dashboard usa HTTPS com cert autoassinado — ignora verificação TLS internamente
+      - "traefik.http.serversTransports.wazuh-transport.insecureSkipVerify=true"
+      - "traefik.http.services.wazuh.loadbalancer.serversTransport=wazuh-transport"
+    env_file:
+      - .env
+
+networks:
+  bergatrix-proxy:
+    external: true
+  wazuh-internal:
+    driver: bridge
+
