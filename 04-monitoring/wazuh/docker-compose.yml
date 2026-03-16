@@ -28,8 +28,8 @@ services:
           - wazuh.indexer
     volumes:
       - ${STORAGE_PATH}/wazuh/indexer:/var/lib/opensearch/data
-      - ./certs/node-1.pem:/usr/share/wazuh-indexer/certs/wazuh-indexer.pem
-      - ./certs/node-1-key.pem:/usr/share/wazuh-indexer/certs/wazuh-indexer-key.pem
+      - ./certs/node-1.pem:/usr/share/wazuh-indexer/certs/node-1.pem
+      - ./certs/node-1-key.pem:/usr/share/wazuh-indexer/certs/node-1-key.pem
       - ./certs/admin.pem:/usr/share/wazuh-indexer/certs/admin.pem
       - ./certs/admin-key.pem:/usr/share/wazuh-indexer/certs/admin-key.pem
       - ./certs/root-ca.pem:/usr/share/wazuh-indexer/certs/root-ca.pem
