@@ -1,6 +1,6 @@
 #!/bin/bash
 docker exec -it wazuh-indexer \
-/usr/share/wazuh-indexer/opensearch-security/tools/securityadmin.sh \
+/usr/share/wazuh-indexer/plugins/opensearch-security/tools/securityadmin.sh \
 -cd /usr/share/wazuh-indexer/opensearch-security/ \
 -nhnv -cacert /usr/share/wazuh-indexer/certs/root-ca.pem \
 -cert /usr/share/wazuh-indexer/certs/admin.pem \
