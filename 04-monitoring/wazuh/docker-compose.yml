@@ -20,6 +20,9 @@ services:
     restart: unless-stopped
     depends_on:
       - wazuh-indexer
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
     environment:
       - INDEXER_URL=https://wazuh-indexer:9200
       - INDEXER_USERNAME=admin
@@ -31,8 +34,8 @@ services:
     networks:
       - wazuh-internal
     ports:
-      - "1514:1514/tcp"   # Recebimento de eventos dos agentes (TCP)
-      - "1515:1515/tcp"   # Registro de novos agentes
+      - "1514:1514/tcp" # Recebimento de eventos dos agentes (TCP)
+      - "1515:1515/tcp" # Registro de novos agentes
     env_file:
       - .env
 
@@ -54,6 +57,9 @@ services:
       - DASHBOARD_PASSWORD=${WAZUH_PASSWORD}
       - API_USERNAME=wazuh-wui
       - API_PASSWORD=${WAZUH_API_PASSWORD}
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=bergatrix-proxy"
@@ -75,4 +81,3 @@ networks:
     external: true
   wazuh-internal:
     driver: bridge
-
