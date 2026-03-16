@@ -172,7 +172,7 @@ async def process_transcription(
         audio_path = None
         if url:
             output_template = f"{os.path.join(UPLOADS_DIR, job_id)}.%(ext)s"
-            await run_command(["yt-dlp", "--no-playlist", "-x", "--audio-format", "mp3", "--output", output_template, "--", url])
+            await run_command(["yt-dlp", "--force-ipv4", "--no-playlist", "-x", "--audio-format", "mp3", "--output", output_template, "--", url])
             found_files = [f for f in os.listdir(UPLOADS_DIR) if f.startswith(job_id)]
             if not found_files:
                 raise FileNotFoundError("yt-dlp não gerou arquivo.")
