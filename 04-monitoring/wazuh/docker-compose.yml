@@ -98,7 +98,7 @@ services:
       - INDEXER_PASSWORD=${WAZUH_PASSWORD}
       - WAZUH_API_URL=https://wazuh.manager
       - DASHBOARD_USERNAME=kibanaserver
-      - DASHBOARD_PASSWORD=${WAZUH_PASSWORD}
+      - DASHBOARD_PASSWORD=${WAZUH_KIBANA_PASSWORD}
       - API_USERNAME=wazuh-wui
       - API_PASSWORD=${WAZUH_API_PASSWORD}
       - OPENSEARCH_SSL_CERTIFICATEAUTHORITIES=/usr/share/wazuh-dashboard/certs/root-ca.pem
