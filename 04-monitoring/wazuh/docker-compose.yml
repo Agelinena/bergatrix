@@ -1,7 +1,17 @@
 services:
+  generator:
+    image: wazuh/wazuh-certs-generator:0.0.1
+    hostname: wazuh-certs-generator
+    volumes:
+      - ./config/wazuh_indexer_ssl_certs/:/certificates/
+      - ./config/certs.yml:/config/certs.yml
+
   wazuh-indexer:
     image: wazuh/wazuh-indexer:4.7.2
     container_name: wazuh-indexer
+    depends_on:
+      generator:
+        condition: service_completed_successfully
     restart: unless-stopped
     environment:
       - OPENSEARCH_JAVA_OPTS=-Xms1g -Xmx1g
