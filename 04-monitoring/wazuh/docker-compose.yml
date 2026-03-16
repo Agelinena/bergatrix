@@ -50,9 +50,6 @@ services:
     image: wazuh/wazuh-manager:4.7.2
     container_name: wazuh-manager
     restart: unless-stopped
-    depends_on:
-      wazuh-indexer:
-        condition: service_healthy
     dns:
       - 8.8.8.8
       - 1.1.1.1
