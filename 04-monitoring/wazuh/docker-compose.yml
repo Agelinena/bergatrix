@@ -2,6 +2,11 @@ services:
   generator:
     image: wazuh/wazuh-certs-generator:0.0.1
     hostname: wazuh-certs-generator
+    networks:
+      - wazuh-internal
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
     volumes:
       - ./config/wazuh_indexer_ssl_certs/:/certificates/
       - ./config/certs.yml:/config/certs.yml
