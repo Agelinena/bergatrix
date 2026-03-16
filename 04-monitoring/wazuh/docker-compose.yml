@@ -5,6 +5,7 @@ services:
     restart: unless-stopped
     environment:
       - OPENSEARCH_JAVA_OPTS=-Xms1g -Xmx1g
+      - discovery.type=single-node
       - INDEXER_USERNAME=admin
       - INDEXER_PASSWORD=${WAZUH_PASSWORD}
     # O OpenSearch precisa destes ulimits para subir — sem eles recusa conexão na 9200
