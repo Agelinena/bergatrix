@@ -1,0 +1,12 @@
+# Rode UMA VEZ antes de subir o stack principal:
+#   docker compose -f generate-certs.yml run --rm wazuh-cert-tool
+# Os certs serão gerados em ./certs/
+
+services:
+  wazuh-cert-tool:
+    image: wazuh/wazuh-certs-generator:0.0.2
+    container_name: wazuh-cert-tool
+    volumes:
+      - ./config/certs.yml:/config/certs.yml
+      - ./certs/:/certificates/
+    command: -c /config/certs.yml
