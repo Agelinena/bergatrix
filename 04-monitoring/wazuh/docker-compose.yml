@@ -8,7 +8,9 @@ services:
       - INDEXER_USERNAME=admin
       - INDEXER_PASSWORD=${WAZUH_PASSWORD}
     networks:
-      - wazuh-internal
+      wazuh-internal:
+        aliases:
+          - wazuh.indexer
     volumes:
       - ${STORAGE_PATH}/wazuh/indexer:/var/lib/opensearch/data
     env_file:
@@ -24,7 +26,7 @@ services:
       - 8.8.8.8
       - 1.1.1.1
     environment:
-      - INDEXER_URL=https://wazuh-indexer:9200
+      - INDEXER_URL=https://wazuh.indexer:9200
       - INDEXER_USERNAME=admin
       - INDEXER_PASSWORD=${WAZUH_PASSWORD}
       - FILEBEAT_SSL_VERIFICATION_MODE=none
@@ -32,7 +34,9 @@ services:
       - ${STORAGE_PATH}/wazuh/manager_etc:/var/ossec/etc
       - ${STORAGE_PATH}/wazuh/manager_logs:/var/ossec/logs
     networks:
-      - wazuh-internal
+      wazuh-internal:
+        aliases:
+          - wazuh.manager
     ports:
       - "1514:1514/tcp" # Recebimento de eventos dos agentes (TCP)
       - "1515:1515/tcp" # Registro de novos agentes
@@ -52,7 +56,7 @@ services:
     environment:
       - INDEXER_USERNAME=admin
       - INDEXER_PASSWORD=${WAZUH_PASSWORD}
-      - WAZUH_API_URL=https://wazuh-manager
+      - WAZUH_API_URL=https://wazuh.manager
       - DASHBOARD_USERNAME=admin
       - DASHBOARD_PASSWORD=${WAZUH_PASSWORD}
       - API_USERNAME=wazuh-wui
