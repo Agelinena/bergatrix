@@ -226,8 +226,11 @@ async def process_transcription(
                             # já que estamos em um executor fora do event loop
                             def update_status(_i=i, _tot=total_chunks):
                                 d = read_db()
-                                d[job_id]["status"] = f"transcribing ({_i+1}/{_tot})"
-                                write_db(d)
+                                if job_id in d:
+                                    d[job_id]["status"] = f"transcribing ({_i+1}/{_tot})"
+                                    write_db(d)
+                                else:
+                                    logging.warning(f"WORKER [{job_id}]: Job deletado do DB durante transcrição.")
                             loop.call_soon_threadsafe(update_status)
                             
                             segments_gen, info = model.transcribe(
@@ -278,21 +281,29 @@ async def process_transcription(
                 error_message = sanitize_error(str(e))
                 logging.error(f"WORKER [{job_id}]: Falha de GPU: {e}")
                 db = await read_db_safe()
-                db[job_id]["status"] = "failed"
-                db[job_id]["error"] = error_message
-                await write_db_safe(db)
+                if job_id in db:
+                    db[job_id]["status"] = "failed"
+                    db[job_id]["error"] = error_message
+                    await write_db_safe(db)
                 raise
                 
         # Fora do Lock (após liberação de disco)
         db = await read_db_safe()
-        db[job_id].update({
-            "timestamp_path": timestamp_path,
-            "simple_path": simple_path,
-            "status": "completed",
-            "completed_at": datetime.now().isoformat()
-        })
-        await write_db_safe(db)
-        logging.info(f"WORKER [{job_id}]: Concluído.")
+        if job_id in db:
+            db[job_id].update({
+                "timestamp_path": timestamp_path,
+                "simple_path": simple_path,
+                "status": "completed",
+                "completed_at": datetime.now().isoformat()
+            })
+            await write_db_safe(db)
+            logging.info(f"WORKER [{job_id}]: Concluído.")
+        else:
+            logging.warning(f"WORKER [{job_id}]: Concluído, mas o job foi deletado do DB. Limpando resíduos.")
+            for p in [timestamp_path, simple_path]:
+                if p and os.path.exists(p):
+                    try: os.remove(p)
+                    except OSError: pass
         try:
             os.rmdir(chunk_dir)
         except OSError:
