@@ -200,12 +200,13 @@ async def process_transcription(
                         audio_path,
                         language="pt",
                         task="transcribe",
-                        beam_size=1 if model_name == "large-v3" else 5,
-                        best_of=1 if model_name == "large-v3" else 5,
+                        beam_size=1 if model_name == "large-v3" else 2,
+                        best_of=1 if model_name == "large-v3" else 2,
                         vad_filter=True,
-                        vad_parameters=dict(min_silence_duration_ms=2000, speech_pad_ms=400),
+                        vad_parameters=dict(min_silence_duration_ms=400, speech_pad_ms=100),
                         initial_prompt="Transcrição fiel em português do Brasil. Sem tradução. Mantendo a pontuação natural.",
                         condition_on_previous_text=False,
+                        without_timestamps=False, # Requer timestamps lineares pelo VTT
                         no_speech_threshold=0.6,
                         temperature=0
                     )
