@@ -197,7 +197,8 @@ async def process_transcription(
             try:
                 def transcribe():
                     model = model_manager.load(model_name)
-                    segments, info = model.transcribe(
+                    # O model.transcribe retorna um generator (`segments`) e os `info`.
+                    segments_gen, info = model.transcribe(
                         audio_path,
                         language="pt",
                         task="transcribe",
@@ -210,9 +211,43 @@ async def process_transcription(
                         no_speech_threshold=0.6,
                         temperature=0
                     )
-                    return list(segments), info
+                    
+                    # Preparar os arquivos de saída AQUI mesmo, para escrever imediatamente
+                    timestamp_path = os.path.join(TRANSCRIPTIONS_DIR, f"{job_id}_timestamp.vtt")
+                    simple_path = os.path.join(TRANSCRIPTIONS_DIR, f"{job_id}_simple.txt")
 
-                segments, info = await loop.run_in_executor(None, transcribe)
+                    with open(timestamp_path, 'w', encoding='utf-8') as f_vtt, \
+                         open(simple_path, 'w', encoding='utf-8') as f_txt:
+                        
+                        f_vtt.write("WEBVTT\n\n")
+                        current_paragraph = ""
+
+                        # For loop consume o generator 1 a 1, sem encher a RAM inteira.
+                        for seg in segments_gen:
+                            start_str = _format_vtt_time(seg.start)
+                            end_str = _format_vtt_time(seg.end)
+                            
+                            # Escreve logo pro VTT
+                            f_vtt.write(f"{start_str} --> {end_str}\n")
+                            f_vtt.write(f"{seg.text.strip()}\n\n")
+                            f_vtt.flush()
+                            
+                            text_chunk = seg.text.strip()
+                            if len(current_paragraph) + len(text_chunk) < 300:
+                                current_paragraph += " " + text_chunk
+                            else:
+                                f_txt.write(current_paragraph.strip() + "\n\n")
+                                f_txt.flush()
+                                current_paragraph = text_chunk
+                                
+                        if current_paragraph:
+                            f_txt.write(current_paragraph.strip() + "\n\n")
+                            
+                    return timestamp_path, simple_path
+                            
+
+                # Executa toda a transcrição E A ESCRITA NO DISCO de forma assíncrona longe do event loop principal
+                timestamp_path, simple_path = await loop.run_in_executor(None, transcribe)
 
             except RuntimeError as e:
                 error_message = sanitize_error(str(e))
@@ -222,36 +257,8 @@ async def process_transcription(
                 db[job_id]["error"] = error_message
                 await write_db_safe(db)
                 raise
-
-        vtt_lines = ["WEBVTT\n"]
-        simple_lines = []
-        current_paragraph = ""
-
-        for seg in segments:
-            start = _format_vtt_time(seg.start)
-            end = _format_vtt_time(seg.end)
-            vtt_lines.extend([f"{start} --> {end}", seg.text.strip(), ""])
-            text_chunk = seg.text.strip()
-            if len(current_paragraph) + len(text_chunk) < 300:
-                current_paragraph += " " + text_chunk
-            else:
-                simple_lines.append(current_paragraph.strip())
-                current_paragraph = text_chunk
-
-        if current_paragraph:
-            simple_lines.append(current_paragraph.strip())
-
-        vtt_content = "\n".join(vtt_lines)
-        simple_text = "\n\n".join(simple_lines)
-
-        timestamp_path = os.path.join(TRANSCRIPTIONS_DIR, f"{job_id}_timestamp.vtt")
-        simple_path = os.path.join(TRANSCRIPTIONS_DIR, f"{job_id}_simple.txt")
-
-        with open(timestamp_path, 'w', encoding='utf-8') as f:
-            f.write(vtt_content)
-        with open(simple_path, 'w', encoding='utf-8') as f:
-            f.write(simple_text)
-
+                
+        # Fora do Lock (após liberação de disco)
         db = await read_db_safe()
         db[job_id].update({
             "timestamp_path": timestamp_path,
