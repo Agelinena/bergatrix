@@ -168,22 +168,32 @@ async def process_transcription(
         db[job_id]["status"] = "processing"
         await write_db_safe(db)
 
-        audio_path = None
+        chunk_dir = os.path.join(UPLOADS_DIR, job_id)
+        os.makedirs(chunk_dir, exist_ok=True)
+        chunk_template = os.path.join(chunk_dir, "chunk_%03d.wav")
+
         if url:
             output_template = f"{os.path.join(UPLOADS_DIR, job_id)}.%(ext)s"
             await run_command(["yt-dlp", "--force-ipv4", "--no-playlist", "-x", "--audio-format", "mp3", "--output", output_template, "--", url])
-            found_files = [f for f in os.listdir(UPLOADS_DIR) if f.startswith(job_id)]
+            found_files = [
+                f for f in os.listdir(UPLOADS_DIR) 
+                if f.startswith(job_id) and os.path.isfile(os.path.join(UPLOADS_DIR, f))
+            ]
             if not found_files:
                 raise FileNotFoundError("yt-dlp não gerou arquivo.")
-            audio_path = os.path.join(UPLOADS_DIR, found_files[0])
+            temp_audio = os.path.join(UPLOADS_DIR, found_files[0])
+            logging.info(f"WORKER [{job_id}]: Fragmentando audio com ffmpeg em blocos de 10 min...")
+            await run_command(["ffmpeg", "-y", "-i", temp_audio, "-f", "segment", "-segment_time", "600", "-c:a", "pcm_s16le", "-ar", "16000", "-ac", "1", chunk_template])
+            os.remove(temp_audio)
         elif file_path:
-            audio_path = os.path.join(UPLOADS_DIR, f"{job_id}.mp3")
-            await run_command(["ffmpeg", "-i", file_path, "-vn", "-ar", "16000", "-ac", "1", "-ab", "128k", audio_path])
+            logging.info(f"WORKER [{job_id}]: Fragmentando audio com ffmpeg em blocos de 10 min...")
+            await run_command(["ffmpeg", "-y", "-i", file_path, "-f", "segment", "-segment_time", "600", "-c:a", "pcm_s16le", "-ar", "16000", "-ac", "1", chunk_template])
             if not is_local:
                 os.remove(file_path)
 
-        if not audio_path:
-            raise ValueError("Caminho do áudio não definido.")
+        chunks = sorted([os.path.join(chunk_dir, f) for f in os.listdir(chunk_dir) if f.startswith("chunk_")])
+        if not chunks:
+            raise ValueError("Falha ao fragmentar o áudio.")
 
         db = await read_db_safe()
         db[job_id]["status"] = "transcribing"
@@ -196,48 +206,56 @@ async def process_transcription(
             try:
                 def transcribe():
                     model = model_manager.load(model_name)
-                    segments_gen, info = model.transcribe(
-                        audio_path,
-                        language="pt",
-                        task="transcribe",
-                        beam_size=1 if model_name == "large-v3" else 2,
-                        best_of=1 if model_name == "large-v3" else 2,
-                        vad_filter=True,
-                        vad_parameters=dict(min_silence_duration_ms=400, speech_pad_ms=100),
-                        initial_prompt="Transcrição fiel em português do Brasil. Sem tradução. Mantendo a pontuação natural.",
-                        condition_on_previous_text=False,
-                        without_timestamps=False, # Requer timestamps lineares pelo VTT
-                        no_speech_threshold=0.6,
-                        temperature=0
-                    )
-                    
-                    # Preparar os arquivos de saída AQUI mesmo, para escrever imediatamente
-                    timestamp_path = os.path.join(TRANSCRIPTIONS_DIR, f"{job_id}_timestamp.vtt")
-                    simple_path = os.path.join(TRANSCRIPTIONS_DIR, f"{job_id}_simple.txt")
-
                     with open(timestamp_path, 'w', encoding='utf-8') as f_vtt, \
                          open(simple_path, 'w', encoding='utf-8') as f_txt:
                         
                         f_vtt.write("WEBVTT\n\n")
                         current_paragraph = ""
 
-                        # For loop consume o generator 1 a 1, sem encher a RAM inteira.
-                        for seg in segments_gen:
-                            start_str = _format_vtt_time(seg.start)
-                            end_str = _format_vtt_time(seg.end)
+                        total_chunks = len(chunks)
+                        for i, chunk_file in enumerate(chunks):
+                            chunk_basename = os.path.basename(chunk_file)
+                            logging.info(f"WORKER [{job_id}]: Processando chunk {i+1}/{total_chunks} ({chunk_basename})...")
+                            time_offset = i * 600.0
                             
-                            # Escreve logo pro VTT
-                            f_vtt.write(f"{start_str} --> {end_str}\n")
-                            f_vtt.write(f"{seg.text.strip()}\n\n")
-                            f_vtt.flush()
+                            db = await read_db_safe()
+                            db[job_id]["status"] = f"transcribing ({i+1}/{total_chunks})"
+                            await write_db_safe(db)
                             
-                            text_chunk = seg.text.strip()
-                            if len(current_paragraph) + len(text_chunk) < 300:
-                                current_paragraph += " " + text_chunk
-                            else:
-                                f_txt.write(current_paragraph.strip() + "\n\n")
-                                f_txt.flush()
-                                current_paragraph = text_chunk
+                            segments_gen, info = model.transcribe(
+                                chunk_file,
+                                language="pt",
+                                task="transcribe",
+                                beam_size=1 if model_name == "large-v3" else 2,
+                                best_of=1 if model_name == "large-v3" else 2,
+                                vad_filter=True,
+                                vad_parameters=dict(min_silence_duration_ms=400, speech_pad_ms=100),
+                                initial_prompt="Transcrição fiel em português do Brasil. Sem tradução. Mantendo a pontuação natural.",
+                                condition_on_previous_text=False,
+                                without_timestamps=False, # Requer timestamps lineares pelo VTT
+                                no_speech_threshold=0.6,
+                                temperature=0
+                            )
+                            
+                            for seg in segments_gen:
+                                start_str = _format_vtt_time(seg.start + time_offset)
+                                end_str = _format_vtt_time(seg.end + time_offset)
+                                
+                                f_vtt.write(f"{start_str} --> {end_str}\n")
+                                f_vtt.write(f"{seg.text.strip()}\n\n")
+                                f_vtt.flush()
+                                
+                                text_chunk = seg.text.strip()
+                                if len(current_paragraph) + len(text_chunk) < 300:
+                                    current_paragraph += " " + text_chunk
+                                else:
+                                    f_txt.write(current_paragraph.strip() + "\n\n")
+                                    f_txt.flush()
+                                    current_paragraph = text_chunk
+                                    
+                            logging.info(f"WORKER [{job_id}]: Chunk {i+1}/{total_chunks} concluído.")        
+                            os.remove(chunk_file)
+                            gc.collect()
                                 
                         if current_paragraph:
                             f_txt.write(current_paragraph.strip() + "\n\n")
@@ -267,7 +285,10 @@ async def process_transcription(
         })
         await write_db_safe(db)
         logging.info(f"WORKER [{job_id}]: Concluído.")
-        os.remove(audio_path)
+        try:
+            os.rmdir(chunk_dir)
+        except OSError:
+            pass
         gc.collect()
 
     except Exception as e:
