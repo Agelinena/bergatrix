@@ -206,6 +206,10 @@ async def process_transcription(
             try:
                 def transcribe():
                     model = model_manager.load(model_name)
+                    
+                    timestamp_path = os.path.join(TRANSCRIPTIONS_DIR, f"{job_id}_timestamp.vtt")
+                    simple_path = os.path.join(TRANSCRIPTIONS_DIR, f"{job_id}_simple.txt")
+
                     with open(timestamp_path, 'w', encoding='utf-8') as f_vtt, \
                          open(simple_path, 'w', encoding='utf-8') as f_txt:
                         
