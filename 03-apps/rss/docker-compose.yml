@@ -8,6 +8,8 @@ services:
       CACHE_TYPE: redis
       REDIS_URL: redis://rsshub-redis:6379/
       INSTAGRAM_COOKIE: ${IG_COOKIE}
+      IG_COOKIE: ${IG_COOKIE}
+      LOGGER_LEVEL: debug
     depends_on:
       - rsshub-redis
     networks:
