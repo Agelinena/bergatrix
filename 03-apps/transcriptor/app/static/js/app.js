@@ -79,11 +79,11 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (data.error) job.error = data.error;
                     stopTimer(data.job_id);
                 }
-                if (['processing', 'transcribing'].includes(data.status)) {
+                if (data.status.startsWith('processing') || data.status.startsWith('transcribing')) {
                     setWaveformActive(true);
                 } else {
                     const hasActiveJob = Object.values(jobHistory).some(j =>
-                        ['queued', 'processing', 'transcribing'].includes(j.status)
+                        j.status.startsWith('queued') || j.status.startsWith('processing') || j.status.startsWith('transcribing')
                     );
                     setWaveformActive(hasActiveJob);
                 }
@@ -129,7 +129,7 @@ document.addEventListener('DOMContentLoaded', () => {
             return `✅ ${formatElapsed(elapsed)}`;
         }
         if (job.status === 'failed') return '❌';
-        if (['queued', 'processing', 'transcribing'].includes(job.status)) {
+        if (job.status.startsWith('queued') || job.status.startsWith('processing') || job.status.startsWith('transcribing')) {
             const elapsed = Math.floor((Date.now() - new Date(job.timestamp).getTime()) / 1000);
             return formatElapsed(elapsed);
         }
@@ -142,12 +142,12 @@ document.addEventListener('DOMContentLoaded', () => {
             jobHistory = await response.json();
             // Iniciar timers para jobs ativos
             for (const [jobId, job] of Object.entries(jobHistory)) {
-                if (['queued', 'processing', 'transcribing'].includes(job.status)) {
+                if (job.status.startsWith('queued') || job.status.startsWith('processing') || job.status.startsWith('transcribing')) {
                     startTimer(jobId, job.timestamp);
                 }
             }
             const hasActive = Object.values(jobHistory).some(j =>
-                ['queued', 'processing', 'transcribing'].includes(j.status)
+                j.status.startsWith('queued') || j.status.startsWith('processing') || j.status.startsWith('transcribing')
             );
             setWaveformActive(hasActive);
             renderHistory();
@@ -161,8 +161,20 @@ document.addEventListener('DOMContentLoaded', () => {
             'transcribing':{ label: 'Transcrevendo', step: 3 },
             'completed':   { label: 'Concluído',     step: 4 },
         };
-        const failedStep = { label: 'Falhou', step: 0 };
-        const current = status === 'failed' ? failedStep : (steps[status] || { label: 'Aguardando', step: 0 });
+        let targetStepLabel = 'Aguardando';
+        if (status.startsWith('queued')) { current = steps['queued']; targetStepLabel = steps['queued'].label; }
+        else if (status.startsWith('processing')) { current = steps['processing']; targetStepLabel = steps['processing'].label; }
+        else if (status.startsWith('transcribing')) { 
+            current = steps['transcribing'];
+            const match = status.match(/transcribing \((.*?)\)/);
+            if (match) {
+                targetStepLabel = `Transcrevendo (${match[1]})`;
+            } else {
+                targetStepLabel = steps['transcribing'].label;
+            }
+        }
+        else if (status === 'completed') { current = steps['completed']; targetStepLabel = steps['completed'].label; }
+        else if (status === 'failed') { current = failedStep; targetStepLabel = failedStep.label; }
 
         let html = '<div class="progress-bar">';
         Object.values(steps).forEach(s => {
@@ -173,8 +185,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 stateClass = 'done';
             } else if (s.step === current.step) {
                 stateClass = 'active';
+                displayLabel = current.step === 3 ? targetStepLabel : s.label;
             }
-            html += `<div class="progress-step ${stateClass}"><span>${s.label}</span></div>`;
+            html += `<div class="progress-step ${stateClass}"><span>${displayLabel}</span></div>`;
         });
         html += '</div>';
         return html;
@@ -245,7 +258,7 @@ document.addEventListener('DOMContentLoaded', () => {
             historyList.appendChild(item);
 
             // Iniciar timer dinâmico se job ainda ativo
-            if (['queued', 'processing', 'transcribing'].includes(job.status) && !timers[jobId]) {
+            if ((job.status.startsWith('queued') || job.status.startsWith('processing') || job.status.startsWith('transcribing')) && !timers[jobId]) {
                 startTimer(jobId, job.timestamp);
             }
         }
