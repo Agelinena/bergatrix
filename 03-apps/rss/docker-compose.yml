@@ -7,7 +7,6 @@ services:
       NODE_ENV: production
       CACHE_TYPE: redis
       REDIS_URL: redis://rsshub-redis:6379/
-      INSTAGRAM_SESSION_ID: ${INSTAGRAM_SESSION_ID}
       IG_COOKIE: ${IG_COOKIE}
       LOGGER_LEVEL: debug
     depends_on:
