@@ -80,11 +80,13 @@ class ModelManager:
         )
 
         try:
-            # Carrega o modelo usando o caminho local
+            # Carrega o modelo com restrições explícitas de threads para economizar RAM (Garante que OpenMP não multiplicará buffers em todos os núcleos)
             self._model = WhisperModel(
                 model_path,
                 device=device,
                 compute_type=compute_type,
+                cpu_threads=2,
+                num_workers=1,
                 local_files_only=True  # Garante que não tentará baixar nada
             )
             self._current_model_name = model_name

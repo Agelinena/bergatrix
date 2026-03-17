@@ -197,13 +197,12 @@ async def process_transcription(
             try:
                 def transcribe():
                     model = model_manager.load(model_name)
-                    # O model.transcribe retorna um generator (`segments`) e os `info`.
                     segments_gen, info = model.transcribe(
                         audio_path,
                         language="pt",
                         task="transcribe",
-                        beam_size=5,
-                        best_of=5,
+                        beam_size=1 if model_name == "large-v3" else 5,
+                        best_of=1 if model_name == "large-v3" else 5,
                         vad_filter=True,
                         vad_parameters=dict(min_silence_duration_ms=2000, speech_pad_ms=400),
                         initial_prompt="Transcrição fiel em português do Brasil. Sem tradução. Mantendo a pontuação natural.",
