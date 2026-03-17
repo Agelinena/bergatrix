@@ -218,9 +218,13 @@ async def process_transcription(
                             logging.info(f"WORKER [{job_id}]: Processando chunk {i+1}/{total_chunks} ({chunk_basename})...")
                             time_offset = i * 600.0
                             
-                            db = await read_db_safe()
-                            db[job_id]["status"] = f"transcribing ({i+1}/{total_chunks})"
-                            await write_db_safe(db)
+                            # Atualização do DB deve ser feita via call_soon_threadsafe 
+                            # já que estamos em um executor fora do event loop
+                            def update_status(_i=i, _tot=total_chunks):
+                                d = read_db()
+                                d[job_id]["status"] = f"transcribing ({_i+1}/{_tot})"
+                                write_db(d)
+                            loop.call_soon_threadsafe(update_status)
                             
                             segments_gen, info = model.transcribe(
                                 chunk_file,
