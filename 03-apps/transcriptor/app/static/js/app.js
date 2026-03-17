@@ -161,10 +161,18 @@ document.addEventListener('DOMContentLoaded', () => {
             'transcribing':{ label: 'Transcrevendo', step: 3 },
             'completed':   { label: 'Concluído',     step: 4 },
         };
+        const failedStep = { label: 'Falhou', step: 0 };
+        
+        let current = { label: 'Aguardando', step: 0 };
         let targetStepLabel = 'Aguardando';
-        if (status.startsWith('queued')) { current = steps['queued']; targetStepLabel = steps['queued'].label; }
-        else if (status.startsWith('processing')) { current = steps['processing']; targetStepLabel = steps['processing'].label; }
-        else if (status.startsWith('transcribing')) { 
+
+        if (status.startsWith('queued')) { 
+            current = steps['queued']; 
+            targetStepLabel = steps['queued'].label; 
+        } else if (status.startsWith('processing')) { 
+            current = steps['processing']; 
+            targetStepLabel = steps['processing'].label; 
+        } else if (status.startsWith('transcribing')) { 
             current = steps['transcribing'];
             const match = status.match(/transcribing \((.*?)\)/);
             if (match) {
@@ -172,13 +180,21 @@ document.addEventListener('DOMContentLoaded', () => {
             } else {
                 targetStepLabel = steps['transcribing'].label;
             }
+        } else if (status === 'completed') { 
+            current = steps['completed']; 
+            targetStepLabel = steps['completed'].label; 
+        } else if (status === 'failed') { 
+            current = failedStep; 
+            targetStepLabel = failedStep.label; 
+        } else {
+            current = failedStep;
+            targetStepLabel = failedStep.label;
         }
-        else if (status === 'completed') { current = steps['completed']; targetStepLabel = steps['completed'].label; }
-        else if (status === 'failed') { current = failedStep; targetStepLabel = failedStep.label; }
 
         let html = '<div class="progress-bar">';
         Object.values(steps).forEach(s => {
             let stateClass = '';
+            let displayLabel = s.label;
             if (current.step === 0) {
                 stateClass = 'failed';
             } else if (s.step < current.step) {
