@@ -4,7 +4,8 @@ python-multipart
 jinja2
 aiofiles
 apscheduler
-faster-whisper==1.0.3
+faster-whisper==1.2.1
+ctranslate2==4.4.0
 itsdangerous
 slowapi
-requests
+

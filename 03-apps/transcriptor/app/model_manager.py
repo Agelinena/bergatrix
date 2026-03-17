@@ -1,6 +1,5 @@
 import gc
 import logging
-import torch
 import os
 from faster_whisper import WhisperModel
 
@@ -60,11 +59,10 @@ class ModelManager:
             self._model = None
             self._current_model_name = None
             gc.collect()
-            torch.cuda.empty_cache()
             logger.info("MODEL MANAGER: VRAM liberada.")
 
-        # Configuração de dispositivo e precisão
-        device = "cuda" if torch.cuda.is_available() else "cpu"
+        # Configuração de dispositivo e precisão (Hardware explícito no Docker Compose)
+        device = "cuda"
 
         # int8 é obrigatório para respeitar o limite de 6GB da GTX 1060
         # Prioriza a variável de ambiente, mas força int8 como padrão seguro
@@ -96,7 +94,6 @@ class ModelManager:
         except RuntimeError as e:
             if "out of memory" in str(e).lower() or "cuda" in str(e).lower():
                 gc.collect()
-                torch.cuda.empty_cache()
                 raise RuntimeError(
                     f"Erro de GPU/VRAM ao carregar o modelo '{model_name}'. "
                     f"Requer aprox. {MODEL_VRAM_GB.get(model_name, '?')}GB. "

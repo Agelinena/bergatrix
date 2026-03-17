@@ -11,7 +11,6 @@ from datetime import datetime, timedelta
 from contextlib import asynccontextmanager
 from typing import Literal
 
-import torch
 import aiofiles
 import json
 from fastapi import FastAPI, Request, UploadFile, File, Form, HTTPException, WebSocket, WebSocketDisconnect, Security, Response

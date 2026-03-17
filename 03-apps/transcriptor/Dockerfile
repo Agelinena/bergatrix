@@ -22,8 +22,6 @@ WORKDIR /app
 # Adiciona o diretório da aplicação ao PYTHONPATH
 ENV PYTHONPATH /app
 
-# Instala a versão correta do PyTorch para CUDA 12.1
-RUN pip install torch --index-url https://download.pytorch.org/whl/cu121
 
 # Copia o arquivo de dependências e instala o resto
 COPY requirements.txt .
