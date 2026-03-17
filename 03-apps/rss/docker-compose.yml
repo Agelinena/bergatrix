@@ -1,36 +1,4 @@
 services:
-  rsshub:
-    image: diygod/rsshub:chromium-bundled
-    container_name: rsshub
-    restart: always
-    environment:
-      NODE_ENV: production
-      CACHE_TYPE: redis
-      REDIS_URL: redis://rsshub-redis:6379/
-      IG_COOKIE: ${IG_COOKIE}
-      LOGGER_LEVEL: debug
-    depends_on:
-      - rsshub-redis
-    networks:
-      - bergatrix-proxy
-      - rss-internal
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.rsshub.rule=Host(`rsshub.${DOMAIN}`)"
-      - "traefik.http.routers.rsshub.entrypoints=websecure"
-      - "traefik.http.routers.rsshub.tls=true"
-      - "traefik.http.routers.rsshub.tls.certresolver=letsencrypt"
-      - "traefik.http.services.rsshub.loadbalancer.server.port=1200"
-      - "traefik.http.routers.rsshub.middlewares=internal-only@docker"
-      - "traefik.docker.network=bergatrix-proxy"
-
-  rsshub-redis:
-    image: redis:alpine
-    container_name: rsshub-redis
-    restart: always
-    networks:
-      - rss-internal
-
   freshrss:
     image: freshrss/freshrss
     container_name: freshrss

@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Instaloader RSS</title>
+  <link rel="stylesheet" href="/ui/style.css" />
+</head>
+<body>
+  <header>
+    <div class="header-inner">
+      <span class="logo">📡 Instaloader RSS</span>
+      <button id="btn-refresh" class="btn btn-ghost" title="Atualizar">↻</button>
+    </div>
+  </header>
+
+  <main>
+    <!-- Stats ---------------------------------------------------------------->
+    <section class="stats" id="stats-row">
+      <div class="stat-card">
+        <span class="stat-value" id="stat-profiles">—</span>
+        <span class="stat-label">Perfis</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-value" id="stat-posts">—</span>
+        <span class="stat-label">Posts (30 dias)</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-value" id="stat-storage">—</span>
+        <span class="stat-label">Armazenamento</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-value" id="stat-last-fetch">—</span>
+        <span class="stat-label">Último fetch</span>
+      </div>
+    </section>
+
+    <!-- Add profile ---------------------------------------------------------->
+    <section class="add-bar">
+      <form id="form-add" autocomplete="off">
+        <input id="input-username" type="text" placeholder="@username" required />
+        <button type="submit" class="btn btn-primary">Adicionar perfil</button>
+      </form>
+      <p id="add-error" class="error hidden"></p>
+    </section>
+
+    <!-- Profiles table -------------------------------------------------------->
+    <section class="table-wrap">
+      <table id="profiles-table">
+        <thead>
+          <tr>
+            <th>Perfil</th>
+            <th>Status</th>
+            <th>Último fetch</th>
+            <th>Posts</th>
+            <th>Storage</th>
+            <th>Ações</th>
+          </tr>
+        </thead>
+        <tbody id="profiles-body">
+          <tr id="row-empty">
+            <td colspan="6" class="empty-msg">Nenhum perfil cadastrado.</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+  </main>
+
+  <!-- Confirm dialog --------------------------------------------------------->
+  <dialog id="dlg-confirm">
+    <p id="dlg-msg"></p>
+    <div class="dlg-actions">
+      <button id="dlg-cancel" class="btn btn-ghost">Cancelar</button>
+      <button id="dlg-ok" class="btn btn-danger">Confirmar</button>
+    </div>
+  </dialog>
+
+  <script src="/ui/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,60 @@
+services:
+  instaloader-worker:
+    build: ./worker
+    container_name: instaloader-worker
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      TZ: America/Sao_Paulo
+      DATA_DIR: /data
+    volumes:
+      - ${INSTALOADER_DATA_DIR}:/data
+    networks:
+      - instaloader-internal
+      - instaloader-egress
+    healthcheck:
+      test: [ "CMD", "python", "-c", "import os,sys; sys.exit(0 if os.path.exists('/data/.worker_alive') else 1)" ]
+      interval: 60s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  instaloader-api:
+    build: ./api
+    container_name: instaloader-api
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      TZ: America/Sao_Paulo
+      DATA_DIR: /data
+    volumes:
+      - ${INSTALOADER_DATA_DIR}:/data
+    networks:
+      - instaloader-internal
+      - bergatrix-proxy
+    depends_on:
+      instaloader-worker:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')" ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.instaloader-api.rule=Host(`rssig.${DOMAIN}`)"
+      - "traefik.http.routers.instaloader-api.entrypoints=websecure"
+      - "traefik.http.routers.instaloader-api.tls=true"
+      - "traefik.http.routers.instaloader-api.tls.certresolver=letsencrypt"
+      - "traefik.http.services.instaloader-api.loadbalancer.server.port=8000"
+      - "traefik.http.routers.instaloader-api.middlewares=internal-only@docker"
+      - "traefik.docker.network=bergatrix-proxy"
+
+networks:
+  instaloader-internal:
+    internal: true
+  instaloader-egress:
+    driver: bridge
+  bergatrix-proxy:
+    external: true
