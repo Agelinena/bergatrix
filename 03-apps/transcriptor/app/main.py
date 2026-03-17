@@ -222,17 +222,9 @@ async def process_transcription(
                             logging.info(f"WORKER [{job_id}]: Processando chunk {i+1}/{total_chunks} ({chunk_basename})...")
                             time_offset = i * 600.0
                             
-                            # Atualização do DB deve ser feita via call_soon_threadsafe 
-                            # já que estamos em um executor fora do event loop
-                            def update_status(_i=i, _tot=total_chunks):
-                                d = read_db()
-                                if job_id in d:
-                                    d[job_id]["status"] = f"transcribing ({_i+1}/{_tot})"
-                                    write_db(d)
-                                else:
-                                    logging.warning(f"WORKER [{job_id}]: Job deletado do DB durante transcrição.")
-                            loop.call_soon_threadsafe(update_status)
-                            
+                            # A interface web espera apenas o status 'transcribing' estático.
+                            # Para evitar forçar a UI a re-renderizar várias vezes, 
+                            # limitamos a comunicação ao Console Log até finalizar o audio:
                             segments_gen, info = model.transcribe(
                                 chunk_file,
                                 language="pt",
