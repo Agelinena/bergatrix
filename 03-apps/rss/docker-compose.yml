@@ -1,13 +1,13 @@
 services:
   rsshub:
-    image: diygod/rsshub:latest
+    image: diygod/rsshub:chromium-bundled
     container_name: rsshub
     restart: always
     environment:
       NODE_ENV: production
       CACHE_TYPE: redis
       REDIS_URL: redis://rsshub-redis:6379/
-      IG_COOKIE: ${IG_COOKIE}
+      INSTAGRAM_COOKIE: ${IG_COOKIE}
     depends_on:
       - rsshub-redis
     networks:
