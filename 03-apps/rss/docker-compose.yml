@@ -17,7 +17,7 @@ services:
       - "traefik.http.routers.rss-bridge.tls=true"
       - "traefik.http.routers.rss-bridge.tls.certresolver=letsencrypt"
       - "traefik.http.services.rss-bridge.loadbalancer.server.port=80"
-      - "traefik.http.routers.rss-bridge.middlewares=internal@docker"
+      - "traefik.http.routers.rss-bridge.middlewares=internal-only@docker"
       - "traefik.docker.network=bergatrix-proxy"
 
   freshrss:
