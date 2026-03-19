@@ -32,7 +32,6 @@ services:
       - 1.1.1.1
     networks:
       - bergatrix-proxy
-
 networks:
   bergatrix-proxy:
     external: true

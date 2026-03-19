@@ -23,7 +23,7 @@ services:
       - "traefik.http.routers.vaultwarden-router.tls=true"
       - "traefik.http.routers.vaultwarden-router.tls.certresolver=letsencrypt"
       - "traefik.http.routers.vaultwarden-router.service=vaultwarden-service"
-      - "traefik.http.routers.vaultwarden-router.middlewares=internal-only@docker"
+      #- "traefik.http.routers.vaultwarden-router.middlewares=internal-only@docker"
       
       # --- Roteador WebSocket ---
       - "traefik.http.routers.vaultwarden-ws-router.rule=Host(`bitwarden.${DOMAIN}`) && PathPrefix(`/notifications/hub`)"
@@ -32,7 +32,7 @@ services:
       - "traefik.http.routers.vaultwarden-ws-router.tls.certresolver=letsencrypt"
       - "traefik.http.routers.vaultwarden-ws-router.service=vaultwarden-ws-service"
       # Ativa a proteção local também no WebSocket
-      - "traefik.http.routers.vaultwarden-ws-router.middlewares=internal-only@docker"
+      #- "traefik.http.routers.vaultwarden-ws-router.middlewares=internal-only@docker"
 
       # --- Definição de Serviços ---
       - "traefik.http.services.vaultwarden-service.loadbalancer.server.port=80"
