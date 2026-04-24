@@ -6,13 +6,12 @@ import uuid
 from datetime import datetime, timedelta
 from typing import Optional
 
+import bcrypt
 from fastapi import Depends, Request
-from passlib.context import CryptContext
 from sqlalchemy.orm import Session
 
 from db import UserSession, User, get_db
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 SESSION_DAYS = 30
 
 
@@ -25,11 +24,11 @@ class AdminRequired(Exception):
 
 
 def hash_password(password: str) -> str:
-    return pwd_context.hash(password)
+    return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
 
 
 def verify_password(plain: str, hashed: str) -> bool:
-    return pwd_context.verify(plain, hashed)
+    return bcrypt.checkpw(plain.encode(), hashed.encode())
 
 
 def create_session(db: Session, user: User) -> str:
