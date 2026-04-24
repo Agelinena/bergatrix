@@ -26,6 +26,7 @@ services:
     env_file: .env
     environment:
       TZ: America/Sao_Paulo
+      DATABASE_URL: postgresql://berganews:${POSTGRES_PASSWORD}@berganews-db:5432/berganews
     networks:
       - berganews-internal
       - bergatrix-proxy
@@ -46,6 +47,7 @@ services:
     env_file: .env
     environment:
       TZ: America/Sao_Paulo
+      DATABASE_URL: postgresql://berganews:${POSTGRES_PASSWORD}@berganews-db:5432/berganews
     networks:
       - berganews-internal
       - bergatrix-proxy
