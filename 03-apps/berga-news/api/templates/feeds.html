@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block title %}Feeds — Berga News{% endblock %}
+{% block content %}
+
+<div class="mb-6">
+  <h1 class="text-xl font-bold text-white">Meus Feeds</h1>
+  <p class="text-slate-400 text-sm mt-0.5">Gerencie suas fontes de notícias personalizadas.</p>
+</div>
+
+{% if msg %}
+<div class="mb-4 px-4 py-3 rounded-lg bg-blue-500/10 border border-blue-500/20 text-blue-300 text-sm">
+  {{ msg }}
+</div>
+{% endif %}
+
+<!-- Add feed form -->
+<div class="card rounded-2xl p-5 mb-6">
+  <h2 class="text-sm font-medium text-slate-300 mb-4">Adicionar feed</h2>
+  <form method="post" action="/feeds" class="flex flex-col sm:flex-row gap-3">
+    <input
+      type="url" name="url" placeholder="https://exemplo.com/feed.xml"
+      class="flex-1 bg-slate-900 border border-slate-600 rounded-lg px-4 py-2.5 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 transition-colors text-sm"
+      required
+    >
+    <input
+      type="text" name="category" placeholder="Categoria (ex: tech)"
+      class="sm:w-36 bg-slate-900 border border-slate-600 rounded-lg px-4 py-2.5 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 transition-colors text-sm"
+    >
+    <button type="submit" class="bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium px-5 py-2.5 rounded-lg transition-colors whitespace-nowrap">
+      Adicionar
+    </button>
+  </form>
+</div>
+
+<!-- Personal feeds -->
+<h2 class="text-sm font-medium text-slate-400 uppercase tracking-wider mb-3">Meus feeds ({{ personal|length }})</h2>
+
+{% if personal %}
+<div class="space-y-2 mb-8">
+  {% for f in personal %}
+  <div class="card rounded-xl p-4 flex items-center gap-3">
+    <div class="flex-1 min-w-0">
+      <p class="text-white text-sm font-medium truncate">{{ f.title or f.url }}</p>
+      <div class="flex items-center gap-2 mt-0.5 flex-wrap">
+        <span class="text-xs text-slate-500 truncate max-w-[260px]">{{ f.url }}</span>
+        {% if f.category %}
+        <span class="pill rounded-full px-2 py-0.5 text-xs text-slate-400">{{ f.category }}</span>
+        {% endif %}
+        {% if f.last_fetch_status %}
+        <span class="text-xs {% if 'error' in f.last_fetch_status %}text-red-400{% else %}text-green-400/70{% endif %}">{{ f.last_fetch_status }}</span>
+        {% endif %}
+      </div>
+    </div>
+    <div class="flex items-center gap-2 shrink-0">
+      <form method="post" action="/feeds/{{ f.id }}/refresh">
+        <button type="submit" class="text-slate-500 hover:text-blue-400 transition-colors p-1" title="Atualizar">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+          </svg>
+        </button>
+      </form>
+      <form method="post" action="/feeds/{{ f.id }}/delete" onsubmit="return confirm('Remover este feed?')">
+        <button type="submit" class="text-slate-500 hover:text-red-400 transition-colors p-1" title="Remover">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+          </svg>
+        </button>
+      </form>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="card rounded-xl p-6 text-center mb-8">
+  <p class="text-slate-400 text-sm">Você ainda não tem feeds pessoais. Adicione um acima.</p>
+</div>
+{% endif %}
+
+<!-- Global feeds (read-only) -->
+{% if global_feeds %}
+<h2 class="text-sm font-medium text-slate-400 uppercase tracking-wider mb-3">Feeds globais ({{ global_feeds|length }})</h2>
+<div class="space-y-2">
+  {% for f in global_feeds %}
+  <div class="card rounded-xl p-4 flex items-center gap-3 opacity-75">
+    <div class="flex-1 min-w-0">
+      <p class="text-slate-300 text-sm font-medium truncate">{{ f.title or f.url }}</p>
+      <div class="flex items-center gap-2 mt-0.5">
+        <span class="text-xs text-slate-500 truncate max-w-[260px]">{{ f.url }}</span>
+        {% if f.category %}
+        <span class="pill rounded-full px-2 py-0.5 text-xs text-slate-500">{{ f.category }}</span>
+        {% endif %}
+      </div>
+    </div>
+    <span class="text-xs text-slate-600 shrink-0">global</span>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% endblock %}

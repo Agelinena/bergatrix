@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% block title %}Digest — Berga News{% endblock %}
+{% block content %}
+
+<!-- Header -->
+<div class="mb-6">
+  <div class="flex items-start justify-between gap-4 flex-wrap">
+    <div>
+      <h1 class="text-xl font-bold text-white">
+        {% if run %}
+          Digest de {{ run.window_end.strftime('%d/%m/%Y') }}
+        {% else %}
+          Nenhum digest ainda
+        {% endif %}
+      </h1>
+      {% if run %}
+      <p class="text-slate-400 text-sm mt-0.5">
+        {{ run.clusters_created }} tópico{{ 's' if run.clusters_created != 1 }} ·
+        {{ run.articles_processed }} artigo{{ 's' if run.articles_processed != 1 }} ·
+        Janela: {{ run.window_start.strftime('%Hh%M') }} → {{ run.window_end.strftime('%Hh%M') }}
+      </p>
+      {% endif %}
+    </div>
+
+    <!-- Run selector -->
+    {% if recent_runs and recent_runs|length > 1 %}
+    <select
+      onchange="window.location='/digest/'+this.value"
+      class="bg-slate-800 border border-slate-600 rounded-lg px-3 py-1.5 text-sm text-slate-300 focus:outline-none focus:border-blue-500"
+    >
+      {% for r in recent_runs %}
+      <option value="{{ r.id }}" {% if run and r.id == run.id %}selected{% endif %}>
+        {{ r.window_end.strftime('%d/%m %Hh') }} · {{ r.clusters_created }} tópicos
+      </option>
+      {% endfor %}
+    </select>
+    {% endif %}
+  </div>
+
+  <!-- Category filter -->
+  {% if categories %}
+  <div class="flex flex-wrap gap-2 mt-4">
+    <a
+      href="/digest/{{ run.id if run else 'latest' }}"
+      class="pill rounded-full px-3 py-1 text-xs {% if not selected_category %}text-blue-400 border-blue-500/50{% else %}text-slate-400 hover:text-slate-200{% endif %} transition-colors"
+    >
+      Todos
+    </a>
+    {% for cat in categories %}
+    <a
+      href="/digest/{{ run.id if run else 'latest' }}?category={{ cat }}"
+      class="pill rounded-full px-3 py-1 text-xs {% if selected_category == cat %}text-blue-400 border-blue-500/50{% else %}text-slate-400 hover:text-slate-200{% endif %} transition-colors"
+    >
+      {{ cat }}
+    </a>
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>
+
+<!-- Clusters grid -->
+{% if not run %}
+<div class="card rounded-2xl p-10 text-center">
+  <div class="text-4xl mb-3">📰</div>
+  <p class="text-slate-400">Nenhum digest gerado ainda.</p>
+  <p class="text-slate-500 text-sm mt-1">
+    Adicione feeds em <a href="/feeds" class="text-blue-400 hover:underline">Feeds</a>
+    {% if user.role == 'admin' %}
+    e dispare um digest em <a href="/admin" class="text-blue-400 hover:underline">Admin</a>.
+    {% else %}
+    e aguarde o próximo horário agendado (07h ou 18h).
+    {% endif %}
+  </p>
+</div>
+
+{% elif not clusters %}
+<div class="card rounded-2xl p-10 text-center">
+  <p class="text-slate-400">Nenhum artigo neste período ou filtro.</p>
+</div>
+
+{% else %}
+<div class="grid gap-4 sm:grid-cols-2">
+  {% for c in clusters %}
+  <a
+    href="/digest/{{ run.id }}/cluster/{{ c.id }}"
+    class="card rounded-2xl p-5 hover:border-blue-500/50 hover:bg-slate-800/80 transition-all block group"
+  >
+    <!-- Topic label -->
+    <h2 class="font-semibold text-white leading-snug group-hover:text-blue-300 transition-colors">
+      {{ c.label }}
+    </h2>
+
+    <!-- Summary -->
+    {% if c.summary %}
+    <p class="text-slate-300 text-sm mt-2 leading-relaxed line-clamp-3">
+      {{ c.summary }}
+    </p>
+    {% endif %}
+
+    <!-- Footer -->
+    <div class="flex items-center justify-between mt-4 gap-2">
+      <!-- Source pills -->
+      <div class="flex flex-wrap gap-1.5 min-w-0">
+        {% for src in c.sources[:4] %}
+        <span class="pill rounded-full px-2 py-0.5 text-xs text-slate-400 truncate max-w-[120px]">{{ src }}</span>
+        {% endfor %}
+        {% if c.sources|length > 4 %}
+        <span class="pill rounded-full px-2 py-0.5 text-xs text-slate-500">+{{ c.sources|length - 4 }}</span>
+        {% endif %}
+      </div>
+      <!-- Article count -->
+      <span class="text-xs text-slate-500 whitespace-nowrap shrink-0">{{ c.article_count }} artigo{{ 's' if c.article_count != 1 }}</span>
+    </div>
+  </a>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% endblock %}

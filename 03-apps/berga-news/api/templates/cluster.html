@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}{{ cluster.label }} — Berga News{% endblock %}
+{% block content %}
+
+<!-- Back -->
+<a href="/digest/{{ run_id }}" class="inline-flex items-center gap-1.5 text-sm text-slate-400 hover:text-blue-400 transition-colors mb-6">
+  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+  </svg>
+  Voltar ao digest
+</a>
+
+<!-- Cluster header -->
+<div class="card rounded-2xl p-6 mb-6">
+  <h1 class="text-xl font-bold text-white leading-snug">{{ cluster.label }}</h1>
+  <p class="text-slate-500 text-sm mt-1">{{ cluster.article_count }} artigo{{ 's' if cluster.article_count != 1 }}</p>
+
+  {% if cluster.summary %}
+  <div class="mt-4 pt-4 border-t border-slate-700">
+    <p class="text-xs font-medium text-blue-400 uppercase tracking-wider mb-2">Resumo IA</p>
+    <p class="text-slate-200 leading-relaxed">{{ cluster.summary }}</p>
+  </div>
+  {% endif %}
+</div>
+
+<!-- Articles list -->
+<h2 class="text-sm font-medium text-slate-400 uppercase tracking-wider mb-3">Todas as referências</h2>
+
+<div class="space-y-2">
+  {% for a in articles %}
+  <a
+    href="{{ a.url }}"
+    target="_blank"
+    rel="noopener noreferrer"
+    class="card rounded-xl p-4 hover:border-slate-500 hover:bg-slate-800/60 transition-all flex items-start gap-3 group block"
+  >
+    <!-- Source indicator -->
+    <div class="shrink-0 mt-0.5">
+      <div class="w-2 h-2 rounded-full bg-blue-500/60 mt-1.5"></div>
+    </div>
+
+    <div class="min-w-0 flex-1">
+      <p class="text-white text-sm font-medium leading-snug group-hover:text-blue-300 transition-colors">
+        {{ a.title }}
+      </p>
+      <div class="flex items-center gap-2 mt-1 flex-wrap">
+        {% if a.feed %}
+        <span class="text-xs text-blue-400/80">{{ a.feed.title or a.feed.url }}</span>
+        {% endif %}
+        {% if a.author %}
+        <span class="text-slate-600 text-xs">·</span>
+        <span class="text-xs text-slate-500">{{ a.author }}</span>
+        {% endif %}
+        {% if a.published_at %}
+        <span class="text-slate-600 text-xs">·</span>
+        <span class="text-xs text-slate-500">{{ a.published_at.strftime('%d/%m %Hh%M') }}</span>
+        {% endif %}
+      </div>
+      {% if a.description %}
+      <p class="text-slate-400 text-xs mt-1.5 leading-relaxed line-clamp-2">{{ a.description }}</p>
+      {% endif %}
+    </div>
+
+    <!-- External link icon -->
+    <svg class="w-3.5 h-3.5 text-slate-600 group-hover:text-slate-400 shrink-0 mt-1 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
+    </svg>
+  </a>
+  {% endfor %}
+</div>
+
+{% endblock %}

@@ -38,6 +38,7 @@ yarn-error.log*
 Thumbs.db
 ehthumbs.db
 desktop.ini
+.claude
 
 # === IDEs e Editores ===
 .vscode/
