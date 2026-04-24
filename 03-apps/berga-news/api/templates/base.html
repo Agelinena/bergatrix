@@ -50,6 +50,7 @@
     </a>
     <nav class="flex items-center gap-6 text-sm">
       <a href="/digest/latest" class="hover:text-blue-400 transition-colors {% if request.url.path.startswith('/digest') or request.url.path == '/' %}text-blue-400 font-medium{% else %}text-slate-400{% endif %}">Digest</a>
+      <a href="/articles" class="hover:text-blue-400 transition-colors {% if request.url.path.startswith('/articles') %}text-blue-400 font-medium{% else %}text-slate-400{% endif %}">Artigos</a>
       <a href="/feeds" class="hover:text-blue-400 transition-colors {% if request.url.path == '/feeds' %}text-blue-400 font-medium{% else %}text-slate-400{% endif %}">Feeds</a>
       {% if user.role == 'admin' %}
       <a href="/admin" class="hover:text-blue-400 transition-colors {% if request.url.path.startswith('/admin') %}text-blue-400 font-medium{% else %}text-slate-400{% endif %}">Admin</a>
@@ -77,6 +78,12 @@
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
         </svg>
         Digest
+      </a>
+      <a href="/articles" class="flex-1 flex flex-col items-center justify-center py-2 gap-0.5 text-xs {% if request.url.path.startswith('/articles') %}text-blue-400{% else %}text-slate-400{% endif %}">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h10M4 18h8"/>
+        </svg>
+        Artigos
       </a>
       <a href="/feeds" class="flex-1 flex flex-col items-center justify-center py-2 gap-0.5 text-xs {% if request.url.path == '/feeds' %}text-blue-400{% else %}text-slate-400{% endif %}">
         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

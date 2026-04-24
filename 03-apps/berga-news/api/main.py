@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from auth import AdminRequired, LoginRequired, seed_admin
 from db import SessionLocal, init_db
-from routers import admin, auth_router, digests, feeds
+from routers import admin, articles, auth_router, digests, feeds
 
 logging.basicConfig(
     level=logging.INFO,
@@ -42,6 +42,7 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 
 app.include_router(auth_router.router)
 app.include_router(digests.router)
+app.include_router(articles.router)
 app.include_router(feeds.router)
 app.include_router(admin.router)
 
