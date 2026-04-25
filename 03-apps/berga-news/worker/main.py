@@ -23,6 +23,8 @@ import clusterer
 import content_prefetch
 import fetcher
 import summarizer
+from sqlalchemy.orm import joinedload
+
 from db import Article, Cluster, DigestRun, Feed, Setting, get_session, init_db
 
 logging.basicConfig(
@@ -139,6 +141,7 @@ def _run_digest(db):
         articles = (
             db.query(Article)
             .join(Feed)
+            .options(joinedload(Article.feed))
             .filter(
                 Article.cluster_id == None,
                 Article.fetched_at >= window_start,
@@ -158,6 +161,7 @@ def _run_digest(db):
             articles = (
                 db.query(Article)
                 .join(Feed)
+                .options(joinedload(Article.feed))
                 .filter(Article.cluster_id == None, Feed.active == True)
                 .order_by(Article.published_at.desc())
                 .limit(300)

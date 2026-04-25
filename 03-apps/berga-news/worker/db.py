@@ -8,7 +8,7 @@ from sqlalchemy import (
     Boolean, Column, DateTime, ForeignKey, Integer, Text, create_engine,
     text,
 )
-from sqlalchemy.orm import DeclarativeBase, Session, relationship, sessionmaker
+from sqlalchemy.orm import DeclarativeBase, Session, relationship, sessionmaker, joinedload
 
 DATABASE_URL = os.environ.get(
     "DATABASE_URL",
@@ -56,6 +56,8 @@ class Feed(Base):
     last_modified = Column(Text)
     created_at = Column(DateTime, default=datetime.utcnow)
 
+    articles = relationship("Article", back_populates="feed", cascade="all, delete")
+
 
 class Article(Base):
     __tablename__ = "articles"
@@ -70,6 +72,9 @@ class Article(Base):
     fetched_at = Column(DateTime, default=datetime.utcnow)
     cluster_id = Column(Integer, ForeignKey("clusters.id", ondelete="SET NULL"), nullable=True)
 
+    feed = relationship("Feed", back_populates="articles")
+    cluster = relationship("Cluster", back_populates="articles")
+
 
 class DigestRun(Base):
     __tablename__ = "digest_runs"
@@ -83,6 +88,8 @@ class DigestRun(Base):
     status = Column(Text, default="running")
     error_msg = Column(Text)
 
+    clusters = relationship("Cluster", back_populates="run", cascade="all, delete")
+
 
 class Cluster(Base):
     __tablename__ = "clusters"
@@ -92,6 +99,9 @@ class Cluster(Base):
     summary = Column(Text)
     article_count = Column(Integer, default=0)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+    run = relationship("DigestRun", back_populates="clusters")
+    articles = relationship("Article", back_populates="cluster")
 
 
 class ArticleContent(Base):
