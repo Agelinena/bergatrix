@@ -50,16 +50,25 @@ def fetch_feed(db: Session, feed: Feed) -> int:
         db.commit()
         return 0
 
-    if parsed.status == 304:
+    status = getattr(parsed, "status", None)
+
+    if status == 304:
         log.info("[feed:%d] Not modified (304)", feed.id)
         feed.last_fetched_at = datetime.utcnow()
         feed.last_fetch_status = "ok:304"
         db.commit()
         return 0
 
-    if parsed.status not in (200, 301, 302):
-        log.warning("[feed:%d] HTTP %s", feed.id, parsed.status)
-        feed.last_fetch_status = f"error:http{parsed.status}"
+    if status is not None and status not in (200, 301, 302):
+        log.warning("[feed:%d] HTTP %s", feed.id, status)
+        feed.last_fetch_status = f"error:http{status}"
+        db.commit()
+        return 0
+
+    if not parsed.entries:
+        log.warning("[feed:%d] Nenhum entry encontrado (boilerplate ou feed vazio)", feed.id)
+        feed.last_fetched_at = datetime.utcnow()
+        feed.last_fetch_status = "ok:empty"
         db.commit()
         return 0
 
