@@ -4,13 +4,15 @@ Returns list of dicts: {"label": str, "article_ids": [int, ...]}
 """
 import json
 import logging
+import time
 from typing import Any
 
 import llm
 
 log = logging.getLogger("clusterer")
 
-CHUNK_SIZE = 150
+CHUNK_SIZE = 40          # artigos por chunk — mantém tokens por chamada baixo
+INTER_CHUNK_DELAY = 5    # segundos entre chunks (evita RPM)
 
 
 def _build_article_list(articles: list[dict]) -> str:
@@ -110,6 +112,8 @@ def cluster_articles(articles: list[Any]) -> list[dict]:
         log.info("Clustering chunk %d/%d (%d articles)…", idx + 1, len(chunks), len(chunk))
         result = _cluster_chunk(chunk)
         chunk_results.append(result)
+        if idx < len(chunks) - 1:
+            time.sleep(INTER_CHUNK_DELAY)
 
     # Merge labels if multiple chunks
     merges: dict[str, str] = {}

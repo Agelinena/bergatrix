@@ -164,7 +164,7 @@ def _run_digest(db):
                 .options(joinedload(Article.feed))
                 .filter(Article.cluster_id == None, Feed.active == True)
                 .order_by(Article.published_at.desc())
-                .limit(300)
+                .limit(80)   # 2 chunks × 40 — conserva cota da IA
                 .all()
             )
 
