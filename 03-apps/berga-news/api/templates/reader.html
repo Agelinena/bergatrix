@@ -2,35 +2,29 @@
 {% block title %}{{ article.title }} — Berga News{% endblock %}
 {% block content %}
 
-<!-- Reader top bar -->
-<div class="flex items-center justify-between gap-3 mb-6 -mt-2">
-  <a href="/articles" class="flex items-center gap-1.5 text-sm text-slate-400 hover:text-white transition-colors">
+<!-- Top bar -->
+<div class="flex items-center justify-between gap-3 mb-5 -mt-2">
+  <a href="javascript:history.back()" class="flex items-center gap-1.5 text-sm text-slate-400 hover:text-white transition-colors">
     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"/>
     </svg>
-    Artigos
+    Voltar
   </a>
-  <div class="flex items-center gap-2">
-    <!-- Refetch -->
-    <a href="/reader/{{ article.id }}?refetch=true"
-       title="Recarregar conteúdo"
-       class="p-2 rounded-lg text-slate-500 hover:text-slate-300 hover:bg-slate-800 transition-colors">
+  <div class="flex items-center gap-1">
+    <button id="btn-refetch" onclick="loadContent(true)" title="Recarregar conteúdo"
+      class="p-2 rounded-lg text-slate-500 hover:text-slate-300 hover:bg-slate-800 transition-colors">
       <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
       </svg>
-    </a>
-    <!-- Open original -->
-    <a href="{{ article.url }}" target="_blank" rel="noopener noreferrer"
-       title="Abrir original"
-       class="p-2 rounded-lg text-slate-500 hover:text-slate-300 hover:bg-slate-800 transition-colors">
+    </button>
+    <a href="{{ article.url }}" target="_blank" rel="noopener noreferrer" title="Abrir original"
+      class="p-2 rounded-lg text-slate-500 hover:text-slate-300 hover:bg-slate-800 transition-colors">
       <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
       </svg>
     </a>
-    <!-- Share -->
-    <button onclick="shareArticle('{{ article.url | e }}', '{{ article.title | e }}')"
-            title="Compartilhar"
-            class="p-2 rounded-lg text-slate-500 hover:text-slate-300 hover:bg-slate-800 transition-colors">
+    <button onclick="shareArticle('{{ article.url | e }}', '{{ article.title | e }}')" title="Compartilhar"
+      class="p-2 rounded-lg text-slate-500 hover:text-slate-300 hover:bg-slate-800 transition-colors">
       <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"/>
       </svg>
@@ -38,9 +32,12 @@
   </div>
 </div>
 
+<!-- Progress bar -->
+<div id="progress-bar" class="fixed top-0 left-0 h-0.5 bg-blue-500 z-50 transition-[width] duration-75" style="width:0%"></div>
+
 <!-- Article header -->
-<div class="mb-6 max-w-2xl mx-auto">
-  <div class="flex items-center gap-2 mb-3">
+<div class="max-w-2xl mx-auto mb-6">
+  <div class="flex items-center gap-2 mb-3 flex-wrap">
     <span class="text-xs font-medium text-blue-400">{{ article.feed.title or article.feed.url }}</span>
     {% if article.published_at %}
     <span class="text-slate-600 text-xs">·</span>
@@ -48,57 +45,66 @@
     {% endif %}
     {% if article.author %}
     <span class="text-slate-600 text-xs">·</span>
-    <span class="text-xs text-slate-500">{{ article.author }}</span>
+    <span class="text-xs text-slate-500 truncate max-w-[180px]">{{ article.author }}</span>
     {% endif %}
   </div>
   <h1 class="text-2xl font-bold text-white leading-snug">{{ article.title }}</h1>
 </div>
 
-<!-- Reading progress bar -->
-<div id="progress-bar" class="fixed top-0 left-0 h-0.5 bg-blue-500 z-50 transition-all duration-100" style="width:0%"></div>
-
-<!-- Article content -->
+<!-- Content area -->
 <div class="max-w-2xl mx-auto">
-  {% if content and content.html and not content.fetch_error %}
-  <article class="reader-content">
-    {{ content.html | safe }}
+
+  <!-- Loading skeleton (shown while fetching) -->
+  <div id="content-loading" class="space-y-3 {% if content and (content.html or content.fetch_error) %}hidden{% endif %}">
+    <div class="h-4 bg-slate-800 rounded animate-pulse w-full"></div>
+    <div class="h-4 bg-slate-800 rounded animate-pulse w-11/12"></div>
+    <div class="h-4 bg-slate-800 rounded animate-pulse w-full"></div>
+    <div class="h-4 bg-slate-800 rounded animate-pulse w-4/5"></div>
+    <div class="h-32 bg-slate-800 rounded animate-pulse w-full mt-4"></div>
+    <div class="h-4 bg-slate-800 rounded animate-pulse w-full"></div>
+    <div class="h-4 bg-slate-800 rounded animate-pulse w-10/12"></div>
+    <div class="h-4 bg-slate-800 rounded animate-pulse w-full"></div>
+    <div class="h-4 bg-slate-800 rounded animate-pulse w-3/4"></div>
+    <p class="text-center text-slate-500 text-xs pt-2">Carregando artigo…</p>
+  </div>
+
+  <!-- Error state -->
+  <div id="content-error" class="hidden">
+    <div class="card rounded-2xl p-6 mb-4">
+      <div class="flex items-start gap-3 mb-4">
+        <svg class="w-5 h-5 text-amber-400 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+        </svg>
+        <div>
+          <p class="text-amber-300 text-sm font-medium">Não foi possível carregar o conteúdo</p>
+          <p id="error-detail" class="text-slate-500 text-xs mt-0.5"></p>
+        </div>
+      </div>
+      {% if article.description %}
+      <p class="text-slate-300 text-sm leading-relaxed border-l-2 border-slate-600 pl-4">
+        {{ article.description | striptags | truncate(400) }}
+      </p>
+      {% endif %}
+    </div>
+    <a href="{{ article.url }}" target="_blank" rel="noopener noreferrer"
+       class="flex items-center justify-center gap-2 w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium transition-colors">
+      Abrir artigo original
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
+      </svg>
+    </a>
+  </div>
+
+  <!-- Actual content -->
+  <article id="content-body" class="reader-content {% if not content or not content.html %}hidden{% endif %}">
+    {% if content and content.html %}{{ content.html | safe }}{% endif %}
   </article>
 
-  {% elif content and content.fetch_error %}
-  <!-- Fetch failed — show description + link -->
-  <div class="card rounded-2xl p-6 mb-6">
-    <div class="flex items-start gap-3 mb-4">
-      <svg class="w-5 h-5 text-amber-400 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
-      </svg>
-      <div>
-        <p class="text-amber-300 text-sm font-medium">Não foi possível carregar o conteúdo</p>
-        <p class="text-slate-500 text-xs mt-0.5">{{ content.fetch_error }}</p>
-      </div>
-    </div>
-    {% if article.description %}
-    <p class="text-slate-300 text-sm leading-relaxed border-l-2 border-slate-600 pl-4">{{ article.description | striptags }}</p>
-    {% endif %}
-  </div>
-  <a href="{{ article.url }}" target="_blank" rel="noopener noreferrer"
-     class="flex items-center justify-center gap-2 w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium transition-colors">
-    Abrir artigo original
-    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
-    </svg>
-  </a>
-
-  {% else %}
-  <!-- Loading state (shouldn't happen, but fallback) -->
-  <div class="card rounded-2xl p-6 text-center text-slate-400 text-sm">Carregando conteúdo…</div>
-  {% endif %}
-
-  <!-- Bottom: open original link -->
-  {% if content and content.html and not content.fetch_error %}
-  <div class="mt-10 pt-6 border-t border-slate-800 flex flex-col items-center gap-3">
+  <!-- Footer link (shown after content loads) -->
+  <div id="content-footer" class="{% if not content or not content.html %}hidden{% endif %} mt-10 pt-6 border-t border-slate-800 flex flex-col items-center gap-2">
     <p class="text-xs text-slate-600">Fonte original</p>
     <a href="{{ article.url }}" target="_blank" rel="noopener noreferrer"
-       class="text-sm text-blue-400 hover:underline break-all text-center">
+       class="text-xs text-blue-400/70 hover:text-blue-400 break-all text-center transition-colors">
       {{ article.url | truncate(80) }}
     </a>
     <a href="{{ article.url }}" target="_blank" rel="noopener noreferrer"
@@ -109,14 +115,12 @@
       </svg>
     </a>
   </div>
-  {% endif %}
 </div>
 
 <style>
-/* Reader typography */
 .reader-content {
-  font-size: 1.0625rem;
-  line-height: 1.8;
+  font-size: 1.05rem;
+  line-height: 1.85;
   color: #cbd5e1;
 }
 .reader-content h1, .reader-content h2, .reader-content h3,
@@ -124,12 +128,12 @@
   color: #f1f5f9;
   font-weight: 700;
   line-height: 1.3;
-  margin: 1.8em 0 0.6em;
+  margin: 1.75em 0 0.5em;
 }
-.reader-content h1 { font-size: 1.5rem; }
-.reader-content h2 { font-size: 1.25rem; }
-.reader-content h3 { font-size: 1.1rem; }
-.reader-content p  { margin: 1em 0; }
+.reader-content h1 { font-size: 1.45rem; }
+.reader-content h2 { font-size: 1.2rem; }
+.reader-content h3 { font-size: 1.05rem; }
+.reader-content p  { margin: 0.9em 0; }
 .reader-content a  { color: #60a5fa; text-decoration: underline; word-break: break-word; }
 .reader-content a:hover { color: #93c5fd; }
 .reader-content blockquote {
@@ -139,6 +143,7 @@
   color: #94a3b8;
   background: #1e293b;
   border-radius: 0 0.5rem 0.5rem 0;
+  font-style: italic;
 }
 .reader-content pre, .reader-content code {
   background: #1e293b;
@@ -146,13 +151,10 @@
   font-family: ui-monospace, monospace;
   font-size: 0.875rem;
 }
-.reader-content pre  { padding: 1em; overflow-x: auto; }
-.reader-content code { padding: 0.1em 0.3em; }
-.reader-content ul, .reader-content ol {
-  padding-left: 1.5em;
-  margin: 1em 0;
-}
-.reader-content li  { margin: 0.3em 0; }
+.reader-content pre  { padding: 1em; overflow-x: auto; margin: 1em 0; }
+.reader-content code { padding: 0.15em 0.35em; }
+.reader-content ul, .reader-content ol { padding-left: 1.5em; margin: 0.8em 0; }
+.reader-content li  { margin: 0.35em 0; }
 .reader-content img.reader-img {
   max-width: 100%;
   height: auto;
@@ -161,56 +163,87 @@
   display: block;
 }
 .reader-content figure { margin: 1.5em 0; }
-.reader-content figcaption {
-  text-align: center;
-  font-size: 0.8rem;
-  color: #64748b;
-  margin-top: 0.4em;
-}
-.reader-content table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.875rem;
-  margin: 1.5em 0;
-  overflow-x: auto;
-  display: block;
-}
-.reader-content th, .reader-content td {
-  padding: 0.5em 0.75em;
-  border: 1px solid #334155;
-  text-align: left;
-}
+.reader-content figcaption { text-align: center; font-size: 0.8rem; color: #64748b; margin-top: 0.4em; }
+.reader-content table { width: 100%; border-collapse: collapse; font-size: 0.875rem; margin: 1.5em 0; overflow-x: auto; display: block; }
+.reader-content th, .reader-content td { padding: 0.5em 0.75em; border: 1px solid #334155; text-align: left; }
 .reader-content th { background: #1e293b; color: #e2e8f0; }
-.reader-content hr {
-  border: none;
-  border-top: 1px solid #334155;
-  margin: 2em 0;
-}
-/* Hide duplicate title that readability sometimes includes */
-.reader-content > body > div > h1:first-child { display: none; }
+.reader-content hr { border: none; border-top: 1px solid #334155; margin: 2em 0; }
+/* Hide readability's injected duplicate title */
+.reader-content > body > div > h1:first-child,
+.reader-content > div > h1:first-child { display: none; }
 </style>
 
 <script>
 // Reading progress bar
 (function () {
   const bar = document.getElementById('progress-bar');
-  if (!bar) return;
   window.addEventListener('scroll', () => {
-    const doc = document.documentElement;
-    const scrolled = doc.scrollTop;
-    const total = doc.scrollHeight - doc.clientHeight;
-    bar.style.width = total > 0 ? (scrolled / total * 100) + '%' : '0%';
+    const d = document.documentElement;
+    const pct = d.scrollHeight > d.clientHeight
+      ? d.scrollTop / (d.scrollHeight - d.clientHeight) * 100 : 0;
+    bar.style.width = pct + '%';
   }, { passive: true });
 })();
+
+// Content loader
+const ARTICLE_ID = {{ article.id }};
+const HAS_CONTENT = {{ 'true' if content and content.html else 'false' }};
+const HAS_ERROR   = {{ 'true' if content and content.fetch_error and not content.html else 'false' }};
+
+function showContent(html) {
+  document.getElementById('content-loading').classList.add('hidden');
+  document.getElementById('content-error').classList.add('hidden');
+  const body = document.getElementById('content-body');
+  body.innerHTML = html;
+  body.classList.remove('hidden');
+  document.getElementById('content-footer').classList.remove('hidden');
+}
+
+function showError(msg) {
+  document.getElementById('content-loading').classList.add('hidden');
+  document.getElementById('content-body').classList.add('hidden');
+  document.getElementById('error-detail').textContent = msg || 'Erro desconhecido';
+  document.getElementById('content-error').classList.remove('hidden');
+}
+
+async function loadContent(force = false) {
+  if (!force && HAS_CONTENT) return; // already rendered server-side
+  if (!force && HAS_ERROR) {
+    showError('{{ (content.fetch_error or "") | e if content else "" }}');
+    return;
+  }
+
+  // Show skeleton
+  document.getElementById('content-loading').classList.remove('hidden');
+  document.getElementById('content-body').classList.add('hidden');
+  document.getElementById('content-footer').classList.add('hidden');
+  document.getElementById('content-error').classList.add('hidden');
+
+  try {
+    const url = `/reader/${ARTICLE_ID}/fetch${force ? '?force=true' : ''}`;
+    const res = await fetch(url);
+    const data = await res.json();
+    if (data.html) {
+      showContent(data.html);
+    } else {
+      showError(data.error);
+    }
+  } catch (e) {
+    showError('Falha na conexão: ' + e.message);
+  }
+}
+
+// Trigger if not cached
+if (!HAS_CONTENT) {
+  loadContent(false);
+}
 
 async function shareArticle(url, title) {
   if (navigator.share) {
     try { await navigator.share({ title, url }); } catch (_) {}
   } else {
-    try {
-      await navigator.clipboard.writeText(url);
-      showToast('Link copiado!');
-    } catch (_) { window.open(url, '_blank'); }
+    try { await navigator.clipboard.writeText(url); showToast('Link copiado!'); }
+    catch (_) { window.open(url, '_blank'); }
   }
 }
 

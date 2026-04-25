@@ -20,6 +20,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from sqlalchemy import desc
 
 import clusterer
+import content_prefetch
 import fetcher
 import summarizer
 from db import Article, Cluster, DigestRun, Feed, Setting, get_session, init_db
@@ -44,6 +45,18 @@ def job_fetch_all():
         fetcher.fetch_all_feeds(db)
     except Exception as exc:
         log.error("fetch_all_feeds error: %s", exc, exc_info=True)
+    finally:
+        db.close()
+    # Pre-fetch article content in background after feeds are updated
+    job_prefetch_content()
+
+
+def job_prefetch_content():
+    db = get_session()
+    try:
+        content_prefetch.prefetch_recent(db)
+    except Exception as exc:
+        log.error("prefetch_content error: %s", exc, exc_info=True)
     finally:
         db.close()
 
