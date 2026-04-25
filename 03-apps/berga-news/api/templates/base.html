@@ -55,6 +55,7 @@
       {% if user.role == 'admin' %}
       <a href="/admin" class="hover:text-blue-400 transition-colors {% if request.url.path.startswith('/admin') %}text-blue-400 font-medium{% else %}text-slate-400{% endif %}">Admin</a>
       {% endif %}
+      <a href="/settings" class="hover:text-blue-400 transition-colors {% if request.url.path.startswith('/settings') %}text-blue-400 font-medium{% else %}text-slate-400{% endif %}">Configurações</a>
       <form method="post" action="/logout" class="inline">
         <button class="text-slate-500 hover:text-red-400 transition-colors text-xs">Sair</button>
       </form>
@@ -90,6 +91,12 @@
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 5c7.18 0 13 5.82 13 13M6 11a7 7 0 017 7M6 17a1 1 0 110 2 1 1 0 010-2z"/>
         </svg>
         Feeds
+      </a>
+      <a href="/settings" class="flex-1 flex flex-col items-center justify-center py-2 gap-0.5 text-xs {% if request.url.path.startswith('/settings') %}text-blue-400{% else %}text-slate-400{% endif %}">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
+        </svg>
+        Conta
       </a>
       {% if user.role == 'admin' %}
       <a href="/admin" class="flex-1 flex flex-col items-center justify-center py-2 gap-0.5 text-xs {% if request.url.path.startswith('/admin') %}text-blue-400{% else %}text-slate-400{% endif %}">

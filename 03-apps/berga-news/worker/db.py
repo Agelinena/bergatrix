@@ -94,6 +94,21 @@ class Cluster(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
+class ArticleContent(Base):
+    __tablename__ = "article_contents"
+    article_id = Column(Integer, ForeignKey("articles.id", ondelete="CASCADE"), primary_key=True)
+    html = Column(Text, nullable=False)
+    fetch_error = Column(Text)
+    fetched_at = Column(DateTime, default=datetime.utcnow)
+
+
+class ArticleRead(Base):
+    __tablename__ = "article_reads"
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    article_id = Column(Integer, ForeignKey("articles.id", ondelete="CASCADE"), primary_key=True)
+    read_at = Column(DateTime, default=datetime.utcnow)
+
+
 class Setting(Base):
     __tablename__ = "settings"
     key = Column(Text, primary_key=True)
@@ -115,6 +130,9 @@ def init_db():
         ))
         db.execute(text(
             "CREATE INDEX IF NOT EXISTS idx_articles_feed ON articles (feed_id)"
+        ))
+        db.execute(text(
+            "CREATE INDEX IF NOT EXISTS idx_article_reads_user ON article_reads (user_id)"
         ))
         db.commit()
 

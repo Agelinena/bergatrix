@@ -111,6 +111,15 @@ class Cluster(Base):
     articles = relationship("Article", back_populates="cluster")
 
 
+class ArticleContent(Base):
+    """Cached full HTML of a fetched article (reader mode)."""
+    __tablename__ = "article_contents"
+    article_id = Column(Integer, ForeignKey("articles.id", ondelete="CASCADE"), primary_key=True)
+    html = Column(Text, nullable=False)
+    fetch_error = Column(Text)          # non-null = extraction failed
+    fetched_at = Column(DateTime, default=datetime.utcnow)
+
+
 class ArticleRead(Base):
     """Tracks which articles each user has marked as read."""
     __tablename__ = "article_reads"

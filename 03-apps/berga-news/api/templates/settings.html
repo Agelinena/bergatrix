@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{% block title %}Configurações — Berga News{% endblock %}
+{% block content %}
+
+<div class="mb-6">
+  <h1 class="text-xl font-bold text-white">Configurações</h1>
+  <p class="text-slate-500 text-sm mt-0.5">Conta: <span class="text-slate-300">{{ user.username }}</span>
+    <span class="ml-2 pill rounded-full px-2 py-0.5 text-xs {% if user.role == 'admin' %}text-blue-400{% else %}text-slate-400{% endif %}">{{ user.role }}</span>
+  </p>
+</div>
+
+{% if msg %}
+<div class="mb-5 px-4 py-3 rounded-lg bg-green-500/10 border border-green-500/20 text-green-300 text-sm">{{ msg }}</div>
+{% endif %}
+{% if error %}
+<div class="mb-5 px-4 py-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-300 text-sm">{{ error }}</div>
+{% endif %}
+
+<!-- Change username -->
+<section class="card rounded-2xl p-5 mb-4">
+  <h2 class="text-sm font-semibold text-white mb-4">Alterar nome de usuário</h2>
+  <form method="post" action="/settings/username" class="flex flex-col sm:flex-row gap-3">
+    <input type="text" name="username" value="{{ user.username }}" minlength="3" required
+      class="flex-1 bg-slate-900 border border-slate-600 rounded-lg px-4 py-2.5 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 transition-colors text-sm">
+    <button type="submit"
+      class="bg-slate-700 hover:bg-slate-600 text-white text-sm font-medium px-5 py-2.5 rounded-lg transition-colors whitespace-nowrap">
+      Salvar
+    </button>
+  </form>
+</section>
+
+<!-- Change password -->
+<section class="card rounded-2xl p-5 mb-4">
+  <h2 class="text-sm font-semibold text-white mb-4">Alterar senha</h2>
+  <form method="post" action="/settings/password" class="flex flex-col gap-3">
+    <div>
+      <label class="text-xs text-slate-400 mb-1.5 block">Senha atual</label>
+      <input type="password" name="current_password" required
+        class="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-2.5 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 transition-colors text-sm">
+    </div>
+    <div class="grid sm:grid-cols-2 gap-3">
+      <div>
+        <label class="text-xs text-slate-400 mb-1.5 block">Nova senha <span class="text-slate-600">(mín. 8 chars)</span></label>
+        <input type="password" name="new_password" minlength="8" required
+          class="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-2.5 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 transition-colors text-sm">
+      </div>
+      <div>
+        <label class="text-xs text-slate-400 mb-1.5 block">Confirmar nova senha</label>
+        <input type="password" name="confirm_password" minlength="8" required
+          class="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-2.5 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 transition-colors text-sm">
+      </div>
+    </div>
+    <div>
+      <button type="submit"
+        class="bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium px-5 py-2.5 rounded-lg transition-colors">
+        Alterar senha
+      </button>
+    </div>
+  </form>
+</section>
+
+<!-- Sessions -->
+<section class="card rounded-2xl p-5 mb-4">
+  <div class="flex items-center justify-between mb-4">
+    <h2 class="text-sm font-semibold text-white">Sessões ativas</h2>
+    {% if sessions | length > 1 %}
+    <form method="post" action="/settings/logout-all">
+      <button type="submit"
+        class="text-xs text-red-400 hover:text-red-300 transition-colors">
+        Encerrar outras sessões
+      </button>
+    </form>
+    {% endif %}
+  </div>
+  <div class="space-y-2">
+    {% for s in sessions %}
+    {% set is_current = request.cookies.get('session_id') == s.id %}
+    <div class="flex items-center gap-3 py-2 {% if not loop.last %}border-b border-slate-800{% endif %}">
+      <div class="w-2 h-2 rounded-full {% if is_current %}bg-green-500{% else %}bg-slate-600{% endif %} shrink-0"></div>
+      <div class="flex-1 min-w-0">
+        <p class="text-sm text-slate-300">
+          {% if is_current %}<span class="text-green-400">Esta sessão</span>{% else %}Sessão{% endif %}
+        </p>
+        <p class="text-xs text-slate-600">
+          Criada {{ s.created_at.strftime('%d/%m/%Y %H:%M') }} · Expira {{ s.expires_at.strftime('%d/%m/%Y') }}
+        </p>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</section>
+
+<!-- Danger zone -->
+<section class="card rounded-2xl p-5 border border-red-900/30">
+  <h2 class="text-sm font-semibold text-red-400 mb-4">Sair da conta</h2>
+  <div class="flex items-center justify-between gap-4 flex-wrap">
+    <p class="text-slate-400 text-sm">Encerra a sessão atual neste dispositivo.</p>
+    <form method="post" action="/logout">
+      <button type="submit"
+        class="bg-red-600/20 hover:bg-red-600/40 border border-red-500/30 text-red-300 text-sm font-medium px-5 py-2.5 rounded-lg transition-colors whitespace-nowrap">
+        Sair
+      </button>
+    </form>
+  </div>
+</section>
+
+{% endblock %}
