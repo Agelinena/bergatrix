@@ -125,20 +125,47 @@ def _run_digest(db):
     log.info("Digest run #%d started. Window: %s → %s", run.id, window_start, now)
 
     try:
+        # Diagnostic: how many total unclustered articles exist?
+        total_unclustered = (
+            db.query(Article)
+            .join(Feed)
+            .filter(Article.cluster_id == None, Feed.active == True)
+            .count()
+        )
+        log.info("Total unclustered articles in DB: %d", total_unclustered)
+
+        # Filter by fetched_at (when we collected it), NOT published_at.
+        # published_at from RSS feeds can be days/weeks old and would miss the window.
         articles = (
             db.query(Article)
             .join(Feed)
             .filter(
                 Article.cluster_id == None,
-                Article.published_at >= window_start,
-                Article.published_at <= now,
+                Article.fetched_at >= window_start,
                 Feed.active == True,
             )
             .all()
         )
 
+        # Fallback: if nothing in the fetch window, grab ALL unclustered articles
+        # (useful on first run when all articles were fetched before any digest ran)
+        if not articles and total_unclustered > 0:
+            log.info(
+                "No articles fetched in window but %d unclustered exist — "
+                "running digest on all unclustered articles.",
+                total_unclustered,
+            )
+            articles = (
+                db.query(Article)
+                .join(Feed)
+                .filter(Article.cluster_id == None, Feed.active == True)
+                .order_by(Article.published_at.desc())
+                .limit(300)
+                .all()
+            )
+
         if not articles:
-            log.info("No articles in window — digest done (empty).")
+            log.info("No articles to digest — done (empty).")
             run.status = "done"
             run.finished_at = datetime.utcnow()
             run.articles_processed = 0
