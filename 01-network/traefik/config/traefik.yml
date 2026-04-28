@@ -24,10 +24,7 @@ entryPoints:
       trustedIPs:
         - "127.0.0.1/32"       # Localhost
         - "192.168.10.0/24"    # A rede interna (que já inclui o .1 do OPNsense)
-        - "100.64.0.0/10"      # A rede virtual da Tailscale
-        - "10.8.0.0/24"        # A rede do WireGuard (Verifique qual é a sub-rede do seu túnel com a Oracle e coloque aqui)
         - "192.168.3.0/24"     # Rede local backup
-        - "fd6d:f154:e57d::/64" #Rede ipv6
 providers:
   docker:
     endpoint: "unix:///var/run/docker.sock"
