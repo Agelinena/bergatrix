@@ -308,6 +308,22 @@ services:
               capabilities: [ gpu ]
     networks:
       - media-network
+    
+  torrent-indexer-br:
+    image: ghcr.io/felipemarinho97/torrent-indexer:latest
+    container_name: torrent-indexer-br
+    restart: unless-stopped
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
+    networks:
+      - bergatrix-proxy
+      - media-network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.torrent-indexer-br-router.rule=Host(`torrentbr.${DOMAIN}`)"
+      - "traefik.http.routers.torrent-indexer-br-router.middlewares=internal-only@docker"
+      - "traefik.http.services.torrent-indexer-br-service.loadbalancer.server.port=7006"
 
 networks:
   bergatrix-proxy:
