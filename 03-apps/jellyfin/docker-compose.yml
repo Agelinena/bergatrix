@@ -177,22 +177,6 @@ services:
       - "traefik.http.routers.bazarr-router.middlewares=internal-only@docker"
       - "traefik.http.services.bazarr-service.loadbalancer.server.port=6767"
 
-  solvearr:
-    image: nabilak/solvearr
-    container_name: solvearr
-    restart: unless-stopped
-    dns:
-      - 8.8.8.8
-      - 1.1.1.1
-    networks:
-      - bergatrix-proxy
-      - media-network
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.solvearr-router.rule=Host(`solvearr.${DOMAIN}`)"
-      - "traefik.http.routers.solvearr-router.middlewares=internal-only@docker"
-      - "traefik.http.services.solvearr-service.loadbalancer.server.port=8191"
-
   flaresolverr:
     image: ghcr.io/flaresolverr/flaresolverr:latest
     container_name: flaresolverr
@@ -316,12 +300,20 @@ services:
     dns:
       - 8.8.8.8
       - 1.1.1.1
+    environment:
+      - FLARESOLVERR_ADDRESS=http://flaresolverr:8191
+      - LONG_LIVED_CACHE_EXPIRATION=24h
+      - CACHE_EXPIRATION=30m
+      - REDIS_URI=
+      - PORT=7006
+    depends_on:
+      - flaresolverr
     networks:
       - bergatrix-proxy
       - media-network
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.torrent-indexer-br-router.rule=Host(`torrentbr.${DOMAIN}`)"
+      - "traefik.http.routers.torrent-indexer-br-router.rule=Host(`torrent-indexer-br.${DOMAIN}`)"
       - "traefik.http.routers.torrent-indexer-br-router.middlewares=internal-only@docker"
       - "traefik.http.services.torrent-indexer-br-service.loadbalancer.server.port=7006"
 
