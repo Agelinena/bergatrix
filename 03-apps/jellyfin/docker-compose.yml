@@ -316,6 +316,30 @@ services:
       - "traefik.http.routers.torrent-indexer-br-router.rule=Host(`torrent-indexer-br.${DOMAIN}`)"
       - "traefik.http.routers.torrent-indexer-br-router.middlewares=internal-only@docker"
       - "traefik.http.services.torrent-indexer-br-service.loadbalancer.server.port=7006"
+  
+  sabnzbd:
+    image: lscr.io/linuxserver/sabnzbd
+    container_name: sabnzbd
+    restart: unless-stopped
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+    volumes:
+      - ${STORAGE_PATH}/config/sabnzbd:/config
+      - ${STORAGE_PATH}/downloads:/downloads
+      - ${STORAGE_PATH}/incomplete:/incomplete-downloads
+    networks:
+      - bergatrix-proxy
+      - media-network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.sabnzbd-router.rule=Host(`sabnzbd.${DOMAIN}`)"
+      - "traefik.http.routers.sabnzbd-router.middlewares=internal-only@docker"
+      - "traefik.http.services.sabnzbd-service.loadbalancer.server.port=8080"
 
 networks:
   bergatrix-proxy:
