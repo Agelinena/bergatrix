@@ -102,12 +102,16 @@ async def download_youtube(track_id: str, source_id: str, title: str = "", artis
         query = f"{artist} {title}".strip()
         url = f"ytsearch1:{query}"
 
+    # Create a lock file so stream_service knows the file is still being written.
+    lock = Path(str(dest) + ".lock")
+    lock.touch()
+
     cmd = [
         "yt-dlp",
         "-f", "bestaudio",
-        "-x", "--audio-format", "mp3", "--audio-quality", "0",  # 0 = best VBR (~320kbps)
+        "-x", "--audio-format", "mp3", "--audio-quality", "0",
         "--no-playlist",
-        "-o", str(dest.with_suffix("")),
+        "-o", str(dest.with_suffix("")),  # yt-dlp appends .mp3
         url,
     ]
 
@@ -121,7 +125,6 @@ async def download_youtube(track_id: str, source_id: str, title: str = "", artis
         if proc.returncode != 0:
             return None, ""
 
-        # yt-dlp may append .mp3 extension
         actual = dest if dest.exists() else dest.with_suffix("").with_suffix(".mp3")
         if actual.exists() and actual != dest:
             actual.rename(dest)
@@ -129,6 +132,8 @@ async def download_youtube(track_id: str, source_id: str, title: str = "", artis
         return dest if dest.exists() else None, "mp3_320"
     except (asyncio.TimeoutError, Exception):
         return None, ""
+    finally:
+        lock.unlink(missing_ok=True)
 
 
 async def ensure_track_file(track_id: str, source: str, source_id: str, title: str = "", artist: str = "") -> tuple[Path | None, str]:
