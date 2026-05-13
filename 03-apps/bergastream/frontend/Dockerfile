@@ -6,8 +6,10 @@ WORKDIR /app
 COPY pubspec.yaml ./
 RUN flutter pub get
 
-# Copia o resto do código e gera os arquivos .g.dart (Riverpod, GoRouter, Hive)
+# Copia o restante do código (inclui web/ com index.html já commitado)
 COPY . .
+
+# Gera os arquivos .g.dart (Riverpod, GoRouter, Hive)
 RUN dart run build_runner build --delete-conflicting-outputs
 
 # API_URL é passado pelo docker-compose como build arg
