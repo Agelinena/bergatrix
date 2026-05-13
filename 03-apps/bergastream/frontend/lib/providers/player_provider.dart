@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import '../models/track.dart';
 import '../services/audio_player_service.dart';
+import '../core/api_client.dart';
 
 part 'player_provider.g.dart';
 
@@ -79,6 +80,11 @@ class Player extends _$Player {
   }
 
   Future<void> play(Track track, {List<Track> queue = const []}) async {
+    // Record previous track before switching (if played for more than 5s)
+    if (state.hasTrack && state.position.inSeconds > 5) {
+      _recordPlay(state.currentTrack!, state.position, completed: false);
+    }
+
     final q = queue.isEmpty ? [track] : queue;
     final idx = q.indexWhere((t) => t.id == track.id);
     state = state.copyWith(
@@ -153,11 +159,20 @@ class Player extends _$Player {
   }
 
   void _handleTrackComplete() {
+    if (state.currentTrack != null) {
+      _recordPlay(state.currentTrack!, state.duration, completed: true);
+    }
     if (state.repeat == RepeatMode.one) {
       _service.seekTo(Duration.zero);
       _service.resume();
       return;
     }
     next();
+  }
+
+  void _recordPlay(Track track, Duration position, {bool completed = false}) {
+    try {
+      ref.read(apiClientProvider).recordPlay(track.id, position.inMilliseconds, completed: completed);
+    } catch (_) {}
   }
 }

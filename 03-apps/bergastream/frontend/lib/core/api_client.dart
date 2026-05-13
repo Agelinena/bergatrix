@@ -1,3 +1,4 @@
+import 'dart:typed_data';
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -122,12 +123,30 @@ class ApiClient {
     return resp.data as Map<String, dynamic>;
   }
 
-  Future<void> addTrackToPlaylist(String playlistId, String trackId) async {
-    await _dio.post('/api/playlists/$playlistId/tracks', data: {'track_id': trackId});
+  Future<void> addTrackToPlaylist(String playlistId, String trackId, {bool force = false}) async {
+    final url = '/api/playlists/$playlistId/tracks${force ? '?force=true' : ''}';
+    await _dio.post(url, data: {'track_id': trackId});
   }
 
   Future<void> removeTrackFromPlaylist(String playlistId, String trackId) async {
     await _dio.delete('/api/playlists/$playlistId/tracks/$trackId');
+  }
+
+  Future<String?> uploadPlaylistCover(String playlistId, Uint8List bytes, String mimeType) async {
+    final ext = switch (mimeType) {
+      'image/png' => 'png',
+      'image/webp' => 'webp',
+      _ => 'jpg',
+    };
+    final formData = FormData.fromMap({
+      'file': MultipartFile.fromBytes(
+        bytes,
+        filename: 'cover.$ext',
+        contentType: DioMediaType.parse(mimeType),
+      ),
+    });
+    final resp = await _dio.post('/api/playlists/$playlistId/cover', data: formData);
+    return (resp.data as Map<String, dynamic>)['cover_url'] as String?;
   }
 
   // Likes

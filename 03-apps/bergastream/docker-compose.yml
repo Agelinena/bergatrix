@@ -6,6 +6,7 @@ services:
     env_file: .env
     volumes:
       - ${VOLUMES_BASE}/bergastream/music:/data/music
+      - ${VOLUMES_BASE}/bergastream/media:/data/media
     networks:
       - internal
       - bergatrix-proxy

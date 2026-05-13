@@ -116,6 +116,32 @@ async def get_deezer_artist(deezer_id: str) -> tuple[ArtistSchema | None, list[A
     return artist, albums, top_tracks
 
 
+async def find_deezer_track_id(title: str, artist: str, duration_ms: int | None = None) -> str | None:
+    """
+    Searches Deezer for title+artist and returns the best-matching track ID.
+    If duration_ms is provided, only returns a result that matches within 10%.
+    Returns None if no suitable match is found.
+    """
+    query = f"{artist} {title}".strip()
+    if not query:
+        return None
+    async with httpx.AsyncClient(timeout=10) as client:
+        resp = await client.get(f"{DEEZER_API}/search", params={"q": query, "limit": 20})
+    if resp.status_code != 200:
+        return None
+    results = resp.json().get("data", [])
+    if not results:
+        return None
+    if not duration_ms or duration_ms <= 0:
+        return str(results[0]["id"])
+    tolerance = duration_ms * 0.10
+    for t in results:
+        track_ms = t.get("duration", 0) * 1000
+        if abs(track_ms - duration_ms) <= tolerance:
+            return str(t["id"])
+    return None  # no match within duration tolerance
+
+
 async def get_deezer_radio(deezer_id: str, limit: int = 10) -> list[TrackSchema]:
     async with httpx.AsyncClient(timeout=10) as client:
         resp = await client.get(f"{DEEZER_API}/radio/track/{deezer_id}/tracks")

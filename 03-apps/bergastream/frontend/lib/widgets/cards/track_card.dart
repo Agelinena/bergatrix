@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -13,12 +14,16 @@ class TrackCard extends ConsumerWidget {
   final Track track;
   final List<Track> queue;
   final VoidCallback? onTap;
+  final String? playlistId;
+  final VoidCallback? onRemoved;
 
   const TrackCard({
     super.key,
     required this.track,
     this.queue = const [],
     this.onTap,
+    this.playlistId,
+    this.onRemoved,
   });
 
   @override
@@ -90,14 +95,16 @@ class TrackCard extends ConsumerWidget {
     showModalBottomSheet(
       context: context,
       backgroundColor: AppColors.surfaceVariant,
-      builder: (_) => _TrackMenu(track: track),
+      builder: (_) => _TrackMenu(track: track, playlistId: playlistId, onRemoved: onRemoved),
     );
   }
 }
 
 class _TrackMenu extends ConsumerWidget {
   final Track track;
-  const _TrackMenu({required this.track});
+  final String? playlistId;
+  final VoidCallback? onRemoved;
+  const _TrackMenu({required this.track, this.playlistId, this.onRemoved});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -124,6 +131,16 @@ class _TrackMenu extends ConsumerWidget {
               ref.read(playerProvider.notifier).addToQueue(track);
             },
           ),
+          if (playlistId != null)
+            ListTile(
+              leading: const Icon(Icons.remove_circle_outline, color: Colors.redAccent),
+              title: const Text('Remover da playlist', style: TextStyle(color: Colors.redAccent)),
+              onTap: () async {
+                Navigator.pop(context);
+                await client.removeTrackFromPlaylist(playlistId!, track.id);
+                onRemoved?.call();
+              },
+            ),
           ListTile(
             leading: const Icon(Icons.favorite_border),
             title: const Text('Curtir'),
@@ -201,17 +218,36 @@ class _AddToPlaylistSheetState extends ConsumerState<_AddToPlaylistSheet> {
     });
   }
 
-  Future<void> _add(Playlist playlist) async {
+  Future<void> _add(Playlist playlist, {bool force = false}) async {
     setState(() => _adding = playlist.id);
     try {
       final client = ref.read(apiClientProvider);
       await client.registerTrack(widget.track.toJson());
-      await client.addTrackToPlaylist(playlist.id, widget.track.id);
+      await client.addTrackToPlaylist(playlist.id, widget.track.id, force: force);
       if (mounted) {
         Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Adicionada a "${playlist.name}"'), duration: const Duration(seconds: 2)),
         );
+      }
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 409 && mounted) {
+        setState(() => _adding = null);
+        final confirm = await showDialog<bool>(
+          context: context,
+          builder: (_) => AlertDialog(
+            backgroundColor: AppColors.surfaceVariant,
+            title: const Text('Música já adicionada'),
+            content: Text('"${widget.track.title}" já está em "${playlist.name}". Quer adicionar de novo?'),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancelar')),
+              ElevatedButton(onPressed: () => Navigator.pop(context, true), child: const Text('Adicionar mesmo assim')),
+            ],
+          ),
+        );
+        if (confirm == true && mounted) await _add(playlist, force: true);
+      } else {
+        if (mounted) setState(() => _adding = null);
       }
     } catch (_) {
       if (mounted) setState(() => _adding = null);

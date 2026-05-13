@@ -184,7 +184,15 @@ async def ensure_track_file(track_id: str, source: str, source_id: str, title: s
         return await download_youtube(track_id, source_id, title, artist)
 
     if source == "spotify":
-        # Spotify IDs are not YouTube IDs — always search by title+artist
+        # Try Deezer first (duration-matched search) for lossless quality
+        if settings.deemix_arl and (title or artist):
+            from app.services.metadata_service import find_deezer_track_id
+            deezer_id = await find_deezer_track_id(title, artist, duration_ms)
+            if deezer_id:
+                path, quality = await download_deezer(track_id, deezer_id, expected_duration_ms=duration_ms)
+                if path:
+                    return path, quality
+        # Fall back to YouTube search
         return await download_youtube(track_id, "", title, artist)
 
     return None, ""

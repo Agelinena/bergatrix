@@ -29,6 +29,7 @@ class Settings(BaseSettings):
     # Paths
     music_permanent_path: str = "/data/music/permanent"
     music_cache_path: str = "/data/music/cache"
+    media_covers_path: str = "/data/media/covers"
     cache_expire_hours: int = 48
 
     # App

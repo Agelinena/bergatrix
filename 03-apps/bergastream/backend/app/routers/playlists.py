@@ -1,5 +1,7 @@
 import uuid
-from fastapi import APIRouter, Depends, HTTPException, status
+import aiofiles
+from pathlib import Path
+from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, update, delete
 from app.database import get_db
@@ -12,6 +14,9 @@ from app.schemas.playlist import (
     AddTrackRequest, ReorderRequest, ShareResponse, PlaylistTrackSchema,
 )
 from app.config import get_settings
+
+ALLOWED_COVER_TYPES = {"image/jpeg", "image/png", "image/webp"}
+MAX_COVER_BYTES = 5 * 1024 * 1024
 
 settings = get_settings()
 router = APIRouter(prefix="/playlists", tags=["playlists"])
@@ -147,6 +152,7 @@ async def delete_playlist(
 async def add_track(
     playlist_id: uuid.UUID,
     body: AddTrackRequest,
+    force: bool = Query(default=False),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -156,6 +162,17 @@ async def add_track(
     result = await db.execute(select(Track).where(Track.id == body.track_id))
     if result.scalar_one_or_none() is None:
         raise HTTPException(status_code=404, detail="Track not found. Register it first via /api/tracks/register")
+
+    # Duplicate check (skip if force=true)
+    if not force:
+        dup = await db.execute(
+            select(PlaylistTrack).where(
+                PlaylistTrack.playlist_id == playlist_id,
+                PlaylistTrack.track_id == body.track_id,
+            )
+        )
+        if dup.scalar_one_or_none() is not None:
+            raise HTTPException(status_code=409, detail="Track already in playlist")
 
     # Determine position
     if body.position is None:
@@ -170,6 +187,37 @@ async def add_track(
     db.add(pt)
     await db.flush()
     return {"id": str(pt.id)}
+
+
+@router.post("/{playlist_id}/cover")
+async def upload_cover(
+    playlist_id: uuid.UUID,
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    pl = await _get_user_playlist(db, playlist_id, current_user.id)
+
+    if file.content_type not in ALLOWED_COVER_TYPES:
+        raise HTTPException(status_code=400, detail="Apenas JPEG, PNG e WebP são suportados")
+
+    content = await file.read()
+    if len(content) > MAX_COVER_BYTES:
+        raise HTTPException(status_code=400, detail="Arquivo muito grande (máx. 5 MB)")
+
+    covers_dir = Path(settings.media_covers_path)
+    covers_dir.mkdir(parents=True, exist_ok=True)
+
+    suffix = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp"}[file.content_type]
+    filename = f"{playlist_id}_{uuid.uuid4().hex[:8]}{suffix}"
+    filepath = covers_dir / filename
+
+    async with aiofiles.open(filepath, "wb") as f:
+        await f.write(content)
+
+    cover_url = f"https://{settings.api_domain}/media/covers/{filename}"
+    pl.cover_url = cover_url
+    return {"cover_url": cover_url}
 
 
 @router.delete("/{playlist_id}/tracks/{track_id}", status_code=204)
