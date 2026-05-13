@@ -98,46 +98,40 @@ class _PlaylistScreenState extends ConsumerState<PlaylistScreen> {
   }
 
   Future<void> _delete() async {
-    debugPrint('[DELETE] _delete() called, _deleting=$_deleting');
     if (_deleting) return;
 
     final client = ref.read(apiClientProvider);
     final library = ref.read(libraryProvider.notifier);
     final playlistId = widget.id;
 
-    debugPrint('[DELETE] opening dialog for playlist $playlistId');
     final confirm = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
-      builder: (_) => AlertDialog(
+      builder: (dialogContext) => AlertDialog(
         backgroundColor: AppColors.surfaceVariant,
         title: const Text('Deletar playlist?'),
         content: Text('Tem certeza que quer deletar "${_playlist?.name}"? Isso não pode ser desfeito.'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancelar')),
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Cancelar')),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            onPressed: () => Navigator.pop(context, true),
+            onPressed: () => Navigator.pop(dialogContext, true),
             child: const Text('Deletar'),
           ),
         ],
       ),
     );
 
-    debugPrint('[DELETE] dialog closed, confirm=$confirm, mounted=$mounted');
     if (confirm != true) return;
 
     if (mounted) setState(() => _deleting = true);
     final messenger = mounted ? ScaffoldMessenger.of(context) : null;
 
-    debugPrint('[DELETE] sending DELETE /api/playlists/$playlistId');
     try {
       await client.deletePlaylist(playlistId);
-      debugPrint('[DELETE] success');
       library.load();
       if (mounted) context.go('/library');
     } catch (e) {
-      debugPrint('[DELETE] error: $e');
       if (mounted) setState(() => _deleting = false);
       messenger?.showSnackBar(SnackBar(
         content: Text(_extractError(e)),

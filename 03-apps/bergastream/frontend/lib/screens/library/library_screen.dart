@@ -113,15 +113,15 @@ class _PlaylistTile extends ConsumerWidget {
       confirmDismiss: (_) async {
         final confirmed = await showDialog<bool>(
           context: context,
-          builder: (_) => AlertDialog(
+          builder: (dialogContext) => AlertDialog(
             backgroundColor: AppColors.surfaceVariant,
             title: const Text('Deletar playlist?'),
             content: Text('Tem certeza que quer deletar "${playlist.name}"?'),
             actions: [
-              TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancelar')),
+              TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Cancelar')),
               ElevatedButton(
                 style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-                onPressed: () => Navigator.pop(context, true),
+                onPressed: () => Navigator.pop(dialogContext, true),
                 child: const Text('Deletar'),
               ),
             ],
