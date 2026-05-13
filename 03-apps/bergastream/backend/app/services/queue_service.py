@@ -82,7 +82,8 @@ class DownloadQueueService:
                             continue
 
                         path, quality = await downloader_service.ensure_track_file(
-                            track_id, track.source, track.source_id or "", track.title, track.artist
+                            track_id, track.source, track.source_id or "", track.title, track.artist,
+                            duration_ms=track.duration_ms,
                         )
 
                         if path:

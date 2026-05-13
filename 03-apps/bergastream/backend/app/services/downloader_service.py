@@ -28,11 +28,12 @@ def _resolve_existing(track_id: str) -> Path | None:
     return None
 
 
-async def download_deezer(track_id: str, source_id: str) -> tuple[Path | None, str]:
+async def download_deezer(track_id: str, source_id: str, expected_duration_ms: int | None = None) -> tuple[Path | None, str]:
     """
     Downloads via deemix using the configured ARL token.
     Returns (file_path, audio_quality).
-    Falls back to yt-dlp search if deemix fails.
+    Verifies downloaded file duration against expected_duration_ms (10% tolerance).
+    Returns (None, "") on failure so caller can fall back to yt-dlp.
     """
     if not settings.deemix_arl:
         return None, ""
@@ -44,12 +45,17 @@ async def download_deezer(track_id: str, source_id: str) -> tuple[Path | None, s
         from deemix import generateDownloadObject
         from deemix.downloader import Downloader
         from deezer import Deezer
-        from deemix.settings import DEFAULTS, load
+        from deemix.settings import DEFAULTS
         import copy
 
         loop = asyncio.get_event_loop()
 
         def _download():
+            # Snapshot existing files before download so we only pick NEW ones
+            pre_existing: set[Path] = set()
+            for ext in ("flac", "mp3"):
+                pre_existing.update(out_dir.glob(f"**/*.{ext}"))
+
             dz = Deezer()
             logged = dz.login_via_arl(settings.deemix_arl)
             if not logged:
@@ -64,13 +70,15 @@ async def download_deezer(track_id: str, source_id: str) -> tuple[Path | None, s
             dl_obj = generateDownloadObject(dz, url, deezer_settings["maxBitrate"])
             Downloader(dz, dl_obj, deezer_settings).start()
 
-            # Find downloaded file — deemix names files by tag, not track_id
+            # Only consider files that didn't exist before download
             for ext in ("flac", "mp3"):
-                files = list(out_dir.glob(f"**/*.{ext}"))
-                if files:
-                    # pick most recently created
-                    files.sort(key=lambda f: f.stat().st_mtime, reverse=True)
-                    return files[0], "flac" if ext == "flac" else "mp3_320"
+                new_files = [
+                    f for f in out_dir.glob(f"**/*.{ext}")
+                    if f not in pre_existing
+                ]
+                if new_files:
+                    new_files.sort(key=lambda f: f.stat().st_mtime, reverse=True)
+                    return new_files[0], "flac" if ext == "flac" else "mp3_320"
             return None, ""
 
         result = await loop.run_in_executor(None, _download)
@@ -78,6 +86,26 @@ async def download_deezer(track_id: str, source_id: str) -> tuple[Path | None, s
             ext = "flac" if result[1] == "flac" else "mp3"
             dest = _cache_path(track_id, ext)
             result[0].rename(dest)
+
+            # Verify duration if expected is provided (10% tolerance)
+            if expected_duration_ms and expected_duration_ms > 0:
+                try:
+                    from mutagen import File as MutagenFile
+                    audio = MutagenFile(dest)
+                    if audio and audio.info:
+                        actual_ms = int(audio.info.length * 1000)
+                        tolerance = expected_duration_ms * 0.10
+                        if abs(actual_ms - expected_duration_ms) > tolerance:
+                            import logging
+                            logging.getLogger(__name__).warning(
+                                f"deemix duration mismatch for {source_id}: "
+                                f"expected {expected_duration_ms}ms got {actual_ms}ms — discarding"
+                            )
+                            dest.unlink(missing_ok=True)
+                            return None, ""
+                except Exception:
+                    pass  # mutagen failure is non-fatal; keep the file
+
             return dest, result[1]
     except Exception as e:
         import logging
@@ -136,7 +164,7 @@ async def download_youtube(track_id: str, source_id: str, title: str = "", artis
         lock.unlink(missing_ok=True)
 
 
-async def ensure_track_file(track_id: str, source: str, source_id: str, title: str = "", artist: str = "") -> tuple[Path | None, str]:
+async def ensure_track_file(track_id: str, source: str, source_id: str, title: str = "", artist: str = "", duration_ms: int | None = None) -> tuple[Path | None, str]:
     """
     Resolves file for a track_id. Returns (path, quality).
     Order: permanent > cache > download.
@@ -146,10 +174,10 @@ async def ensure_track_file(track_id: str, source: str, source_id: str, title: s
         return existing, ""
 
     if source == "deezer":
-        path, quality = await download_deezer(track_id, source_id)
+        path, quality = await download_deezer(track_id, source_id, expected_duration_ms=duration_ms)
         if path:
             return path, quality
-        # fallback to youtube search
+        # fallback to youtube search (deemix failed or duration mismatch)
         return await download_youtube(track_id, "", title, artist)
 
     if source == "youtube":

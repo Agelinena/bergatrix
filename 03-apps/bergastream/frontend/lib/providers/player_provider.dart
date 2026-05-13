@@ -68,7 +68,11 @@ class Player extends _$Player {
   PlayerState build() {
     _service = ref.read(audioPlayerServiceProvider);
     _service.onPositionChanged = (pos) => state = state.copyWith(position: pos);
-    _service.onDurationChanged = (dur) => state = state.copyWith(duration: dur);
+    _service.onDurationChanged = (dur) {
+      // Only update if audio player reports a real duration; keep metadata
+      // pre-fill when streaming in follow-file mode (just_audio reports 0).
+      if (dur > Duration.zero) state = state.copyWith(duration: dur);
+    };
     _service.onStatusChanged = (s) => state = state.copyWith(status: s);
     _service.onTrackComplete = () => _handleTrackComplete();
     return const PlayerState();
@@ -82,6 +86,11 @@ class Player extends _$Player {
       queue: q,
       queueIndex: idx < 0 ? 0 : idx,
       status: PlayerStatus.loading,
+      position: Duration.zero,
+      // Pre-fill duration from metadata so progress bar works in follow-file mode
+      duration: track.durationMs != null && track.durationMs! > 0
+          ? Duration(milliseconds: track.durationMs!)
+          : Duration.zero,
     );
     await _service.play(track);
   }
