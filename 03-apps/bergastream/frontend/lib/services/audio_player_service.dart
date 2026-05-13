@@ -37,7 +37,7 @@ class AudioPlayerService {
 
   Future<void> play(Track track) async {
     final token = await _client.getToken();
-    final url = _client.streamUrl(track.id);
+    final url = _client.streamUrl(track.id, token: token);
     await _player.setAudioSource(
       AudioSource.uri(
         Uri.parse(url),

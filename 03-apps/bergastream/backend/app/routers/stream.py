@@ -1,24 +1,44 @@
-from fastapi import APIRouter, Depends, Header, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update
+from sqlalchemy import select
 from app.database import get_db
 from app.dependencies import get_current_user
 from app.models.user import User
 from app.models.track import Track
 from app.schemas.track import TrackSchema
-from app.services import stream_service
+from app.services import stream_service, auth_service
 from app.services.queue_service import DownloadQueueService
 
 router = APIRouter(tags=["stream"])
+
+
+async def get_stream_user(
+    request: Request,
+    token: str | None = Query(default=None),
+    db: AsyncSession = Depends(get_db),
+) -> User:
+    """Resolves user from Bearer header or ?token= query param (web audio fallback)."""
+    raw = token
+    if raw is None:
+        auth_header = request.headers.get("Authorization", "")
+        if auth_header.startswith("Bearer "):
+            raw = auth_header[7:]
+    if not raw:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
+    user = await auth_service.get_current_user_from_token(db, raw)
+    if user is None or not user.is_active:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token")
+    return user
 
 
 @router.get("/stream/{track_id}")
 async def stream_track(
     track_id: str,
     request: Request,
+    token: str | None = Query(default=None),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_stream_user),
 ):
     range_header = request.headers.get("range")
     return await stream_service.serve_stream(track_id, range_header, db)

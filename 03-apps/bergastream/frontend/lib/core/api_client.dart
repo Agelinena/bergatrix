@@ -144,8 +144,11 @@ class ApiClient {
     return resp.data as Map<String, dynamic>;
   }
 
-  // Stream URL (just returns a URL, actual streaming handled by just_audio)
-  String streamUrl(String trackId) => '$kApiBaseUrl/api/stream/$trackId';
+  // Stream URL — token appended as query param for HTML5 audio (web) which can't set headers
+  String streamUrl(String trackId, {String? token}) {
+    final base = '$kApiBaseUrl/api/stream/$trackId';
+    return token != null ? '$base?token=$token' : base;
+  }
 
   // Prefetch
   Future<void> prefetchTracks(List<String> trackIds) async {
