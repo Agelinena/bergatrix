@@ -24,6 +24,7 @@ class PlaylistScreen extends ConsumerStatefulWidget {
 class _PlaylistScreenState extends ConsumerState<PlaylistScreen> {
   Playlist? _playlist;
   bool _loading = true;
+  String? _error;
 
   @override
   void initState() {
@@ -32,13 +33,14 @@ class _PlaylistScreenState extends ConsumerState<PlaylistScreen> {
   }
 
   Future<void> _load() async {
-    setState(() => _loading = true);
+    setState(() { _loading = true; _error = null; });
     try {
       final client = ref.read(apiClientProvider);
       final data = await client.getPlaylist(widget.id);
-      setState(() { _playlist = Playlist.fromJson(data); _loading = false; });
-    } catch (_) {
-      setState(() => _loading = false);
+      final playlist = Playlist.fromJson(data);
+      setState(() { _playlist = playlist; _loading = false; });
+    } catch (e) {
+      setState(() { _loading = false; _error = e.toString(); });
     }
   }
 
@@ -138,7 +140,23 @@ class _PlaylistScreenState extends ConsumerState<PlaylistScreen> {
   @override
   Widget build(BuildContext context) {
     if (_loading) return const Scaffold(body: Center(child: CircularProgressIndicator(color: AppColors.primary)));
-    if (_playlist == null) return const Scaffold(body: Center(child: Text('Playlist não encontrada')));
+    if (_playlist == null) return Scaffold(
+      body: Center(child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Text('Playlist não encontrada', style: TextStyle(color: AppColors.textSecondary)),
+          if (_error != null) ...[
+            const SizedBox(height: 8),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 32),
+              child: Text(_error!, style: const TextStyle(color: AppColors.error, fontSize: 12), textAlign: TextAlign.center),
+            ),
+          ],
+          const SizedBox(height: 16),
+          TextButton(onPressed: _load, child: const Text('Tentar novamente')),
+        ],
+      )),
+    );
 
     final pl = _playlist!;
     final tracks = pl.tracks.map((pt) => pt.track).toList();
