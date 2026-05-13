@@ -215,11 +215,28 @@ async def find_deezer_track_id(title: str, artist: str, duration_ms: int | None 
 
 async def get_deezer_radio(deezer_id: str, limit: int = 10) -> list[TrackSchema]:
     async with httpx.AsyncClient(timeout=10) as client:
-        resp = await client.get(f"{DEEZER_API}/radio/track/{deezer_id}/tracks")
+        resp = await client.get(f"{DEEZER_API}/track/{deezer_id}/radio")
     if resp.status_code != 200:
         return []
-    data = resp.json().get("data", [])[:limit]
-    return [_deezer_track_to_schema(t) for t in data]
+    data = resp.json()
+    if "error" in data or "data" not in data:
+        return []
+    return [_deezer_track_to_schema(t) for t in data["data"][:limit] if "id" in t and "error" not in t]
+
+
+async def get_deezer_artist_tracks(deezer_id: str, index: int = 0, limit: int = 100) -> list[TrackSchema]:
+    """Returns tracks for an artist via Deezer top endpoint with offset pagination."""
+    async with httpx.AsyncClient(timeout=15) as client:
+        resp = await client.get(
+            f"{DEEZER_API}/artist/{deezer_id}/top",
+            params={"limit": limit, "index": index},
+        )
+    if resp.status_code != 200:
+        return []
+    data = resp.json()
+    if "error" in data or "data" not in data:
+        return []
+    return [_deezer_track_to_schema(t) for t in data["data"] if "id" in t and "error" not in t]
 
 
 async def search_spotify(query: str, limit: int = 20) -> SearchResponse:

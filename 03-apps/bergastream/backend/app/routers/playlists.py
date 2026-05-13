@@ -145,6 +145,8 @@ async def delete_playlist(
     current_user: User = Depends(get_current_user),
 ):
     pl = await _get_user_playlist(db, playlist_id, current_user.id)
+    # Remove junction rows first to avoid FK constraint violation
+    await db.execute(delete(PlaylistTrack).where(PlaylistTrack.playlist_id == playlist_id))
     await db.delete(pl)
 
 

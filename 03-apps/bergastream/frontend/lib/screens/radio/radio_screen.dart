@@ -8,7 +8,9 @@ import '../../widgets/cards/track_card.dart';
 
 class RadioScreen extends ConsumerStatefulWidget {
   final Track seedTrack;
-  const RadioScreen({super.key, required this.seedTrack});
+  // When false, seeds are added to the existing queue instead of starting fresh play
+  final bool autoPlay;
+  const RadioScreen({super.key, required this.seedTrack, this.autoPlay = true});
 
   @override
   ConsumerState<RadioScreen> createState() => _RadioScreenState();
@@ -38,9 +40,14 @@ class _RadioScreenState extends ConsumerState<RadioScreen> {
           .toList();
       setState(() { _queue = tracks; _loading = false; });
 
-      // Start playing the first track with the full queue
       if (tracks.isNotEmpty) {
-        ref.read(playerProvider.notifier).play(tracks.first, queue: tracks);
+        if (widget.autoPlay) {
+          // Start fresh playback from radio seeds
+          ref.read(playerProvider.notifier).play(tracks.first, queue: tracks);
+        } else {
+          // Add seeds to the existing queue (track already playing)
+          for (final t in tracks) ref.read(playerProvider.notifier).addToQueue(t);
+        }
         client.prefetchTracks(tracks.map((t) => t.id).toList());
       }
     } catch (_) {

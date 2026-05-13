@@ -18,6 +18,11 @@ async def record_play(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    # Skip silently if track not in DB (avoids FK violation for unregistered tracks)
+    track_result = await db.execute(select(Track).where(Track.id == body.track_id))
+    if track_result.scalar_one_or_none() is None:
+        return {"id": None}
+
     entry = PlayHistory(
         user_id=current_user.id,
         track_id=body.track_id,

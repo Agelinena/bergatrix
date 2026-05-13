@@ -57,6 +57,16 @@ async def prefetch_queue(
     return {"queued": len(track_ids[:10])}
 
 
+@router.delete("/stream/{track_id}/cache", status_code=204)
+async def delete_track_cache(
+    track_id: str,
+    _: User = Depends(get_current_user),
+):
+    """Deletes cached/permanent audio file so the track is re-downloaded on next play."""
+    from app.services.downloader_service import delete_file
+    delete_file(track_id)
+
+
 @router.post("/tracks/register", status_code=201)
 async def register_track(
     track: TrackSchema,

@@ -95,16 +95,16 @@ class TrackCard extends ConsumerWidget {
     showModalBottomSheet(
       context: context,
       backgroundColor: AppColors.surfaceVariant,
-      builder: (_) => _TrackMenu(track: track, playlistId: playlistId, onRemoved: onRemoved),
+      builder: (_) => TrackMenuSheet(track: track, playlistId: playlistId, onRemoved: onRemoved),
     );
   }
 }
 
-class _TrackMenu extends ConsumerWidget {
+class TrackMenuSheet extends ConsumerWidget {
   final Track track;
   final String? playlistId;
   final VoidCallback? onRemoved;
-  const _TrackMenu({required this.track, this.playlistId, this.onRemoved});
+  const TrackMenuSheet({super.key, required this.track, this.playlistId, this.onRemoved});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -183,13 +183,19 @@ class _TrackMenu extends ConsumerWidget {
             },
           ),
           ListTile(
-            leading: const Icon(Icons.download_outlined),
-            title: const Text('Download offline'),
+            leading: const Icon(Icons.refresh),
+            title: const Text('Baixar novamente'),
             onTap: () async {
               Navigator.pop(context);
               try {
+                await client.deleteTrackCache(track.id);
                 await client.registerTrack(track.toJson());
-                await client.dio.post('/api/offline/${track.id}');
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Cache apagado — toque a música para re-baixar'),
+                    duration: Duration(seconds: 3),
+                  ),
+                );
               } catch (_) {}
             },
           ),

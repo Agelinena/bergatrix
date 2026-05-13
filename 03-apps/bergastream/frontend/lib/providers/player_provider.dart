@@ -80,6 +80,11 @@ class Player extends _$Player {
   }
 
   Future<void> play(Track track, {List<Track> queue = const []}) async {
+    // Ensure track is registered in DB so history recording works
+    try {
+      ref.read(apiClientProvider).registerTrack(track.toJson());
+    } catch (_) {}
+
     // Record previous track before switching (if played for more than 5s)
     if (state.hasTrack && state.position.inSeconds > 5) {
       _recordPlay(state.currentTrack!, state.position, completed: false);

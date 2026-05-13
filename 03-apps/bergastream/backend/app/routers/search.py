@@ -59,6 +59,24 @@ async def get_album(
     return {"album": album, "tracks": tracks}
 
 
+@router.get("/artist/{artist_id}/tracks")
+async def get_artist_tracks(
+    artist_id: str,
+    index: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=200),
+    _: User = Depends(get_current_user),
+):
+    raw_id = artist_id.removeprefix("deezer_").removeprefix("spotify_")
+    if not raw_id.isdigit():
+        raise HTTPException(status_code=400, detail="Only Deezer artist IDs support full track listing")
+    tracks = await metadata_service.get_deezer_artist_tracks(raw_id, index, limit)
+    return {
+        "tracks": [t.model_dump() for t in tracks],
+        "next_index": index + len(tracks),
+        "has_more": len(tracks) == limit,
+    }
+
+
 @router.get("/cover/proxy")
 async def cover_proxy(url: str = Query(...)):
     """Proxies album art to avoid CORS issues on the frontend."""

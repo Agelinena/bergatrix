@@ -191,6 +191,18 @@ class ApiClient {
   Future<void> prefetchTracks(List<String> trackIds) async {
     await _dio.post('/api/queue/prefetch', data: {'track_ids': trackIds});
   }
+
+  // Cache
+  Future<void> deleteTrackCache(String trackId) async {
+    await _dio.delete('/api/stream/$trackId/cache');
+  }
+
+  // Artist all tracks (paginated)
+  Future<Map<String, dynamic>> getArtistTracks(String artistId, {int index = 0, int limit = 100}) async {
+    final resp = await _dio.get('/api/artist/$artistId/tracks',
+        queryParameters: {'index': index, 'limit': limit});
+    return resp.data as Map<String, dynamic>;
+  }
 }
 
 @riverpod
