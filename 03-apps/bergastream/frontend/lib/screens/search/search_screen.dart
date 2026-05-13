@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:shimmer/shimmer.dart';
 import '../../core/theme/app_theme.dart';
 import '../../providers/search_provider.dart';
@@ -128,6 +129,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> with SingleTickerPr
                             ),
                             title: Text(album['title'] ?? ''),
                             subtitle: Text(album['artist'] ?? '', style: const TextStyle(color: AppColors.textSecondary)),
+                            onTap: () => context.push('/album/${album['id']}'),
                           );
                         },
                       ),
@@ -146,6 +148,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> with SingleTickerPr
                               child: artist['picture_url'] == null ? const Icon(Icons.person) : null,
                             ),
                             title: Text(artist['name'] ?? ''),
+                            onTap: () => context.push('/artist/${artist['id']}'),
                           );
                         },
                       ),
