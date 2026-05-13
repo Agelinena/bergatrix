@@ -44,33 +44,44 @@ async def download_deezer(track_id: str, source_id: str) -> tuple[Path | None, s
         from deemix import generateDownloadObject
         from deemix.downloader import Downloader
         from deezer import Deezer
-        from deemix.settings import read as read_settings
+        from deemix.settings import DEFAULTS, load
+        import copy
 
         loop = asyncio.get_event_loop()
 
         def _download():
             dz = Deezer()
-            dz.login_via_arl(settings.deemix_arl)
-            deezer_settings = read_settings()
+            logged = dz.login_via_arl(settings.deemix_arl)
+            if not logged:
+                return None, ""
+
+            deezer_settings = copy.deepcopy(DEFAULTS)
             deezer_settings["downloadLocation"] = str(out_dir)
             deezer_settings["maxBitrate"] = "9"  # FLAC
+            deezer_settings["overwriteFile"] = "y"
+
             url = f"https://www.deezer.com/track/{source_id}"
             dl_obj = generateDownloadObject(dz, url, deezer_settings["maxBitrate"])
             Downloader(dz, dl_obj, deezer_settings).start()
 
-            # Find downloaded file
+            # Find downloaded file — deemix names files by tag, not track_id
             for ext in ("flac", "mp3"):
-                for f in out_dir.glob(f"*{source_id}*.{ext}"):
-                    return f, "flac" if ext == "flac" else "mp3_320"
+                files = list(out_dir.glob(f"**/*.{ext}"))
+                if files:
+                    # pick most recently created
+                    files.sort(key=lambda f: f.stat().st_mtime, reverse=True)
+                    return files[0], "flac" if ext == "flac" else "mp3_320"
             return None, ""
 
         result = await loop.run_in_executor(None, _download)
         if result[0]:
-            dest = _cache_path(track_id, "flac" if result[1] == "flac" else "mp3")
+            ext = "flac" if result[1] == "flac" else "mp3"
+            dest = _cache_path(track_id, ext)
             result[0].rename(dest)
             return dest, result[1]
-    except Exception:
-        pass
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(f"deemix error for {source_id}: {e}")
 
     return None, ""
 
