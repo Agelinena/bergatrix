@@ -235,8 +235,6 @@ async def _build_detail(db: AsyncSession, pl: Playlist) -> PlaylistDetailSchema:
 
     # model_validate(pl) would trigger lazy-load of pl.tracks; build from PlaylistSchema instead
     base = PlaylistSchema.model_validate(pl)
-    return PlaylistDetailSchema(
-        **base.model_dump(),
-        tracks=track_schemas,
-        track_count=len(track_schemas),
-    )
+    base_data = base.model_dump()
+    base_data['track_count'] = len(track_schemas)
+    return PlaylistDetailSchema(**base_data, tracks=track_schemas)
