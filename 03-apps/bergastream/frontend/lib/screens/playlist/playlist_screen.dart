@@ -98,14 +98,14 @@ class _PlaylistScreenState extends ConsumerState<PlaylistScreen> {
   }
 
   Future<void> _delete() async {
+    debugPrint('[DELETE] _delete() called, _deleting=$_deleting');
     if (_deleting) return;
 
-    // Capture Riverpod refs synchronously before any await so they stay valid
-    // even if the widget rebuilds or is briefly deactivated during showDialog.
     final client = ref.read(apiClientProvider);
     final library = ref.read(libraryProvider.notifier);
     final playlistId = widget.id;
 
+    debugPrint('[DELETE] opening dialog for playlist $playlistId');
     final confirm = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
@@ -124,16 +124,20 @@ class _PlaylistScreenState extends ConsumerState<PlaylistScreen> {
       ),
     );
 
+    debugPrint('[DELETE] dialog closed, confirm=$confirm, mounted=$mounted');
     if (confirm != true) return;
 
     if (mounted) setState(() => _deleting = true);
     final messenger = mounted ? ScaffoldMessenger.of(context) : null;
 
+    debugPrint('[DELETE] sending DELETE /api/playlists/$playlistId');
     try {
       await client.deletePlaylist(playlistId);
+      debugPrint('[DELETE] success');
       library.load();
       if (mounted) context.go('/library');
     } catch (e) {
+      debugPrint('[DELETE] error: $e');
       if (mounted) setState(() => _deleting = false);
       messenger?.showSnackBar(SnackBar(
         content: Text(_extractError(e)),
