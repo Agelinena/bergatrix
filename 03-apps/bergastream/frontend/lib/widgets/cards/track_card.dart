@@ -76,7 +76,7 @@ class TrackCard extends ConsumerWidget {
     final client = ref.read(apiClientProvider);
     await client.registerTrack(track.toJson());
     final q = queue.isEmpty ? [track] : queue;
-    ref.read(playerProvider.notifier).play(track, queue: q);
+    await ref.read(playerProvider.notifier).play(track, queue: q);
 
     // Prefetch next 10
     final idx = q.indexWhere((t) => t.id == track.id);
