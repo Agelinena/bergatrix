@@ -1,9 +1,12 @@
 FROM ghcr.io/cirruslabs/flutter:3.24.5 AS builder
 
 WORKDIR /app
-COPY pubspec.yaml pubspec.lock ./
+
+# Copia só o pubspec.yaml — pubspec.lock não é commitado, será gerado aqui
+COPY pubspec.yaml ./
 RUN flutter pub get
 
+# Copia o resto do código e gera os arquivos .g.dart (Riverpod, GoRouter, Hive)
 COPY . .
 RUN dart run build_runner build --delete-conflicting-outputs
 
