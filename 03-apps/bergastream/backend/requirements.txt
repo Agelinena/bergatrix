@@ -25,9 +25,11 @@ aiohttp==3.11.10
 aiofiles==24.1.0
 
 # Music sources
-yt-dlp==2024.12.13
+yt-dlp>=2025.1.1
 ytmusicapi==1.8.2
 spotipy==2.24.0
+deemix
+deezer-py
 
 # Media
 mutagen==1.47.0
