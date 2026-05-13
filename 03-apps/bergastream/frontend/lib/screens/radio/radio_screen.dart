@@ -20,6 +20,8 @@ class _RadioScreenState extends ConsumerState<RadioScreen> {
   String _source = 'deezer';
   List<Track> _queue = [];
   bool _loading = false;
+  int _loadMoreAttempts = 0;
+  static const _maxLoadMoreAttempts = 2;
 
   static const _sources = ['deezer', 'spotify', 'ai'];
   static const _sourceLabels = ['Deezer', 'Spotify', 'IA (Gemini)'];
@@ -31,7 +33,7 @@ class _RadioScreenState extends ConsumerState<RadioScreen> {
   }
 
   Future<void> _loadSeeds() async {
-    setState(() => _loading = true);
+    setState(() { _loading = true; _loadMoreAttempts = 0; });
     try {
       final client = ref.read(apiClientProvider);
       final data = await client.getRadioSeeds(widget.seedTrack.id, source: _source);
@@ -56,21 +58,33 @@ class _RadioScreenState extends ConsumerState<RadioScreen> {
   }
 
   Future<void> _loadMore() async {
-    if (_queue.length > 3) return;
-    final client = ref.read(apiClientProvider);
-    final data = await client.getRadioSeeds(widget.seedTrack.id, source: _source);
-    final more = (data['tracks'] as List<dynamic>)
-        .map((t) => Track.fromJson(t as Map<String, dynamic>))
-        .toList();
-    setState(() => _queue.addAll(more));
-    for (final t in more) ref.read(playerProvider.notifier).addToQueue(t);
+    if (_queue.length > 3 || _loading || _loadMoreAttempts >= _maxLoadMoreAttempts) return;
+    setState(() => _loading = true);
+    try {
+      final client = ref.read(apiClientProvider);
+      final data = await client.getRadioSeeds(widget.seedTrack.id, source: _source);
+      final more = (data['tracks'] as List<dynamic>)
+          .map((t) => Track.fromJson(t as Map<String, dynamic>))
+          .toList();
+      if (more.isEmpty) {
+        _loadMoreAttempts++;
+      } else {
+        _loadMoreAttempts = 0;
+      }
+      setState(() { _queue.addAll(more); _loading = false; });
+      for (final t in more) ref.read(playerProvider.notifier).addToQueue(t);
+    } catch (_) {
+      _loadMoreAttempts++;
+      setState(() => _loading = false);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final currentTrack = ref.watch(playerProvider).currentTrack;
-    // Auto-load more when fewer than 3 tracks remain
-    if (_queue.length < 3 && !_loading) _loadMore();
+    if (_queue.length < 3 && !_loading && _loadMoreAttempts < _maxLoadMoreAttempts) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _loadMore());
+    }
 
     return Scaffold(
       appBar: AppBar(

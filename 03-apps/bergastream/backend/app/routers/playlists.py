@@ -144,10 +144,9 @@ async def delete_playlist(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    pl = await _get_user_playlist(db, playlist_id, current_user.id)
-    # Remove junction rows first to avoid FK constraint violation
+    await _get_user_playlist(db, playlist_id, current_user.id)  # 404 check
     await db.execute(delete(PlaylistTrack).where(PlaylistTrack.playlist_id == playlist_id))
-    await db.delete(pl)
+    await db.execute(delete(Playlist).where(Playlist.id == playlist_id))
 
 
 @router.post("/{playlist_id}/tracks", status_code=201)

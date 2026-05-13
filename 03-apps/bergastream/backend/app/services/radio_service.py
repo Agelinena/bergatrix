@@ -26,9 +26,21 @@ class RadioService:
         deezer_source_id = track.source_id if track and track.source == "deezer" else None
 
         if source == "deezer":
-            return await RadioService._deezer_radio(deezer_source_id or track_id.removeprefix("deezer_"), limit)
+            if not deezer_source_id:
+                # Track is Spotify-sourced; find its Deezer equivalent
+                from app.services.metadata_service import find_deezer_track_id
+                deezer_source_id = await find_deezer_track_id(title, artist, track.duration_ms if track else None)
+            if not deezer_source_id:
+                return []
+            return await RadioService._deezer_radio(deezer_source_id, limit)
         if source == "spotify":
-            return await RadioService._spotify_recommendations(track_id, title, artist, limit)
+            # Spotify /recommendations deprecated Nov 2024 — fall back to Deezer radio
+            if not deezer_source_id:
+                from app.services.metadata_service import find_deezer_track_id
+                deezer_source_id = await find_deezer_track_id(title, artist, track.duration_ms if track else None)
+            if deezer_source_id:
+                return await RadioService._deezer_radio(deezer_source_id, limit)
+            return []
         if source == "ai":
             return await RadioService._ai_radio(title, artist, limit)
         return []
@@ -37,32 +49,6 @@ class RadioService:
     async def _deezer_radio(deezer_id: str, limit: int) -> list[dict]:
         tracks = await get_deezer_radio(deezer_id, limit)
         return [t.model_dump() for t in tracks]
-
-    @staticmethod
-    async def _spotify_recommendations(track_id: str, title: str, artist: str, limit: int) -> list[dict]:
-        if not settings.spotipy_client_id or not settings.spotipy_client_secret:
-            return []
-        try:
-            import spotipy
-            from spotipy.oauth2 import SpotifyClientCredentials
-
-            sp = spotipy.Spotify(
-                auth_manager=SpotifyClientCredentials(
-                    client_id=settings.spotipy_client_id,
-                    client_secret=settings.spotipy_client_secret,
-                )
-            )
-            spotify_id = track_id.removeprefix("spotify_")
-            loop = asyncio.get_event_loop()
-            results = await loop.run_in_executor(
-                None,
-                lambda: sp.recommendations(seed_tracks=[spotify_id], limit=limit),
-            )
-            from app.services.metadata_service import _spotify_track
-            return [_spotify_track(t).model_dump() for t in results.get("tracks", [])]
-        except Exception as e:
-            logger.warning(f"Spotify radio failed: {e}")
-            return []
 
     @staticmethod
     async def _ai_radio(title: str, artist: str, limit: int) -> list[dict]:

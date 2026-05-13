@@ -94,15 +94,18 @@ async def download_deezer(track_id: str, source_id: str, expected_duration_ms: i
                     audio = MutagenFile(dest)
                     if audio and audio.info:
                         actual_ms = int(audio.info.length * 1000)
-                        tolerance = expected_duration_ms * 0.10
-                        if abs(actual_ms - expected_duration_ms) > tolerance:
-                            import logging
-                            logging.getLogger(__name__).warning(
-                                f"deemix duration mismatch for {source_id}: "
-                                f"expected {expected_duration_ms}ms got {actual_ms}ms — discarding"
-                            )
-                            dest.unlink(missing_ok=True)
-                            return None, ""
+                        if actual_ms == 0:
+                            pass  # mutagen couldn't read duration; keep the file
+                        else:
+                            tolerance = expected_duration_ms * 0.10
+                            if abs(actual_ms - expected_duration_ms) > tolerance:
+                                import logging
+                                logging.getLogger(__name__).warning(
+                                    f"deemix duration mismatch for {source_id}: "
+                                    f"expected {expected_duration_ms}ms got {actual_ms}ms — discarding"
+                                )
+                                dest.unlink(missing_ok=True)
+                                return None, ""
                 except Exception:
                     pass  # mutagen failure is non-fatal; keep the file
 
