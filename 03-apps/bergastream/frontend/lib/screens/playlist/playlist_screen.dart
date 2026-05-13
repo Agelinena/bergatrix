@@ -111,17 +111,28 @@ class _PlaylistScreenState extends ConsumerState<PlaylistScreen> {
         ],
       ),
     );
-    if (confirm == true && mounted) {
-      final ok = await ref.read(libraryProvider.notifier).tryDeletePlaylist(widget.id);
-      if (!mounted) return;
-      if (ok) {
-        context.go('/library');
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Erro ao deletar playlist'), duration: Duration(seconds: 3)),
-        );
-      }
+    if (confirm != true || !mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await ref.read(apiClientProvider).deletePlaylist(widget.id);
+      await ref.read(libraryProvider.notifier).load();
+      if (mounted) context.go('/library');
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(
+        content: Text(_extractError(e)),
+        backgroundColor: Colors.red,
+        duration: const Duration(seconds: 4),
+      ));
     }
+  }
+
+  String _extractError(Object e) {
+    try {
+      // ignore: avoid_dynamic_calls
+      final detail = (e as dynamic).response?.data?['detail'];
+      if (detail is String) return detail;
+    } catch (_) {}
+    return 'Erro ao deletar playlist';
   }
 
   @override

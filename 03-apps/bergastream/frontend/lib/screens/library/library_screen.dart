@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/api_client.dart';
 import '../../providers/library_provider.dart';
 import '../../models/playlist.dart';
 
@@ -110,7 +111,7 @@ class _PlaylistTile extends ConsumerWidget {
         child: const Icon(Icons.delete, color: Colors.white),
       ),
       confirmDismiss: (_) async {
-        return await showDialog<bool>(
+        final confirmed = await showDialog<bool>(
           context: context,
           builder: (_) => AlertDialog(
             backgroundColor: AppColors.surfaceVariant,
@@ -126,8 +127,20 @@ class _PlaylistTile extends ConsumerWidget {
             ],
           ),
         );
+        if (confirmed != true) return false;
+        final messenger = ScaffoldMessenger.of(context);
+        try {
+          await ref.read(apiClientProvider).deletePlaylist(playlist.id);
+          await ref.read(libraryProvider.notifier).load();
+          return true;
+        } catch (_) {
+          messenger.showSnackBar(const SnackBar(
+            content: Text('Erro ao deletar playlist'),
+            backgroundColor: Colors.red,
+          ));
+          return false;
+        }
       },
-      onDismissed: (_) => ref.read(libraryProvider.notifier).tryDeletePlaylist(playlist.id),
       child: ListTile(
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         leading: Container(
