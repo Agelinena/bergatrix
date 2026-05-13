@@ -24,7 +24,11 @@ class Settings(BaseSettings):
     deemix_arl: str = ""
     spotipy_client_id: str = ""
     spotipy_client_secret: str = ""
-    gemini_api_key: str = ""
+
+    # AI / recommendations
+    openrouter_api_key: str = ""
+    openrouter_model: str = "google/gemini-flash-1.5"
+    lastfm_api_key: str = ""
 
     # Paths
     music_permanent_path: str = "/data/music/permanent"
