@@ -287,8 +287,7 @@ class _EditPlaylistDialogState extends State<_EditPlaylistDialog> {
       reader.readAsArrayBuffer(file);
       await reader.onLoad.first;
 
-      final buffer = reader.result as html.ByteBuffer;
-      final bytes = buffer.asUint8List();
+      final bytes = (reader.result as ByteBuffer).asUint8List();
       final mimeType = file.type.isNotEmpty ? file.type : 'image/jpeg';
 
       // We don't have ref here — use a workaround via callback
