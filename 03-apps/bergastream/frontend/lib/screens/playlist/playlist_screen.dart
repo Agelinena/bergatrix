@@ -24,6 +24,7 @@ class PlaylistScreen extends ConsumerStatefulWidget {
 class _PlaylistScreenState extends ConsumerState<PlaylistScreen> {
   Playlist? _playlist;
   bool _loading = true;
+  bool _deleting = false;
   String? _error;
 
   @override
@@ -97,6 +98,8 @@ class _PlaylistScreenState extends ConsumerState<PlaylistScreen> {
   }
 
   Future<void> _delete() async {
+    if (_deleting) return;
+
     final confirm = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
@@ -113,13 +116,25 @@ class _PlaylistScreenState extends ConsumerState<PlaylistScreen> {
         ],
       ),
     );
-    if (confirm != true || !mounted) return;
+
+    if (confirm != true) return;
+
+    // Snapshot all context-sensitive references before the next async gap.
+    // The !mounted check was intentionally removed from here — it fires as a
+    // false positive in Flutter web + GoRouter when the PopupMenu overlay pops
+    // and triggers a transient widget rebuild, causing the HTTP call to be
+    // skipped entirely. mounted is only safe to check for UI mutations after await.
     final messenger = ScaffoldMessenger.of(context);
+    final client = ref.read(apiClientProvider);
+    final library = ref.read(libraryProvider.notifier);
+
+    if (mounted) setState(() => _deleting = true);
     try {
-      await ref.read(apiClientProvider).deletePlaylist(widget.id);
-      await ref.read(libraryProvider.notifier).load();
+      await client.deletePlaylist(widget.id);
+      library.load();
       if (mounted) context.go('/library');
     } catch (e) {
+      if (mounted) setState(() => _deleting = false);
       messenger.showSnackBar(SnackBar(
         content: Text(_extractError(e)),
         backgroundColor: Colors.red,
@@ -170,6 +185,12 @@ class _PlaylistScreenState extends ConsumerState<PlaylistScreen> {
             expandedHeight: 280,
             pinned: true,
             actions: [
+              if (_deleting)
+                const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 16),
+                  child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primary)),
+                )
+              else
               PopupMenuButton<String>(
                 icon: const Icon(Icons.more_vert),
                 onSelected: (v) {
