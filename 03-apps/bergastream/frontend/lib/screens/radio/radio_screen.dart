@@ -16,15 +16,15 @@ class RadioScreen extends ConsumerStatefulWidget {
 }
 
 class _RadioScreenState extends ConsumerState<RadioScreen> {
-  String _source = 'deezer';
+  String _source = 'lastfm';
   List<Track> _queue = [];
   bool _loading = false;
   String? _error;
   int _loadMoreAttempts = 0;
   static const _maxLoadMoreAttempts = 2;
 
-  static const _sources = ['deezer', 'ai'];
-  static const _sourceLabels = ['Deezer', 'IA (Gemini)'];
+  static const _sources = ['lastfm', 'ai'];
+  static const _sourceLabels = ['Last.fm', 'IA'];
 
   @override
   void initState() {
@@ -47,7 +47,12 @@ class _RadioScreenState extends ConsumerState<RadioScreen> {
 
       if (tracks.isNotEmpty) {
         if (widget.autoPlay) {
-          ref.read(playerProvider.notifier).play(tracks.first, queue: tracks);
+          final isPlaying = ref.read(playerProvider).isPlaying;
+          if (isPlaying) {
+            for (final t in tracks) ref.read(playerProvider.notifier).addToQueue(t);
+          } else {
+            ref.read(playerProvider.notifier).play(tracks.first, queue: tracks);
+          }
         } else {
           for (final t in tracks) ref.read(playerProvider.notifier).addToQueue(t);
         }

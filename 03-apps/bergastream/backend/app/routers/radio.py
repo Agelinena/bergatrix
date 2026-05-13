@@ -26,7 +26,7 @@ async def radio_seed(
 @router.get("/next")
 async def radio_next(
     track_id: str = Query(...),
-    source: str = Query("deezer", pattern="^(deezer|ai)$"),
+    source: str = Query("lastfm", pattern="^(lastfm|ai)$"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):

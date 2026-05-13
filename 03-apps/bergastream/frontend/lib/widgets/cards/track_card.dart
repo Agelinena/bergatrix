@@ -16,6 +16,7 @@ class TrackCard extends ConsumerWidget {
   final VoidCallback? onTap;
   final String? playlistId;
   final VoidCallback? onRemoved;
+  final bool showRadioOption;
 
   const TrackCard({
     super.key,
@@ -24,6 +25,7 @@ class TrackCard extends ConsumerWidget {
     this.onTap,
     this.playlistId,
     this.onRemoved,
+    this.showRadioOption = true,
   });
 
   @override
@@ -95,7 +97,7 @@ class TrackCard extends ConsumerWidget {
     showModalBottomSheet(
       context: context,
       backgroundColor: AppColors.surfaceVariant,
-      builder: (_) => TrackMenuSheet(track: track, playlistId: playlistId, onRemoved: onRemoved),
+      builder: (_) => TrackMenuSheet(track: track, playlistId: playlistId, onRemoved: onRemoved, showRadioOption: showRadioOption),
     );
   }
 }
@@ -104,7 +106,8 @@ class TrackMenuSheet extends ConsumerWidget {
   final Track track;
   final String? playlistId;
   final VoidCallback? onRemoved;
-  const TrackMenuSheet({super.key, required this.track, this.playlistId, this.onRemoved});
+  final bool showRadioOption;
+  const TrackMenuSheet({super.key, required this.track, this.playlistId, this.onRemoved, this.showRadioOption = true});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -149,6 +152,7 @@ class TrackMenuSheet extends ConsumerWidget {
               client.likeTrack(track.id);
             },
           ),
+          if (showRadioOption)
           ListTile(
             leading: const Icon(Icons.radio),
             title: const Text('Modo Rádio'),

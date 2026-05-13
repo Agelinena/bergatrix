@@ -16,7 +16,7 @@ class SettingsScreen extends ConsumerStatefulWidget {
 class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   static const _radioKey = 'radio_source';
 
-  String _radioSource = 'deezer';
+  String _radioSource = 'lastfm';
 
   // Password change form
   final _formKey = GlobalKey<FormState>();
@@ -231,8 +231,7 @@ class _RadioSourceSelector extends StatelessWidget {
   const _RadioSourceSelector({required this.value, required this.onChanged});
 
   static const _options = [
-    ('deezer', 'Deezer', Icons.music_note, 'Rádio via Deezer (recomendado)'),
-    ('spotify', 'Spotify', Icons.headphones, 'Rádio via Spotify'),
+    ('lastfm', 'Last.fm', Icons.music_note, 'Músicas similares via Last.fm (recomendado)'),
     ('ai', 'IA', Icons.auto_awesome, 'Sugestões geradas por IA'),
   ];
 

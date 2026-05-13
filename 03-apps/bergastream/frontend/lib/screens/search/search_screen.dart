@@ -10,6 +10,7 @@ import '../../core/theme/app_theme.dart';
 import '../../core/api_client.dart';
 import '../../models/track.dart';
 import '../../providers/player_provider.dart';
+import '../../providers/radio_queue_provider.dart';
 import '../../providers/search_provider.dart';
 import '../../widgets/cards/track_card.dart';
 
@@ -111,28 +112,8 @@ class _SearchScreenState extends ConsumerState<SearchScreen> with SingleTickerPr
     final idx = q.indexWhere((t) => t.id == track.id);
     await ref.read(playerProvider.notifier).play(track, queue: q);
     if (idx >= 0) client.prefetchTracks(q.skip(idx + 1).take(10).map((t) => t.id).toList());
-    // Inject radio seeds silently into queue — no modal
-    _injectRadioSeeds(track, client);
-  }
-
-  void _injectRadioSeeds(Track seedTrack, ApiClient client) async {
-    try {
-      final source = _radioSource();
-      final data = await client.getRadioSeeds(seedTrack.id, source: source);
-      final seeds = (data['tracks'] as List<dynamic>)
-          .map((t) => Track.fromJson(t as Map<String, dynamic>))
-          .toList();
-      for (final t in seeds) ref.read(playerProvider.notifier).addToQueue(t);
-      if (seeds.isNotEmpty) client.prefetchTracks(seeds.map((t) => t.id).toList());
-    } catch (_) {}
-  }
-
-  String _radioSource() {
-    try {
-      return html.window.localStorage['radio_source'] ?? 'deezer';
-    } catch (_) {
-      return 'deezer';
-    }
+    // Activate radio queue to silently maintain 20 tracks ahead
+    ref.read(radioQueueProvider.notifier).activate(track);
   }
 
   @override
@@ -228,6 +209,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> with SingleTickerPr
                               track: search.tracks[i],
                               queue: search.tracks,
                               onTap: () => _playFromSearch(search.tracks[i], search.tracks),
+                              showRadioOption: false,
                             ),
                           ),
                     // Albums

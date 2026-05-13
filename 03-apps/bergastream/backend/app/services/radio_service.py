@@ -30,7 +30,7 @@ class RadioService:
         artist = track.artist if track else ""
         deezer_source_id = track.source_id if track and track.source == "deezer" else None
 
-        if source == "deezer":
+        if source == "lastfm":
             if not deezer_source_id:
                 from app.services.metadata_service import find_deezer_track_id
                 deezer_source_id = await find_deezer_track_id(title, artist, track.duration_ms if track else None)
