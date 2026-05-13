@@ -152,13 +152,13 @@ class TrackMenuSheet extends ConsumerWidget {
           ListTile(
             leading: const Icon(Icons.radio),
             title: const Text('Modo Rádio'),
-            onTap: () async {
+            onTap: () {
               Navigator.pop(context);
-              // Track must be in DB before radio endpoint can resolve title/artist
-              try { await client.registerTrack(track.toJson()); } catch (_) {}
-              if (!context.mounted) return;
+              // Open synchronously — registering the track happens inside RadioScreen
+              // before the seed request so there's no race with the sheet animation.
               showModalBottomSheet(
                 context: context,
+                useRootNavigator: true,
                 isScrollControlled: true,
                 backgroundColor: Colors.transparent,
                 builder: (_) => DraggableScrollableSheet(

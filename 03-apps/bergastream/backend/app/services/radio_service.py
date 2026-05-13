@@ -48,32 +48,34 @@ class RadioService:
     @staticmethod
     async def _deezer_radio(deezer_id: str, limit: int) -> list[dict]:
         tracks = await get_deezer_radio(deezer_id, limit)
+        logger.info(f"Deezer radio for id={deezer_id}: got {len(tracks)} tracks")
         return [t.model_dump() for t in tracks]
 
     @staticmethod
     async def _ai_radio(title: str, artist: str, limit: int) -> list[dict]:
         if not settings.gemini_api_key:
+            logger.warning("AI radio: gemini_api_key not configured")
             return []
         try:
             prompt = (
                 f"Suggest {limit} songs similar to '{title}' by '{artist}'. "
-                "Return ONLY a JSON array: [{\"title\": ..., \"artist\": ...}]"
+                'Return ONLY a JSON array: [{"title": ..., "artist": ...}]'
             )
             async with httpx.AsyncClient(timeout=30) as client:
                 resp = await client.post(
-                    f"https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key={settings.gemini_api_key}",
+                    f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={settings.gemini_api_key}",
                     json={"contents": [{"parts": [{"text": prompt}]}]},
                 )
             if resp.status_code != 200:
+                logger.warning(f"AI radio: Gemini returned {resp.status_code}: {resp.text[:200]}")
                 return []
 
             text = resp.json()["candidates"][0]["content"]["parts"][0]["text"]
-            # Extract JSON array
             start = text.find("[")
             end = text.rfind("]") + 1
             suggestions = json.loads(text[start:end])
+            logger.info(f"AI radio: Gemini suggested {len(suggestions)} tracks for '{title}' by '{artist}'")
 
-            # Resolve each suggestion via Deezer search
             tracks = []
             async def resolve(item):
                 query = f"{item.get('artist', '')} {item.get('title', '')}"
@@ -82,6 +84,7 @@ class RadioService:
                     tracks.append(results.tracks[0].model_dump())
 
             await asyncio.gather(*[resolve(s) for s in suggestions[:limit]])
+            logger.info(f"AI radio: resolved {len(tracks)}/{len(suggestions)} tracks via Deezer")
             return tracks
         except Exception as e:
             logger.warning(f"AI radio failed: {e}")

@@ -8,7 +8,6 @@ import '../../widgets/cards/track_card.dart';
 
 class RadioScreen extends ConsumerStatefulWidget {
   final Track seedTrack;
-  // When false, seeds are added to the existing queue instead of starting fresh play
   final bool autoPlay;
   const RadioScreen({super.key, required this.seedTrack, this.autoPlay = true});
 
@@ -20,6 +19,7 @@ class _RadioScreenState extends ConsumerState<RadioScreen> {
   String _source = 'deezer';
   List<Track> _queue = [];
   bool _loading = false;
+  String? _error;
   int _loadMoreAttempts = 0;
   static const _maxLoadMoreAttempts = 2;
 
@@ -33,27 +33,28 @@ class _RadioScreenState extends ConsumerState<RadioScreen> {
   }
 
   Future<void> _loadSeeds() async {
-    setState(() { _loading = true; _loadMoreAttempts = 0; });
+    setState(() { _loading = true; _error = null; _loadMoreAttempts = 0; });
     try {
       final client = ref.read(apiClientProvider);
+      // Register ensures the track exists in DB so the backend can resolve title/artist.
+      try { await client.registerTrack(widget.seedTrack.toJson()); } catch (_) {}
       final data = await client.getRadioSeeds(widget.seedTrack.id, source: _source);
       final tracks = (data['tracks'] as List<dynamic>)
           .map((t) => Track.fromJson(t as Map<String, dynamic>))
           .toList();
+      if (!mounted) return;
       setState(() { _queue = tracks; _loading = false; });
 
       if (tracks.isNotEmpty) {
         if (widget.autoPlay) {
-          // Start fresh playback from radio seeds
           ref.read(playerProvider.notifier).play(tracks.first, queue: tracks);
         } else {
-          // Add seeds to the existing queue (track already playing)
           for (final t in tracks) ref.read(playerProvider.notifier).addToQueue(t);
         }
         client.prefetchTracks(tracks.map((t) => t.id).toList());
       }
-    } catch (_) {
-      setState(() => _loading = false);
+    } catch (e) {
+      if (mounted) setState(() { _loading = false; _error = e.toString(); });
     }
   }
 
@@ -66,16 +67,15 @@ class _RadioScreenState extends ConsumerState<RadioScreen> {
       final more = (data['tracks'] as List<dynamic>)
           .map((t) => Track.fromJson(t as Map<String, dynamic>))
           .toList();
-      if (more.isEmpty) {
-        _loadMoreAttempts++;
-      } else {
-        _loadMoreAttempts = 0;
-      }
-      setState(() { _queue.addAll(more); _loading = false; });
+      if (!mounted) return;
+      setState(() {
+        _loadMoreAttempts = more.isEmpty ? _loadMoreAttempts + 1 : 0;
+        _queue.addAll(more);
+        _loading = false;
+      });
       for (final t in more) ref.read(playerProvider.notifier).addToQueue(t);
-    } catch (_) {
-      _loadMoreAttempts++;
-      setState(() => _loading = false);
+    } catch (e) {
+      if (mounted) setState(() { _loadMoreAttempts++; _loading = false; });
     }
   }
 
@@ -118,7 +118,6 @@ class _RadioScreenState extends ConsumerState<RadioScreen> {
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Seed track header
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
             child: Text('Baseado em:', style: Theme.of(context).textTheme.bodyMedium),
@@ -132,19 +131,42 @@ class _RadioScreenState extends ConsumerState<RadioScreen> {
           Expanded(
             child: _loading
                 ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
-                : _queue.isEmpty
-                    ? const Center(child: Text('Nenhuma sugestão disponível', style: TextStyle(color: AppColors.textSecondary)))
-                    : ListView.builder(
-                        itemCount: _queue.length,
-                        itemBuilder: (_, i) {
-                          final track = _queue[i];
-                          final isCurrent = currentTrack?.id == track.id;
-                          return TrackCard(
-                            track: track,
-                            queue: _queue,
-                          );
-                        },
-                      ),
+                : _error != null
+                    ? Center(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.wifi_off, color: AppColors.textSecondary, size: 40),
+                            const SizedBox(height: 8),
+                            const Text('Erro ao carregar sugestões', style: TextStyle(color: AppColors.textSecondary)),
+                            const SizedBox(height: 4),
+                            Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 32),
+                              child: Text(_error!, style: const TextStyle(color: AppColors.error, fontSize: 11), textAlign: TextAlign.center),
+                            ),
+                            const SizedBox(height: 12),
+                            TextButton(onPressed: _loadSeeds, child: const Text('Tentar novamente')),
+                          ],
+                        ),
+                      )
+                    : _queue.isEmpty
+                        ? Center(
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Text('Nenhuma sugestão disponível', style: TextStyle(color: AppColors.textSecondary)),
+                                const SizedBox(height: 12),
+                                TextButton(onPressed: _loadSeeds, child: const Text('Tentar novamente')),
+                              ],
+                            ),
+                          )
+                        : ListView.builder(
+                            itemCount: _queue.length,
+                            itemBuilder: (_, i) => TrackCard(
+                              track: _queue[i],
+                              queue: _queue,
+                            ),
+                          ),
           ),
         ],
       ),
