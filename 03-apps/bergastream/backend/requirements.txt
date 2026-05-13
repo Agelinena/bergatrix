@@ -28,7 +28,7 @@ aiofiles==24.1.0
 yt-dlp>=2025.1.1
 ytmusicapi==1.8.2
 spotipy==2.24.0
-deemix
+git+https://gitlab.com/RemixDev/deemix-py.git@main
 deezer-py
 
 # Media
