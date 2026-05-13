@@ -27,20 +27,11 @@ class RadioService:
 
         if source == "deezer":
             if not deezer_source_id:
-                # Track is Spotify-sourced; find its Deezer equivalent
                 from app.services.metadata_service import find_deezer_track_id
                 deezer_source_id = await find_deezer_track_id(title, artist, track.duration_ms if track else None)
             if not deezer_source_id:
                 return []
             return await RadioService._deezer_radio(deezer_source_id, limit)
-        if source == "spotify":
-            # Spotify /recommendations deprecated Nov 2024 — fall back to Deezer radio
-            if not deezer_source_id:
-                from app.services.metadata_service import find_deezer_track_id
-                deezer_source_id = await find_deezer_track_id(title, artist, track.duration_ms if track else None)
-            if deezer_source_id:
-                return await RadioService._deezer_radio(deezer_source_id, limit)
-            return []
         if source == "ai":
             return await RadioService._ai_radio(title, artist, limit)
         return []

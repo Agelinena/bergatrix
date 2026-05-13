@@ -23,8 +23,8 @@ class _RadioScreenState extends ConsumerState<RadioScreen> {
   int _loadMoreAttempts = 0;
   static const _maxLoadMoreAttempts = 2;
 
-  static const _sources = ['deezer', 'spotify', 'ai'];
-  static const _sourceLabels = ['Deezer', 'Spotify', 'IA (Gemini)'];
+  static const _sources = ['deezer', 'ai'];
+  static const _sourceLabels = ['Deezer', 'IA (Gemini)'];
 
   @override
   void initState() {
