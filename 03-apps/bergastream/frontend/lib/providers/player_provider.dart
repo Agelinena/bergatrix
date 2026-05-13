@@ -131,18 +131,8 @@ class Player extends _$Player {
   }
 
   Future<void> next() async {
-    if (state.queue.isEmpty) return;
-    int nextIdx;
-    if (state.shuffle) {
-      final candidates = List.generate(state.queue.length, (i) => i)
-          .where((i) => i != state.queueIndex)
-          .toList();
-      if (candidates.isEmpty) return;
-      nextIdx = candidates[Random().nextInt(candidates.length)];
-    } else {
-      nextIdx = state.queueIndex + 1;
-      if (nextIdx >= state.queue.length) return;
-    }
+    final nextIdx = state.queueIndex + 1;
+    if (nextIdx >= state.queue.length) return;
     await play(state.queue[nextIdx], queue: state.queue);
   }
 
@@ -162,7 +152,16 @@ class Player extends _$Player {
     state = state.copyWith(volume: volume);
   }
 
-  void toggleShuffle() => state = state.copyWith(shuffle: !state.shuffle);
+  void toggleShuffle() {
+    if (!state.shuffle && state.queue.length > 1) {
+      // Shuffle the portion of the queue that comes after the current track
+      final before = state.queue.sublist(0, state.queueIndex + 1);
+      final after = [...state.queue.sublist(state.queueIndex + 1)]..shuffle(Random());
+      state = state.copyWith(queue: [...before, ...after], shuffle: true);
+    } else {
+      state = state.copyWith(shuffle: false);
+    }
+  }
 
   void toggleRepeat() {
     final next = RepeatMode.values[(state.repeat.index + 1) % RepeatMode.values.length];

@@ -13,6 +13,7 @@ import '../../screens/album/album_screen.dart';
 import '../../screens/artist/artist_screen.dart';
 import '../../screens/history/history_screen.dart';
 import '../../screens/radio/radio_screen.dart';
+import '../../screens/settings/settings_screen.dart';
 import '../../widgets/layout/main_scaffold.dart';
 
 part 'app_router.g.dart';
@@ -55,6 +56,7 @@ GoRouter appRouter(AppRouterRef ref) {
             builder: (_, state) => ArtistScreen(id: state.pathParameters['id']!),
           ),
           GoRoute(path: '/history', builder: (_, __) => const HistoryScreen()),
+          GoRoute(path: '/settings', builder: (_, __) => const SettingsScreen()),
           GoRoute(
             path: '/shared/:token',
             builder: (_, state) => const LibraryScreen(), // placeholder — redireciona para follow

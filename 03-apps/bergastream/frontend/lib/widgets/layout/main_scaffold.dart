@@ -32,13 +32,13 @@ class _MobileLayout extends ConsumerStatefulWidget {
 class _MobileLayoutState extends ConsumerState<_MobileLayout> {
   int _currentIndex = 0;
 
-  static const _routes = ['/', '/search', '/library'];
+  static const _routes = ['/', '/search', '/library', '/settings'];
 
   @override
   Widget build(BuildContext context) {
     final hasTrack = ref.watch(playerProvider).hasTrack;
     final location = GoRouterState.of(context).matchedLocation;
-    final idx = _routes.indexOf(location).clamp(0, 2);
+    final idx = _routes.indexOf(location).clamp(0, _routes.length - 1);
 
     return Scaffold(
       body: Column(
@@ -59,6 +59,7 @@ class _MobileLayoutState extends ConsumerState<_MobileLayout> {
           NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home), label: 'Início'),
           NavigationDestination(icon: Icon(Icons.search), label: 'Busca'),
           NavigationDestination(icon: Icon(Icons.library_music_outlined), selectedIcon: Icon(Icons.library_music), label: 'Biblioteca'),
+          NavigationDestination(icon: Icon(Icons.settings_outlined), selectedIcon: Icon(Icons.settings), label: 'Config.'),
         ],
       ),
     );
@@ -124,6 +125,7 @@ class _Sidebar extends StatelessWidget {
           _NavItem(icon: Icons.library_music, label: 'Biblioteca', route: '/library', current: currentLocation),
           _NavItem(icon: Icons.history, label: 'Histórico', route: '/history', current: currentLocation),
           const Spacer(),
+          _NavItem(icon: Icons.settings, label: 'Configurações', route: '/settings', current: currentLocation),
           const Divider(),
           Padding(
             padding: const EdgeInsets.all(16),

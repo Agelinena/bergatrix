@@ -74,6 +74,13 @@ class ApiClient {
     return resp.data as Map<String, dynamic>;
   }
 
+  Future<void> changePassword(String currentPassword, String newPassword) async {
+    await _dio.post('/api/auth/change-password', data: {
+      'current_password': currentPassword,
+      'new_password': newPassword,
+    });
+  }
+
   // Search
   Future<Map<String, dynamic>> search(String query, {String source = 'deezer'}) async {
     final resp = await _dio.get('/api/search', queryParameters: {'q': query, 'source': source});

@@ -51,35 +51,35 @@ async def download_deezer(track_id: str, source_id: str, expected_duration_ms: i
         loop = asyncio.get_event_loop()
 
         def _download():
-            # Snapshot existing files before download so we only pick NEW ones
-            pre_existing: set[Path] = set()
-            for ext in ("flac", "mp3"):
-                pre_existing.update(out_dir.glob(f"**/*.{ext}"))
+            import shutil
+            # Isolated directory per source_id — concurrent downloads can't cross-pick files
+            track_tmp = out_dir / f".dl_{source_id}"
+            track_tmp.mkdir(exist_ok=True)
+            try:
+                dz = Deezer()
+                if not dz.login_via_arl(settings.deemix_arl):
+                    return None, ""
 
-            dz = Deezer()
-            logged = dz.login_via_arl(settings.deemix_arl)
-            if not logged:
+                deezer_settings = copy.deepcopy(DEFAULTS)
+                deezer_settings["downloadLocation"] = str(track_tmp)
+                deezer_settings["maxBitrate"] = "9"  # FLAC
+                deezer_settings["overwriteFile"] = "y"
+
+                url = f"https://www.deezer.com/track/{source_id}"
+                dl_obj = generateDownloadObject(dz, url, deezer_settings["maxBitrate"])
+                Downloader(dz, dl_obj, deezer_settings).start()
+
+                # Find the downloaded file inside the isolated directory
+                for ext in ("flac", "mp3"):
+                    files = list(track_tmp.rglob(f"*.{ext}"))
+                    if files:
+                        # Stage it at out_dir level so caller can rename safely
+                        staged = out_dir / f".staged_{source_id}.{ext}"
+                        shutil.move(str(files[0]), str(staged))
+                        return staged, "flac" if ext == "flac" else "mp3_320"
                 return None, ""
-
-            deezer_settings = copy.deepcopy(DEFAULTS)
-            deezer_settings["downloadLocation"] = str(out_dir)
-            deezer_settings["maxBitrate"] = "9"  # FLAC
-            deezer_settings["overwriteFile"] = "y"
-
-            url = f"https://www.deezer.com/track/{source_id}"
-            dl_obj = generateDownloadObject(dz, url, deezer_settings["maxBitrate"])
-            Downloader(dz, dl_obj, deezer_settings).start()
-
-            # Only consider files that didn't exist before download
-            for ext in ("flac", "mp3"):
-                new_files = [
-                    f for f in out_dir.glob(f"**/*.{ext}")
-                    if f not in pre_existing
-                ]
-                if new_files:
-                    new_files.sort(key=lambda f: f.stat().st_mtime, reverse=True)
-                    return new_files[0], "flac" if ext == "flac" else "mp3_320"
-            return None, ""
+            finally:
+                shutil.rmtree(str(track_tmp), ignore_errors=True)
 
         result = await loop.run_in_executor(None, _download)
         if result[0]:

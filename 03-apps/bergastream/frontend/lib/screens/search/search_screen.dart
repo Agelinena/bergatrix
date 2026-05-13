@@ -11,7 +11,6 @@ import '../../core/api_client.dart';
 import '../../models/track.dart';
 import '../../providers/player_provider.dart';
 import '../../providers/search_provider.dart';
-import '../../screens/radio/radio_screen.dart';
 import '../../widgets/cards/track_card.dart';
 
 class SearchScreen extends ConsumerStatefulWidget {
@@ -112,22 +111,28 @@ class _SearchScreenState extends ConsumerState<SearchScreen> with SingleTickerPr
     final idx = q.indexWhere((t) => t.id == track.id);
     await ref.read(playerProvider.notifier).play(track, queue: q);
     if (idx >= 0) client.prefetchTracks(q.skip(idx + 1).take(10).map((t) => t.id).toList());
+    // Inject radio seeds silently into queue — no modal
+    _injectRadioSeeds(track, client);
+  }
 
-    if (!mounted) return;
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => DraggableScrollableSheet(
-        initialChildSize: 0.9,
-        minChildSize: 0.5,
-        maxChildSize: 1.0,
-        builder: (_, ctrl) => ClipRRect(
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-          child: RadioScreen(seedTrack: track, autoPlay: false),
-        ),
-      ),
-    );
+  void _injectRadioSeeds(Track seedTrack, ApiClient client) async {
+    try {
+      final source = _radioSource();
+      final data = await client.getRadioSeeds(seedTrack.id, source: source);
+      final seeds = (data['tracks'] as List<dynamic>)
+          .map((t) => Track.fromJson(t as Map<String, dynamic>))
+          .toList();
+      for (final t in seeds) ref.read(playerProvider.notifier).addToQueue(t);
+      if (seeds.isNotEmpty) client.prefetchTracks(seeds.map((t) => t.id).toList());
+    } catch (_) {}
+  }
+
+  String _radioSource() {
+    try {
+      return html.window.localStorage['radio_source'] ?? 'deezer';
+    } catch (_) {
+      return 'deezer';
+    }
   }
 
   @override

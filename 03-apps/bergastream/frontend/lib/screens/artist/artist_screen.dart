@@ -24,7 +24,6 @@ class _ArtistScreenState extends ConsumerState<ArtistScreen>
   bool _loading = true;
   late TabController _tabController;
 
-  // All tracks state
   List<Track> _allTracks = [];
   bool _loadingAll = false;
   bool _hasMore = true;
@@ -63,25 +62,30 @@ class _ArtistScreenState extends ConsumerState<ArtistScreen>
     }
   }
 
+  // Loads ALL pages automatically until has_more = false
   Future<void> _loadAllTracks() async {
-    if (_loadingAll || !_hasMore) return;
-    setState(() => _loadingAll = true);
-    try {
-      final client = ref.read(apiClientProvider);
-      // Use the Deezer-resolved ID from the backend response (widget.id may be spotify_xxx)
-      final resolvedId = _artist?['id'] as String? ?? widget.id;
-      final data = await client.getArtistTracks(resolvedId, index: _nextIndex, limit: _pageSize);
-      final tracks = (data['tracks'] as List<dynamic>)
-          .map((t) => Track.fromJson(t as Map<String, dynamic>))
-          .toList();
-      setState(() {
-        _allTracks.addAll(tracks);
-        _nextIndex = data['next_index'] as int? ?? (_nextIndex + tracks.length);
-        _hasMore = data['has_more'] as bool? ?? false;
-        _loadingAll = false;
-      });
-    } catch (_) {
-      setState(() => _loadingAll = false);
+    if (_loadingAll) return;
+    while (_hasMore && mounted) {
+      setState(() => _loadingAll = true);
+      try {
+        final client = ref.read(apiClientProvider);
+        final resolvedId = _artist?['id'] as String? ?? widget.id;
+        final data = await client.getArtistTracks(resolvedId, index: _nextIndex, limit: _pageSize);
+        final tracks = (data['tracks'] as List<dynamic>)
+            .map((t) => Track.fromJson(t as Map<String, dynamic>))
+            .toList();
+        if (!mounted) break;
+        setState(() {
+          _allTracks.addAll(tracks);
+          _nextIndex = data['next_index'] as int? ?? (_nextIndex + tracks.length);
+          _hasMore = data['has_more'] as bool? ?? false;
+          _loadingAll = false;
+        });
+        if (tracks.isEmpty) break; // safety valve
+      } catch (_) {
+        if (mounted) setState(() => _loadingAll = false);
+        break;
+      }
     }
   }
 
@@ -134,7 +138,7 @@ class _ArtistScreenState extends ConsumerState<ArtistScreen>
               controller: _tabController,
               indicatorColor: AppColors.primary,
               onTap: (i) {
-                if (i == 1 && _allTracks.isEmpty) _loadAllTracks();
+                if (i == 1 && _allTracks.isEmpty && !_loadingAll) _loadAllTracks();
               },
               tabs: const [Tab(text: 'Top & Álbuns'), Tab(text: 'Todas as músicas')],
             ),
@@ -153,7 +157,6 @@ class _ArtistScreenState extends ConsumerState<ArtistScreen>
               tracks: _allTracks,
               loading: _loadingAll,
               hasMore: _hasMore,
-              onLoadMore: _loadAllTracks,
               onPlayAll: () => _playAll(_allTracks),
             ),
           ],
@@ -268,14 +271,12 @@ class _AllTracksTab extends StatefulWidget {
   final List<Track> tracks;
   final bool loading;
   final bool hasMore;
-  final VoidCallback onLoadMore;
   final VoidCallback onPlayAll;
 
   const _AllTracksTab({
     required this.tracks,
     required this.loading,
     required this.hasMore,
-    required this.onLoadMore,
     required this.onPlayAll,
   });
 
@@ -284,24 +285,13 @@ class _AllTracksTab extends StatefulWidget {
 }
 
 class _AllTracksTabState extends State<_AllTracksTab> {
-  final _scrollCtrl = ScrollController();
-
-  @override
-  void initState() {
-    super.initState();
-    _scrollCtrl.addListener(_onScroll);
-  }
+  final _searchCtrl = TextEditingController();
+  String _query = '';
 
   @override
   void dispose() {
-    _scrollCtrl.dispose();
+    _searchCtrl.dispose();
     super.dispose();
-  }
-
-  void _onScroll() {
-    if (_scrollCtrl.position.pixels >= _scrollCtrl.position.maxScrollExtent - 300) {
-      widget.onLoadMore();
-    }
   }
 
   @override
@@ -311,52 +301,81 @@ class _AllTracksTabState extends State<_AllTracksTab> {
     }
     if (widget.tracks.isEmpty) {
       return const Center(
-        child: Text('Nenhuma música encontrada',
-            style: TextStyle(color: AppColors.textSecondary)),
+        child: Text('Nenhuma música encontrada', style: TextStyle(color: AppColors.textSecondary)),
       );
     }
 
+    final filtered = _query.isEmpty
+        ? widget.tracks
+        : widget.tracks.where((t) =>
+            t.title.toLowerCase().contains(_query.toLowerCase()) ||
+            t.artist.toLowerCase().contains(_query.toLowerCase())).toList();
+
     return CustomScrollView(
-      controller: _scrollCtrl,
       slivers: [
+        // Search bar
         SliverToBoxAdapter(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+            child: TextField(
+              controller: _searchCtrl,
+              onChanged: (q) => setState(() => _query = q),
+              decoration: InputDecoration(
+                hintText: 'Filtrar músicas...',
+                prefixIcon: const Icon(Icons.search, size: 20),
+                suffixIcon: _query.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear, size: 18),
+                        onPressed: () { _searchCtrl.clear(); setState(() => _query = ''); },
+                      )
+                    : null,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                isDense: true,
+              ),
+            ),
+          ),
+        ),
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
             child: Row(
               children: [
-                Text('${widget.tracks.length} músicas carregadas',
-                    style: const TextStyle(color: AppColors.textSecondary, fontSize: 13)),
-                const Spacer(),
-                TextButton.icon(
-                  onPressed: widget.onPlayAll,
-                  icon: const Icon(Icons.play_arrow, size: 16),
-                  label: const Text('Tocar tudo'),
+                Text(
+                  _query.isEmpty
+                      ? '${widget.tracks.length} músicas${widget.hasMore || widget.loading ? " (carregando...)" : ""}'
+                      : '${filtered.length} de ${widget.tracks.length}',
+                  style: const TextStyle(color: AppColors.textSecondary, fontSize: 13),
                 ),
+                const Spacer(),
+                if (!widget.loading && !widget.hasMore)
+                  TextButton.icon(
+                    onPressed: widget.onPlayAll,
+                    icon: const Icon(Icons.play_arrow, size: 16),
+                    label: const Text('Tocar tudo'),
+                  ),
               ],
             ),
           ),
         ),
-        SliverList(
-          delegate: SliverChildBuilderDelegate(
-            (_, i) => TrackCard(track: widget.tracks[i], queue: widget.tracks),
-            childCount: widget.tracks.length,
+        if (filtered.isEmpty)
+          const SliverToBoxAdapter(
+            child: Padding(
+              padding: EdgeInsets.all(32),
+              child: Center(child: Text('Sem resultados', style: TextStyle(color: AppColors.textSecondary))),
+            ),
+          )
+        else
+          SliverList(
+            delegate: SliverChildBuilderDelegate(
+              (_, i) => TrackCard(track: filtered[i], queue: filtered),
+              childCount: filtered.length,
+            ),
           ),
-        ),
         if (widget.loading)
           const SliverToBoxAdapter(
             child: Padding(
               padding: EdgeInsets.all(16),
               child: Center(child: CircularProgressIndicator(color: AppColors.primary)),
-            ),
-          ),
-        if (!widget.hasMore && widget.tracks.isNotEmpty)
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Center(
-                child: Text('Total: ${widget.tracks.length} músicas',
-                    style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
-              ),
             ),
           ),
         const SliverToBoxAdapter(child: SizedBox(height: 80)),

@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.dependencies import get_current_user, bearer_scheme
 from app.models.user import User
-from app.schemas.auth import RegisterRequest, LoginRequest, TokenResponse, UserResponse, UpdateProfileRequest
+from app.schemas.auth import RegisterRequest, LoginRequest, TokenResponse, UserResponse, UpdateProfileRequest, ChangePasswordRequest
 from app.services import auth_service
 from app.config import get_settings
 
@@ -52,6 +52,18 @@ async def me(current_user: User = Depends(get_current_user)):
         email=current_user.email,
         avatar_url=current_user.avatar_url,
     )
+
+
+@router.post("/change-password", status_code=status.HTTP_204_NO_CONTENT)
+async def change_password(
+    body: ChangePasswordRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    if not auth_service.verify_password(body.current_password, current_user.password_hash):
+        raise HTTPException(status_code=400, detail="Senha atual incorreta")
+    current_user.password_hash = auth_service.hash_password(body.new_password)
+    await db.flush()
 
 
 @router.put("/me", response_model=UserResponse)

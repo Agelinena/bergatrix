@@ -144,9 +144,19 @@ async def delete_playlist(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    await _get_user_playlist(db, playlist_id, current_user.id)  # 404 check
+    # Check ownership without loading ORM object — avoids cascade lazy-load in async
+    count = await db.execute(
+        select(func.count()).select_from(Playlist).where(
+            Playlist.id == playlist_id,
+            Playlist.owner_id == current_user.id,
+        )
+    )
+    if count.scalar_one() == 0:
+        raise HTTPException(status_code=404, detail="Playlist not found")
+    # Delete child rows first (FK), then parent — pure core SQL, no ORM cascade
     await db.execute(delete(PlaylistTrack).where(PlaylistTrack.playlist_id == playlist_id))
     await db.execute(delete(Playlist).where(Playlist.id == playlist_id))
+    await db.flush()
 
 
 @router.post("/{playlist_id}/tracks", status_code=201)
