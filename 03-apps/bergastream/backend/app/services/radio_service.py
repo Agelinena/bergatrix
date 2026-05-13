@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.config import get_settings
 from app.models.track import Track
-from app.services.metadata_service import search_deezer, get_deezer_radio
+from app.services.metadata_service import search_deezer, get_deezer_radio, get_deezer_track, get_deezer_artist_tracks
 
 settings = get_settings()
 logger = logging.getLogger(__name__)
@@ -47,9 +47,29 @@ class RadioService:
 
     @staticmethod
     async def _deezer_radio(deezer_id: str, limit: int) -> list[dict]:
+        # Native Deezer radio requires user OAuth — usually returns empty without it.
+        # Use it if it works, otherwise fall back to artist top tracks (public endpoint).
         tracks = await get_deezer_radio(deezer_id, limit)
-        logger.info(f"Deezer radio for id={deezer_id}: got {len(tracks)} tracks")
+        if tracks:
+            logger.info(f"Deezer radio for id={deezer_id}: got {len(tracks)} tracks (native)")
+            return [t.model_dump() for t in tracks]
+
+        logger.info(f"Deezer native radio empty for id={deezer_id}, falling back to artist top tracks")
+        tracks = await RadioService._artist_top_tracks(deezer_id, limit)
+        logger.info(f"Deezer radio fallback: got {len(tracks)} tracks")
         return [t.model_dump() for t in tracks]
+
+    @staticmethod
+    async def _artist_top_tracks(deezer_id: str, limit: int):
+        """Fetches top tracks for the same artist as the seed track (public endpoint)."""
+        seed = await get_deezer_track(deezer_id)
+        if not seed or not seed.artist_id:
+            return []
+        # artist_id is stored as "deezer_<numeric_id>"
+        numeric_artist_id = seed.artist_id.replace("deezer_", "")
+        all_tracks = await get_deezer_artist_tracks(numeric_artist_id, limit=limit * 2)
+        # Exclude the seed track itself
+        return [t for t in all_tracks if t.source_id != deezer_id][:limit]
 
     @staticmethod
     async def _ai_radio(title: str, artist: str, limit: int) -> list[dict]:
