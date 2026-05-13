@@ -30,31 +30,33 @@ async def search(
 @router.get("/artist/{artist_id}")
 async def get_artist(
     artist_id: str,
-    source: str = Query("deezer"),
     _: User = Depends(get_current_user),
 ):
-    if source == "deezer":
+    if artist_id.startswith("spotify_"):
+        raw_id = artist_id.removeprefix("spotify_")
+        artist, albums, top_tracks = await metadata_service.get_artist_for_spotify_id(raw_id)
+    else:
         raw_id = artist_id.removeprefix("deezer_")
         artist, albums, top_tracks = await metadata_service.get_deezer_artist(raw_id)
-        if artist is None:
-            raise HTTPException(status_code=404, detail="Artist not found")
-        return {"artist": artist, "albums": albums, "top_tracks": top_tracks}
-    raise HTTPException(status_code=400, detail="Unsupported source for artist lookup")
+    if artist is None:
+        raise HTTPException(status_code=404, detail="Artist not found")
+    return {"artist": artist, "albums": albums, "top_tracks": top_tracks}
 
 
 @router.get("/album/{album_id}")
 async def get_album(
     album_id: str,
-    source: str = Query("deezer"),
     _: User = Depends(get_current_user),
 ):
-    if source == "deezer":
+    if album_id.startswith("spotify_"):
+        raw_id = album_id.removeprefix("spotify_")
+        album, tracks = await metadata_service.get_album_for_spotify_id(raw_id)
+    else:
         raw_id = album_id.removeprefix("deezer_")
         album, tracks = await metadata_service.get_deezer_album(raw_id)
-        if album is None:
-            raise HTTPException(status_code=404, detail="Album not found")
-        return {"album": album, "tracks": tracks}
-    raise HTTPException(status_code=400, detail="Unsupported source for album lookup")
+    if album is None:
+        raise HTTPException(status_code=404, detail="Album not found")
+    return {"album": album, "tracks": tracks}
 
 
 @router.get("/cover/proxy")

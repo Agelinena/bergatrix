@@ -92,6 +92,8 @@ async def get_deezer_album(deezer_id: str) -> tuple[AlbumSchema | None, list[Tra
     if resp.status_code != 200:
         return None, []
     data = resp.json()
+    if "error" in data or "id" not in data:
+        return None, []
     album = _deezer_album_to_schema(data)
     tracks = [_deezer_track_to_schema(t) for t in data.get("tracks", {}).get("data", [])]
     return album, tracks
@@ -106,14 +108,83 @@ async def get_deezer_artist(deezer_id: str) -> tuple[ArtistSchema | None, list[A
         )
     if artist_resp.status_code != 200:
         return None, [], []
-    artist = _deezer_artist_to_schema(artist_resp.json())
+    artist_data = artist_resp.json()
+    if "error" in artist_data or "id" not in artist_data:
+        return None, [], []
+    artist = _deezer_artist_to_schema(artist_data)
     albums = []
     if albums_resp.status_code == 200:
-        albums = [_deezer_album_to_schema(a) for a in albums_resp.json().get("data", [])]
+        albums = [
+            _deezer_album_to_schema(a)
+            for a in albums_resp.json().get("data", [])
+            if "id" in a and "error" not in a
+        ]
     top_tracks = []
     if top_resp.status_code == 200:
-        top_tracks = [_deezer_track_to_schema(t) for t in top_resp.json().get("data", [])]
+        top_tracks = [
+            _deezer_track_to_schema(t)
+            for t in top_resp.json().get("data", [])
+            if "id" in t and "error" not in t
+        ]
     return artist, albums, top_tracks
+
+
+async def get_album_for_spotify_id(spotify_id: str) -> tuple[AlbumSchema | None, list[TrackSchema]]:
+    """Fetches Spotify album name, finds Deezer equivalent, returns Deezer profile."""
+    if not settings.spotipy_client_id or not settings.spotipy_client_secret:
+        return None, []
+    try:
+        import spotipy
+        from spotipy.oauth2 import SpotifyClientCredentials
+        sp = spotipy.Spotify(auth_manager=SpotifyClientCredentials(
+            client_id=settings.spotipy_client_id,
+            client_secret=settings.spotipy_client_secret,
+        ))
+        loop = asyncio.get_event_loop()
+        data = await loop.run_in_executor(None, lambda: sp.album(spotify_id))
+        title = data.get("name", "")
+        artist = data.get("artists", [{}])[0].get("name", "") if data.get("artists") else ""
+        if not title:
+            return None, []
+        query = f"{artist} {title}".strip()
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.get(f"{DEEZER_API}/search/album", params={"q": query, "limit": 5})
+        if resp.status_code != 200:
+            return None, []
+        results = [a for a in resp.json().get("data", []) if "id" in a]
+        if not results:
+            return None, []
+        return await get_deezer_album(str(results[0]["id"]))
+    except Exception:
+        return None, []
+
+
+async def get_artist_for_spotify_id(spotify_id: str) -> tuple[ArtistSchema | None, list[AlbumSchema], list[TrackSchema]]:
+    """Fetches Spotify artist name, finds Deezer equivalent, returns Deezer profile."""
+    if not settings.spotipy_client_id or not settings.spotipy_client_secret:
+        return None, [], []
+    try:
+        import spotipy
+        from spotipy.oauth2 import SpotifyClientCredentials
+        sp = spotipy.Spotify(auth_manager=SpotifyClientCredentials(
+            client_id=settings.spotipy_client_id,
+            client_secret=settings.spotipy_client_secret,
+        ))
+        loop = asyncio.get_event_loop()
+        data = await loop.run_in_executor(None, lambda: sp.artist(spotify_id))
+        name = data.get("name", "")
+        if not name:
+            return None, [], []
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.get(f"{DEEZER_API}/search/artist", params={"q": name, "limit": 5})
+        if resp.status_code != 200:
+            return None, [], []
+        results = [a for a in resp.json().get("data", []) if "id" in a]
+        if not results:
+            return None, [], []
+        return await get_deezer_artist(str(results[0]["id"]))
+    except Exception:
+        return None, [], []
 
 
 async def find_deezer_track_id(title: str, artist: str, duration_ms: int | None = None) -> str | None:
