@@ -100,8 +100,15 @@ class _PlaylistScreenState extends ConsumerState<PlaylistScreen> {
   Future<void> _delete() async {
     if (_deleting) return;
 
+    // Capture Riverpod refs synchronously before any await so they stay valid
+    // even if the widget rebuilds or is briefly deactivated during showDialog.
+    final client = ref.read(apiClientProvider);
+    final library = ref.read(libraryProvider.notifier);
+    final playlistId = widget.id;
+
     final confirm = await showDialog<bool>(
       context: context,
+      barrierDismissible: false,
       builder: (_) => AlertDialog(
         backgroundColor: AppColors.surfaceVariant,
         title: const Text('Deletar playlist?'),
@@ -119,23 +126,16 @@ class _PlaylistScreenState extends ConsumerState<PlaylistScreen> {
 
     if (confirm != true) return;
 
-    // Snapshot all context-sensitive references before the next async gap.
-    // The !mounted check was intentionally removed from here — it fires as a
-    // false positive in Flutter web + GoRouter when the PopupMenu overlay pops
-    // and triggers a transient widget rebuild, causing the HTTP call to be
-    // skipped entirely. mounted is only safe to check for UI mutations after await.
-    final messenger = ScaffoldMessenger.of(context);
-    final client = ref.read(apiClientProvider);
-    final library = ref.read(libraryProvider.notifier);
-
     if (mounted) setState(() => _deleting = true);
+    final messenger = mounted ? ScaffoldMessenger.of(context) : null;
+
     try {
-      await client.deletePlaylist(widget.id);
+      await client.deletePlaylist(playlistId);
       library.load();
       if (mounted) context.go('/library');
     } catch (e) {
       if (mounted) setState(() => _deleting = false);
-      messenger.showSnackBar(SnackBar(
+      messenger?.showSnackBar(SnackBar(
         content: Text(_extractError(e)),
         backgroundColor: Colors.red,
         duration: const Duration(seconds: 4),
