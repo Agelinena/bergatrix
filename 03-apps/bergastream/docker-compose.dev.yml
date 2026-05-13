@@ -1,0 +1,60 @@
+services:
+  api:
+    build:
+      context: ./backend
+      target: development
+    container_name: bergastream-api-dev
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      LOG_LEVEL: DEBUG
+      CORS_ORIGINS: "http://localhost:3000,http://localhost:8080"
+    volumes:
+      - ./backend:/app
+      - /mnt/storage/bergastream/music:/data/music
+    ports:
+      - "8000:8000"
+    networks:
+      - internal
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  db:
+    image: postgres:16-alpine
+    container_name: bergastream-db-dev
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: bergastream
+      POSTGRES_USER: bergastream
+      POSTGRES_PASSWORD: devpassword
+    volumes:
+      - bergastream_db_dev:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bergastream -d bergastream"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: bergastream-redis-dev
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    networks:
+      - internal
+
+volumes:
+  bergastream_db_dev:
+
+networks:
+  internal:
+    driver: bridge

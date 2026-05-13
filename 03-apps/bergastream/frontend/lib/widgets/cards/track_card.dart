@@ -1,0 +1,169 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import '../../core/theme/app_theme.dart';
+import '../../models/track.dart';
+import '../../providers/player_provider.dart';
+import '../../core/api_client.dart';
+import '../../screens/radio/radio_screen.dart';
+
+class TrackCard extends ConsumerWidget {
+  final Track track;
+  final List<Track> queue;
+  final VoidCallback? onTap;
+
+  const TrackCard({
+    super.key,
+    required this.track,
+    this.queue = const [],
+    this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final player = ref.watch(playerProvider);
+    final isCurrentTrack = player.currentTrack?.id == track.id;
+
+    return ListTile(
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      leading: ClipRRect(
+        borderRadius: BorderRadius.circular(4),
+        child: Stack(
+          children: [
+            CachedNetworkImage(
+              imageUrl: track.coverUrl ?? '',
+              width: 48, height: 48, fit: BoxFit.cover,
+              errorWidget: (_, __, ___) => Container(
+                width: 48, height: 48, color: AppColors.surfaceVariant,
+                child: const Icon(Icons.music_note, size: 24),
+              ),
+            ),
+            if (isCurrentTrack)
+              Container(
+                width: 48, height: 48,
+                color: Colors.black45,
+                child: const Icon(Icons.equalizer, color: AppColors.primary, size: 24),
+              ),
+          ],
+        ),
+      ),
+      title: Text(
+        track.title,
+        style: TextStyle(
+          color: isCurrentTrack ? AppColors.primary : AppColors.textPrimary,
+          fontWeight: FontWeight.w500,
+        ),
+        overflow: TextOverflow.ellipsis,
+      ),
+      subtitle: Text(track.artist, style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+        overflow: TextOverflow.ellipsis),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(track.durationFormatted, style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+          const SizedBox(width: 4),
+          IconButton(
+            icon: const Icon(Icons.more_vert, color: AppColors.textSecondary, size: 20),
+            onPressed: () => _showTrackMenu(context, ref),
+          ),
+        ],
+      ),
+      onTap: onTap ?? () => _playTrack(ref),
+    );
+  }
+
+  void _playTrack(WidgetRef ref) async {
+    final client = ref.read(apiClientProvider);
+    await client.registerTrack(track.toJson());
+    final q = queue.isEmpty ? [track] : queue;
+    ref.read(playerProvider.notifier).play(track, queue: q);
+
+    // Prefetch next 10
+    final idx = q.indexWhere((t) => t.id == track.id);
+    final nextIds = q.skip(idx + 1).take(10).map((t) => t.id).toList();
+    if (nextIds.isNotEmpty) client.prefetchTracks(nextIds);
+  }
+
+  void _showTrackMenu(BuildContext context, WidgetRef ref) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppColors.surfaceVariant,
+      builder: (_) => _TrackMenu(track: track),
+    );
+  }
+}
+
+class _TrackMenu extends ConsumerWidget {
+  final Track track;
+  const _TrackMenu({required this.track});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final client = ref.read(apiClientProvider);
+
+    return SafeArea(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ListTile(
+            leading: const Icon(Icons.play_arrow),
+            title: const Text('Tocar agora'),
+            onTap: () {
+              Navigator.pop(context);
+              client.registerTrack(track.toJson()).then((_) =>
+                ref.read(playerProvider.notifier).play(track));
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.queue_music),
+            title: const Text('Adicionar à fila'),
+            onTap: () {
+              Navigator.pop(context);
+              ref.read(playerProvider.notifier).addToQueue(track);
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.favorite_border),
+            title: const Text('Curtir'),
+            onTap: () {
+              Navigator.pop(context);
+              client.likeTrack(track.id);
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.radio),
+            title: const Text('Modo Rádio'),
+            onTap: () {
+              Navigator.pop(context);
+              showModalBottomSheet(
+                context: context,
+                isScrollControlled: true,
+                backgroundColor: Colors.transparent,
+                builder: (_) => DraggableScrollableSheet(
+                  initialChildSize: 0.9,
+                  minChildSize: 0.5,
+                  maxChildSize: 1.0,
+                  builder: (_, ctrl) => ClipRRect(
+                    borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+                    child: RadioScreen(seedTrack: track),
+                  ),
+                ),
+              );
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.download_outlined),
+            title: const Text('Download offline'),
+            onTap: () async {
+              Navigator.pop(context);
+              try {
+                await client.registerTrack(track.toJson());
+                await client.dio.post('/api/offline/${track.id}');
+              } catch (_) {}
+            },
+          ),
+        ],
+      ),
+    );
+  }
+}

@@ -1,0 +1,75 @@
+services:
+  api:
+    build: ./backend
+    container_name: bergastream-api
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - /mnt/storage/bergastream/music:/data/music
+    networks:
+      - internal
+      - bergatrix-proxy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.bergastream-api.rule=Host(`${API_DOMAIN}`)"
+      - "traefik.http.routers.bergastream-api.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.bergastream-api.entrypoints=websecure"
+      - "traefik.http.services.bergastream-api.loadbalancer.server.port=8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  web:
+    build:
+      context: ./frontend
+      args:
+        # URL completa da API — injetada no Flutter em tempo de build
+        API_URL: https://${API_DOMAIN}
+    container_name: bergastream-web
+    restart: unless-stopped
+    networks:
+      - bergatrix-proxy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.bergastream-web.rule=Host(`${WEB_DOMAIN}`)"
+      - "traefik.http.routers.bergastream-web.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.bergastream-web.entrypoints=websecure"
+      - "traefik.http.services.bergastream-web.loadbalancer.server.port=80"
+    depends_on:
+      - api
+
+  db:
+    image: postgres:16-alpine
+    container_name: bergastream-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - /mnt/storage/bergastream/db:/var/lib/postgresql/data
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: bergastream-redis
+    restart: unless-stopped
+    volumes:
+      - /mnt/storage/bergastream/redis:/data
+    networks:
+      - internal
+    command: redis-server --appendonly yes
+
+networks:
+  bergatrix-proxy:
+    external: true
+  internal:
+    driver: bridge

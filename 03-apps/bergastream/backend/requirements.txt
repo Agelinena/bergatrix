@@ -1,0 +1,35 @@
+fastapi==0.115.5
+uvicorn[standard]==0.32.1
+pydantic==2.10.3
+pydantic-settings==2.6.1
+
+# Database
+sqlalchemy==2.0.36
+asyncpg==0.30.0
+alembic==1.14.0
+
+# Redis
+redis==5.2.1
+aioredis==2.0.1
+
+# Auth
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+python-multipart==0.0.20
+
+# HTTP
+httpx==0.28.1
+aiohttp==3.11.10
+aiofiles==24.1.0
+
+# Music sources
+yt-dlp==2024.12.13
+ytmusicapi==1.8.2
+spotipy==2.24.0
+
+# Media
+mutagen==1.47.0
+
+# Utils
+python-dotenv==1.0.1
+structlog==24.4.0
