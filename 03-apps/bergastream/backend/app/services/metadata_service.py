@@ -97,19 +97,23 @@ async def get_deezer_album(deezer_id: str) -> tuple[AlbumSchema | None, list[Tra
     return album, tracks
 
 
-async def get_deezer_artist(deezer_id: str) -> tuple[ArtistSchema | None, list[AlbumSchema]]:
+async def get_deezer_artist(deezer_id: str) -> tuple[ArtistSchema | None, list[AlbumSchema], list[TrackSchema]]:
     async with httpx.AsyncClient(timeout=10) as client:
-        artist_resp, albums_resp = await asyncio.gather(
+        artist_resp, albums_resp, top_resp = await asyncio.gather(
             client.get(f"{DEEZER_API}/artist/{deezer_id}"),
             client.get(f"{DEEZER_API}/artist/{deezer_id}/albums"),
+            client.get(f"{DEEZER_API}/artist/{deezer_id}/top", params={"limit": 10}),
         )
     if artist_resp.status_code != 200:
-        return None, []
+        return None, [], []
     artist = _deezer_artist_to_schema(artist_resp.json())
     albums = []
     if albums_resp.status_code == 200:
         albums = [_deezer_album_to_schema(a) for a in albums_resp.json().get("data", [])]
-    return artist, albums
+    top_tracks = []
+    if top_resp.status_code == 200:
+        top_tracks = [_deezer_track_to_schema(t) for t in top_resp.json().get("data", [])]
+    return artist, albums, top_tracks
 
 
 async def get_deezer_radio(deezer_id: str, limit: int = 10) -> list[TrackSchema]:

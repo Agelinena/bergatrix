@@ -22,29 +22,16 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
   }
 
   void _showCreatePlaylistDialog() {
-    final ctrl = TextEditingController();
     showDialog(
       context: context,
-      builder: (_) => AlertDialog(
-        backgroundColor: AppColors.surfaceVariant,
-        title: const Text('Nova playlist'),
-        content: TextField(
-          controller: ctrl,
-          autofocus: true,
-          decoration: const InputDecoration(hintText: 'Nome da playlist'),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
-          ElevatedButton(
-            onPressed: () async {
-              if (ctrl.text.isNotEmpty) {
-                await ref.read(libraryProvider.notifier).createPlaylist(ctrl.text);
-                if (mounted) Navigator.pop(context);
-              }
-            },
-            child: const Text('Criar'),
-          ),
-        ],
+      builder: (_) => _CreatePlaylistDialog(
+        onCreated: (name, description, isPublic) async {
+          await ref.read(libraryProvider.notifier).createPlaylist(
+            name,
+            description: description.isNotEmpty ? description : null,
+            isPublic: isPublic,
+          );
+        },
       ),
     );
   }
@@ -154,6 +141,71 @@ class _PlaylistTile extends ConsumerWidget {
         subtitle: Text('${playlist.trackCount} músicas', style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
         onTap: () => context.go('/playlist/${playlist.id}'),
       ),
+    );
+  }
+}
+
+class _CreatePlaylistDialog extends StatefulWidget {
+  final Future<void> Function(String name, String description, bool isPublic) onCreated;
+  const _CreatePlaylistDialog({required this.onCreated});
+
+  @override
+  State<_CreatePlaylistDialog> createState() => _CreatePlaylistDialogState();
+}
+
+class _CreatePlaylistDialogState extends State<_CreatePlaylistDialog> {
+  final _nameCtrl = TextEditingController();
+  final _descCtrl = TextEditingController();
+  bool _isPublic = false;
+  bool _loading = false;
+
+  @override
+  void dispose() {
+    _nameCtrl.dispose();
+    _descCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: AppColors.surfaceVariant,
+      title: const Text('Nova playlist'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          TextField(
+            controller: _nameCtrl,
+            autofocus: true,
+            decoration: const InputDecoration(hintText: 'Nome da playlist'),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _descCtrl,
+            decoration: const InputDecoration(hintText: 'Descrição (opcional)'),
+          ),
+          const SizedBox(height: 8),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Playlist pública', style: TextStyle(fontSize: 14)),
+            value: _isPublic,
+            onChanged: (v) => setState(() => _isPublic = v),
+            activeColor: AppColors.primary,
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
+        ElevatedButton(
+          onPressed: _loading ? null : () async {
+            if (_nameCtrl.text.trim().isEmpty) return;
+            setState(() => _loading = true);
+            await widget.onCreated(_nameCtrl.text.trim(), _descCtrl.text.trim(), _isPublic);
+            if (mounted) Navigator.pop(context);
+          },
+          child: _loading ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('Criar'),
+        ),
+      ],
     );
   }
 }

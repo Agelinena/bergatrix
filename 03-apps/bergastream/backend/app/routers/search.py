@@ -35,10 +35,10 @@ async def get_artist(
 ):
     if source == "deezer":
         raw_id = artist_id.removeprefix("deezer_")
-        artist, albums = await metadata_service.get_deezer_artist(raw_id)
+        artist, albums, top_tracks = await metadata_service.get_deezer_artist(raw_id)
         if artist is None:
             raise HTTPException(status_code=404, detail="Artist not found")
-        return {"artist": artist, "albums": albums}
+        return {"artist": artist, "albums": albums, "top_tracks": top_tracks}
     raise HTTPException(status_code=400, detail="Unsupported source for artist lookup")
 
 

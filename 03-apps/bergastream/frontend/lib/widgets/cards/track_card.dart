@@ -3,7 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/track.dart';
+import '../../models/playlist.dart';
 import '../../providers/player_provider.dart';
+import '../../providers/library_provider.dart';
 import '../../core/api_client.dart';
 import '../../screens/radio/radio_screen.dart';
 
@@ -152,6 +154,18 @@ class _TrackMenu extends ConsumerWidget {
             },
           ),
           ListTile(
+            leading: const Icon(Icons.playlist_add),
+            title: const Text('Adicionar a playlist'),
+            onTap: () {
+              Navigator.pop(context);
+              showModalBottomSheet(
+                context: context,
+                backgroundColor: AppColors.surfaceVariant,
+                builder: (_) => _AddToPlaylistSheet(track: track),
+              );
+            },
+          ),
+          ListTile(
             leading: const Icon(Icons.download_outlined),
             title: const Text('Download offline'),
             onTap: () async {
@@ -162,6 +176,91 @@ class _TrackMenu extends ConsumerWidget {
               } catch (_) {}
             },
           ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AddToPlaylistSheet extends ConsumerStatefulWidget {
+  final Track track;
+  const _AddToPlaylistSheet({required this.track});
+
+  @override
+  ConsumerState<_AddToPlaylistSheet> createState() => _AddToPlaylistSheetState();
+}
+
+class _AddToPlaylistSheetState extends ConsumerState<_AddToPlaylistSheet> {
+  String? _adding;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(libraryProvider.notifier).load();
+    });
+  }
+
+  Future<void> _add(Playlist playlist) async {
+    setState(() => _adding = playlist.id);
+    try {
+      final client = ref.read(apiClientProvider);
+      await client.registerTrack(widget.track.toJson());
+      await client.addTrackToPlaylist(playlist.id, widget.track.id);
+      if (mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Adicionada a "${playlist.name}"'), duration: const Duration(seconds: 2)),
+        );
+      }
+    } catch (_) {
+      if (mounted) setState(() => _adding = null);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final library = ref.watch(libraryProvider);
+    return SafeArea(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+            child: Text('Adicionar a playlist', style: Theme.of(context).textTheme.titleMedium),
+          ),
+          const Divider(height: 1),
+          library.when(
+            data: (playlists) => playlists.isEmpty
+                ? const Padding(
+                    padding: EdgeInsets.all(24),
+                    child: Text('Nenhuma playlist encontrada', style: TextStyle(color: AppColors.textSecondary)),
+                  )
+                : ConstrainedBox(
+                    constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.5),
+                    child: ListView(
+                      shrinkWrap: true,
+                      children: playlists.map((pl) => ListTile(
+                        leading: Container(
+                          width: 40, height: 40,
+                          color: AppColors.background,
+                          child: pl.coverUrl != null
+                              ? Image.network(pl.coverUrl!, fit: BoxFit.cover)
+                              : const Icon(Icons.queue_music, size: 20, color: AppColors.textSecondary),
+                        ),
+                        title: Text(pl.name),
+                        subtitle: Text('${pl.trackCount} músicas', style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                        trailing: _adding == pl.id
+                            ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                            : null,
+                        onTap: _adding != null ? null : () => _add(pl),
+                      )).toList(),
+                    ),
+                  ),
+            loading: () => const Padding(padding: EdgeInsets.all(24), child: Center(child: CircularProgressIndicator(color: AppColors.primary))),
+            error: (_, __) => const Padding(padding: EdgeInsets.all(24), child: Text('Erro ao carregar playlists')),
+          ),
+          const SizedBox(height: 8),
         ],
       ),
     );

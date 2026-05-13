@@ -23,9 +23,15 @@ class Library extends _$Library {
     }
   }
 
-  Future<void> createPlaylist(String name) async {
+  Future<void> createPlaylist(String name, {String? description, bool isPublic = false}) async {
     final client = ref.read(apiClientProvider);
-    await client.createPlaylist(name);
+    await client.createPlaylist(name, description: description, isPublic: isPublic);
+    await load();
+  }
+
+  Future<void> updatePlaylist(String id, {String? name, String? description, String? coverUrl, bool? isPublic}) async {
+    final client = ref.read(apiClientProvider);
+    await client.updatePlaylist(id, name: name, description: description, coverUrl: coverUrl, isPublic: isPublic);
     await load();
   }
 

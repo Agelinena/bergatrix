@@ -90,8 +90,12 @@ class ApiClient {
     return resp.data as List<dynamic>;
   }
 
-  Future<Map<String, dynamic>> createPlaylist(String name, {String? description}) async {
-    final resp = await _dio.post('/api/playlists', data: {'name': name, 'description': description});
+  Future<Map<String, dynamic>> createPlaylist(String name, {String? description, bool isPublic = false}) async {
+    final resp = await _dio.post('/api/playlists', data: {
+      'name': name,
+      if (description != null) 'description': description,
+      'is_public': isPublic,
+    });
     return resp.data as Map<String, dynamic>;
   }
 
@@ -100,8 +104,22 @@ class ApiClient {
     return resp.data as Map<String, dynamic>;
   }
 
+  Future<void> updatePlaylist(String id, {String? name, String? description, String? coverUrl, bool? isPublic}) async {
+    final data = <String, dynamic>{};
+    if (name != null) data['name'] = name;
+    if (description != null) data['description'] = description;
+    if (coverUrl != null) data['cover_url'] = coverUrl;
+    if (isPublic != null) data['is_public'] = isPublic;
+    await _dio.put('/api/playlists/$id', data: data);
+  }
+
   Future<void> deletePlaylist(String id) async {
     await _dio.delete('/api/playlists/$id');
+  }
+
+  Future<Map<String, dynamic>> sharePlaylist(String id) async {
+    final resp = await _dio.post('/api/playlists/$id/share');
+    return resp.data as Map<String, dynamic>;
   }
 
   Future<void> addTrackToPlaylist(String playlistId, String trackId) async {

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:go_router/go_router.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/api_client.dart';
 import '../../models/track.dart';
@@ -42,41 +43,89 @@ class _AlbumScreenState extends ConsumerState<AlbumScreen> {
     }
   }
 
+  void _playAll() {
+    if (_tracks.isNotEmpty) {
+      ref.read(playerProvider.notifier).play(_tracks.first, queue: _tracks);
+    }
+  }
+
+  void _shuffle() {
+    if (_tracks.isEmpty) return;
+    final shuffled = [..._tracks]..shuffle();
+    ref.read(playerProvider.notifier).play(shuffled.first, queue: shuffled);
+    ref.read(playerProvider.notifier).toggleShuffle();
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_loading) return const Scaffold(body: Center(child: CircularProgressIndicator(color: AppColors.primary)));
+
+    final totalMs = _tracks.fold(0, (sum, t) => sum + (t.durationMs ?? 0));
+    final totalMin = totalMs ~/ 60000;
+    final artistId = _tracks.isNotEmpty ? _tracks.first.artistId : null;
 
     return Scaffold(
       body: CustomScrollView(
         slivers: [
           SliverAppBar(
-            expandedHeight: 240,
+            expandedHeight: 260,
             pinned: true,
             flexibleSpace: FlexibleSpaceBar(
-              title: Text(_album?['title'] ?? ''),
               background: _album?['cover_url'] != null
                   ? CachedNetworkImage(imageUrl: _album!['cover_url'] as String, fit: BoxFit.cover)
                   : Container(color: AppColors.surfaceVariant),
             ),
           ),
           SliverPadding(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
             sliver: SliverToBoxAdapter(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(_album?['artist'] ?? '', style: const TextStyle(color: AppColors.textSecondary)),
-                  if (_album?['year'] != null) Text('${_album!['year']}', style: const TextStyle(color: AppColors.textSecondary)),
-                  const SizedBox(height: 16),
-                  ElevatedButton.icon(
-                    onPressed: () {
-                      if (_tracks.isNotEmpty) {
-                        ref.read(playerProvider.notifier).play(_tracks.first, queue: _tracks);
-                      }
-                    },
-                    icon: const Icon(Icons.play_arrow),
-                    label: const Text('Tocar álbum'),
+                  Text(_album?['title'] ?? '', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 4),
+                  // Artist name — tappable if we have an artist_id
+                  GestureDetector(
+                    onTap: artistId != null ? () => context.push('/artist/$artistId') : null,
+                    child: Text(
+                      _album?['artist'] ?? '',
+                      style: TextStyle(
+                        color: artistId != null ? AppColors.primary : AppColors.textSecondary,
+                        fontWeight: artistId != null ? FontWeight.w600 : FontWeight.normal,
+                      ),
+                    ),
                   ),
+                  const SizedBox(height: 2),
+                  Text(
+                    [
+                      if (_album?['year'] != null) '${_album!['year']}',
+                      '${_tracks.length} faixas',
+                      '$totalMin min',
+                    ].join(' · '),
+                    style: const TextStyle(color: AppColors.textSecondary, fontSize: 13),
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      ElevatedButton.icon(
+                        onPressed: _playAll,
+                        icon: const Icon(Icons.play_arrow, size: 18),
+                        label: const Text('Tocar'),
+                      ),
+                      const SizedBox(width: 12),
+                      OutlinedButton.icon(
+                        onPressed: _shuffle,
+                        icon: const Icon(Icons.shuffle, size: 18),
+                        label: const Text('Aleatório'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: AppColors.textPrimary,
+                          side: const BorderSide(color: AppColors.textSecondary),
+                          shape: const StadiumBorder(),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
                 ],
               ),
             ),
@@ -87,6 +136,7 @@ class _AlbumScreenState extends ConsumerState<AlbumScreen> {
               childCount: _tracks.length,
             ),
           ),
+          const SliverToBoxAdapter(child: SizedBox(height: 80)),
         ],
       ),
     );
