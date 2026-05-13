@@ -18,7 +18,7 @@ class Track extends HiveObject {
   @HiveField(11) final bool isPermanent;
   @HiveField(12) final String? audioQuality;
 
-  const Track({
+  Track({
     required this.id,
     required this.title,
     required this.artist,
