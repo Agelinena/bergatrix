@@ -87,13 +87,13 @@ async def download_deezer(track_id: str, source_id: str) -> tuple[Path | None, s
 
 
 async def download_youtube(track_id: str, source_id: str, title: str = "", artist: str = "") -> tuple[Path | None, str]:
-    """Downloads via yt-dlp. Always produces mp3 128kbps."""
+    """Downloads via yt-dlp. Best available audio converted to MP3 320kbps."""
     out_dir = Path(settings.music_cache_path)
     out_dir.mkdir(parents=True, exist_ok=True)
 
     dest = _cache_path(track_id, "mp3")
     if dest.exists():
-        return dest, "mp3_128"
+        return dest, "mp3_320"
 
     # Use video ID if available, otherwise search
     if source_id and not source_id.startswith("search:"):
@@ -104,9 +104,10 @@ async def download_youtube(track_id: str, source_id: str, title: str = "", artis
 
     cmd = [
         "yt-dlp",
-        "-x", "--audio-format", "mp3", "--audio-quality", "128K",
+        "-f", "bestaudio",
+        "-x", "--audio-format", "mp3", "--audio-quality", "0",  # 0 = best VBR (~320kbps)
         "--no-playlist",
-        "-o", str(dest.with_suffix("")),  # yt-dlp appends .mp3
+        "-o", str(dest.with_suffix("")),
         url,
     ]
 
@@ -125,7 +126,7 @@ async def download_youtube(track_id: str, source_id: str, title: str = "", artis
         if actual.exists() and actual != dest:
             actual.rename(dest)
 
-        return dest if dest.exists() else None, "mp3_128"
+        return dest if dest.exists() else None, "mp3_320"
     except (asyncio.TimeoutError, Exception):
         return None, ""
 
@@ -146,8 +147,12 @@ async def ensure_track_file(track_id: str, source: str, source_id: str, title: s
         # fallback to youtube search
         return await download_youtube(track_id, "", title, artist)
 
-    if source in ("youtube", "spotify"):
+    if source == "youtube":
         return await download_youtube(track_id, source_id, title, artist)
+
+    if source == "spotify":
+        # Spotify IDs are not YouTube IDs — always search by title+artist
+        return await download_youtube(track_id, "", title, artist)
 
     return None, ""
 
