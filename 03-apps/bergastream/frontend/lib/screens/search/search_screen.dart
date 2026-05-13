@@ -108,11 +108,8 @@ class _SearchScreenState extends ConsumerState<SearchScreen> with SingleTickerPr
   void _playFromSearch(Track track, List<Track> queue) async {
     final client = ref.read(apiClientProvider);
     await client.registerTrack(track.toJson());
-    final q = queue.isEmpty ? [track] : queue;
-    final idx = q.indexWhere((t) => t.id == track.id);
-    await ref.read(playerProvider.notifier).play(track, queue: q);
-    if (idx >= 0) client.prefetchTracks(q.skip(idx + 1).take(10).map((t) => t.id).toList());
-    // Activate radio queue to silently maintain 20 tracks ahead
+    // Play only this track — radio queue provider fills the rest
+    await ref.read(playerProvider.notifier).play(track, queue: [track]);
     ref.read(radioQueueProvider.notifier).activate(track);
   }
 

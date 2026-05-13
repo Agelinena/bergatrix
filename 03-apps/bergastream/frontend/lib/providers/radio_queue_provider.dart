@@ -140,6 +140,9 @@ class RadioQueueNotifier extends Notifier<RadioQueueState> {
       for (final t in tracks) {
         ref.read(playerProvider.notifier).addToQueue(t);
       }
+      if (tracks.isNotEmpty) {
+        client.prefetchTracks(tracks.map((t) => t.id).toList());
+      }
     } catch (_) {
       state = state.copyWith(isRefilling: false);
     }
