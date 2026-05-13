@@ -17,9 +17,8 @@ dependencies:
   # Navigation
   go_router: ^13.2.5
 
-  # Audio
+  # Audio (just_audio inclui suporte Windows/Linux nativamente desde 0.9.x)
   just_audio: ^0.9.40
-  just_audio_windows: ^0.2.1
   audio_service: ^0.18.15
 
   # HTTP
@@ -32,12 +31,9 @@ dependencies:
   # UI
   cached_network_image: ^3.4.1
   shimmer: ^3.0.0
-  flashy_tab_bar2: ^0.0.8
   dynamic_color: ^1.7.0
   marquee: ^2.2.3
-  drag_and_drop_lists: ^0.4.4
   palette_generator: ^0.3.3
-  smooth_border_radius: ^0.1.0+1
   toastification: ^2.1.0
   readmore: ^3.0.0
   percent_indicator: ^4.2.4
@@ -57,14 +53,3 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
-  assets:
-    - assets/images/
-  fonts:
-    - family: SpotifyMix
-      fonts:
-        - asset: assets/fonts/CircularStd-Book.otf
-          weight: 400
-        - asset: assets/fonts/CircularStd-Medium.otf
-          weight: 500
-        - asset: assets/fonts/CircularStd-Bold.otf
-          weight: 700
