@@ -127,7 +127,7 @@ class _PlaylistTile extends ConsumerWidget {
           ),
         );
       },
-      onDismissed: (_) => ref.read(libraryProvider.notifier).deletePlaylist(playlist.id),
+      onDismissed: (_) => ref.read(libraryProvider.notifier).tryDeletePlaylist(playlist.id),
       child: ListTile(
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         leading: Container(

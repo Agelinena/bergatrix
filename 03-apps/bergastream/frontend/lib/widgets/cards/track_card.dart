@@ -152,8 +152,11 @@ class TrackMenuSheet extends ConsumerWidget {
           ListTile(
             leading: const Icon(Icons.radio),
             title: const Text('Modo Rádio'),
-            onTap: () {
+            onTap: () async {
               Navigator.pop(context);
+              // Track must be in DB before radio endpoint can resolve title/artist
+              try { await client.registerTrack(track.toJson()); } catch (_) {}
+              if (!context.mounted) return;
               showModalBottomSheet(
                 context: context,
                 isScrollControlled: true,
@@ -186,17 +189,22 @@ class TrackMenuSheet extends ConsumerWidget {
             leading: const Icon(Icons.refresh),
             title: const Text('Baixar novamente'),
             onTap: () async {
+              // Capture messenger before pop — context is deactivated after dismiss
+              final messenger = ScaffoldMessenger.of(context);
               Navigator.pop(context);
               try {
                 await client.deleteTrackCache(track.id);
-                await client.registerTrack(track.toJson());
-                ScaffoldMessenger.of(context).showSnackBar(
+                messenger.showSnackBar(
                   const SnackBar(
                     content: Text('Cache apagado — toque a música para re-baixar'),
                     duration: Duration(seconds: 3),
                   ),
                 );
-              } catch (_) {}
+              } catch (_) {
+                messenger.showSnackBar(
+                  const SnackBar(content: Text('Erro ao apagar cache'), duration: Duration(seconds: 2)),
+                );
+              }
             },
           ),
         ],

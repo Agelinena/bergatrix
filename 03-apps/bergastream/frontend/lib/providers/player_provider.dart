@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import '../models/track.dart';
@@ -80,9 +81,9 @@ class Player extends _$Player {
   }
 
   Future<void> play(Track track, {List<Track> queue = const []}) async {
-    // Ensure track is registered in DB so history recording works
+    // Register in DB before streaming — stream endpoint returns 404 if track unknown
     try {
-      ref.read(apiClientProvider).registerTrack(track.toJson());
+      await ref.read(apiClientProvider).registerTrack(track.toJson());
     } catch (_) {}
 
     // Record previous track before switching (if played for more than 5s)
@@ -130,10 +131,19 @@ class Player extends _$Player {
   }
 
   Future<void> next() async {
-    final nextIdx = state.queueIndex + 1;
-    if (nextIdx >= state.queue.length) return;
+    if (state.queue.isEmpty) return;
+    int nextIdx;
+    if (state.shuffle) {
+      final candidates = List.generate(state.queue.length, (i) => i)
+          .where((i) => i != state.queueIndex)
+          .toList();
+      if (candidates.isEmpty) return;
+      nextIdx = candidates[Random().nextInt(candidates.length)];
+    } else {
+      nextIdx = state.queueIndex + 1;
+      if (nextIdx >= state.queue.length) return;
+    }
     await play(state.queue[nextIdx], queue: state.queue);
-    state = state.copyWith(queueIndex: nextIdx);
   }
 
   Future<void> previous() async {

@@ -40,6 +40,15 @@ class Library extends _$Library {
     await client.deletePlaylist(id);
     await load();
   }
+
+  Future<bool> tryDeletePlaylist(String id) async {
+    try {
+      await deletePlaylist(id);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
 }
 
 @riverpod

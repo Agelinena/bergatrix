@@ -112,8 +112,15 @@ class _PlaylistScreenState extends ConsumerState<PlaylistScreen> {
       ),
     );
     if (confirm == true && mounted) {
-      await ref.read(libraryProvider.notifier).deletePlaylist(widget.id);
-      if (mounted) context.go('/library');
+      final ok = await ref.read(libraryProvider.notifier).tryDeletePlaylist(widget.id);
+      if (!mounted) return;
+      if (ok) {
+        context.go('/library');
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Erro ao deletar playlist'), duration: Duration(seconds: 3)),
+        );
+      }
     }
   }
 

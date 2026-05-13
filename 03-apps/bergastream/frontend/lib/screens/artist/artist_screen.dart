@@ -68,7 +68,9 @@ class _ArtistScreenState extends ConsumerState<ArtistScreen>
     setState(() => _loadingAll = true);
     try {
       final client = ref.read(apiClientProvider);
-      final data = await client.getArtistTracks(widget.id, index: _nextIndex, limit: _pageSize);
+      // Use the Deezer-resolved ID from the backend response (widget.id may be spotify_xxx)
+      final resolvedId = _artist?['id'] as String? ?? widget.id;
+      final data = await client.getArtistTracks(resolvedId, index: _nextIndex, limit: _pageSize);
       final tracks = (data['tracks'] as List<dynamic>)
           .map((t) => Track.fromJson(t as Map<String, dynamic>))
           .toList();

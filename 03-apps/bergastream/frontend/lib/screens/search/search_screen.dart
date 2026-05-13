@@ -199,7 +199,10 @@ class _SearchScreenState extends ConsumerState<SearchScreen> with SingleTickerPr
           ? _HistoryList(
               history: _history,
               onTap: (q) {
-                _queryCtrl.text = q;
+                setState(() {
+                  _queryCtrl.text = q;
+                  _showHistory = false;
+                });
                 _focusNode.unfocus();
                 _runSearch(q);
               },
