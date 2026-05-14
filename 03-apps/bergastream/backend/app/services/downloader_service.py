@@ -15,7 +15,9 @@ Duration tolerance: ±5% or ±10 s, whichever is larger.
 import asyncio
 import json
 import logging
+import re
 import shutil
+import unicodedata
 from pathlib import Path
 
 from app.config import get_settings
@@ -67,6 +69,68 @@ def _file_duration_ms(path: Path) -> int:
     except Exception:
         pass
     return 0
+
+
+# ---------------------------------------------------------------------------
+# Title-match helpers for YouTube candidate scoring
+# ---------------------------------------------------------------------------
+
+def _normalize_text(s: str) -> str:
+    """Lowercase, strip accents, collapse to alphanumeric words."""
+    s = unicodedata.normalize("NFD", s)
+    s = "".join(c for c in s if unicodedata.category(c) != "Mn")
+    s = s.lower()
+    s = re.sub(r"[^\w\s]", " ", s)
+    return re.sub(r"\s+", " ", s).strip()
+
+
+# Common words that appear in many YouTube titles but carry no identity signal
+_STOP_WORDS = {
+    "a", "o", "e", "é", "de", "da", "do", "das", "dos", "em", "um", "uma",
+    "the", "a", "an", "of", "in", "on", "at", "to", "ft", "feat", "part",
+    "official", "video", "music", "audio", "lyric", "lyrics", "clipe",
+    "ao", "vivo", "live", "version", "versao",
+}
+
+
+def _content_words(s: str) -> set[str]:
+    """Normalised word set with stop words removed."""
+    return {w for w in _normalize_text(s).split() if w not in _STOP_WORDS} or \
+           set(_normalize_text(s).split())  # fallback: keep all if everything stripped
+
+
+def _title_match_score(video_title: str, track_title: str, artist: str) -> float:
+    """
+    Returns 0.0–1.0 measuring how well a YouTube video title matches the
+    expected track title + artist.
+
+    Title words contribute 70 %, artist presence 30 %.
+    Short titles (1 word) require exact presence; longer titles allow partial.
+    """
+    vt_words = _content_words(video_title)
+    tt_words = _content_words(track_title)
+
+    # Title score: fraction of track title content-words found in video title
+    if tt_words:
+        title_score = len(tt_words & vt_words) / len(tt_words)
+    else:
+        title_score = 0.5  # empty title → neutral
+
+    # Artist score: any individual artist's name (from comma-separated list)
+    # fully present in the video title → 1.0, partially → 0.5
+    artist_score = 0.0
+    if artist:
+        for part in re.split(r"[,&/]", artist):
+            part_words = _content_words(part)
+            if not part_words:
+                continue
+            if part_words <= vt_words:       # all words of this artist found
+                artist_score = 1.0
+                break
+            elif part_words & vt_words:      # at least one word found
+                artist_score = max(artist_score, 0.5)
+
+    return round(title_score * 0.7 + artist_score * 0.3, 3)
 
 
 # ---------------------------------------------------------------------------
@@ -123,9 +187,17 @@ async def find_youtube_candidate(
     duration_ms: int | None,
 ) -> str | None:
     """
-    Uses `yt-dlp --dump-json ytsearch5:…` to find YouTube candidates WITHOUT
-    downloading. Filters by duration and returns the closest-match video ID.
+    Uses `yt-dlp --dump-json ytsearch5:…` to find the best YouTube match WITHOUT
+    downloading. Scores by title+artist similarity (primary) and duration (secondary).
+
+    Priority buckets (checked in order):
+      1. Title match  ✓  AND  Duration match ✓  →  best combined score
+      2. Title match  ✓  AND  Duration match ✗  →  acceptable (different version)
+      3. Title match  ✗  AND  Duration match ✓  →  risky (coincidental duration)
+      4. Nothing matched                         →  first result (last resort)
     """
+    _TITLE_THRESHOLD = 0.4   # minimum _title_match_score to count as a title match
+
     query = f"{artist} {title}".strip()
     if not query:
         return None
@@ -164,35 +236,59 @@ async def find_youtube_candidate(
         logger.info(f"[resolve] yt-dlp returned no candidates for '{query}'")
         return None
 
-    if not duration_ms or duration_ms <= 0:
-        vid = candidates[0].get("id")
-        logger.info(f"[resolve] YouTube candidate (no duration constraint): {vid}")
-        return vid
-
-    best_id: str | None = None
-    best_diff = float("inf")
+    # Score every candidate
+    scored: list[tuple[float, bool, int, dict]] = []  # (t_score, dur_ok, dur_diff_ms, c)
     for c in candidates:
         vid_ms = (c.get("duration") or 0) * 1000
-        if vid_ms <= 0:
-            continue
-        diff = abs(vid_ms - duration_ms)
+        t_score = _title_match_score(c.get("title", ""), title, artist)
+        dur_ok = _duration_ok(vid_ms, duration_ms) if (duration_ms and duration_ms > 0) else True
+        dur_diff = int(abs(vid_ms - (duration_ms or 0)))
+        scored.append((t_score, dur_ok, dur_diff, c))
         logger.debug(
             f"[resolve] YT {c.get('id')} '{c.get('title')}': "
-            f"{vid_ms}ms vs {duration_ms}ms (Δ{diff}ms)"
+            f"title_score={t_score:.2f} dur={vid_ms}ms dur_ok={dur_ok} Δ{dur_diff}ms"
         )
-        if _duration_ok(vid_ms, duration_ms) and diff < best_diff:
-            best_id = c.get("id")
-            best_diff = diff
 
-    if best_id:
-        logger.info(f"[resolve] YouTube candidate (Δ{best_diff:.0f}ms): {best_id}")
-    else:
-        avail = ", ".join(f"{(c.get('duration') or 0)*1000:.0f}ms" for c in candidates)
+    # Bucket 1: title ✓ + duration ✓  (best score then smallest dur diff)
+    perfect = [(s, d, c) for s, ok, d, c in scored if s >= _TITLE_THRESHOLD and ok]
+    if perfect:
+        best = max(perfect, key=lambda x: (x[0], -x[1]))
+        vid = best[2].get("id")
         logger.info(
-            f"[resolve] No YouTube candidate matched {duration_ms}ms for '{query}' "
-            f"(available: {avail})"
+            f"[resolve] YouTube candidate (title+duration, score={best[0]:.2f} Δ{best[1]}ms): {vid}"
         )
-    return best_id
+        return vid
+
+    # Bucket 2: title ✓ + duration ✗  (highest title score)
+    title_only = [(s, d, c) for s, ok, d, c in scored if s >= _TITLE_THRESHOLD and not ok]
+    if title_only:
+        best = max(title_only, key=lambda x: x[0])
+        vid = best[2].get("id")
+        logger.warning(
+            f"[resolve] YouTube candidate (title match, duration mismatch Δ{best[1]}ms, "
+            f"score={best[0]:.2f}): {vid}"
+        )
+        return vid
+
+    # Bucket 3: title ✗ + duration ✓  (only if duration filter requested)
+    if duration_ms and duration_ms > 0:
+        dur_only = [(s, d, c) for s, ok, d, c in scored if s < _TITLE_THRESHOLD and ok]
+        if dur_only:
+            best = min(dur_only, key=lambda x: x[1])   # smallest duration diff
+            vid = best[2].get("id")
+            logger.warning(
+                f"[resolve] YouTube candidate (duration only, NO title match, "
+                f"score={best[0]:.2f} Δ{best[1]}ms) — may be wrong song: {vid}"
+            )
+            return vid
+
+    # Bucket 4: nothing matched — first result
+    vid = candidates[0].get("id")
+    logger.warning(
+        f"[resolve] YouTube: no match found for '{title}' by '{artist}' — "
+        f"using first result (unverified): {vid}"
+    )
+    return vid
 
 
 # ---------------------------------------------------------------------------
