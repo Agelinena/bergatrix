@@ -31,36 +31,38 @@ class RadioService:
         deezer_source_id = track.source_id if track and track.source == "deezer" else None
 
         if source == "lastfm":
+            # Last.fm only needs title+artist — try it first regardless of source
+            if settings.lastfm_api_key and title and artist:
+                tracks = await RadioService._lastfm_similar(title, artist, limit)
+                if tracks:
+                    logger.info(f"Last.fm similar: got {len(tracks)} tracks for '{title}' by '{artist}'")
+                    return tracks
+                logger.info(f"Last.fm returned no results for '{title}' by '{artist}' — falling back to Deezer")
+
+            # Last.fm unavailable or no results — fall back to Deezer-based methods
             if not deezer_source_id:
                 try:
                     from app.services.metadata_service import find_deezer_track_id
                     deezer_source_id = await find_deezer_track_id(title, artist, track.duration_ms if track else None)
                 except Exception as e:
                     logger.warning(f"find_deezer_track_id failed: {e}")
-                    return []
             if not deezer_source_id:
                 return []
-            return await RadioService._deezer_radio(deezer_source_id, title, artist, limit)
+            return await RadioService._deezer_fallbacks(deezer_source_id, limit)
         if source == "ai":
             return await RadioService._ai_radio(title, artist, limit)
         return []
 
     @staticmethod
-    async def _deezer_radio(deezer_id: str, title: str, artist: str, limit: int) -> list[dict]:
-        # 1. Last.fm getSimilar — most accurate, based on real listening data
-        if settings.lastfm_api_key and title and artist:
-            tracks = await RadioService._lastfm_similar(title, artist, limit)
-            if tracks:
-                logger.info(f"Last.fm similar: got {len(tracks)} tracks for '{title}' by '{artist}'")
-                return tracks
-
-        # 2. Native Deezer radio (requires user OAuth — usually empty without it)
+    async def _deezer_fallbacks(deezer_id: str, limit: int) -> list[dict]:
+        """Deezer-based fallbacks when Last.fm has no results."""
+        # 1. Native Deezer radio (requires user OAuth — usually empty without it)
         deezer_tracks = await get_deezer_radio(deezer_id, limit)
         if deezer_tracks:
             logger.info(f"Deezer native radio: got {len(deezer_tracks)} tracks for id={deezer_id}")
             return [t.model_dump() for t in deezer_tracks]
 
-        # 3. Last resort: artist top tracks (always available)
+        # 2. Last resort: artist top tracks (always available)
         logger.info(f"Radio fallback to artist top tracks for id={deezer_id}")
         fallback = await RadioService._artist_top_tracks(deezer_id, limit)
         logger.info(f"Artist top tracks fallback: got {len(fallback)} tracks")

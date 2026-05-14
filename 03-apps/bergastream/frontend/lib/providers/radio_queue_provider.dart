@@ -135,7 +135,11 @@ class RadioQueueNotifier extends Notifier<RadioQueueState> {
           .toList();
 
       final newQueuedIds = {...state.queuedIds, ...tracks.map((t) => t.id)};
-      state = state.copyWith(isRefilling: false, queuedIds: newQueuedIds);
+      // Update queuedIds but keep isRefilling=true until addToQueue calls finish.
+      // Each addToQueue triggers the playerProvider listener; if isRefilling were
+      // already false at that point the listener would fire _refill() again
+      // immediately (remaining < 5 after first add), causing a duplicate fetch.
+      state = state.copyWith(queuedIds: newQueuedIds);
 
       for (final t in tracks) {
         ref.read(playerProvider.notifier).addToQueue(t);
@@ -143,6 +147,9 @@ class RadioQueueNotifier extends Notifier<RadioQueueState> {
       if (tracks.isNotEmpty) {
         client.prefetchTracks(tracks.map((t) => t.id).toList());
       }
+
+      // Only unlock after the loop — listener will now see the full remaining count
+      state = state.copyWith(isRefilling: false);
     } catch (_) {
       state = state.copyWith(isRefilling: false);
     }
