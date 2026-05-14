@@ -1,4 +1,18 @@
 services:
+  deemix:
+    image: registry.gitlab.com/bockiii/deemix-docker:latest
+    container_name: bergastream-deemix
+    restart: unless-stopped
+    environment:
+      - ARL=${DEEMIX_ARL}
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+    volumes:
+      - ${VOLUMES_BASE}/bergastream/deemix_config:/config
+      - ${VOLUMES_BASE}/bergastream/deemix_dl:/downloads
+    networks:
+      - internal
+
   api:
     build: ./backend
     container_name: bergastream-api
@@ -7,6 +21,7 @@ services:
     volumes:
       - ${VOLUMES_BASE}/bergastream/music:/data/music
       - ${VOLUMES_BASE}/bergastream/media:/data/media
+      - ${VOLUMES_BASE}/bergastream/deemix_dl:/data/music/deemix_dl
     networks:
       - internal
       - bergatrix-proxy

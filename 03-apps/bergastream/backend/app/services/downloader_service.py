@@ -295,81 +295,92 @@ async def find_youtube_candidate(
 # Phase 2 — Download
 # ---------------------------------------------------------------------------
 
+_deemix_sidecar_lock: asyncio.Lock | None = None
+
+
+def _get_deemix_lock() -> asyncio.Lock:
+    global _deemix_sidecar_lock
+    if _deemix_sidecar_lock is None:
+        _deemix_sidecar_lock = asyncio.Lock()
+    return _deemix_sidecar_lock
+
+
 async def download_deezer(
     track_id: str,
     source_id: str,
     expected_duration_ms: int | None = None,
 ) -> tuple[Path | None, str]:
     """
-    Downloads via deemix (Deezer FLAC/MP3 320).
-    Post-verifies duration with mutagen. Returns (path, quality) or (None, "").
+    Downloads from Deezer via the deemix sidecar container (Socket.IO).
+
+    Triggers download via Socket.IO addToQueue event, then polls a shared
+    volume for the new audio file. Serialised with a lock so file
+    identification by creation-time is unambiguous.
     """
-    if not settings.deemix_arl:
-        logger.debug("[deemix] Skipped — deemix_arl not configured")
+    if not settings.deemix_url or not settings.deemix_downloads_path:
+        logger.debug("[deemix] Skipped — DEEMIX_URL or DEEMIX_DOWNLOADS_PATH not configured")
         return None, ""
 
-    out_dir = Path(settings.music_cache_path)
-    out_dir.mkdir(parents=True, exist_ok=True)
+    downloads_dir = Path(settings.deemix_downloads_path)
+    if not downloads_dir.exists():
+        logger.warning(f"[deemix] Shared downloads dir not found: {downloads_dir}")
+        return None, ""
 
-    try:
-        from deemix import generateDownloadObject
-        from deemix.downloader import Downloader
-        from deezer import Deezer
-        from deemix.settings import DEFAULTS
-        import copy
+    import time as _time
 
-        loop = asyncio.get_event_loop()
+    async with _get_deemix_lock():
+        trigger_time = _time.time() - 0.5   # small buffer for clock skew
 
-        def _download():
-            track_tmp = out_dir / f".dl_{source_id}"
-            track_tmp.mkdir(exist_ok=True)
-            try:
-                dz = Deezer()
-                if not dz.login_via_arl(settings.deemix_arl):
-                    return None, "arl_failed"
-                deezer_settings = copy.deepcopy(DEFAULTS)
-                deezer_settings["downloadLocation"] = str(track_tmp)
-                deezer_settings["maxBitrate"] = "9"   # FLAC; deemix falls back to MP3 internally
-                deezer_settings["overwriteFile"] = "y"
-                url = f"https://www.deezer.com/track/{source_id}"
-                dl_obj = generateDownloadObject(dz, url, deezer_settings["maxBitrate"])
-                Downloader(dz, dl_obj, deezer_settings).start()
-                for ext in ("flac", "mp3"):
-                    files = list(track_tmp.rglob(f"*.{ext}"))
-                    if files:
-                        staged = out_dir / f".staged_{source_id}.{ext}"
-                        shutil.move(str(files[0]), str(staged))
-                        return staged, "flac" if ext == "flac" else "mp3_320"
-                all_files = list(track_tmp.rglob("*.*"))
-                return None, f"no_audio_files(found={[f.name for f in all_files]})"
-            finally:
-                shutil.rmtree(str(track_tmp), ignore_errors=True)
-
-        result = await loop.run_in_executor(None, _download)
-        if not result[0]:
-            logger.warning(f"[deemix] Download returned no file for {source_id}: reason={result[1]}")
+        # Trigger download via Socket.IO
+        try:
+            import socketio as _sio_module
+            sio = _sio_module.AsyncClient(logger=False, engineio_logger=False)
+            await asyncio.wait_for(sio.connect(settings.deemix_url), timeout=10)
+            deezer_url = f"https://www.deezer.com/track/{source_id}"
+            await sio.emit("addToQueue", {"url": deezer_url})
+            await asyncio.sleep(0.3)   # give deemix time to register the job
+            await sio.disconnect()
+            logger.info(f"[deemix] Queued {source_id} via sidecar")
+        except Exception as e:
+            logger.warning(f"[deemix] Socket.IO error for {source_id}: {e}")
             return None, ""
 
-        ext = "flac" if result[1] == "flac" else "mp3"
-        dest = _cache_path(track_id, ext)
-        result[0].rename(dest)
+        # Poll shared volume for the new file (lock guarantees it's ours)
+        loop = asyncio.get_event_loop()
+        deadline = loop.time() + 90
+        while loop.time() < deadline:
+            for candidate in downloads_dir.rglob("*"):
+                if not candidate.is_file():
+                    continue
+                if candidate.suffix.lower() not in (".mp3", ".flac"):
+                    continue
+                try:
+                    stat = candidate.stat()
+                    if stat.st_ctime >= trigger_time and stat.st_size > 50_000:
+                        ext = candidate.suffix.lower().lstrip(".")
+                        dest = _cache_path(track_id, ext)
+                        shutil.move(str(candidate), str(dest))
 
-        # Post-download duration verification
-        if expected_duration_ms and expected_duration_ms > 0:
-            actual_ms = _file_duration_ms(dest)
-            if actual_ms > 0 and not _duration_ok(actual_ms, expected_duration_ms):
-                logger.warning(
-                    f"[deemix] Duration mismatch Deezer {source_id}: "
-                    f"expected {expected_duration_ms}ms got {actual_ms}ms — discarding"
-                )
-                dest.unlink(missing_ok=True)
-                return None, ""
+                        # Post-download duration check
+                        if expected_duration_ms and expected_duration_ms > 0:
+                            actual_ms = _file_duration_ms(dest)
+                            if actual_ms > 0 and not _duration_ok(actual_ms, expected_duration_ms):
+                                logger.warning(
+                                    f"[deemix] Duration mismatch {source_id}: "
+                                    f"expected {expected_duration_ms}ms got {actual_ms}ms — discarding"
+                                )
+                                dest.unlink(missing_ok=True)
+                                return None, ""
 
-        logger.info(f"[deemix] Downloaded {source_id} → {dest.name}")
-        return dest, result[1]
+                        quality = "flac" if ext == "flac" else "mp3_320"
+                        logger.info(f"[deemix] Downloaded {source_id} → {dest.name} ({quality})")
+                        return dest, quality
+                except Exception:
+                    continue
 
-    except Exception as e:
-        logger.warning(f"[deemix] Error for {source_id}: {e}")
+            await asyncio.sleep(0.5)
+
+        logger.warning(f"[deemix] Timed out waiting for {source_id}")
         return None, ""
 
 
@@ -538,8 +549,7 @@ async def ensure_track_file(
     )
 
     # Phase 1a: Deezer candidate search + download (no yt-dlp subprocess yet)
-    # Running yt-dlp in parallel before deemix was found to break deemix downloads.
-    if settings.deemix_arl:
+    if settings.deemix_url:
         try:
             deezer_cand = await find_deezer_candidate(title, artist, duration_ms, deezer_known)
         except Exception as e:

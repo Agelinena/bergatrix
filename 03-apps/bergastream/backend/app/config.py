@@ -21,7 +21,9 @@ class Settings(BaseSettings):
     jwt_expire_minutes: int = 10080  # 7 days
 
     # Music sources
-    deemix_arl: str = ""
+    deemix_arl: str = ""           # passado ao container deemix via env ARL
+    deemix_url: str = ""           # ex: http://bergastream-deemix:6595
+    deemix_downloads_path: str = "" # volume compartilhado, ex: /data/music/deemix_dl
     spotipy_client_id: str = ""
     spotipy_client_secret: str = ""
 
