@@ -307,76 +307,74 @@ def _get_deemix_lock() -> asyncio.Lock:
 
 async def _deemix_emit(source_id: str) -> bool:
     """
-    Triggers a deemix download via the Socket.IO 2.x / Engine.IO 3 **polling**
-    transport using plain aiohttp HTTP calls.
+    Triggers a deemix download via Socket.IO 4.x / Engine.IO 4 (EIO=4) over
+    WebSocket, implemented directly with aiohttp (no python-socketio dependency).
 
-    Why polling and not WebSocket:
-      - python-socketio 5.x sends EIO=4 → deemix (Socket.IO 2.x) rejects it.
-      - A direct EIO=3 WebSocket (no prior SID) is NOT supported by engine.io v3;
-        the server accepts the TCP but never sends the OPEN packet → timeout.
-      - EIO=3 polling works: get SID via GET, consume server messages, POST event.
+    Why WebSocket and not HTTP polling:
+      The deemix container has nginx serving static HTML for all plain HTTP
+      requests (including /socket.io/?...&transport=polling → returns index.html).
+      Only WebSocket upgrades (Upgrade: websocket header) are proxied to the
+      Node.js backend.  The Node.js backend uses socket.io 4.x (EIO=4).
 
-    Protocol (EIO=3 XHR polling):
-      GET  /socket.io/?EIO=3&transport=polling          → "<n>:0{handshake}"  (SID)
-      GET  /socket.io/?EIO=3&transport=polling&sid=X    → consume server msgs
-      POST /socket.io/?EIO=3&transport=polling&sid=X    → '42["addToQueue",…]'
+    Why EIO=4 and not EIO=3:
+      EIO=3 WebSocket is rejected by socket.io 4.x → server closes silently →
+      asyncio.TimeoutError (str == "").  EIO=4 is the correct version.
+
+    Why raw aiohttp and not python-socketio:
+      python-socketio always tries an HTTP polling handshake first (even with
+      transports=["websocket"]), which hits the nginx HTML fallback and fails.
+
+    Protocol (EIO=4 direct WebSocket — no prior polling needed in EIO=4):
+      ← server sends  "0{handshake_json}"    (Engine.IO OPEN)
+      → client sends  "40"                   (Socket.IO CONNECT on namespace /)
+      ← server sends  "40"                   (Socket.IO CONNECT ack)
+      → client sends  '42["addToQueue",{…}]' (Socket.IO EVENT emit)
     """
     import aiohttp as _aiohttp
-    import time as _time
 
     base = settings.deemix_url.rstrip("/")
-    sio_url = f"{base}/socket.io/"
+    # http(s):// → ws(s)://
+    ws_url = re.sub(r"^http", "ws", base) + "/socket.io/?EIO=4&transport=websocket"
     deezer_url = f"https://www.deezer.com/track/{source_id}"
 
     try:
         _timeout = _aiohttp.ClientTimeout(total=15)
         async with _aiohttp.ClientSession(timeout=_timeout) as _sess:
+            async with _sess.ws_connect(ws_url, heartbeat=None) as _ws:
 
-            # ── Step 1: EIO3 polling handshake → SID ─────────────────────
-            async with _sess.get(
-                sio_url,
-                params={"EIO": "3", "transport": "polling",
-                        "t": str(int(_time.time() * 1000))},
-            ) as _r:
-                if _r.status != 200:
-                    raise ConnectionError(f"Handshake returned HTTP {_r.status}")
-                _raw = await _r.text()
-            # Log full response so we can see the exact server format
-            logger.debug(f"[deemix] handshake raw ({len(_raw)} chars): {_raw[:300]!r}")
+                # ── receive Engine.IO 4 OPEN ──────────────────────────────
+                _msg = await asyncio.wait_for(_ws.receive(), timeout=10)
+                if _msg.type != _aiohttp.WSMsgType.TEXT:
+                    raise ValueError(
+                        f"Expected TEXT frame, got {_msg.type}: {_msg.data[:80]!r}"
+                    )
+                if not _msg.data.startswith("0"):
+                    raise ValueError(f"Expected EIO OPEN, got: {_msg.data[:80]!r}")
+                _sid_m = re.search(r'"sid"\s*:\s*"([^"]+)"', _msg.data)
+                logger.debug(
+                    f"[deemix] EIO4 OPEN received, SID: "
+                    f"{_sid_m.group(1) if _sid_m else '?'}"
+                )
 
-            # Extract SID with regex — works regardless of EIO version framing
-            # (EIO=3: "<len>:0{...}", EIO=4: "0{...}", or error JSON like {"message":...})
-            _sid_m = re.search(r'"sid"\s*:\s*"([^"]+)"', _raw)
-            if not _sid_m:
-                logger.warning(f"[deemix] No SID in handshake. Full response: {_raw!r}")
-                raise ValueError("No SID in handshake response")
-            _sid = _sid_m.group(1)
-            logger.debug(f"[deemix] SID: {_sid}")
+                # ── Socket.IO CONNECT to default namespace ───────────────
+                await _ws.send_str("40")
 
-            # ── Step 2: poll once to consume server's "40" (namespace connect)
-            async with _sess.get(
-                sio_url,
-                params={"EIO": "3", "transport": "polling", "sid": _sid,
-                        "t": str(int(_time.time() * 1000))},
-            ) as _r:
-                _srv_msgs = await _r.text()
-            logger.debug(f"[deemix] server msgs: {_srv_msgs[:80]!r}")
+                # wait for server's namespace-connect ack
+                try:
+                    _ack = await asyncio.wait_for(_ws.receive(), timeout=5)
+                    logger.debug(f"[deemix] namespace ack: {_ack.data[:40]!r}")
+                except asyncio.TimeoutError:
+                    logger.debug("[deemix] no namespace ack — proceeding anyway")
 
-            # ── Step 3: POST addToQueue event ─────────────────────────────
-            # EIO3 polling payload format: "<char_count>:<packet>"
-            # Socket.IO event packet: "42" + JSON array  (EIO type 4 + SIO type 2)
-            _pkt = f'42{json.dumps(["addToQueue", {"url": deezer_url}])}'
-            _body = f"{len(_pkt)}:{_pkt}"
-            async with _sess.post(
-                sio_url,
-                params={"EIO": "3", "transport": "polling", "sid": _sid},
-                data=_body,
-                headers={"Content-Type": "text/plain;charset=UTF-8"},
-            ) as _r:
-                _post_resp = await _r.text()
-            logger.debug(f"[deemix] POST response: {_post_resp!r}")
+                # ── emit addToQueue ───────────────────────────────────────
+                _pkt = f'42{json.dumps(["addToQueue", {"url": deezer_url}])}'
+                await _ws.send_str(_pkt)
+                logger.debug(f"[deemix] emitted: {_pkt[:100]}")
 
-        logger.info(f"[deemix] Queued {source_id} via Socket.IO 2.x EIO=3 polling")
+                await asyncio.sleep(0.5)  # give server time to enqueue
+                await _ws.close()
+
+        logger.info(f"[deemix] Queued {source_id} via Socket.IO 4.x / EIO=4 WebSocket")
         return True
 
     except Exception as _e:
