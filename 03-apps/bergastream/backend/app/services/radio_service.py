@@ -32,8 +32,12 @@ class RadioService:
 
         if source == "lastfm":
             if not deezer_source_id:
-                from app.services.metadata_service import find_deezer_track_id
-                deezer_source_id = await find_deezer_track_id(title, artist, track.duration_ms if track else None)
+                try:
+                    from app.services.metadata_service import find_deezer_track_id
+                    deezer_source_id = await find_deezer_track_id(title, artist, track.duration_ms if track else None)
+                except Exception as e:
+                    logger.warning(f"find_deezer_track_id failed: {e}")
+                    return []
             if not deezer_source_id:
                 return []
             return await RadioService._deezer_radio(deezer_source_id, title, artist, limit)
@@ -71,7 +75,7 @@ class RadioService:
                     "artist": artist,
                     "track": title,
                     "api_key": settings.lastfm_api_key,
-                    "limit": limit,
+                    "limit": min(limit * 2, 50),
                     "format": "json",
                 })
             if resp.status_code != 200:
@@ -95,8 +99,10 @@ class RadioService:
                 if results.tracks:
                     tracks.append(results.tracks[0].model_dump())
 
-            await asyncio.gather(*[resolve(s) for s in similar[:limit]])
-            return tracks
+            # Overshoot Last.fm fetch to compensate for Deezer resolution failures
+            fetch_count = min(limit * 2, 50)
+            await asyncio.gather(*[resolve(s) for s in similar[:fetch_count]])
+            return tracks[:limit]
         except Exception as e:
             logger.warning(f"Last.fm similar failed: {e}")
             return []

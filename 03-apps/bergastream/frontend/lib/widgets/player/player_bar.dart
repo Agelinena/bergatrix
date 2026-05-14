@@ -182,13 +182,13 @@ class _SeekSliderState extends State<_SeekSlider> {
   }
 }
 
-class _QueueSheet extends StatelessWidget {
+class _QueueSheet extends ConsumerWidget {
   final List<Track> queue;
   final int currentIndex;
   const _QueueSheet({required this.queue, required this.currentIndex});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return DraggableScrollableSheet(
       initialChildSize: 0.6,
       minChildSize: 0.3,
@@ -247,6 +247,10 @@ class _QueueSheet extends StatelessWidget {
                       ? const Icon(Icons.equalizer, color: AppColors.primary, size: 20)
                       : Text(_fmt(Duration(milliseconds: t.durationMs ?? 0)),
                           style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+                  onTap: isCurrent ? null : () {
+                    Navigator.pop(context);
+                    ref.read(playerProvider.notifier).play(t, queue: queue);
+                  },
                 );
               },
             ),
