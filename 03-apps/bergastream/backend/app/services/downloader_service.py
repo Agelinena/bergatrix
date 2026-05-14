@@ -305,17 +305,76 @@ def _get_deemix_lock() -> asyncio.Lock:
     return _deemix_sidecar_lock
 
 
+async def _deemix_emit(source_id: str) -> bool:
+    """
+    Triggers a deemix download by speaking the Socket.IO 2.x / Engine.IO 3
+    (EIO=3) protocol directly over WebSocket via aiohttp.
+
+    python-socketio 5.x sends EIO=4 which the deemix Node.js server (Socket.IO
+    2.x) rejects with an empty error.  Using aiohttp WebSocket we can force
+    EIO=3 without any version mismatch.
+
+    Protocol (EIO=3 direct-WebSocket — no prior polling upgrade needed):
+      ← server sends  "0{handshake_json}"    (Engine.IO OPEN)
+      → client sends  "40"                   (Socket.IO CONNECT on namespace /)
+      ← server sends  "40"                   (Socket.IO CONNECT ack)
+      → client sends  '42["addToQueue",{…}]' (Socket.IO EVENT)
+    """
+    import aiohttp as _aiohttp
+
+    base = settings.deemix_url.rstrip("/")
+    # http(s):// → ws(s)://
+    ws_url = re.sub(r"^http", "ws", base) + "/socket.io/?EIO=3&transport=websocket"
+    deezer_url = f"https://www.deezer.com/track/{source_id}"
+
+    try:
+        timeout = _aiohttp.ClientTimeout(total=15)
+        async with _aiohttp.ClientSession(timeout=timeout) as _sess:
+            async with _sess.ws_connect(ws_url, heartbeat=None) as _ws:
+
+                # ── receive Engine.IO OPEN ────────────────────────────────
+                _msg = await asyncio.wait_for(_ws.receive(), timeout=5)
+                if _msg.type != _aiohttp.WSMsgType.TEXT or not _msg.data.startswith("0"):
+                    raise ValueError(f"Unexpected EIO packet: {_msg.data[:80]!r}")
+                logger.debug(f"[deemix] EIO handshake ok (sid fragment: {_msg.data[2:20]}…)")
+
+                # ── Socket.IO CONNECT to default namespace ────────────────
+                await _ws.send_str("40")
+
+                # wait for server's namespace-connect ack
+                try:
+                    _ack = await asyncio.wait_for(_ws.receive(), timeout=3)
+                    logger.debug(f"[deemix] namespace ack: {_ack.data[:40]!r}")
+                except asyncio.TimeoutError:
+                    logger.debug("[deemix] no namespace ack received — proceeding")
+
+                # ── emit addToQueue ───────────────────────────────────────
+                event_pkt = f'42{json.dumps(["addToQueue", {"url": deezer_url}])}'
+                await _ws.send_str(event_pkt)
+                logger.debug(f"[deemix] sent: {event_pkt[:80]}")
+
+                await asyncio.sleep(0.5)  # allow server to enqueue
+                await _ws.close()
+
+        logger.info(f"[deemix] Queued {source_id} via Socket.IO 2.x / EIO=3 WebSocket")
+        return True
+
+    except Exception as _e:
+        logger.warning(f"[deemix] Socket.IO error for {source_id}: {_e}")
+        return False
+
+
 async def download_deezer(
     track_id: str,
     source_id: str,
     expected_duration_ms: int | None = None,
 ) -> tuple[Path | None, str]:
     """
-    Downloads from Deezer via the deemix sidecar container (Socket.IO).
+    Downloads from Deezer via the deemix sidecar container (Socket.IO 2.x).
 
-    Triggers download via Socket.IO addToQueue event, then polls a shared
-    volume for the new audio file. Serialised with a lock so file
-    identification by creation-time is unambiguous.
+    Triggers download via _deemix_emit(), then polls the shared volume for
+    the new audio file.  Serialised with a lock so file identification by
+    creation-time is unambiguous.
     """
     if not settings.deemix_url or not settings.deemix_downloads_path:
         logger.debug("[deemix] Skipped — DEEMIX_URL or DEEMIX_DOWNLOADS_PATH not configured")
@@ -331,25 +390,11 @@ async def download_deezer(
     async with _get_deemix_lock():
         trigger_time = _time.time() - 0.5   # small buffer for clock skew
 
-        # Trigger download via Socket.IO (websocket transport bypasses EIO version mismatch)
-        try:
-            import socketio as _sio_module
-            sio = _sio_module.AsyncClient(logger=False, engineio_logger=False)
-            await asyncio.wait_for(
-                sio.connect(settings.deemix_url, transports=["websocket"]),
-                timeout=10,
-            )
-            deezer_url = f"https://www.deezer.com/track/{source_id}"
-            await sio.emit("addToQueue", {"url": deezer_url})
-            await asyncio.sleep(0.3)   # give deemix time to register the job
-            await sio.disconnect()
-            logger.info(f"[deemix] Queued {source_id} via sidecar")
-        except Exception as e:
-            logger.warning(f"[deemix] Socket.IO error for {source_id}: {e}")
+        if not await _deemix_emit(source_id):
             return None, ""
 
         # Poll shared volume for the new file (lock guarantees it's ours)
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         deadline = loop.time() + 90
         while loop.time() < deadline:
             for candidate in downloads_dir.rglob("*"):
@@ -537,7 +582,7 @@ async def ensure_track_file(
     if source == "youtube" and source_id:
         logger.info(f"[resolve] YouTube source — trying Deezer equivalent for {track_id}")
         deezer_cand = await find_deezer_candidate(title, artist, duration_ms)
-        if deezer_cand and settings.deemix_arl:
+        if deezer_cand and settings.deemix_url:
             path, quality = await download_deezer(track_id, deezer_cand, duration_ms)
             if path:
                 return path, quality
