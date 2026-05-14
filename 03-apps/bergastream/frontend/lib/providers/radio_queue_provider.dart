@@ -95,16 +95,47 @@ class RadioQueueNotifier extends Notifier<RadioQueueState> {
     final playerState = ref.read(playerProvider);
     final alreadyQueued = playerState.queue.map((t) => t.id).toSet();
 
+    // Set isRefilling: true immediately so the playerProvider listener (which fires
+    // on every position tick) cannot race ahead and call _refill() before we finish
+    // the initial fill.
     state = state.copyWith(
       isActive: true,
       seedTrack: seed,
       source: src,
       playedIds: {seed.id},
       queuedIds: alreadyQueued,
-      isRefilling: false,
+      isRefilling: true,
     );
 
-    await _refill();
+    try {
+      final client = ref.read(apiClientProvider);
+      final data = await client.getRadioSeeds(
+        seed.id,
+        source: src,
+        title: seed.title,
+        artist: seed.artist,
+      );
+      final tracks = (data['tracks'] as List<dynamic>)
+          .map((t) => Track.fromJson(t as Map<String, dynamic>))
+          .where((t) => !state.playedIds.contains(t.id) && !state.queuedIds.contains(t.id))
+          .take(_targetAhead)
+          .toList();
+
+      final newQueuedIds = {...state.queuedIds, ...tracks.map((t) => t.id)};
+      state = state.copyWith(queuedIds: newQueuedIds);
+
+      for (final t in tracks) {
+        ref.read(playerProvider.notifier).addToQueue(t);
+      }
+      if (tracks.isNotEmpty) {
+        client.prefetchTracks(tracks.map((t) => t.id).toList());
+      }
+      debugPrint('[RadioQueue] activate: added ${tracks.length} tracks for "${seed.title}"');
+    } catch (e, st) {
+      debugPrint('[RadioQueue] activate error: $e\n$st');
+    } finally {
+      state = state.copyWith(isRefilling: false);
+    }
   }
 
   void deactivate() {
