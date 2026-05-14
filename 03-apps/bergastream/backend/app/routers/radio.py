@@ -16,10 +16,12 @@ async def radio_seed(
     current_user: User = Depends(get_current_user),
 ):
     track_id: str = body.get("track_id", "")
-    source: str = body.get("source", "deezer")
-    limit: int = body.get("limit", 10)
+    source: str = body.get("source", "lastfm")
+    limit: int = body.get("limit", 20)
+    title: str = body.get("title", "")
+    artist: str = body.get("artist", "")
 
-    tracks = await RadioService.get_seeds(track_id, source, limit, db)
+    tracks = await RadioService.get_seeds(track_id, source, limit, db, title=title, artist=artist)
     return {"tracks": tracks}
 
 

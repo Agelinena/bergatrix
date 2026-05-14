@@ -127,7 +127,12 @@ class RadioQueueNotifier extends Notifier<RadioQueueState> {
       }
 
       final client = ref.read(apiClientProvider);
-      final data = await client.getRadioSeeds(seed.id, source: state.source);
+      final data = await client.getRadioSeeds(
+        seed.id,
+        source: state.source,
+        title: seed.title,
+        artist: seed.artist,
+      );
       final tracks = (data['tracks'] as List<dynamic>)
           .map((t) => Track.fromJson(t as Map<String, dynamic>))
           .where((t) => !state.playedIds.contains(t.id) && !state.queuedIds.contains(t.id))

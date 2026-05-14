@@ -179,11 +179,18 @@ class ApiClient {
   }
 
   // Radio
-  Future<Map<String, dynamic>> getRadioSeeds(String trackId, {String source = 'lastfm'}) async {
+  Future<Map<String, dynamic>> getRadioSeeds(
+    String trackId, {
+    String source = 'lastfm',
+    String title = '',
+    String artist = '',
+  }) async {
     final resp = await _dio.post('/api/radio/seed', data: {
       'track_id': trackId,
       'source': source,
       'limit': 20,
+      if (title.isNotEmpty) 'title': title,
+      if (artist.isNotEmpty) 'artist': artist,
     });
     return resp.data as Map<String, dynamic>;
   }

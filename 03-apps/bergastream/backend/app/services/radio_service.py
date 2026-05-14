@@ -23,12 +23,22 @@ OPENROUTER_API = "https://openrouter.ai/api/v1/chat/completions"
 
 class RadioService:
     @staticmethod
-    async def get_seeds(track_id: str, source: str, limit: int, db: AsyncSession) -> list[dict]:
-        result = await db.execute(select(Track).where(Track.id == track_id))
-        track = result.scalar_one_or_none()
-        title = track.title if track else ""
-        artist = track.artist if track else ""
-        deezer_source_id = track.source_id if track and track.source == "deezer" else None
+    async def get_seeds(
+        track_id: str, source: str, limit: int, db: AsyncSession,
+        title: str = "", artist: str = "",
+    ) -> list[dict]:
+        # Use caller-supplied metadata first; fall back to DB lookup if missing
+        if not title or not artist:
+            result = await db.execute(select(Track).where(Track.id == track_id))
+            track = result.scalar_one_or_none()
+            title = title or (track.title if track else "")
+            artist = artist or (track.artist if track else "")
+            deezer_source_id = track.source_id if track and track.source == "deezer" else None
+        else:
+            # Minimal DB lookup just to get deezer_source_id for fallback methods
+            result = await db.execute(select(Track).where(Track.id == track_id))
+            track = result.scalar_one_or_none()
+            deezer_source_id = track.source_id if track and track.source == "deezer" else None
 
         if source == "lastfm":
             # Last.fm only needs title+artist — try it first regardless of source

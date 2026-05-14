@@ -36,9 +36,13 @@ class _RadioScreenState extends ConsumerState<RadioScreen> {
     setState(() { _loading = true; _error = null; _loadMoreAttempts = 0; });
     try {
       final client = ref.read(apiClientProvider);
-      // Register ensures the track exists in DB so the backend can resolve title/artist.
       try { await client.registerTrack(widget.seedTrack.toJson()); } catch (_) {}
-      final data = await client.getRadioSeeds(widget.seedTrack.id, source: _source);
+      final data = await client.getRadioSeeds(
+        widget.seedTrack.id,
+        source: _source,
+        title: widget.seedTrack.title,
+        artist: widget.seedTrack.artist,
+      );
       final tracks = (data['tracks'] as List<dynamic>)
           .map((t) => Track.fromJson(t as Map<String, dynamic>))
           .toList();
