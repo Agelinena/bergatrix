@@ -534,30 +534,32 @@ async def ensure_track_file(
 
     logger.info(
         f"[resolve] '{title}' by '{artist}' [{source}/{source_id}] "
-        f"duration={duration_ms}ms — parallel candidate search"
+        f"duration={duration_ms}ms — sequential candidate search"
     )
 
-    # Phase 1: parallel candidate search (metadata only, no download)
-    deezer_cand, youtube_cand = await asyncio.gather(
-        find_deezer_candidate(title, artist, duration_ms, deezer_known),
-        find_youtube_candidate(title, artist, duration_ms),
-        return_exceptions=True,
-    )
-    if isinstance(deezer_cand, Exception):
-        logger.warning(f"[resolve] Deezer candidate error: {deezer_cand}")
-        deezer_cand = None
-    if isinstance(youtube_cand, Exception):
-        logger.warning(f"[resolve] YouTube candidate error: {youtube_cand}")
+    # Phase 1a: Deezer candidate search + download (no yt-dlp subprocess yet)
+    # Running yt-dlp in parallel before deemix was found to break deemix downloads.
+    if settings.deemix_arl:
+        try:
+            deezer_cand = await find_deezer_candidate(title, artist, duration_ms, deezer_known)
+        except Exception as e:
+            logger.warning(f"[resolve] Deezer candidate error: {e}")
+            deezer_cand = None
+
+        if deezer_cand:
+            path, quality = await download_deezer(track_id, deezer_cand, duration_ms)
+            if path:
+                return path, quality
+            logger.warning("[resolve] Deezer download failed — falling back to YouTube")
+
+    # Phase 1b: YouTube candidate search (only runs if Deezer unavailable or failed)
+    try:
+        youtube_cand = await find_youtube_candidate(title, artist, duration_ms)
+    except Exception as e:
+        logger.warning(f"[resolve] YouTube candidate error: {e}")
         youtube_cand = None
 
-    logger.info(f"[resolve] Candidates — Deezer: {deezer_cand}  YouTube: {youtube_cand}")
-
-    # Phase 2: download preferred source, fall back to alternative
-    if deezer_cand and settings.deemix_arl:
-        path, quality = await download_deezer(track_id, deezer_cand, duration_ms)
-        if path:
-            return path, quality
-        logger.warning("[resolve] Deezer download failed — trying YouTube candidate")
+    logger.info(f"[resolve] YouTube candidate: {youtube_cand}")
 
     if youtube_cand:
         path, quality = await download_youtube_by_id(track_id, youtube_cand, duration_ms)
@@ -565,7 +567,7 @@ async def ensure_track_file(
             return path, quality
         logger.warning(f"[resolve] YouTube download failed for candidate {youtube_cand}")
 
-    # Phase 3: last resort — YouTube unverified first result
+    # Phase 2: last resort — YouTube unverified first result
     if title or artist:
         query = f"{artist} {title}".strip()
         logger.warning(f"[resolve] All verified candidates failed — unverified YouTube search: '{query}'")
