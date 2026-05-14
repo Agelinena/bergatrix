@@ -305,111 +305,70 @@ def _get_deemix_lock() -> asyncio.Lock:
     return _deemix_sidecar_lock
 
 
-async def _sio_poll(
-    sess,
-    base_url: str,
-    eio: str,
-    deezer_url: str,
-    source_id: str,
-) -> bool:
-    """
-    Execute Socket.IO EIO polling handshake + addToQueue at the given base_url.
-    Returns True on apparent success (POST returned non-error), False otherwise.
-    """
-    import time as _time
-    import aiohttp as _aiohttp
-
-    sio_params_get = {"EIO": eio, "transport": "polling",
-                      "t": str(int(_time.time() * 1000))}
-    async with sess.get(base_url, params=sio_params_get) as _r:
-        if _r.status != 200:
-            logger.debug(f"[deemix] probe {base_url} → HTTP {_r.status}")
-            return False
-        _raw = await _r.text()
-
-    logger.debug(f"[deemix] probe {base_url} EIO={eio} → {_raw[:120]!r}")
-    _sid_m = re.search(r'"sid"\s*:\s*"([^"]+)"', _raw)
-    if not _sid_m:
-        return False          # not a socket.io handshake
-    _sid = _sid_m.group(1)
-    logger.debug(f"[deemix] SID {_sid} at {base_url}")
-
-    # consume server namespace-connect messages
-    async with sess.get(base_url,
-                        params={"EIO": eio, "transport": "polling",
-                                "sid": _sid}) as _r:
-        await _r.read()
-
-    # emit addToQueue
-    # EIO=4 polling: raw packet  (no length prefix)
-    # EIO=3 polling: "<len>:<pkt>" prefix
-    _pkt = f'42{json.dumps(["addToQueue", {"url": deezer_url}])}'
-    _body = _pkt if eio == "4" else f"{len(_pkt)}:{_pkt}"
-    async with sess.post(
-        base_url,
-        params={"EIO": eio, "transport": "polling", "sid": _sid},
-        data=_body,
-        headers={"Content-Type": "text/plain;charset=UTF-8"},
-    ) as _r:
-        _resp = await _r.text()
-
-    if "error" in _resp.lower():
-        logger.debug(f"[deemix] POST response (error?): {_resp!r}")
-        return False
-
-    logger.info(f"[deemix] Queued {source_id} via {base_url} EIO={eio}")
-    return True
-
-
 async def _deemix_emit(source_id: str) -> bool:
     """
-    Trigger deemix download. Probes multiple Socket.IO paths/ports because the
-    deemix-docker container architecture varies by image version:
+    Trigger a Deezer download via the deemix sidecar REST API.
 
-    Known layouts:
-      A) nginx:6595 → /api/ → backend:4500, socket.io at backend's /socket.io/
-         → probe http://deemix:4500/socket.io/   (direct, bypasses nginx)
-         → probe http://deemix:4500/             (some builds use root path)
-      B) All-in-one Node.js on :6595, socket.io at /socket.io/
-         → probe http://deemix:6595/socket.io/   (would have returned HTML earlier,
-                                                   but worth retrying EIO=4)
-      C) Backend at :4500, socket.io at /api/socket.io/
-         → probe http://deemix:6595/api/socket.io/
-
-    Probes are tried in order until one returns a valid SID.
+    Protocol (confirmed from bambanah/deemix source):
+      1. GET  /api/connect       → initialises session; loads ARL from container
+                                    config in single-user mode
+      2. POST /api/addToQueue    → {"url": "https://www.deezer.com/track/<id>",
+                                    "bitrate": null}
+                                 → returns {"result": true, "data": {...}}
+                                    or      {"result": false, "errid": "..."}
     """
     import aiohttp as _aiohttp
 
     base = settings.deemix_url.rstrip("/")   # e.g. http://bergastream-deemix:6595
     deezer_url = f"https://www.deezer.com/track/{source_id}"
 
-    # Extract host so we can probe the internal backend port directly
-    _m = re.match(r"(https?://)([^:/]+)(:\d+)?", base)
-    _proto = _m.group(1) if _m else "http://"
-    _host  = _m.group(2) if _m else base
-    _backend_base = f"{_proto}{_host}:4500"  # internal deemix-server port
+    _timeout = _aiohttp.ClientTimeout(total=30)
+    # CookieJar keeps the express-session cookie across both requests
+    jar = _aiohttp.CookieJar(unsafe=True)
+    async with _aiohttp.ClientSession(timeout=_timeout, cookie_jar=jar) as sess:
 
-    # Candidate (base_url, eio_version) pairs, most likely first
-    _candidates = [
-        (f"{_backend_base}/socket.io/", "4"),   # A: direct to backend:4500 (EIO=4)
-        (f"{_backend_base}/",           "4"),   # A alt: root path on backend
-        (f"{base}/api/socket.io/",      "4"),   # C: nginx-proxied /api/socket.io
-        (f"{base}/socket.io/",          "4"),   # B: single-process, EIO=4
-        (f"{base}/socket.io/",          "3"),   # B: single-process, EIO=3
-        (f"{_backend_base}/socket.io/", "3"),   # A: backend EIO=3
-    ]
+        # Step 1: initialise session (loads ARL in single-user mode)
+        try:
+            async with sess.get(f"{base}/api/connect") as resp:
+                body = await resp.text()
+                logger.debug(f"[deemix] connect HTTP {resp.status}: {body[:200]}")
+        except Exception as e:
+            logger.warning(f"[deemix] connect call failed: {type(e).__name__}: {e}")
+            # Continue — addToQueue may still succeed with a fresh anonymous session
 
-    _timeout = _aiohttp.ClientTimeout(total=12)
-    async with _aiohttp.ClientSession(timeout=_timeout) as _sess:
-        for _url, _eio in _candidates:
-            try:
-                if await _sio_poll(_sess, _url, _eio, deezer_url, source_id):
+        # Step 2: queue the download
+        try:
+            async with sess.post(
+                f"{base}/api/addToQueue",
+                json={"url": deezer_url, "bitrate": None},
+            ) as resp:
+                try:
+                    data = await resp.json(content_type=None)
+                except Exception:
+                    text = await resp.text()
+                    logger.warning(
+                        f"[deemix] addToQueue non-JSON HTTP {resp.status}: {text[:200]}"
+                    )
+                    return False
+
+                logger.debug(f"[deemix] addToQueue HTTP {resp.status}: {data}")
+
+                if resp.status == 200 and data.get("result") is True:
+                    logger.info(f"[deemix] Queued {source_id} via REST /api/addToQueue")
                     return True
-            except Exception as _e:
-                logger.debug(f"[deemix] {_url} EIO={_eio}: {type(_e).__name__}: {_e}")
 
-    logger.warning(f"[deemix] All Socket.IO probes failed for {source_id}")
-    return False
+                errid = data.get("errid", "")
+                logger.warning(
+                    f"[deemix] addToQueue failed for {source_id}: "
+                    f"errid={errid!r} data={data}"
+                )
+                return False
+
+        except Exception as e:
+            logger.warning(
+                f"[deemix] addToQueue request failed: {type(e).__name__}: {e}"
+            )
+            return False
 
 
 async def download_deezer(
@@ -418,7 +377,7 @@ async def download_deezer(
     expected_duration_ms: int | None = None,
 ) -> tuple[Path | None, str]:
     """
-    Downloads from Deezer via the deemix sidecar container (Socket.IO 2.x).
+    Downloads from Deezer via the deemix sidecar REST API.
 
     Triggers download via _deemix_emit(), then polls the shared volume for
     the new audio file.  Serialised with a lock so file identification by
