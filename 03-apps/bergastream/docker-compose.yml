@@ -1,12 +1,12 @@
 services:
   deemix:
-    image: registry.gitlab.com/bockiii/deemix-docker:latest
+    image: lscr.io/linuxserver/deemix:latest
     container_name: bergastream-deemix
     restart: unless-stopped
     environment:
-      - ARL=${DEEMIX_ARL}
       - PUID=${PUID:-1000}
       - PGID=${PGID:-1000}
+      - TZ=America/Sao_Paulo
     volumes:
       - ${VOLUMES_BASE}/bergastream/deemix_config:/config
       - ${VOLUMES_BASE}/bergastream/deemix_dl:/downloads
