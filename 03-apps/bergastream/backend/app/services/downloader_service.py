@@ -310,9 +310,9 @@ async def _deemix_emit(source_id: str) -> bool:
     Trigger a Deezer download via the deemix sidecar REST API.
 
     Protocol (confirmed from bambanah/deemix source):
-      1. GET  /api/connect       → initialises session; loads ARL from container
-                                    config in single-user mode
-      2. POST /api/addToQueue    → {"url": "https://www.deezer.com/track/<id>",
+      1. GET  /api/connect       → creates express-session, returns login status
+      2. POST /api/loginArl      → {"arl": "<token>"} — authenticates the session
+      3. POST /api/addToQueue    → {"url": "https://www.deezer.com/track/<id>",
                                     "bitrate": null}
                                  → returns {"result": true, "data": {...}}
                                     or      {"result": false, "errid": "..."}
@@ -322,21 +322,41 @@ async def _deemix_emit(source_id: str) -> bool:
     base = settings.deemix_url.rstrip("/")   # e.g. http://bergastream-deemix:6595
     deezer_url = f"https://www.deezer.com/track/{source_id}"
 
+    if not settings.deemix_arl:
+        logger.warning("[deemix] DEEMIX_ARL not configured — cannot authenticate")
+        return False
+
     _timeout = _aiohttp.ClientTimeout(total=30)
-    # CookieJar keeps the express-session cookie across both requests
+    # CookieJar keeps the express-session cookie across all three requests
     jar = _aiohttp.CookieJar(unsafe=True)
     async with _aiohttp.ClientSession(timeout=_timeout, cookie_jar=jar) as sess:
 
-        # Step 1: initialise session (loads ARL in single-user mode)
+        # Step 1: create session
         try:
             async with sess.get(f"{base}/api/connect") as resp:
                 body = await resp.text()
                 logger.debug(f"[deemix] connect HTTP {resp.status}: {body[:200]}")
         except Exception as e:
             logger.warning(f"[deemix] connect call failed: {type(e).__name__}: {e}")
-            # Continue — addToQueue may still succeed with a fresh anonymous session
 
-        # Step 2: queue the download
+        # Step 2: authenticate with ARL
+        try:
+            async with sess.post(
+                f"{base}/api/loginArl",
+                json={"arl": settings.deemix_arl},
+            ) as resp:
+                login_data = await resp.json(content_type=None)
+                logger.debug(f"[deemix] loginArl HTTP {resp.status}: {login_data}")
+                if not login_data.get("result"):
+                    logger.warning(
+                        f"[deemix] loginArl failed: {login_data.get('errid', login_data)}"
+                    )
+                    return False
+        except Exception as e:
+            logger.warning(f"[deemix] loginArl request failed: {type(e).__name__}: {e}")
+            return False
+
+        # Step 3: queue the download
         try:
             async with sess.post(
                 f"{base}/api/addToQueue",
