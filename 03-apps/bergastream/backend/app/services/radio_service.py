@@ -4,6 +4,7 @@ Radio mode: suggests similar tracks using Last.fm similarity data or OpenRouter 
 import asyncio
 import json
 import logging
+import re
 import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -19,6 +20,33 @@ logger = logging.getLogger(__name__)
 
 LASTFM_API = "https://ws.audioscrobbler.com/2.0"
 OPENROUTER_API = "https://openrouter.ai/api/v1/chat/completions"
+
+# Patterns commonly added by streaming platforms that confuse Last.fm matching
+_TITLE_NOISE_RE = re.compile(
+    r'\s*[\(\[\-]'                      # opening bracket/dash
+    r'(?:'
+    r'\d{4}\s+remaster(?:ed)?'          # "2020 Remaster" / "2020 Remastered"
+    r'|remaster(?:ed)?(?:\s+\d{4})?'   # "Remastered" / "Remastered 2020"
+    r'|live(?:\s+at\s+[^)\]]+)?'       # "Live" / "Live at Wembley"
+    r'|acoustic(?:\s+version)?'
+    r'|radio\s+edit'
+    r'|single(?:\s+version)?'
+    r'|album\s+version'
+    r'|deluxe(?:\s+edition)?'
+    r'|bonus\s+track'
+    r'|explicit'
+    r'|feat\.?[^)\]]*'                  # "feat. ..."
+    r')'
+    r'[\)\]]?'                          # optional closing bracket
+    ,
+    re.IGNORECASE,
+)
+
+
+def _clean_title(title: str) -> str:
+    """Strip streaming-platform noise from a track title before Last.fm lookup."""
+    cleaned = _TITLE_NOISE_RE.sub('', title).strip(' -–—')
+    return cleaned or title  # never return empty string
 
 
 class RadioService:
@@ -43,11 +71,14 @@ class RadioService:
         if source == "lastfm":
             # Last.fm only needs title+artist — try it first regardless of source
             if settings.lastfm_api_key and title and artist:
-                tracks = await RadioService._lastfm_similar(title, artist, limit)
+                clean = _clean_title(title)
+                if clean != title:
+                    logger.info(f"Last.fm: cleaned title '{title}' → '{clean}'")
+                tracks = await RadioService._lastfm_similar(clean, artist, limit)
                 if tracks:
-                    logger.info(f"Last.fm similar: got {len(tracks)} tracks for '{title}' by '{artist}'")
+                    logger.info(f"Last.fm similar: got {len(tracks)} tracks for '{clean}' by '{artist}'")
                     return tracks
-                logger.info(f"Last.fm returned no results for '{title}' by '{artist}' — falling back to Deezer")
+                logger.info(f"Last.fm returned no results for '{clean}' by '{artist}' — falling back to Deezer")
 
             # Last.fm unavailable or no results — fall back to Deezer-based methods
             if not deezer_source_id:
@@ -60,7 +91,7 @@ class RadioService:
                 return []
             return await RadioService._deezer_fallbacks(deezer_source_id, limit)
         if source == "ai":
-            return await RadioService._ai_radio(title, artist, limit)
+            return await RadioService._ai_radio(_clean_title(title), artist, limit)
         return []
 
     @staticmethod

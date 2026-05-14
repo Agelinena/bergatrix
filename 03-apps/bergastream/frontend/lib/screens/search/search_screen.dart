@@ -107,10 +107,22 @@ class _SearchScreenState extends ConsumerState<SearchScreen> with SingleTickerPr
 
   void _playFromSearch(Track track, List<Track> queue) async {
     final client = ref.read(apiClientProvider);
-    await client.registerTrack(track.toJson());
-    // Play only this track — radio queue provider fills the rest
-    await ref.read(playerProvider.notifier).play(track, queue: [track]);
-    ref.read(radioQueueProvider.notifier).activate(track);
+    try {
+      await client.registerTrack(track.toJson());
+    } catch (e) {
+      debugPrint('[Search] registerTrack error: $e');
+    }
+    try {
+      // Play only this track — radio queue provider fills the rest
+      await ref.read(playerProvider.notifier).play(track, queue: [track]);
+    } catch (e) {
+      debugPrint('[Search] play error: $e');
+    }
+    try {
+      await ref.read(radioQueueProvider.notifier).activate(track);
+    } catch (e) {
+      debugPrint('[Search] activate error: $e');
+    }
   }
 
   @override

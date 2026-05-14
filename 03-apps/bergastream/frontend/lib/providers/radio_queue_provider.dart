@@ -1,6 +1,7 @@
 // ignore: avoid_web_libraries_in_flutter
 import 'dart:html' as html;
 import 'dart:math';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/track.dart';
 import '../core/api_client.dart';
@@ -155,7 +156,8 @@ class RadioQueueNotifier extends Notifier<RadioQueueState> {
 
       // Only unlock after the loop — listener will now see the full remaining count
       state = state.copyWith(isRefilling: false);
-    } catch (_) {
+    } catch (e, st) {
+      debugPrint('[RadioQueue] _refill error: $e\n$st');
       state = state.copyWith(isRefilling: false);
     }
   }
