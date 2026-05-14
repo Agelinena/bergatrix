@@ -341,15 +341,16 @@ async def _deemix_emit(source_id: str) -> bool:
                 if _r.status != 200:
                     raise ConnectionError(f"Handshake returned HTTP {_r.status}")
                 _raw = await _r.text()
-            logger.debug(f"[deemix] handshake raw: {_raw[:120]!r}")
+            # Log full response so we can see the exact server format
+            logger.debug(f"[deemix] handshake raw ({len(_raw)} chars): {_raw[:300]!r}")
 
-            # Parse "<char_count>:0<json>" — find the JSON object
-            _j = _raw.find("{")
-            if _j == -1:
-                raise ValueError(f"No JSON in handshake: {_raw[:80]!r}")
-            _dec = json.JSONDecoder()
-            _hs, _ = _dec.raw_decode(_raw, _j)   # robust: ignores trailing data
-            _sid = _hs["sid"]
+            # Extract SID with regex — works regardless of EIO version framing
+            # (EIO=3: "<len>:0{...}", EIO=4: "0{...}", or error JSON like {"message":...})
+            _sid_m = re.search(r'"sid"\s*:\s*"([^"]+)"', _raw)
+            if not _sid_m:
+                logger.warning(f"[deemix] No SID in handshake. Full response: {_raw!r}")
+                raise ValueError("No SID in handshake response")
+            _sid = _sid_m.group(1)
             logger.debug(f"[deemix] SID: {_sid}")
 
             # ── Step 2: poll once to consume server's "40" (namespace connect)
