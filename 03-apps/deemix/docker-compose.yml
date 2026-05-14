@@ -1,0 +1,28 @@
+services:
+  deemix:
+    image: registry.gitlab.com/bockiii/deemix-docker:latest
+    container_name: deemix
+    restart: unless-stopped
+    environment:
+      - ARL=${DEEMIX_ARL}
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+      - UMASK_SET=022
+    volumes:
+      - ${VOLUMES_BASE}/deemix/config:/config
+      - ${VOLUMES_BASE}/deemix/downloads:/downloads
+    networks:
+      - bergatrix-proxy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=bergatrix-proxy"
+      - "traefik.http.routers.deemix-router.rule=Host(`deemix.${DOMAIN}`)"
+      - "traefik.http.routers.deemix-router.entrypoints=websecure"
+      - "traefik.http.routers.deemix-router.tls=true"
+      - "traefik.http.routers.deemix-router.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.deemix-router.middlewares=internal-only@docker"
+      - "traefik.http.services.deemix-service.loadbalancer.server.port=6595"
+
+networks:
+  bergatrix-proxy:
+    external: true
