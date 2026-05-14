@@ -327,6 +327,18 @@ async def download_deezer(
                 dz = Deezer()
                 if not dz.login_via_arl(settings.deemix_arl):
                     return None, "arl_failed"
+
+                # Log Deezer account info to diagnose subscription issues
+                try:
+                    user = dz.current_user
+                    logger.info(
+                        f"[deemix] Logged in as {user.get('name', '?')} "
+                        f"(plan={user.get('offer_name', '?')}, "
+                        f"id={user.get('id', '?')})"
+                    )
+                except Exception as _ue:
+                    logger.debug(f"[deemix] Could not read user info: {_ue}")
+
                 deezer_settings = copy.deepcopy(DEFAULTS)
                 deezer_settings["downloadLocation"] = str(track_tmp)
                 deezer_settings["overwriteFile"] = "y"
@@ -337,17 +349,18 @@ async def download_deezer(
                     deezer_settings["maxBitrate"] = bitrate
                     try:
                         dl_obj = generateDownloadObject(dz, url, bitrate)
+                        logger.debug(f"[deemix] dl_obj type={type(dl_obj).__name__} bitrate={bitrate}")
                         Downloader(dz, dl_obj, deezer_settings).start()
                     except Exception as inner_e:
                         return None, f"deemix_internal_error({inner_e})"
+                    all_files = list(track_tmp.rglob("*.*"))
                     for ext in ("flac", "mp3"):
                         files = list(track_tmp.rglob(f"*.{ext}"))
                         if files:
                             staged = out_dir / f".staged_{source_id}.{ext}"
                             shutil.move(str(files[0]), str(staged))
                             return staged, quality_label
-                    all_files = list(track_tmp.rglob("*.*"))
-                    logger.debug(
+                    logger.warning(
                         f"[deemix] No files at bitrate={bitrate} "
                         f"(found={[f.name for f in all_files]}) — trying next quality"
                     )
