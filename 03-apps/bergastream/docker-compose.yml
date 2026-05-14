@@ -12,6 +12,13 @@ services:
       - ${VOLUMES_BASE}/bergastream/deemix_dl:/downloads
     networks:
       - internal
+      - bergatrix-proxy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.bergastream-deemix.rule=Host(`${DEEMIX_DOMAIN}`)"
+      - "traefik.http.routers.bergastream-deemix.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.bergastream-deemix.entrypoints=websecure"
+      - "traefik.http.services.bergastream-deemix.loadbalancer.server.port=6595"
 
   api:
     build: ./backend
