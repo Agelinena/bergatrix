@@ -15,6 +15,7 @@ services:
       - bergatrix-proxy
     labels:
       - "traefik.enable=true"
+      - "traefik.docker.network=bergatrix-proxy"
       - "traefik.http.routers.bergastream-deemix.rule=Host(`${DEEMIX_DOMAIN}`)"
       - "traefik.http.routers.bergastream-deemix.tls.certresolver=letsencrypt"
       - "traefik.http.routers.bergastream-deemix.entrypoints=websecure"
