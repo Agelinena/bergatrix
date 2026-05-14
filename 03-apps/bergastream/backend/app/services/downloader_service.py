@@ -329,22 +329,30 @@ async def download_deezer(
                     return None, "arl_failed"
                 deezer_settings = copy.deepcopy(DEFAULTS)
                 deezer_settings["downloadLocation"] = str(track_tmp)
-                deezer_settings["maxBitrate"] = "9"   # FLAC
                 deezer_settings["overwriteFile"] = "y"
                 url = f"https://www.deezer.com/track/{source_id}"
-                try:
-                    dl_obj = generateDownloadObject(dz, url, deezer_settings["maxBitrate"])
-                    Downloader(dz, dl_obj, deezer_settings).start()
-                except Exception as inner_e:
-                    return None, f"deemix_internal_error({inner_e})"
-                all_files = list(track_tmp.rglob("*.*"))
-                for ext in ("flac", "mp3"):
-                    files = list(track_tmp.rglob(f"*.{ext}"))
-                    if files:
-                        staged = out_dir / f".staged_{source_id}.{ext}"
-                        shutil.move(str(files[0]), str(staged))
-                        return staged, "flac" if ext == "flac" else "mp3_320"
-                return None, f"no_audio_files(found={[f.name for f in all_files]})"
+
+                # Try FLAC first, fall back to MP3 320 if account doesn't support FLAC
+                for bitrate, quality_label in [("9", "flac"), ("3", "mp3_320")]:
+                    deezer_settings["maxBitrate"] = bitrate
+                    try:
+                        dl_obj = generateDownloadObject(dz, url, bitrate)
+                        Downloader(dz, dl_obj, deezer_settings).start()
+                    except Exception as inner_e:
+                        return None, f"deemix_internal_error({inner_e})"
+                    for ext in ("flac", "mp3"):
+                        files = list(track_tmp.rglob(f"*.{ext}"))
+                        if files:
+                            staged = out_dir / f".staged_{source_id}.{ext}"
+                            shutil.move(str(files[0]), str(staged))
+                            return staged, quality_label
+                    all_files = list(track_tmp.rglob("*.*"))
+                    logger.debug(
+                        f"[deemix] No files at bitrate={bitrate} "
+                        f"(found={[f.name for f in all_files]}) — trying next quality"
+                    )
+
+                return None, "no_audio_files_at_any_bitrate"
             finally:
                 shutil.rmtree(str(track_tmp), ignore_errors=True)
 

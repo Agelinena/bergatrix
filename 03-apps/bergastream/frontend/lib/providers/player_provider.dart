@@ -172,12 +172,9 @@ class Player extends _$Player {
 
   void addToQueue(Track track) {
     state = state.copyWith(queue: [...state.queue, track]);
-    // Prefetch the newly added track if it's within the next 5 upcoming slots
-    final newQueue = state.queue;
-    final newIdx = newQueue.indexOf(track);
-    if (newIdx > state.queueIndex && newIdx <= state.queueIndex + 5) {
-      _prefetchUpcoming();
-    }
+    // Prefetch is NOT triggered here — the radio provider calls prefetchTracks()
+    // in bulk after all tracks are added. Calling it per-add caused 20 redundant
+    // prefetch requests for every radio activation.
   }
 
   /// Prefetches the next [_prefetchAhead] tracks from the current queue position
