@@ -331,11 +331,14 @@ async def download_deezer(
     async with _get_deemix_lock():
         trigger_time = _time.time() - 0.5   # small buffer for clock skew
 
-        # Trigger download via Socket.IO
+        # Trigger download via Socket.IO (websocket transport bypasses EIO version mismatch)
         try:
             import socketio as _sio_module
             sio = _sio_module.AsyncClient(logger=False, engineio_logger=False)
-            await asyncio.wait_for(sio.connect(settings.deemix_url), timeout=10)
+            await asyncio.wait_for(
+                sio.connect(settings.deemix_url, transports=["websocket"]),
+                timeout=10,
+            )
             deezer_url = f"https://www.deezer.com/track/{source_id}"
             await sio.emit("addToQueue", {"url": deezer_url})
             await asyncio.sleep(0.3)   # give deemix time to register the job
