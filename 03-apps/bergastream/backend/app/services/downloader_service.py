@@ -305,91 +305,111 @@ def _get_deemix_lock() -> asyncio.Lock:
     return _deemix_sidecar_lock
 
 
+async def _sio_poll(
+    sess,
+    base_url: str,
+    eio: str,
+    deezer_url: str,
+    source_id: str,
+) -> bool:
+    """
+    Execute Socket.IO EIO polling handshake + addToQueue at the given base_url.
+    Returns True on apparent success (POST returned non-error), False otherwise.
+    """
+    import time as _time
+    import aiohttp as _aiohttp
+
+    sio_params_get = {"EIO": eio, "transport": "polling",
+                      "t": str(int(_time.time() * 1000))}
+    async with sess.get(base_url, params=sio_params_get) as _r:
+        if _r.status != 200:
+            logger.debug(f"[deemix] probe {base_url} → HTTP {_r.status}")
+            return False
+        _raw = await _r.text()
+
+    logger.debug(f"[deemix] probe {base_url} EIO={eio} → {_raw[:120]!r}")
+    _sid_m = re.search(r'"sid"\s*:\s*"([^"]+)"', _raw)
+    if not _sid_m:
+        return False          # not a socket.io handshake
+    _sid = _sid_m.group(1)
+    logger.debug(f"[deemix] SID {_sid} at {base_url}")
+
+    # consume server namespace-connect messages
+    async with sess.get(base_url,
+                        params={"EIO": eio, "transport": "polling",
+                                "sid": _sid}) as _r:
+        await _r.read()
+
+    # emit addToQueue
+    # EIO=4 polling: raw packet  (no length prefix)
+    # EIO=3 polling: "<len>:<pkt>" prefix
+    _pkt = f'42{json.dumps(["addToQueue", {"url": deezer_url}])}'
+    _body = _pkt if eio == "4" else f"{len(_pkt)}:{_pkt}"
+    async with sess.post(
+        base_url,
+        params={"EIO": eio, "transport": "polling", "sid": _sid},
+        data=_body,
+        headers={"Content-Type": "text/plain;charset=UTF-8"},
+    ) as _r:
+        _resp = await _r.text()
+
+    if "error" in _resp.lower():
+        logger.debug(f"[deemix] POST response (error?): {_resp!r}")
+        return False
+
+    logger.info(f"[deemix] Queued {source_id} via {base_url} EIO={eio}")
+    return True
+
+
 async def _deemix_emit(source_id: str) -> bool:
     """
-    Triggers a deemix download via Socket.IO EIO=4 HTTP polling.
+    Trigger deemix download. Probes multiple Socket.IO paths/ports because the
+    deemix-docker container architecture varies by image version:
 
-    Architecture of the bockiii/deemix-docker container (confirmed from nginx
-    proxy configuration research):
+    Known layouts:
+      A) nginx:6595 → /api/ → backend:4500, socket.io at backend's /socket.io/
+         → probe http://deemix:4500/socket.io/   (direct, bypasses nginx)
+         → probe http://deemix:4500/             (some builds use root path)
+      B) All-in-one Node.js on :6595, socket.io at /socket.io/
+         → probe http://deemix:6595/socket.io/   (would have returned HTML earlier,
+                                                   but worth retrying EIO=4)
+      C) Backend at :4500, socket.io at /api/socket.io/
+         → probe http://deemix:6595/api/socket.io/
 
-      Port 6595 — nginx
-        GET  /          →  static HTML (SPA frontend)
-        GET  /socket.io →  NO rule → falls through to HTML (why old code failed)
-        ANY  /api/      →  proxy_pass http://localhost:4500/api  ← THE KEY
-                           (WebSocket Upgrade headers forwarded here too)
-
-      Port 4500 — deemix-server binary
-        Socket.IO 4.x with path "/api"  (not the default "/socket.io")
-
-    So the correct Socket.IO polling URL is:
-      GET  http://deemix:6595/api/?EIO=4&transport=polling   (→ SID handshake)
-      POST http://deemix:6595/api/?EIO=4&transport=polling&sid=X  (→ emit event)
-
-    EIO=4 polling payload format (no length prefix — different from EIO=3):
-      Client→Server:  just the raw packet, e.g. '42["addToQueue",{…}]'
+    Probes are tried in order until one returns a valid SID.
     """
     import aiohttp as _aiohttp
-    import time as _time
 
-    base = settings.deemix_url.rstrip("/")
-    # Socket.IO server is at /api/ (proxied by nginx to backend:4500)
-    sio_url = f"{base}/api/"
+    base = settings.deemix_url.rstrip("/")   # e.g. http://bergastream-deemix:6595
     deezer_url = f"https://www.deezer.com/track/{source_id}"
 
-    try:
-        _timeout = _aiohttp.ClientTimeout(total=15)
-        async with _aiohttp.ClientSession(timeout=_timeout) as _sess:
+    # Extract host so we can probe the internal backend port directly
+    _m = re.match(r"(https?://)([^:/]+)(:\d+)?", base)
+    _proto = _m.group(1) if _m else "http://"
+    _host  = _m.group(2) if _m else base
+    _backend_base = f"{_proto}{_host}:4500"  # internal deemix-server port
 
-            # ── Step 1: EIO=4 polling handshake → SID ────────────────────
-            async with _sess.get(
-                sio_url,
-                params={
-                    "EIO": "4",
-                    "transport": "polling",
-                    "t": str(int(_time.time() * 1000)),
-                },
-            ) as _r:
-                if _r.status != 200:
-                    raise ConnectionError(f"Handshake HTTP {_r.status}")
-                _raw = await _r.text()
-            logger.debug(f"[deemix] /api/ handshake ({len(_raw)} chars): {_raw[:150]!r}")
+    # Candidate (base_url, eio_version) pairs, most likely first
+    _candidates = [
+        (f"{_backend_base}/socket.io/", "4"),   # A: direct to backend:4500 (EIO=4)
+        (f"{_backend_base}/",           "4"),   # A alt: root path on backend
+        (f"{base}/api/socket.io/",      "4"),   # C: nginx-proxied /api/socket.io
+        (f"{base}/socket.io/",          "4"),   # B: single-process, EIO=4
+        (f"{base}/socket.io/",          "3"),   # B: single-process, EIO=3
+        (f"{_backend_base}/socket.io/", "3"),   # A: backend EIO=3
+    ]
 
-            _sid_m = re.search(r'"sid"\s*:\s*"([^"]+)"', _raw)
-            if not _sid_m:
-                logger.warning(f"[deemix] No SID at /api/. Full response: {_raw!r}")
-                raise ValueError("No SID in /api/ handshake")
-            _sid = _sid_m.group(1)
-            logger.debug(f"[deemix] SID: {_sid}")
+    _timeout = _aiohttp.ClientTimeout(total=12)
+    async with _aiohttp.ClientSession(timeout=_timeout) as _sess:
+        for _url, _eio in _candidates:
+            try:
+                if await _sio_poll(_sess, _url, _eio, deezer_url, source_id):
+                    return True
+            except Exception as _e:
+                logger.debug(f"[deemix] {_url} EIO={_eio}: {type(_e).__name__}: {_e}")
 
-            # ── Step 2: poll once to consume server's namespace-connect ──
-            async with _sess.get(
-                sio_url,
-                params={"EIO": "4", "transport": "polling", "sid": _sid},
-            ) as _r:
-                _srv = await _r.text()
-            logger.debug(f"[deemix] server msgs: {_srv[:80]!r}")
-
-            # ── Step 3: POST addToQueue event ─────────────────────────────
-            # EIO=4 polling: raw packet, NO length prefix (unlike EIO=3)
-            _pkt = f'42{json.dumps(["addToQueue", {"url": deezer_url}])}'
-            async with _sess.post(
-                sio_url,
-                params={"EIO": "4", "transport": "polling", "sid": _sid},
-                data=_pkt,
-                headers={"Content-Type": "text/plain;charset=UTF-8"},
-            ) as _r:
-                _resp = await _r.text()
-            logger.debug(f"[deemix] POST response: {_resp!r}")
-
-        logger.info(f"[deemix] Queued {source_id} via Socket.IO EIO=4 polling at /api/")
-        return True
-
-    except Exception as _e:
-        logger.warning(
-            f"[deemix] Socket.IO error for {source_id}: "
-            f"{type(_e).__name__}: {_e}"
-        )
-        return False
+    logger.warning(f"[deemix] All Socket.IO probes failed for {source_id}")
+    return False
 
 
 async def download_deezer(
