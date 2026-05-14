@@ -331,11 +331,12 @@ async def download_deezer(
                 # Log Deezer account info to diagnose subscription issues
                 try:
                     user = dz.current_user
-                    logger.info(
-                        f"[deemix] Logged in as {user.get('name', '?')} "
-                        f"(plan={user.get('offer_name', '?')}, "
-                        f"id={user.get('id', '?')})"
-                    )
+                    # Log subset of fields most relevant to download rights
+                    diag = {k: user.get(k) for k in (
+                        "id", "name", "email", "status", "offer_name",
+                        "inscription_date", "country",
+                    ) if k in user}
+                    logger.warning(f"[deemix] Account info: {diag}")
                 except Exception as _ue:
                     logger.debug(f"[deemix] Could not read user info: {_ue}")
 
