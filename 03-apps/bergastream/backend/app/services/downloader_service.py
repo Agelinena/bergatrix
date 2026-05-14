@@ -209,6 +209,7 @@ async def download_deezer(
     Post-verifies duration with mutagen. Returns (path, quality) or (None, "").
     """
     if not settings.deemix_arl:
+        logger.debug("[deemix] Skipped — deemix_arl not configured")
         return None, ""
 
     out_dir = Path(settings.music_cache_path)
@@ -229,7 +230,7 @@ async def download_deezer(
             try:
                 dz = Deezer()
                 if not dz.login_via_arl(settings.deemix_arl):
-                    return None, ""
+                    return None, "arl_failed"
                 deezer_settings = copy.deepcopy(DEFAULTS)
                 deezer_settings["downloadLocation"] = str(track_tmp)
                 deezer_settings["maxBitrate"] = "9"   # FLAC
@@ -237,18 +238,20 @@ async def download_deezer(
                 url = f"https://www.deezer.com/track/{source_id}"
                 dl_obj = generateDownloadObject(dz, url, deezer_settings["maxBitrate"])
                 Downloader(dz, dl_obj, deezer_settings).start()
+                all_files = list(track_tmp.rglob("*.*"))
                 for ext in ("flac", "mp3"):
                     files = list(track_tmp.rglob(f"*.{ext}"))
                     if files:
                         staged = out_dir / f".staged_{source_id}.{ext}"
                         shutil.move(str(files[0]), str(staged))
                         return staged, "flac" if ext == "flac" else "mp3_320"
-                return None, ""
+                return None, f"no_audio_files(found={[f.name for f in all_files]})"
             finally:
                 shutil.rmtree(str(track_tmp), ignore_errors=True)
 
         result = await loop.run_in_executor(None, _download)
         if not result[0]:
+            logger.warning(f"[deemix] Download returned no file for {source_id}: reason={result[1]}")
             return None, ""
 
         ext = "flac" if result[1] == "flac" else "mp3"
