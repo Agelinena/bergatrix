@@ -452,6 +452,18 @@ async def download_deezer(
                 try:
                     stat = candidate.stat()
                     if stat.st_ctime >= trigger_time and stat.st_size > 50_000:
+                        # Wait for deemix to finish tagging (it opens the file
+                        # immediately after download to write ID3 tags).
+                        # We confirm stability: re-stat after 1 s and check
+                        # the size hasn't changed.
+                        await asyncio.sleep(1.0)
+                        try:
+                            stat2 = candidate.stat()
+                        except FileNotFoundError:
+                            continue  # deemix itself moved/deleted it
+                        if stat2.st_size != stat.st_size:
+                            continue  # still being written
+
                         ext = candidate.suffix.lower().lstrip(".")
                         dest = _cache_path(track_id, ext)
                         shutil.move(str(candidate), str(dest))
