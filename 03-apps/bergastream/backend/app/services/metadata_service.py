@@ -190,7 +190,8 @@ async def get_artist_for_spotify_id(spotify_id: str) -> tuple[ArtistSchema | Non
 async def find_deezer_track_id(title: str, artist: str, duration_ms: int | None = None) -> str | None:
     """
     Searches Deezer for title+artist and returns the best-matching track ID.
-    If duration_ms is provided, only returns a result that matches within 10%.
+    If duration_ms is provided, picks the closest-duration result within tolerance
+    (±5% or ±10 s, whichever is larger).
     Returns None if no suitable match is found.
     """
     query = f"{artist} {title}".strip()
@@ -205,12 +206,18 @@ async def find_deezer_track_id(title: str, artist: str, duration_ms: int | None 
         return None
     if not duration_ms or duration_ms <= 0:
         return str(results[0]["id"])
-    tolerance = duration_ms * 0.10
+    tolerance = max(10_000, duration_ms * 0.05)  # ±5% or ±10 s floor
+    best_id: str | None = None
+    best_diff = float("inf")
     for t in results:
         track_ms = t.get("duration", 0) * 1000
-        if abs(track_ms - duration_ms) <= tolerance:
-            return str(t["id"])
-    return None  # no match within duration tolerance
+        if track_ms <= 0:
+            continue
+        diff = abs(track_ms - duration_ms)
+        if diff <= tolerance and diff < best_diff:
+            best_id = str(t["id"])
+            best_diff = diff
+    return best_id
 
 
 async def get_deezer_radio(deezer_id: str, limit: int = 10) -> list[TrackSchema]:
