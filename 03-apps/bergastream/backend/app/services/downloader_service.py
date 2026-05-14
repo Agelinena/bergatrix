@@ -236,8 +236,11 @@ async def download_deezer(
                 deezer_settings["maxBitrate"] = "9"   # FLAC
                 deezer_settings["overwriteFile"] = "y"
                 url = f"https://www.deezer.com/track/{source_id}"
-                dl_obj = generateDownloadObject(dz, url, deezer_settings["maxBitrate"])
-                Downloader(dz, dl_obj, deezer_settings).start()
+                try:
+                    dl_obj = generateDownloadObject(dz, url, deezer_settings["maxBitrate"])
+                    Downloader(dz, dl_obj, deezer_settings).start()
+                except Exception as inner_e:
+                    return None, f"deemix_internal_error({inner_e})"
                 all_files = list(track_tmp.rglob("*.*"))
                 for ext in ("flac", "mp3"):
                     files = list(track_tmp.rglob(f"*.{ext}"))

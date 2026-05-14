@@ -165,10 +165,16 @@ async def serve_stream(
 
 
 async def _trigger_and_wait(track: Track, db: AsyncSession) -> Path | None:
-    """Starts download and waits up to 30s for the file to appear (even partial)."""
+    """
+    Adds track to QUEUE_HIGH and waits up to 90 s for the file to appear.
+
+    90 s covers the full new pipeline: yt-dlp candidate search (~10 s) +
+    deemix attempt (may fail) + yt-dlp download (~30–50 s) with headroom.
+    Streaming begins as soon as the file is created (follow-file mode kicks in).
+    """
     await DownloadQueueService.enqueue(track.id, priority=True)
 
-    for _ in range(120):  # 30 seconds
+    for _ in range(360):  # 90 seconds (360 × 0.25 s)
         await asyncio.sleep(0.25)
         for base in (settings.music_cache_path, settings.music_permanent_path):
             for ext in ("flac", "mp3"):

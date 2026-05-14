@@ -104,6 +104,8 @@ class Player extends _$Player {
           ? Duration(milliseconds: track.durationMs!)
           : Duration.zero,
     );
+    // Kick off background prefetch for upcoming tracks immediately
+    _prefetchUpcoming();
     await _service.play(track);
   }
 
@@ -170,6 +172,28 @@ class Player extends _$Player {
 
   void addToQueue(Track track) {
     state = state.copyWith(queue: [...state.queue, track]);
+    // Prefetch the newly added track if it's within the next 5 upcoming slots
+    final newQueue = state.queue;
+    final newIdx = newQueue.indexOf(track);
+    if (newIdx > state.queueIndex && newIdx <= state.queueIndex + 5) {
+      _prefetchUpcoming();
+    }
+  }
+
+  /// Prefetches the next [_prefetchAhead] tracks from the current queue position
+  /// so they are cached before the player needs them.
+  static const _prefetchAhead = 5;
+
+  void _prefetchUpcoming() {
+    final upcoming = state.queue
+        .skip(state.queueIndex + 1)
+        .take(_prefetchAhead)
+        .map((t) => t.id)
+        .toList();
+    if (upcoming.isEmpty) return;
+    try {
+      ref.read(apiClientProvider).prefetchTracks(upcoming);
+    } catch (_) {}
   }
 
   void _handleTrackComplete() {
