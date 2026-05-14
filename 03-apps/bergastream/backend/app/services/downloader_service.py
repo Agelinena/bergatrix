@@ -340,6 +340,7 @@ async def _deemix_emit(source_id: str) -> bool:
             logger.warning(f"[deemix] connect call failed: {type(e).__name__}: {e}")
 
         # Step 2: authenticate with ARL
+        _bitrate = 1  # default: MP3_128 (safest for all account tiers)
         try:
             async with sess.post(
                 f"{base}/api/loginArl",
@@ -347,11 +348,30 @@ async def _deemix_emit(source_id: str) -> bool:
             ) as resp:
                 login_data = await resp.json(content_type=None)
                 logger.debug(f"[deemix] loginArl HTTP {resp.status}: {login_data}")
-                if not login_data.get("result"):
+                # bockiii/deemix-docker returns {"status": 1, "user": {...}}
+                # bambanah/deemix returns {"result": true, "data": {...}}
+                login_ok = (
+                    login_data.get("status") == 1          # bockiii format
+                    or login_data.get("result") is True    # bambanah format
+                )
+                if not login_ok:
                     logger.warning(
                         f"[deemix] loginArl failed: {login_data.get('errid', login_data)}"
                     )
                     return False
+                user = login_data.get("user", {})
+                logger.info(
+                    f"[deemix] Logged in as {user.get('name', '?')} "
+                    f"(hq={user.get('can_stream_hq')} lossless={user.get('can_stream_lossless')})"
+                )
+                # Pick highest bitrate the account can actually stream
+                # 9=FLAC  3=MP3_320  1=MP3_128
+                if user.get("can_stream_lossless"):
+                    _bitrate = 9
+                elif user.get("can_stream_hq"):
+                    _bitrate = 3
+                else:
+                    _bitrate = 1
         except Exception as e:
             logger.warning(f"[deemix] loginArl request failed: {type(e).__name__}: {e}")
             return False
@@ -360,7 +380,7 @@ async def _deemix_emit(source_id: str) -> bool:
         try:
             async with sess.post(
                 f"{base}/api/addToQueue",
-                json={"url": deezer_url, "bitrate": None},
+                json={"url": deezer_url, "bitrate": _bitrate},
             ) as resp:
                 try:
                     data = await resp.json(content_type=None)
