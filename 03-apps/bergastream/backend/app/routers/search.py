@@ -69,11 +69,11 @@ async def get_artist_tracks(
     raw_id = artist_id.removeprefix("deezer_").removeprefix("spotify_")
     if not raw_id.isdigit():
         raise HTTPException(status_code=400, detail="Only Deezer artist IDs support full track listing")
-    tracks = await metadata_service.get_deezer_artist_tracks(raw_id, index, limit)
+    tracks, has_more = await metadata_service.get_deezer_artist_tracks(raw_id, index, limit)
     return {
         "tracks": [t.model_dump() for t in tracks],
         "next_index": index + len(tracks),
-        "has_more": len(tracks) == limit,
+        "has_more": has_more,
     }
 
 

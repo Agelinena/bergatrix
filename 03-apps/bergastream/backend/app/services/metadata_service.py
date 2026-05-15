@@ -231,19 +231,23 @@ async def get_deezer_radio(deezer_id: str, limit: int = 10) -> list[TrackSchema]
     return [_deezer_track_to_schema(t) for t in data["data"][:limit] if "id" in t and "error" not in t]
 
 
-async def get_deezer_artist_tracks(deezer_id: str, index: int = 0, limit: int = 100) -> list[TrackSchema]:
-    """Returns tracks for an artist via Deezer top endpoint with offset pagination."""
+async def get_deezer_artist_tracks(deezer_id: str, index: int = 0, limit: int = 100) -> tuple[list[TrackSchema], bool]:
+    """Returns (tracks, has_more) for an artist via Deezer top endpoint with offset pagination."""
     async with httpx.AsyncClient(timeout=15) as client:
         resp = await client.get(
             f"{DEEZER_API}/artist/{deezer_id}/top",
             params={"limit": limit, "index": index},
         )
     if resp.status_code != 200:
-        return []
+        return [], False
     data = resp.json()
     if "error" in data or "data" not in data:
-        return []
-    return [_deezer_track_to_schema(t) for t in data["data"] if "id" in t and "error" not in t]
+        return [], False
+    tracks = [_deezer_track_to_schema(t) for t in data["data"] if "id" in t and "error" not in t]
+    # Use Deezer's reported total to determine whether more pages exist
+    total = data.get("total", 0)
+    has_more = (index + len(tracks)) < total
+    return tracks, has_more
 
 
 async def search_spotify(query: str, limit: int = 20) -> SearchResponse:
@@ -480,19 +484,35 @@ async def resolve_track_url(url: str) -> TrackSchema | None:
 
 
 async def get_deezer_playlist(deezer_id: str) -> tuple[str, list[TrackSchema]] | None:
-    """Fetch a public Deezer playlist by ID. Returns (name, tracks)."""
-    async with httpx.AsyncClient(timeout=15) as client:
+    """Fetch a public Deezer playlist by ID, paginando todas as faixas via campo 'next'."""
+    async with httpx.AsyncClient(timeout=30) as client:
         resp = await client.get(f"{DEEZER_API}/playlist/{deezer_id}")
-    if resp.status_code != 200:
-        return None
-    data = resp.json()
-    name = data.get("title", "Playlist")
-    tracks = [_deezer_track_to_schema(t) for t in data.get("tracks", {}).get("data", [])]
-    return name, tracks
+        if resp.status_code != 200:
+            return None
+        data = resp.json()
+        if "error" in data:
+            return None
+        name = data.get("title", "Playlist")
+        tracks_block = data.get("tracks", {})
+        all_raw: list[dict] = list(tracks_block.get("data", []))
+
+        # Pagina enquanto houver campo "next"
+        next_url: str | None = tracks_block.get("next")
+        while next_url:
+            page_resp = await client.get(next_url)
+            if page_resp.status_code != 200:
+                break
+            page = page_resp.json()
+            if "error" in page:
+                break
+            all_raw.extend(page.get("data", []))
+            next_url = page.get("next")
+
+    return name, [_deezer_track_to_schema(t) for t in all_raw if "id" in t and "error" not in t]
 
 
 async def get_spotify_playlist(spotify_id: str) -> tuple[str, list[TrackSchema]] | None:
-    """Fetch a Spotify playlist by ID. Returns (name, tracks)."""
+    """Fetch a Spotify playlist by ID, paginando todas as faixas. Returns (name, tracks)."""
     if not settings.spotipy_client_id or not settings.spotipy_client_secret:
         return None
     try:
@@ -504,13 +524,23 @@ async def get_spotify_playlist(spotify_id: str) -> tuple[str, list[TrackSchema]]
         ))
         loop = asyncio.get_event_loop()
 
-        pl = await loop.run_in_executor(None, lambda: sp.playlist(spotify_id, fields="name,tracks.items(track)"))
+        # Nome da playlist
+        pl = await loop.run_in_executor(None, lambda: sp.playlist(spotify_id, fields="name"))
         name = pl.get("name", "Playlist")
-        tracks = []
-        for item in pl.get("tracks", {}).get("items", []):
-            t = item.get("track")
-            if t and t.get("id"):
-                tracks.append(_spotify_track(t))
+
+        # Faixas com paginação completa via sp.playlist_tracks + sp.next
+        tracks: list[TrackSchema] = []
+        page = await loop.run_in_executor(None, lambda: sp.playlist_tracks(spotify_id))
+        while page:
+            for item in page.get("items", []):
+                t = item.get("track")
+                if t and t.get("id") and not t.get("is_local", False):
+                    tracks.append(_spotify_track(t))
+            if page.get("next"):
+                page = await loop.run_in_executor(None, lambda p=page: sp.next(p))
+            else:
+                break
+
         return name, tracks
     except Exception:
         return None
@@ -522,7 +552,7 @@ async def get_youtube_playlist(yt_id: str) -> tuple[str, list[TrackSchema]] | No
         from ytmusicapi import YTMusic
         loop = asyncio.get_event_loop()
         yt = YTMusic()
-        pl = await loop.run_in_executor(None, lambda: yt.get_playlist(yt_id, limit=100))
+        pl = await loop.run_in_executor(None, lambda: yt.get_playlist(yt_id, limit=None))
         name = pl.get("title", "Playlist")
         tracks = []
         for t in pl.get("tracks", []):
