@@ -525,17 +525,41 @@ async def get_youtube_track(video_id: str) -> TrackSchema | None:
 
 
 async def resolve_track_url(url: str) -> TrackSchema | None:
-    """Resolve a Spotify / Deezer / YouTube track URL to a TrackSchema."""
+    """Resolve a Spotify / Deezer / YouTube track URL to a TrackSchema.
+
+    For Spotify links: fetches Spotify metadata, then immediately looks up the
+    Deezer equivalent by title+artist+duration so the returned track has a
+    deezer_XXXX id — giving the downloader a direct Deezer ID instead of having
+    to guess via a text search at play time.
+    """
     parsed = _parse_track_url(url)
     if parsed is None:
         return None
     platform, track_id = parsed
+
     if platform == "deezer":
         return await get_deezer_track(track_id)
+
     if platform == "spotify":
-        return await get_spotify_track(track_id)
+        spotify_track = await get_spotify_track(track_id)
+        if spotify_track is None:
+            return None
+        # Try to resolve to a Deezer track for reliable download
+        deezer_id = await find_deezer_track_id(
+            spotify_track.title,
+            spotify_track.artist,
+            spotify_track.duration_ms,
+        )
+        if deezer_id:
+            deezer_track = await get_deezer_track(deezer_id)
+            if deezer_track:
+                return deezer_track
+        # Fallback: return Spotify metadata as-is
+        return spotify_track
+
     if platform == "youtube":
         return await get_youtube_track(track_id)
+
     return None
 
 
