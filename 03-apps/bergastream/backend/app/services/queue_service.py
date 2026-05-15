@@ -20,6 +20,7 @@ logger = logging.getLogger(__name__)
 QUEUE_HIGH = "bergastream:queue:high"    # streaming priority (on-demand)
 QUEUE_LOW  = "bergastream:queue:low"     # prefetch / bulk background downloads
 DOWNLOADING_SET = "bergastream:downloading"
+QUEUED_SET = "bergastream:queued"        # tracks currently queued (not yet downloaded)
 
 _MAX_RETRIES = 2
 _BACKGROUND_INTER_JOB_SLEEP = 3.0  # seconds between background jobs
@@ -37,20 +38,48 @@ class DownloadQueueService:
     @classmethod
     async def enqueue(cls, track_id: str, priority: bool = False, permanent: bool = False) -> None:
         r = cls._get_redis()
-        is_downloading = await r.sismember(DOWNLOADING_SET, track_id)
-        if is_downloading:
+        # Already being actively downloaded — just let it finish
+        if await r.sismember(DOWNLOADING_SET, track_id):
             return
-
         queue = QUEUE_HIGH if priority else QUEUE_LOW
+        # Already in some queue
+        if await r.sismember(QUEUED_SET, track_id):
+            if priority:
+                # Elevate: push to FRONT of QUEUE_HIGH so stream workers pick it up immediately
+                # The QUEUE_LOW entry becomes a harmless no-op via _resolve_existing
+                await r.lpush(QUEUE_HIGH, json.dumps({"track_id": track_id, "permanent": permanent}))
+            return  # don't double-add to QUEUED_SET
         await r.rpush(queue, json.dumps({"track_id": track_id, "permanent": permanent}))
+        await r.sadd(QUEUED_SET, track_id)
 
     @classmethod
-    async def enqueue_batch(cls, track_ids: list[str], permanent: bool = False) -> None:
+    async def enqueue_batch(cls, track_ids: list[str], permanent: bool = False) -> int:
         r = cls._get_redis()
+        if not track_ids:
+            return 0
+        # Batch-check DOWNLOADING_SET and QUEUED_SET in one pipeline
+        pipe = r.pipeline()
         for track_id in track_ids:
-            is_downloading = await r.sismember(DOWNLOADING_SET, track_id)
-            if not is_downloading:
-                await r.rpush(QUEUE_LOW, json.dumps({"track_id": track_id, "permanent": permanent}))
+            pipe.sismember(DOWNLOADING_SET, track_id)
+            pipe.sismember(QUEUED_SET, track_id)
+        results = await pipe.execute()
+
+        new_payloads: list[str] = []
+        new_ids: list[str] = []
+        for i, track_id in enumerate(track_ids):
+            is_downloading = results[i * 2]
+            is_queued = results[i * 2 + 1]
+            if not is_downloading and not is_queued:
+                new_payloads.append(json.dumps({"track_id": track_id, "permanent": permanent}))
+                new_ids.append(track_id)
+
+        if new_payloads:
+            pipe = r.pipeline()
+            pipe.rpush(QUEUE_LOW, *new_payloads)
+            pipe.sadd(QUEUED_SET, *new_ids)
+            await pipe.execute()
+
+        return len(new_ids)
 
     # -------------------------------------------------------------------------
     # Shared job processor
@@ -144,6 +173,7 @@ class DownloadQueueService:
 
         finally:
             await r.srem(DOWNLOADING_SET, track_id)
+            await r.srem(QUEUED_SET, track_id)
 
     # -------------------------------------------------------------------------
     # Stream worker — QUEUE_HIGH only, no throttle

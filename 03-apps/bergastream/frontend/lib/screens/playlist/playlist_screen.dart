@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
@@ -30,6 +31,8 @@ class _PlaylistScreenState extends ConsumerState<PlaylistScreen> {
   bool _loading = true;
   bool _deleting = false;
   String? _error;
+  Map<String, dynamic>? _dlStatus;
+  Timer? _dlTimer;
 
   @override
   void initState() {
@@ -44,9 +47,36 @@ class _PlaylistScreenState extends ConsumerState<PlaylistScreen> {
       final data = await client.getPlaylist(widget.id);
       final playlist = Playlist.fromJson(data);
       setState(() { _playlist = playlist; _loading = false; });
+      _startDownloadPolling();
     } catch (e) {
       setState(() { _loading = false; _error = e.toString(); });
     }
+  }
+
+  Future<void> _fetchDownloadStatus() async {
+    if (!mounted || _playlist == null) return;
+    try {
+      final status = await ref.read(apiClientProvider).getPlaylistDownloadStatus(widget.id);
+      if (!mounted) return;
+      setState(() => _dlStatus = status);
+      final percent = (status['percent'] as num?)?.toInt() ?? 100;
+      if (percent >= 100) {
+        _dlTimer?.cancel();
+        _dlTimer = null;
+      }
+    } catch (_) {}
+  }
+
+  void _startDownloadPolling() {
+    _fetchDownloadStatus();
+    _dlTimer?.cancel();
+    _dlTimer = Timer.periodic(const Duration(seconds: 5), (_) => _fetchDownloadStatus());
+  }
+
+  @override
+  void dispose() {
+    _dlTimer?.cancel();
+    super.dispose();
   }
 
   void _playAll() {
@@ -293,6 +323,10 @@ class _PlaylistScreenState extends ConsumerState<PlaylistScreen> {
               ),
             ),
           ),
+          if (_dlStatus != null)
+            SliverToBoxAdapter(
+              child: _DownloadStatusBanner(status: _dlStatus!),
+            ),
           SliverList(
             delegate: SliverChildBuilderDelegate(
               (_, i) => TrackCard(
@@ -754,6 +788,66 @@ class _ImageCropperDialogState extends State<_ImageCropperDialog> {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _DownloadStatusBanner extends StatelessWidget {
+  final Map<String, dynamic> status;
+  const _DownloadStatusBanner({required this.status});
+
+  @override
+  Widget build(BuildContext context) {
+    final total = (status['total'] as num?)?.toInt() ?? 0;
+    final downloaded = (status['downloaded'] as num?)?.toInt() ?? 0;
+    final downloading = (status['downloading'] as num?)?.toInt() ?? 0;
+    final queued = (status['queued'] as num?)?.toInt() ?? 0;
+
+    if (total == 0 || downloaded >= total) return const SizedBox.shrink();
+
+    final progress = downloaded / total;
+    final active = downloading + queued;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+          color: AppColors.surfaceVariant,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.download_rounded, size: 15, color: AppColors.primary),
+                const SizedBox(width: 8),
+                Text(
+                  'Download: $downloaded / $total músicas',
+                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+                ),
+                const Spacer(),
+                if (active > 0)
+                  Text(
+                    '$active em andamento',
+                    style: const TextStyle(fontSize: 11, color: AppColors.textSecondary),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(2),
+              child: LinearProgressIndicator(
+                value: progress,
+                backgroundColor: AppColors.background,
+                color: AppColors.primary,
+                minHeight: 4,
+              ),
+            ),
+          ],
         ),
       ),
     );

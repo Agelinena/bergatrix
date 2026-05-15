@@ -424,8 +424,56 @@ async def download_playlist_permanent(
         raise HTTPException(status_code=404, detail="Playlist não encontrada ou sem faixas")
 
     track_ids = [str(pt.track_id) for pt in pts]
-    await DownloadQueueService.enqueue_batch(track_ids, permanent=True)
-    return {"queued": len(track_ids)}
+    newly_queued = await DownloadQueueService.enqueue_batch(track_ids, permanent=True)
+    return {"queued": newly_queued}
+
+
+@router.get("/{playlist_id}/download/status")
+async def playlist_download_status(
+    playlist_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Returns download progress for all tracks in a playlist."""
+    from sqlalchemy import or_
+    from app.services.queue_service import DownloadQueueService, DOWNLOADING_SET, QUEUED_SET
+
+    # All track IDs in this playlist
+    pt_result = await db.execute(
+        select(PlaylistTrack.track_id).where(PlaylistTrack.playlist_id == playlist_id)
+    )
+    track_ids = [str(row[0]) for row in pt_result.all()]
+    total = len(track_ids)
+
+    if total == 0:
+        return {"total": 0, "downloaded": 0, "downloading": 0, "queued": 0, "percent": 100}
+
+    # Count tracks with a local audio file (permanent or cached)
+    dl_result = await db.execute(
+        select(func.count()).select_from(Track).where(
+            Track.id.in_(track_ids),
+            or_(Track.file_path.isnot(None), Track.cache_path.isnot(None)),
+        )
+    )
+    downloaded = dl_result.scalar_one()
+
+    # Efficient Redis lookup: fetch full sets, intersect locally
+    r = DownloadQueueService._get_redis()
+    downloading_members = await r.smembers(DOWNLOADING_SET)
+    queued_members = await r.smembers(QUEUED_SET)
+    track_ids_set = set(track_ids)
+    downloading = len(downloading_members & track_ids_set)
+    queued = len(queued_members & track_ids_set)
+
+    percent = int((downloaded / total) * 100) if total > 0 else 100
+
+    return {
+        "total": total,
+        "downloaded": downloaded,
+        "downloading": downloading,
+        "queued": queued,
+        "percent": percent,
+    }
 
 
 @router.delete("/{playlist_id}/collaborators/{user_id}", status_code=204)

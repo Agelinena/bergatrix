@@ -291,6 +291,11 @@ class ApiClient {
     return resp.data as Map<String, dynamic>;
   }
 
+  Future<Map<String, dynamic>> getPlaylistDownloadStatus(String playlistId) async {
+    final resp = await _dio.get('/api/playlists/$playlistId/download/status');
+    return resp.data as Map<String, dynamic>;
+  }
+
   // Artist all tracks — backend fetches via albums; first call can take a few seconds
   Future<Map<String, dynamic>> getArtistTracks(String artistId, {int index = 0, int limit = 100}) async {
     final resp = await _dio.get(
