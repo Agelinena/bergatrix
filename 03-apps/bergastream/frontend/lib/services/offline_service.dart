@@ -1,26 +1,31 @@
 import 'dart:io';
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
-import 'package:hive_flutter/hive_flutter.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:dio/dio.dart';
 import 'package:path_provider/path_provider.dart';
 import '../models/track.dart';
 import '../core/api_client.dart';
 
 class OfflineService {
-  static const _boxName = 'offline_tracks';
-  static late Box<Track> _box;
+  static const _prefKey = 'offline_tracks_json';
 
-  static Future<void> init() async {
-    _box = await Hive.openBox<Track>(_boxName);
+  static Future<List<Track>> getDownloadedTracks() async {
+    final prefs = await SharedPreferences.getInstance();
+    final jsonList = prefs.getStringList(_prefKey) ?? [];
+    return jsonList
+        .map((s) => Track.fromJson(jsonDecode(s) as Map<String, dynamic>))
+        .toList();
   }
 
-  static List<Track> getDownloadedTracks() => _box.values.toList();
-
-  static bool isDownloaded(String trackId) => _box.containsKey(trackId);
+  static Future<bool> isDownloaded(String trackId) async {
+    final tracks = await getDownloadedTracks();
+    return tracks.any((t) => t.id == trackId);
+  }
 
   static Future<void> download(Track track, ApiClient client) async {
     if (kIsWeb) {
-      // Web: só registra no backend, não baixa localmente
+      // Web: apenas registra no backend, não baixa localmente
       await client.dio.post('/api/offline/${track.id}');
       return;
     }
@@ -33,10 +38,22 @@ class OfflineService {
     await client.dio.download(
       '/api/stream/${track.id}',
       path,
-      options: Options(headers: token != null ? {'Authorization': 'Bearer $token'} : {}),
+      options: Options(
+        headers: token != null ? {'Authorization': 'Bearer $token'} : {},
+      ),
     );
 
-    await _box.put(track.id, track);
+    // Persiste metadados da faixa
+    final prefs = await SharedPreferences.getInstance();
+    final jsonList = prefs.getStringList(_prefKey) ?? [];
+    // Evita duplicata
+    jsonList.removeWhere((s) {
+      final m = jsonDecode(s) as Map<String, dynamic>;
+      return m['id'] == track.id;
+    });
+    jsonList.add(jsonEncode(track.toJson()));
+    await prefs.setStringList(_prefKey, jsonList);
+
     await client.dio.post('/api/offline/${track.id}');
   }
 
@@ -46,12 +63,21 @@ class OfflineService {
       final file = File('${dir.path}/bergastream/$trackId.mp3');
       if (await file.exists()) await file.delete();
     }
-    await _box.delete(trackId);
+
+    final prefs = await SharedPreferences.getInstance();
+    final jsonList = prefs.getStringList(_prefKey) ?? [];
+    jsonList.removeWhere((s) {
+      final m = jsonDecode(s) as Map<String, dynamic>;
+      return m['id'] == trackId;
+    });
+    await prefs.setStringList(_prefKey, jsonList);
+
     await client.dio.delete('/api/offline/$trackId');
   }
 
-  static String? localPath(String trackId) {
-    if (kIsWeb || !isDownloaded(trackId)) return null;
-    return null; // path resolved async — use via download() above
+  static Future<String?> localPath(String trackId) async {
+    if (kIsWeb || !await isDownloaded(trackId)) return null;
+    final dir = await getApplicationDocumentsDirectory();
+    return '${dir.path}/bergastream/$trackId.mp3';
   }
 }

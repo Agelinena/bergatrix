@@ -1,24 +1,19 @@
-import 'package:hive_flutter/hive_flutter.dart';
+class Track {
+  final String id;
+  final String title;
+  final String artist;
+  final String? album;
+  final String? albumId;
+  final String? artistId;
+  final int? durationMs;
+  final int? year;
+  final String? coverUrl;
+  final String source;
+  final String? sourceId;
+  final bool isPermanent;
+  final String? audioQuality;
 
-part 'track.g.dart';
-
-@HiveType(typeId: 0)
-class Track extends HiveObject {
-  @HiveField(0) final String id;
-  @HiveField(1) final String title;
-  @HiveField(2) final String artist;
-  @HiveField(3) final String? album;
-  @HiveField(4) final String? albumId;
-  @HiveField(5) final String? artistId;
-  @HiveField(6) final int? durationMs;
-  @HiveField(7) final int? year;
-  @HiveField(8) final String? coverUrl;
-  @HiveField(9) final String source;
-  @HiveField(10) final String? sourceId;
-  @HiveField(11) final bool isPermanent;
-  @HiveField(12) final String? audioQuality;
-
-  Track({
+  const Track({
     required this.id,
     required this.title,
     required this.artist,
