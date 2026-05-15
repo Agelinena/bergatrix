@@ -24,4 +24,5 @@ COPY . .
 
 RUN mkdir -p /data/music/permanent /data/music/cache
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4"]
+# Roda migrations antes de subir o servidor
+CMD ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4"]
