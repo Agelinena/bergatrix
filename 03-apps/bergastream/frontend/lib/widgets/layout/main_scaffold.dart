@@ -3,10 +3,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/constants.dart';
 import '../../core/theme/app_theme.dart';
+import '../../models/playlist.dart';
 import '../../providers/auth_provider.dart';
+import '../../providers/library_provider.dart';
 import '../../providers/player_provider.dart';
+import '../../providers/ui_provider.dart';
 import '../player/mini_player.dart';
 import '../player/player_bar.dart';
+import '../player/now_playing_panel.dart';
 
 class MainScaffold extends ConsumerWidget {
   final Widget child;
@@ -21,6 +25,8 @@ class MainScaffold extends ConsumerWidget {
   }
 }
 
+// ── Mobile ─────────────────────────────────────────────────────────────────
+
 class _MobileLayout extends ConsumerStatefulWidget {
   final Widget child;
   const _MobileLayout({required this.child});
@@ -30,8 +36,6 @@ class _MobileLayout extends ConsumerStatefulWidget {
 }
 
 class _MobileLayoutState extends ConsumerState<_MobileLayout> {
-  int _currentIndex = 0;
-
   static const _routes = ['/', '/search', '/library', '/settings'];
 
   @override
@@ -52,7 +56,6 @@ class _MobileLayoutState extends ConsumerState<_MobileLayout> {
         backgroundColor: AppColors.surface,
         indicatorColor: AppColors.surfaceVariant,
         onDestinationSelected: (i) {
-          setState(() => _currentIndex = i);
           context.go(_routes[i]);
         },
         destinations: const [
@@ -66,6 +69,8 @@ class _MobileLayoutState extends ConsumerState<_MobileLayout> {
   }
 }
 
+// ── Desktop ────────────────────────────────────────────────────────────────
+
 class _DesktopLayout extends ConsumerWidget {
   final Widget child;
   const _DesktopLayout({required this.child});
@@ -73,6 +78,7 @@ class _DesktopLayout extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final hasTrack = ref.watch(playerProvider).hasTrack;
+    final nowPlayingVisible = ref.watch(nowPlayingVisibleProvider);
     final location = GoRouterState.of(context).matchedLocation;
     final user = ref.watch(authProvider).valueOrNull;
 
@@ -82,9 +88,16 @@ class _DesktopLayout extends ConsumerWidget {
           Expanded(
             child: Row(
               children: [
+                // Sidebar esquerda
                 _Sidebar(currentLocation: location, username: user?.username ?? ''),
                 const VerticalDivider(width: 1),
+                // Conteúdo principal
                 Expanded(child: child),
+                // Painel "Fila / Tocando agora" (direita)
+                if (hasTrack && nowPlayingVisible) ...[
+                  const VerticalDivider(width: 1),
+                  const NowPlayingPanel(),
+                ],
               ],
             ),
           ),
@@ -95,59 +108,199 @@ class _DesktopLayout extends ConsumerWidget {
   }
 }
 
-class _Sidebar extends StatelessWidget {
+// ── Sidebar ────────────────────────────────────────────────────────────────
+
+class _Sidebar extends ConsumerStatefulWidget {
   final String currentLocation;
   final String username;
   const _Sidebar({required this.currentLocation, required this.username});
 
   @override
+  ConsumerState<_Sidebar> createState() => _SidebarState();
+}
+
+class _SidebarState extends ConsumerState<_Sidebar> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(libraryProvider.notifier).load();
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final library = ref.watch(libraryProvider);
+    final loc = widget.currentLocation;
+
     return Container(
-      width: 220,
+      width: kSidebarWidth,
       color: AppColors.surface,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const SizedBox(height: 24),
+          // Logo
+          const SizedBox(height: 20),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20),
             child: Row(
               children: [
-                const Icon(Icons.music_note, color: AppColors.primary, size: 28),
+                const Icon(Icons.music_note, color: AppColors.primary, size: 26),
                 const SizedBox(width: 8),
-                Text('BergaStream', style: Theme.of(context).textTheme.titleMedium),
+                Text('BergaStream',
+                    style: Theme.of(context)
+                        .textTheme
+                        .titleMedium
+                        ?.copyWith(fontWeight: FontWeight.bold)),
               ],
             ),
           ),
-          const SizedBox(height: 32),
-          _NavItem(icon: Icons.home, label: 'Início', route: '/', current: currentLocation),
-          _NavItem(icon: Icons.search, label: 'Busca', route: '/search', current: currentLocation),
-          _NavItem(icon: Icons.library_music, label: 'Biblioteca', route: '/library', current: currentLocation),
-          _NavItem(icon: Icons.history, label: 'Histórico', route: '/history', current: currentLocation),
-          const Spacer(),
-          _NavItem(icon: Icons.settings, label: 'Configurações', route: '/settings', current: currentLocation),
-          const Divider(),
+          const SizedBox(height: 20),
+
+          // Nav items principais
+          _NavItem(icon: Icons.home, label: 'Início', route: '/', current: loc),
+          _NavItem(icon: Icons.search, label: 'Buscar', route: '/search', current: loc),
+          _NavItem(icon: Icons.history, label: 'Histórico', route: '/history', current: loc),
+
+          const SizedBox(height: 12),
+          const Divider(height: 1),
+          const SizedBox(height: 4),
+
+          // Cabeçalho "Sua Biblioteca"
           Padding(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.fromLTRB(20, 8, 8, 4),
+            child: Row(
+              children: [
+                const Icon(Icons.library_music, size: 18, color: AppColors.textSecondary),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text('Sua Biblioteca',
+                      style: Theme.of(context)
+                          .textTheme
+                          .labelMedium
+                          ?.copyWith(color: AppColors.textSecondary)),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.add, size: 18, color: AppColors.textSecondary),
+                  tooltip: 'Nova playlist',
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                  onPressed: () => context.go('/library'),
+                ),
+              ],
+            ),
+          ),
+
+          // Lista de playlists
+          Expanded(
+            child: library.when(
+              data: (playlists) => playlists.isEmpty
+                  ? const Padding(
+                      padding: EdgeInsets.fromLTRB(20, 8, 20, 0),
+                      child: Text('Nenhuma playlist',
+                          style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+                    )
+                  : ListView.builder(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      itemCount: playlists.length,
+                      itemBuilder: (_, i) => _PlaylistTile(
+                        playlist: playlists[i],
+                        current: loc,
+                      ),
+                    ),
+              loading: () => const Padding(
+                padding: EdgeInsets.all(20),
+                child: SizedBox(
+                  height: 20,
+                  width: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primary),
+                ),
+              ),
+              error: (_, __) => const SizedBox.shrink(),
+            ),
+          ),
+
+          // Rodapé: Configurações + usuário
+          const Divider(height: 1),
+          _NavItem(icon: Icons.settings, label: 'Configurações', route: '/settings', current: loc),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
             child: Row(
               children: [
                 CircleAvatar(
-                  radius: 16,
+                  radius: 14,
                   backgroundColor: AppColors.primary,
-                  child: Text(username.isNotEmpty ? username[0].toUpperCase() : '?',
-                    style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+                  child: Text(
+                    widget.username.isNotEmpty ? widget.username[0].toUpperCase() : '?',
+                    style: const TextStyle(
+                        color: Colors.black, fontWeight: FontWeight.bold, fontSize: 13),
+                  ),
                 ),
-                const SizedBox(width: 12),
-                Expanded(child: Text(username, overflow: TextOverflow.ellipsis)),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(widget.username,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 13)),
+                ),
               ],
             ),
           ),
-          const SizedBox(height: 8),
         ],
       ),
     );
   }
 }
+
+// ── _PlaylistTile ──────────────────────────────────────────────────────────
+
+class _PlaylistTile extends StatelessWidget {
+  final Playlist playlist;
+  final String current;
+  const _PlaylistTile({required this.playlist, required this.current});
+
+  @override
+  Widget build(BuildContext context) {
+    final route = '/playlist/${playlist.id}';
+    final isActive = current == route;
+    return ListTile(
+      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+      leading: ClipRRect(
+        borderRadius: BorderRadius.circular(4),
+        child: playlist.coverUrl != null
+            ? Image.network(playlist.coverUrl!,
+                width: 40, height: 40, fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => _PlaylistCoverFallback())
+            : _PlaylistCoverFallback(),
+      ),
+      title: Text(
+        playlist.name,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(
+          fontSize: 13,
+          color: isActive ? AppColors.primary : AppColors.textPrimary,
+          fontWeight: isActive ? FontWeight.w600 : FontWeight.normal,
+        ),
+      ),
+      subtitle: Text(
+        '${playlist.trackCount} músicas',
+        style: const TextStyle(fontSize: 11, color: AppColors.textSecondary),
+      ),
+      onTap: () => context.go(route),
+    );
+  }
+}
+
+class _PlaylistCoverFallback extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) => Container(
+        width: 40,
+        height: 40,
+        color: AppColors.surfaceVariant,
+        child: const Icon(Icons.queue_music, size: 20, color: AppColors.textSecondary),
+      );
+}
+
+// ── _NavItem ───────────────────────────────────────────────────────────────
 
 class _NavItem extends StatelessWidget {
   final IconData icon;
@@ -155,17 +308,28 @@ class _NavItem extends StatelessWidget {
   final String route;
   final String current;
 
-  const _NavItem({required this.icon, required this.label, required this.route, required this.current});
+  const _NavItem({
+    required this.icon,
+    required this.label,
+    required this.route,
+    required this.current,
+  });
 
   @override
   Widget build(BuildContext context) {
     final isActive = current == route || (route != '/' && current.startsWith(route));
     return ListTile(
-      leading: Icon(icon, color: isActive ? AppColors.primary : AppColors.textSecondary),
-      title: Text(label, style: TextStyle(
-        color: isActive ? AppColors.textPrimary : AppColors.textSecondary,
-        fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
-      )),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 20),
+      leading: Icon(icon,
+          color: isActive ? AppColors.primary : AppColors.textSecondary, size: 22),
+      title: Text(
+        label,
+        style: TextStyle(
+          fontSize: 14,
+          color: isActive ? AppColors.textPrimary : AppColors.textSecondary,
+          fontWeight: isActive ? FontWeight.w600 : FontWeight.normal,
+        ),
+      ),
       onTap: () => context.go(route),
     );
   }

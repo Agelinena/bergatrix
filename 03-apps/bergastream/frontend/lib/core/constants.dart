@@ -6,7 +6,11 @@ const double kDesktopBreakpoint = 900;
 
 // Player
 const double kMiniPlayerHeight = 64;
-const double kPlayerBarHeight = 80;
+const double kPlayerBarHeight = 90;
+
+// Desktop layout
+const double kSidebarWidth = 240.0;
+const double kNowPlayingWidth = 280.0;
 
 // Animation durations
 const Duration kPageTransition = Duration(milliseconds: 250);
