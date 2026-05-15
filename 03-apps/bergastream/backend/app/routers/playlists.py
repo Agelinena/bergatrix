@@ -66,6 +66,8 @@ async def create_playlist(
     pl = Playlist(owner_id=current_user.id, name=body.name, description=body.description, is_public=body.is_public)
     db.add(pl)
     await db.flush()
+    # Refresh para carregar campos gerados pelo servidor (created_at, updated_at)
+    await db.refresh(pl)
     schema = PlaylistSchema.model_validate(pl)
     schema.track_count = 0
     return schema
@@ -133,6 +135,9 @@ async def update_playlist(
     if body.is_public is not None:
         pl.is_public = body.is_public
     await db.flush()
+    # Refresh obrigatório: onupdate=func.now() é server-side; sem refresh o Pydantic
+    # tenta lazy-load de updated_at fora de contexto async → MissingGreenlet
+    await db.refresh(pl)
     schema = PlaylistSchema.model_validate(pl)
     schema.track_count = await _track_count(db, pl.id)
     return schema
@@ -228,6 +233,7 @@ async def upload_cover(
 
     cover_url = f"https://{settings.api_domain}/media/covers/{filename}"
     pl.cover_url = cover_url
+    await db.flush()  # persiste a mudança no BD (sem isso a capa nunca é salva)
     return {"cover_url": cover_url}
 
 
@@ -292,6 +298,8 @@ async def _build_detail(db: AsyncSession, pl: Playlist) -> PlaylistDetailSchema:
                 id=str(pt.id), track=ts, position=pt.position, added_at=pt.added_at
             ))
 
+    # Refresh garante que campos server-side (updated_at etc.) estão carregados
+    await db.refresh(pl)
     # model_validate(pl) would trigger lazy-load of pl.tracks; build from PlaylistSchema instead
     base = PlaylistSchema.model_validate(pl)
     base_data = base.model_dump()
