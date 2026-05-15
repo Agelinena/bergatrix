@@ -36,17 +36,24 @@ class AudioPlayerService {
   }
 
   Future<void> play(Track track) async {
-    await _player.stop();
-    final token = await _client.getToken();
-    final url = _client.streamUrl(track.id, token: token);
-    await _player.setAudioSource(
-      AudioSource.uri(
-        Uri.parse(url),
-        headers: token != null ? {'Authorization': 'Bearer $token'} : {},
-        tag: _trackTag(track),
-      ),
-    );
-    await _player.play();
+    try {
+      await _player.stop();
+      final token = await _client.getToken();
+      final url = _client.streamUrl(track.id, token: token);
+      await _player.setAudioSource(
+        AudioSource.uri(
+          Uri.parse(url),
+          // Token no header para ExoPlayer (nativo); também vai na query string
+          // para HTML5 audio (web) — ambos são aceitos pelo servidor.
+          headers: token != null ? {'Authorization': 'Bearer $token'} : {},
+          tag: _trackTag(track),
+        ),
+      );
+      await _player.play();
+    } catch (e) {
+      onStatusChanged?.call(PlayerStatus.error);
+      rethrow;
+    }
   }
 
   Future<void> pause() => _player.pause();

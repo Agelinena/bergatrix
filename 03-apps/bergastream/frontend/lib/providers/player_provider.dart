@@ -114,7 +114,11 @@ class Player extends _$Player {
     );
     // Kick off background prefetch for upcoming tracks immediately
     _prefetchUpcoming();
-    await _service.play(track);
+    try {
+      await _service.play(track);
+    } catch (e) {
+      state = state.copyWith(status: PlayerStatus.error);
+    }
   }
 
   Future<void> pause() async {

@@ -19,7 +19,6 @@ dependencies:
 
   # Audio (just_audio inclui suporte Windows/Linux nativamente desde 0.9.x)
   just_audio: ^0.9.40
-  audio_service: ^0.18.15
 
   # HTTP
   dio: ^5.7.0
