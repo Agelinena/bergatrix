@@ -37,7 +37,7 @@ ThemeData buildDarkTheme() {
       bodySmall: TextStyle(color: AppColors.textSecondary, fontSize: 12),
       labelLarge: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w600, fontSize: 14),
     ),
-    cardTheme: CardTheme(
+    cardTheme: CardThemeData(
       color: AppColors.surfaceVariant,
       elevation: 0,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),

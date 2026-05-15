@@ -145,7 +145,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen>
       final client = ref.read(apiClientProvider);
       final data = await client.resolveTrackUrl(url);
       final track = Track.fromJson(data['track'] as Map<String, dynamic>);
-      await _playFromSearch(track, [track]);
+      _playFromSearch(track, [track]);
     } catch (e) {
       messenger.showSnackBar(SnackBar(
         content: Text(friendlyError(e, fallback: 'Não foi possível resolver este link.')),
