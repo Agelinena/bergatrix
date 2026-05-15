@@ -17,7 +17,7 @@ class ApiClient {
     _dio = Dio(BaseOptions(
       baseUrl: kApiBaseUrl,
       connectTimeout: const Duration(seconds: 10),
-      receiveTimeout: const Duration(seconds: 30),
+      receiveTimeout: const Duration(seconds: 90),
       headers: {'Content-Type': 'application/json'},
     ));
 
@@ -285,10 +285,13 @@ class ApiClient {
     await _dio.delete('/api/admin/users/$userId');
   }
 
-  // Artist all tracks (paginated)
+  // Artist all tracks — backend fetches via albums; first call can take a few seconds
   Future<Map<String, dynamic>> getArtistTracks(String artistId, {int index = 0, int limit = 100}) async {
-    final resp = await _dio.get('/api/artist/$artistId/tracks',
-        queryParameters: {'index': index, 'limit': limit});
+    final resp = await _dio.get(
+      '/api/artist/$artistId/tracks',
+      queryParameters: {'index': index, 'limit': limit},
+      options: Options(receiveTimeout: const Duration(seconds: 120)),
+    );
     return resp.data as Map<String, dynamic>;
   }
 }
