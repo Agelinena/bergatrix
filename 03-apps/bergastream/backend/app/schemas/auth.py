@@ -11,14 +11,14 @@ class RegisterRequest(BaseModel):
     @classmethod
     def username_valid(cls, v: str) -> str:
         if not re.match(r"^[a-zA-Z0-9_]{3,50}$", v):
-            raise ValueError("Username must be 3-50 alphanumeric characters or underscores")
+            raise ValueError("Nome de usuário deve ter 3-50 caracteres alfanuméricos ou _")
         return v
 
     @field_validator("password")
     @classmethod
     def password_strong(cls, v: str) -> str:
         if len(v) < 8:
-            raise ValueError("Password must be at least 8 characters")
+            raise ValueError("A senha deve ter pelo menos 8 caracteres")
         return v
 
 
@@ -38,6 +38,8 @@ class UserResponse(BaseModel):
     username: str
     email: str
     avatar_url: str | None
+    is_admin: bool = False
+    is_active: bool = True
 
     model_config = {"from_attributes": True}
 
@@ -55,5 +57,31 @@ class ChangePasswordRequest(BaseModel):
     @classmethod
     def password_strong(cls, v: str) -> str:
         if len(v) < 8:
-            raise ValueError("Password must be at least 8 characters")
+            raise ValueError("A senha deve ter pelo menos 8 caracteres")
         return v
+
+
+class AdminCreateUserRequest(BaseModel):
+    username: str
+    email: EmailStr
+    password: str
+    is_admin: bool = False
+
+    @field_validator("username")
+    @classmethod
+    def username_valid(cls, v: str) -> str:
+        if not re.match(r"^[a-zA-Z0-9_]{3,50}$", v):
+            raise ValueError("Nome de usuário deve ter 3-50 caracteres alfanuméricos ou _")
+        return v
+
+    @field_validator("password")
+    @classmethod
+    def password_strong(cls, v: str) -> str:
+        if len(v) < 8:
+            raise ValueError("A senha deve ter pelo menos 8 caracteres")
+        return v
+
+
+class AdminUpdateUserRequest(BaseModel):
+    is_admin: bool | None = None
+    is_active: bool | None = None

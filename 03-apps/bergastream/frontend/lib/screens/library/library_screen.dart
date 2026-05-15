@@ -101,6 +101,39 @@ class _PlaylistTile extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final tile = ListTile(
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      leading: ClipRRect(
+        borderRadius: BorderRadius.circular(4),
+        child: Container(
+          width: 56, height: 56,
+          color: AppColors.surfaceVariant,
+          child: playlist.coverUrl != null
+              ? Image.network(playlist.coverUrl!, fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => const Icon(Icons.queue_music, color: AppColors.textSecondary))
+              : const Icon(Icons.queue_music, color: AppColors.textSecondary),
+        ),
+      ),
+      title: Text(playlist.name, style: const TextStyle(fontWeight: FontWeight.w500)),
+      subtitle: Row(
+        children: [
+          Text('${playlist.trackCount} músicas',
+              style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+          if (playlist.isCollaborative) ...[
+            const SizedBox(width: 6),
+            const Icon(Icons.group_outlined, size: 13, color: AppColors.textSecondary),
+            const SizedBox(width: 2),
+            const Text('Colaborador',
+                style: TextStyle(color: AppColors.textSecondary, fontSize: 11)),
+          ],
+        ],
+      ),
+      onTap: () => context.go('/playlist/${playlist.id}'),
+    );
+
+    // Collaborative playlists can't be deleted by the collaborator — disable swipe.
+    if (playlist.isCollaborative) return tile;
+
     return Dismissible(
       key: Key(playlist.id),
       direction: DismissDirection.endToStart,
@@ -141,19 +174,7 @@ class _PlaylistTile extends ConsumerWidget {
           return false;
         }
       },
-      child: ListTile(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        leading: Container(
-          width: 56, height: 56,
-          color: AppColors.surfaceVariant,
-          child: playlist.coverUrl != null
-              ? Image.network(playlist.coverUrl!, fit: BoxFit.cover)
-              : const Icon(Icons.queue_music, color: AppColors.textSecondary),
-        ),
-        title: Text(playlist.name, style: const TextStyle(fontWeight: FontWeight.w500)),
-        subtitle: Text('${playlist.trackCount} músicas', style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
-        onTap: () => context.go('/playlist/${playlist.id}'),
-      ),
+      child: tile,
     );
   }
 }

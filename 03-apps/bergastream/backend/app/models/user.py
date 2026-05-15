@@ -15,6 +15,7 @@ class User(Base):
     password_hash: Mapped[str] = mapped_column(String, nullable=False)
     avatar_url: Mapped[str | None] = mapped_column(String, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    is_admin: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
@@ -23,6 +24,7 @@ class User(Base):
     liked_songs: Mapped[list["LikedSong"]] = relationship("LikedSong", back_populates="user", cascade="all, delete-orphan")
     play_history: Mapped[list["PlayHistory"]] = relationship("PlayHistory", back_populates="user", cascade="all, delete-orphan")
     offline_tracks: Mapped[list["OfflineTrack"]] = relationship("OfflineTrack", back_populates="user", cascade="all, delete-orphan")
+    collaborating_playlists: Mapped[list["PlaylistCollaborator"]] = relationship("PlaylistCollaborator", back_populates="user", cascade="all, delete-orphan")
 
 
 class Session(Base):

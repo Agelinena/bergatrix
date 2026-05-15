@@ -1,11 +1,10 @@
-// ignore: avoid_web_libraries_in_flutter
-import 'dart:html' as html;
 import 'dart:async';
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shimmer/shimmer.dart';
+import '../../core/error_messages.dart';
+import '../../core/storage.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/api_client.dart';
 import '../../models/track.dart';
@@ -32,6 +31,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen>
   final _sourceLabels = ['Deezer', 'Spotify', 'Todos'];
   List<String> _history = [];
   bool _showHistory = true; // começa mostrando histórico (campo vazio + autofocus)
+  bool _resolvingUrl = false; // true enquanto resolve uma URL colada
 
   static const _historyKey = 'search_history';
   static const _maxHistory = 15;
@@ -62,13 +62,9 @@ class _SearchScreenState extends ConsumerState<SearchScreen>
   // ── Histórico ─────────────────────────────────────────────────────────────
 
   void _loadHistory() {
-    try {
-      final raw = html.window.localStorage[_historyKey];
-      if (raw != null) {
-        final list = List<String>.from(jsonDecode(raw));
-        setState(() => _history = list);
-      }
-    } catch (_) {}
+    AppStorage.getStringList(_historyKey).then((list) {
+      if (list != null && mounted) setState(() => _history = list);
+    });
   }
 
   void _saveHistory(String query) {
@@ -76,23 +72,17 @@ class _SearchScreenState extends ConsumerState<SearchScreen>
     if (q.isEmpty) return;
     final updated = [q, ..._history.where((h) => h != q)].take(_maxHistory).toList();
     _history = updated;
-    try {
-      html.window.localStorage[_historyKey] = jsonEncode(updated);
-    } catch (_) {}
+    AppStorage.setStringList(_historyKey, updated).ignore();
   }
 
   void _removeHistory(String query) {
     setState(() => _history = _history.where((h) => h != query).toList());
-    try {
-      html.window.localStorage[_historyKey] = jsonEncode(_history);
-    } catch (_) {}
+    AppStorage.setStringList(_historyKey, _history).ignore();
   }
 
   void _clearHistory() {
     setState(() => _history = []);
-    try {
-      html.window.localStorage.remove(_historyKey);
-    } catch (_) {}
+    AppStorage.remove(_historyKey).ignore();
   }
 
   // ── Busca ─────────────────────────────────────────────────────────────────
@@ -103,10 +93,14 @@ class _SearchScreenState extends ConsumerState<SearchScreen>
     ref.read(searchProvider.notifier).search(q.trim(), source: _selectedSource);
   }
 
-  /// Chamado pelo Enter/Go — salva no histórico antes de buscar.
+  /// Chamado pelo Enter/Go — salva no histórico antes de buscar (ou resolve URL).
   void _submitSearch(String q) {
     _debounce?.cancel();
     if (q.trim().isEmpty) return;
+    if (_isTrackUrl(q.trim())) {
+      _resolveAndPlay(q.trim());
+      return;
+    }
     _saveHistory(q);
     _search(q);
   }
@@ -119,6 +113,11 @@ class _SearchScreenState extends ConsumerState<SearchScreen>
     }
     setState(() => _showHistory = false);
     _debounce?.cancel();
+    // If pasting a URL, resolve immediately (no debounce)
+    if (_isTrackUrl(q.trim())) {
+      _debounce = Timer(const Duration(milliseconds: 300), () => _resolveAndPlay(q.trim()));
+      return;
+    }
     _debounce = Timer(const Duration(milliseconds: 500), () => _search(q));
   }
 
@@ -127,6 +126,34 @@ class _SearchScreenState extends ConsumerState<SearchScreen>
     _debounce?.cancel();
     _queryCtrl.text = q;
     _search(q); // já faz setState(_showHistory = false)
+  }
+
+  /// Detects if a string is a Spotify/Deezer/YouTube URL.
+  bool _isTrackUrl(String s) {
+    return s.contains('open.spotify.com/track') ||
+        s.contains('deezer.com/track') ||
+        s.contains('deezer.com/en/track') ||
+        s.contains('youtube.com/watch') ||
+        s.contains('youtu.be/');
+  }
+
+  /// Resolves a pasted track URL, plays the result and activates radio.
+  Future<void> _resolveAndPlay(String url) async {
+    setState(() => _resolvingUrl = true);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final client = ref.read(apiClientProvider);
+      final data = await client.resolveTrackUrl(url);
+      final track = Track.fromJson(data['track'] as Map<String, dynamic>);
+      await _playFromSearch(track, [track]);
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(
+        content: Text(friendlyError(e, fallback: 'Não foi possível resolver este link.')),
+        backgroundColor: Colors.red,
+      ));
+    } finally {
+      if (mounted) setState(() => _resolvingUrl = false);
+    }
   }
 
   void _playFromSearch(Track track, List<Track> queue) async {
@@ -162,14 +189,22 @@ class _SearchScreenState extends ConsumerState<SearchScreen>
           onChanged: _onQueryChanged,
           onSubmitted: _submitSearch,
           decoration: InputDecoration(
-            hintText: 'Buscar músicas, artistas, álbuns...',
-            prefixIcon: const Icon(Icons.search),
+            hintText: 'Buscar ou colar link do Spotify/Deezer/YouTube...',
+            prefixIcon: _resolvingUrl
+                ? const Padding(
+                    padding: EdgeInsets.all(12),
+                    child: SizedBox(
+                      width: 20, height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primary),
+                    ),
+                  )
+                : const Icon(Icons.search),
             suffixIcon: _queryCtrl.text.isNotEmpty
                 ? IconButton(
                     icon: const Icon(Icons.clear),
                     onPressed: () {
                       _queryCtrl.clear();
-                      setState(() => _showHistory = true);
+                      setState(() { _showHistory = true; _resolvingUrl = false; });
                     },
                   )
                 : null,

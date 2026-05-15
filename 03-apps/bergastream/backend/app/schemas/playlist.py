@@ -26,6 +26,15 @@ class PlaylistTrackSchema(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class CollaboratorSchema(BaseModel):
+    user_id: str
+    username: str
+    email: str
+    added_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
 class PlaylistSchema(BaseModel):
     id: uuid.UUID
     name: str
@@ -38,12 +47,14 @@ class PlaylistSchema(BaseModel):
     created_at: datetime
     updated_at: datetime
     track_count: int = 0
+    is_collaborative: bool = False  # True se o usuário atual é colaborador (não dono)
 
     model_config = {"from_attributes": True}
 
 
 class PlaylistDetailSchema(PlaylistSchema):
     tracks: list[PlaylistTrackSchema] = []
+    collaborators: list[CollaboratorSchema] = []
 
 
 class AddTrackRequest(BaseModel):

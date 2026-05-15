@@ -1,8 +1,7 @@
-// ignore: avoid_web_libraries_in_flutter
-import 'dart:html' as html;
 import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../core/storage.dart';
 import '../models/track.dart';
 import '../core/api_client.dart';
 import 'player_provider.dart';
@@ -59,12 +58,13 @@ class RadioQueueNotifier extends Notifier<RadioQueueState> {
   static const _targetAhead = 20;
   static const _radioKey = 'radio_source';
 
-  /// Flag síncrona (não Riverpod state) para evitar race condition onde o
-  /// listener dispara _refill() e activate() ao mesmo tempo. O problema:
-  /// state.isRefilling é Riverpod state — notifica listeners de forma assíncrona,
-  /// então entre o `_refill()` ser chamado e `isRefilling=true` se propagar,
-  /// o listener já pode ter disparado _refill() novamente.
+  /// Flag síncrona para evitar _refill() duplo no mesmo frame.
   bool _refillInFlight = false;
+
+  /// Contador de geração para cancel de activate() em voo.
+  /// Quando o usuário troca de música antes de activate() terminar, o ID muda
+  /// e a resposta stale é descartada antes de adicionar tracks à fila.
+  int _activationId = 0;
 
   @override
   RadioQueueState build() {
@@ -89,22 +89,23 @@ class RadioQueueNotifier extends Notifier<RadioQueueState> {
     return RadioQueueState.initial();
   }
 
-  String _savedSource() {
+  Future<String> _savedSource() async {
     try {
-      return html.window.localStorage[_radioKey] ?? 'lastfm';
+      return await AppStorage.getString(_radioKey) ?? 'lastfm';
     } catch (_) {
       return 'lastfm';
     }
   }
 
   Future<void> activate(Track seed, [String? source]) async {
-    final src = source ?? _savedSource();
+    // Snapshot do ID ANTES do await — se deactivate() ou outro activate()
+    // for chamado enquanto aguardamos a API, myId ≠ _activationId e descartamos.
+    final myId = ++_activationId;
+
+    final src = source ?? await _savedSource();
     final playerState = ref.read(playerProvider);
     final alreadyQueued = playerState.queue.map((t) => t.id).toSet();
 
-    // Set isRefilling: true immediately so the playerProvider listener (which fires
-    // on every position tick) cannot race ahead and call _refill() before we finish
-    // the initial fill.
     state = state.copyWith(
       isActive: true,
       seedTrack: seed,
@@ -123,6 +124,13 @@ class RadioQueueNotifier extends Notifier<RadioQueueState> {
         title: seed.title,
         artist: seed.artist,
       );
+
+      // Se o usuário trocou de música enquanto buscávamos, descarta o resultado.
+      if (_activationId != myId) {
+        debugPrint('[RadioQueue] activate: resultado stale (id=$myId), descartando');
+        return;
+      }
+
       final tracks = (data['tracks'] as List<dynamic>)
           .map((t) => Track.fromJson(t as Map<String, dynamic>))
           .where((t) => !state.playedIds.contains(t.id) && !state.queuedIds.contains(t.id))
@@ -143,22 +151,24 @@ class RadioQueueNotifier extends Notifier<RadioQueueState> {
     } catch (e, st) {
       debugPrint('[RadioQueue] activate error: $e\n$st');
     } finally {
-      state = state.copyWith(isRefilling: false);
+      if (_activationId == myId) {
+        state = state.copyWith(isRefilling: false);
+      }
     }
 
-    // Faixa em cache pode terminar ANTES de activate() completar a request:
-    // _handleTrackComplete → next() → fila vazia → player fica idle.
-    // Quando as seeds chegam, precisamos avançar manualmente.
-    if (tracksAdded > 0) {
+    // Faixa em cache pode terminar ANTES de activate() completar:
+    // Se o player ficou idle, avança agora que as seeds chegaram.
+    if (tracksAdded > 0 && _activationId == myId) {
       final ps = ref.read(playerProvider);
       if (ps.hasTrack && ps.status == PlayerStatus.idle) {
-        debugPrint('[RadioQueue] activate: player travado em idle, avançando para primeira seed');
+        debugPrint('[RadioQueue] activate: player travado em idle, avançando');
         await ref.read(playerProvider.notifier).next();
       }
     }
   }
 
   void deactivate() {
+    _activationId++; // Cancela qualquer activate() ainda em voo
     state = state.copyWith(isActive: false);
   }
 

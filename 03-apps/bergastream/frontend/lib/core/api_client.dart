@@ -81,6 +81,13 @@ class ApiClient {
     });
   }
 
+  Future<Map<String, dynamic>> updateMe({String? username}) async {
+    final data = <String, dynamic>{};
+    if (username != null) data['username'] = username;
+    final resp = await _dio.put('/api/auth/me', data: data);
+    return resp.data as Map<String, dynamic>;
+  }
+
   // Search
   Future<Map<String, dynamic>> search(String query, {String source = 'deezer'}) async {
     final resp = await _dio.get('/api/search', queryParameters: {'q': query, 'source': source});
@@ -209,6 +216,73 @@ class ApiClient {
   // Cache
   Future<void> deleteTrackCache(String trackId) async {
     await _dio.delete('/api/stream/$trackId/cache');
+  }
+
+  // Collaborators
+  Future<List<dynamic>> getCollaborators(String playlistId) async {
+    final resp = await _dio.get('/api/playlists/$playlistId/collaborators');
+    return resp.data as List<dynamic>;
+  }
+
+  Future<Map<String, dynamic>> addCollaborator(String playlistId, String identifier) async {
+    final isEmail = identifier.contains('@');
+    final resp = await _dio.post(
+      '/api/playlists/$playlistId/collaborators',
+      data: isEmail ? {'email': identifier} : {'username': identifier},
+    );
+    return resp.data as Map<String, dynamic>;
+  }
+
+  Future<void> removeCollaborator(String playlistId, String userId) async {
+    await _dio.delete('/api/playlists/$playlistId/collaborators/$userId');
+  }
+
+  // URL resolve
+  Future<Map<String, dynamic>> resolveTrackUrl(String url) async {
+    final resp = await _dio.post('/api/resolve/track', data: {'url': url});
+    return resp.data as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> resolvePlaylistUrl(String url) async {
+    final resp = await _dio.post('/api/resolve/playlist', data: {'url': url});
+    return resp.data as Map<String, dynamic>;
+  }
+
+  // Admin
+  Future<List<dynamic>> adminListUsers() async {
+    final resp = await _dio.get('/api/admin/users');
+    return resp.data as List<dynamic>;
+  }
+
+  Future<Map<String, dynamic>> adminCreateUser({
+    required String username,
+    required String email,
+    required String password,
+    bool isAdmin = false,
+  }) async {
+    final resp = await _dio.post('/api/admin/users', data: {
+      'username': username,
+      'email': email,
+      'password': password,
+      'is_admin': isAdmin,
+    });
+    return resp.data as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> adminUpdateUser(
+    String userId, {
+    bool? isAdmin,
+    bool? isActive,
+  }) async {
+    final data = <String, dynamic>{};
+    if (isAdmin != null) data['is_admin'] = isAdmin;
+    if (isActive != null) data['is_active'] = isActive;
+    final resp = await _dio.patch('/api/admin/users/$userId', data: data);
+    return resp.data as Map<String, dynamic>;
+  }
+
+  Future<void> adminDeleteUser(String userId) async {
+    await _dio.delete('/api/admin/users/$userId');
   }
 
   // Artist all tracks (paginated)

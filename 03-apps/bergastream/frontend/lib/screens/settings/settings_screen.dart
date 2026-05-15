@@ -1,10 +1,13 @@
-// ignore: avoid_web_libraries_in_flutter
-import 'dart:html' as html;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../core/error_messages.dart';
+import '../../core/storage.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/api_client.dart';
+import '../../models/track.dart';
+import '../../models/user.dart';
 import '../../providers/auth_provider.dart';
+import '../../providers/library_provider.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -17,6 +20,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   static const _radioKey = 'radio_source';
 
   String _radioSource = 'lastfm';
+
+  // Username change form
+  final _usernameFormKey = GlobalKey<FormState>();
+  final _usernameCtrl = TextEditingController();
+  bool _savingUsername = false;
 
   // Password change form
   final _formKey = GlobalKey<FormState>();
@@ -36,6 +44,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
   @override
   void dispose() {
+    _usernameCtrl.dispose();
     _currentPwCtrl.dispose();
     _newPwCtrl.dispose();
     _confirmPwCtrl.dispose();
@@ -43,17 +52,37 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 
   void _loadPrefs() {
-    try {
-      final stored = html.window.localStorage[_radioKey];
-      if (stored != null) setState(() => _radioSource = stored);
-    } catch (_) {}
+    // Pre-fill username field with current value
+    final user = ref.read(authProvider).valueOrNull;
+    if (user != null) _usernameCtrl.text = user.username;
+    // Load radio source preference asynchronously
+    AppStorage.getString(_radioKey).then((stored) {
+      if (stored != null && mounted) setState(() => _radioSource = stored);
+    });
   }
 
   void _setRadioSource(String source) {
     setState(() => _radioSource = source);
+    AppStorage.setString(_radioKey, source).ignore();
+  }
+
+  Future<void> _changeUsername() async {
+    if (!(_usernameFormKey.currentState?.validate() ?? false)) return;
+    setState(() => _savingUsername = true);
+    final messenger = ScaffoldMessenger.of(context);
     try {
-      html.window.localStorage[_radioKey] = source;
-    } catch (_) {}
+      await ref.read(authProvider.notifier).updateUsername(_usernameCtrl.text.trim());
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Nome de usuário atualizado com sucesso')),
+      );
+    } catch (e) {
+      final msg = _extractError(e);
+      messenger.showSnackBar(
+        SnackBar(content: Text(msg), backgroundColor: Colors.red),
+      );
+    } finally {
+      if (mounted) setState(() => _savingUsername = false);
+    }
   }
 
   Future<void> _changePassword() async {
@@ -81,14 +110,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     }
   }
 
-  String _extractError(Object e) {
-    try {
-      final dynamic err = e;
-      final detail = err?.response?.data?['detail'];
-      if (detail is String) return detail;
-    } catch (_) {}
-    return 'Erro ao alterar senha';
-  }
+  String _extractError(Object e) => friendlyError(e, fallback: 'Algo deu errado. Tente novamente.');
 
   Future<void> _logout() async {
     await ref.read(authProvider.notifier).logout();
@@ -118,6 +140,46 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               subtitle: Text(user.email, style: const TextStyle(color: AppColors.textSecondary)),
             ),
           const SizedBox(height: 8),
+
+          // ── Nome de usuário ────────────────────────────────────────────
+          _SectionHeader('Nome de usuário'),
+          const SizedBox(height: 8),
+          Form(
+            key: _usernameFormKey,
+            child: Column(
+              children: [
+                TextFormField(
+                  controller: _usernameCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Nome de usuário',
+                    prefixIcon: Icon(Icons.person_outline),
+                  ),
+                  validator: (v) {
+                    if (v == null || v.trim().isEmpty) return 'Obrigatório';
+                    if (v.trim().length < 3) return 'Mínimo 3 caracteres';
+                    if (v.trim().length > 32) return 'Máximo 32 caracteres';
+                    if (!RegExp(r'^[a-zA-Z0-9_.-]+$').hasMatch(v.trim())) {
+                      return 'Apenas letras, números, _ . -';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton(
+                    onPressed: _savingUsername ? null : _changeUsername,
+                    child: _savingUsername
+                        ? const SizedBox(
+                            height: 18, width: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black))
+                        : const Text('Salvar nome de usuário'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 24),
 
           // ── Rádio ──────────────────────────────────────────────────────
           _SectionHeader('Modo Rádio'),
@@ -189,6 +251,52 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           ),
           const SizedBox(height: 32),
 
+          // ── Importar playlist ──────────────────────────────────────────
+          _SectionHeader('Importar playlist'),
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+            child: Text(
+              'Cole o link de uma playlist do Spotify, Deezer ou YouTube.',
+              style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Card(
+            margin: const EdgeInsets.symmetric(vertical: 4),
+            color: AppColors.surfaceVariant,
+            child: ListTile(
+              leading: const Icon(Icons.playlist_add, color: AppColors.primary),
+              title: const Text('Importar do Spotify / Deezer / YouTube'),
+              subtitle: const Text(
+                'Cole o link de qualquer playlist pública',
+                style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
+              ),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => _showImportPlaylistDialog(context),
+            ),
+          ),
+          const SizedBox(height: 24),
+
+          // ── Admin ──────────────────────────────────────────────────────
+          if (user?.isAdmin == true) ...[
+            _SectionHeader('Administração'),
+            Card(
+              margin: const EdgeInsets.symmetric(vertical: 4),
+              color: AppColors.surfaceVariant,
+              child: ListTile(
+                leading: const Icon(Icons.admin_panel_settings, color: AppColors.primary),
+                title: const Text('Gerenciar usuários'),
+                subtitle: const Text(
+                  'Criar, desativar e definir permissões',
+                  style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
+                ),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => _showAdminPanel(context),
+              ),
+            ),
+            const SizedBox(height: 24),
+          ],
+
           // ── Sair ───────────────────────────────────────────────────────
           const Divider(),
           ListTile(
@@ -198,6 +306,22 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           ),
           const SizedBox(height: 40),
         ],
+      ),
+    );
+  }
+
+  void _showAdminPanel(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (_) => const _AdminPanelDialog(),
+    );
+  }
+
+  void _showImportPlaylistDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (_) => _ImportPlaylistDialog(
+        onImported: () => ref.read(libraryProvider.notifier).load(),
       ),
     );
   }
@@ -296,6 +420,538 @@ class _PwField extends StatelessWidget {
         suffixIcon: IconButton(
           icon: Icon(obscure ? Icons.visibility_off : Icons.visibility, size: 20),
           onPressed: onToggle,
+        ),
+      ),
+    );
+  }
+}
+
+// ── Import Playlist Dialog ─────────────────────────────────────────────────────
+
+class _ImportPlaylistDialog extends ConsumerStatefulWidget {
+  final VoidCallback onImported;
+  const _ImportPlaylistDialog({required this.onImported});
+
+  @override
+  ConsumerState<_ImportPlaylistDialog> createState() => _ImportPlaylistDialogState();
+}
+
+class _ImportPlaylistDialogState extends ConsumerState<_ImportPlaylistDialog> {
+  final _urlCtrl = TextEditingController();
+  bool _loading = false;
+  String? _resolvedName;
+  List<Track> _resolvedTracks = [];
+
+  @override
+  void dispose() {
+    _urlCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _resolve() async {
+    final url = _urlCtrl.text.trim();
+    if (url.isEmpty) return;
+    setState(() { _loading = true; _resolvedName = null; _resolvedTracks = []; });
+    try {
+      final client = ref.read(apiClientProvider);
+      final data = await client.resolvePlaylistUrl(url);
+      final name = data['name'] as String;
+      final tracks = (data['tracks'] as List<dynamic>)
+          .map((t) => Track.fromJson(t as Map<String, dynamic>))
+          .toList();
+      setState(() {
+        _resolvedName = name;
+        _resolvedTracks = tracks;
+      });
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(friendlyError(e)), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _import() async {
+    if (_resolvedName == null || _resolvedTracks.isEmpty) return;
+    setState(() => _loading = true);
+    try {
+      final client = ref.read(apiClientProvider);
+      // 1. Create playlist
+      final pl = await client.createPlaylist(_resolvedName!);
+      final playlistId = pl['id'] as String;
+      // 2. Register + add tracks
+      for (final track in _resolvedTracks) {
+        try {
+          await client.registerTrack(track.toJson());
+          await client.addTrackToPlaylist(playlistId, track.id, force: false);
+        } catch (_) {}
+      }
+      widget.onImported();
+      if (mounted) {
+        Navigator.of(context).pop();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('"$_resolvedName" importada com ${_resolvedTracks.length} músicas!')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(friendlyError(e)), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      backgroundColor: AppColors.surface,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 480, maxHeight: 560),
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Text('Importar playlist',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _urlCtrl,
+                      decoration: const InputDecoration(
+                        hintText: 'Link do Spotify, Deezer ou YouTube',
+                        prefixIcon: Icon(Icons.link),
+                        isDense: true,
+                      ),
+                      onSubmitted: (_) => _resolve(),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  FilledButton(
+                    onPressed: _loading ? null : _resolve,
+                    child: _loading && _resolvedName == null
+                        ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black))
+                        : const Text('Buscar'),
+                  ),
+                ],
+              ),
+              if (_resolvedName != null) ...[
+                const SizedBox(height: 20),
+                const Divider(height: 1),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    const Icon(Icons.playlist_play, color: AppColors.primary),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(_resolvedName!,
+                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                          Text('${_resolvedTracks.length} músicas',
+                              style: const TextStyle(color: AppColors.textSecondary, fontSize: 13)),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                // Preview of first few tracks
+                if (_resolvedTracks.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  SizedBox(
+                    height: 140,
+                    child: ListView.builder(
+                      itemCount: _resolvedTracks.take(6).length,
+                      itemBuilder: (_, i) {
+                        final t = _resolvedTracks[i];
+                        return ListTile(
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                          leading: Text('${i + 1}', style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+                          title: Text(t.title, style: const TextStyle(fontSize: 13), overflow: TextOverflow.ellipsis),
+                          subtitle: Text(t.artist, style: const TextStyle(color: AppColors.textSecondary, fontSize: 11), overflow: TextOverflow.ellipsis),
+                        );
+                      },
+                    ),
+                  ),
+                  if (_resolvedTracks.length > 6)
+                    Text('... e mais ${_resolvedTracks.length - 6} músicas',
+                        style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+                ],
+                const SizedBox(height: 16),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: _loading ? null : _import,
+                    icon: _loading
+                        ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black))
+                        : const Icon(Icons.download),
+                    label: const Text('Importar playlist'),
+                  ),
+                ),
+              ],
+              const SizedBox(height: 12),
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Cancelar'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ── Admin Panel Dialog ─────────────────────────────────────────────────────────
+
+class _AdminPanelDialog extends ConsumerStatefulWidget {
+  const _AdminPanelDialog();
+
+  @override
+  ConsumerState<_AdminPanelDialog> createState() => _AdminPanelDialogState();
+}
+
+class _AdminPanelDialogState extends ConsumerState<_AdminPanelDialog> {
+  List<AppUser> _users = [];
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() => _loading = true);
+    try {
+      final data = await ref.read(apiClientProvider).adminListUsers();
+      setState(() {
+        _users = data
+            .map((u) => AppUser.fromJson(u as Map<String, dynamic>))
+            .toList();
+        _loading = false;
+      });
+    } catch (_) {
+      setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _toggleAdmin(AppUser user) async {
+    try {
+      await ref.read(apiClientProvider).adminUpdateUser(user.id, isAdmin: !user.isAdmin);
+      await _load();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(friendlyError(e)), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+
+  Future<void> _toggleActive(AppUser user) async {
+    try {
+      await ref.read(apiClientProvider).adminUpdateUser(user.id, isActive: !user.isActive);
+      await _load();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(friendlyError(e)), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+
+  void _showCreateUser() {
+    showDialog(
+      context: context,
+      builder: (_) => _CreateUserDialog(onCreated: _load),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      backgroundColor: AppColors.surface,
+      insetPadding: const EdgeInsets.all(16),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 600, maxHeight: 700),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // Header
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 16, 8, 8),
+              child: Row(
+                children: [
+                  const Icon(Icons.admin_panel_settings, color: AppColors.primary),
+                  const SizedBox(width: 12),
+                  const Text(
+                    'Gerenciar Usuários',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                  const Spacer(),
+                  IconButton(
+                    icon: const Icon(Icons.refresh),
+                    onPressed: _load,
+                    tooltip: 'Atualizar',
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.person_add),
+                    onPressed: _showCreateUser,
+                    tooltip: 'Criar usuário',
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close),
+                    onPressed: () => Navigator.of(context).pop(),
+                  ),
+                ],
+              ),
+            ),
+            const Divider(height: 1),
+
+            // User list
+            Expanded(
+              child: _loading
+                  ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
+                  : _users.isEmpty
+                      ? const Center(child: Text('Nenhum usuário encontrado'))
+                      : ListView.separated(
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          itemCount: _users.length,
+                          separatorBuilder: (_, __) => const Divider(height: 1, indent: 16),
+                          itemBuilder: (_, i) {
+                            final u = _users[i];
+                            return ListTile(
+                              leading: CircleAvatar(
+                                backgroundColor: u.isAdmin
+                                    ? AppColors.primary
+                                    : AppColors.surfaceVariant,
+                                child: Text(
+                                  u.initials,
+                                  style: TextStyle(
+                                    color: u.isAdmin ? Colors.black : AppColors.textPrimary,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                              title: Row(
+                                children: [
+                                  Text(u.username, style: const TextStyle(fontWeight: FontWeight.w600)),
+                                  const SizedBox(width: 8),
+                                  if (u.isAdmin)
+                                    _Chip('Admin', AppColors.primary),
+                                  if (!u.isActive)
+                                    _Chip('Inativo', Colors.red),
+                                ],
+                              ),
+                              subtitle: Text(u.email,
+                                  style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+                              trailing: PopupMenuButton<String>(
+                                icon: const Icon(Icons.more_vert),
+                                color: AppColors.surfaceVariant,
+                                onSelected: (val) {
+                                  if (val == 'admin') _toggleAdmin(u);
+                                  if (val == 'active') _toggleActive(u);
+                                },
+                                itemBuilder: (_) => [
+                                  PopupMenuItem(
+                                    value: 'admin',
+                                    child: Text(u.isAdmin ? 'Remover admin' : 'Tornar admin'),
+                                  ),
+                                  PopupMenuItem(
+                                    value: 'active',
+                                    child: Text(u.isActive ? 'Desativar conta' : 'Reativar conta'),
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
+                        ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _Chip extends StatelessWidget {
+  final String label;
+  final Color color;
+  const _Chip(this.label, this.color);
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.15),
+        borderRadius: BorderRadius.circular(4),
+        border: Border.all(color: color.withOpacity(0.4)),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w600),
+      ),
+    );
+  }
+}
+
+class _CreateUserDialog extends ConsumerStatefulWidget {
+  final VoidCallback onCreated;
+  const _CreateUserDialog({required this.onCreated});
+
+  @override
+  ConsumerState<_CreateUserDialog> createState() => _CreateUserDialogState();
+}
+
+class _CreateUserDialogState extends ConsumerState<_CreateUserDialog> {
+  final _formKey = GlobalKey<FormState>();
+  final _usernameCtrl = TextEditingController();
+  final _emailCtrl = TextEditingController();
+  final _passwordCtrl = TextEditingController();
+  bool _isAdmin = false;
+  bool _saving = false;
+  bool _obscurePassword = true;
+
+  @override
+  void dispose() {
+    _usernameCtrl.dispose();
+    _emailCtrl.dispose();
+    _passwordCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    if (!(_formKey.currentState?.validate() ?? false)) return;
+    setState(() => _saving = true);
+    try {
+      await ref.read(apiClientProvider).adminCreateUser(
+        username: _usernameCtrl.text.trim(),
+        email: _emailCtrl.text.trim(),
+        password: _passwordCtrl.text,
+        isAdmin: _isAdmin,
+      );
+      if (mounted) {
+        Navigator.of(context).pop();
+        widget.onCreated();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Usuário criado com sucesso')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(friendlyError(e)), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      backgroundColor: AppColors.surface,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 400),
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Form(
+            key: _formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Text('Criar usuário',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 20),
+                TextFormField(
+                  controller: _usernameCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Nome de usuário',
+                    prefixIcon: Icon(Icons.person_outline),
+                  ),
+                  validator: (v) {
+                    if (v == null || v.trim().isEmpty) return 'Obrigatório';
+                    if (v.trim().length < 3) return 'Mínimo 3 caracteres';
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _emailCtrl,
+                  keyboardType: TextInputType.emailAddress,
+                  decoration: const InputDecoration(
+                    labelText: 'E-mail',
+                    prefixIcon: Icon(Icons.email_outlined),
+                  ),
+                  validator: (v) {
+                    if (v == null || !v.contains('@')) return 'E-mail inválido';
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _passwordCtrl,
+                  obscureText: _obscurePassword,
+                  decoration: InputDecoration(
+                    labelText: 'Senha',
+                    prefixIcon: const Icon(Icons.lock_outline),
+                    suffixIcon: IconButton(
+                      icon: Icon(_obscurePassword ? Icons.visibility_off : Icons.visibility, size: 20),
+                      onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+                    ),
+                  ),
+                  validator: (v) {
+                    if (v == null || v.length < 8) return 'Mínimo 8 caracteres';
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 12),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Permissão de administrador'),
+                  value: _isAdmin,
+                  activeColor: AppColors.primary,
+                  onChanged: (v) => setState(() => _isAdmin = v),
+                ),
+                const SizedBox(height: 20),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    TextButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      child: const Text('Cancelar'),
+                    ),
+                    const SizedBox(width: 12),
+                    FilledButton(
+                      onPressed: _saving ? null : _submit,
+                      child: _saving
+                          ? const SizedBox(
+                              height: 18, width: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black))
+                          : const Text('Criar'),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );

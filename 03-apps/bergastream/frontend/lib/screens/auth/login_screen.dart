@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import '../../core/theme/app_theme.dart';
 import '../../providers/auth_provider.dart';
+import '../../widgets/berga_logo.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -50,10 +50,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Icon(Icons.music_note, size: 64, color: AppColors.primary),
+                  const BergaLogo(size: 80),
+                  const SizedBox(height: 20),
+                  const BergaLogo(size: 36, showWordmark: true),
                   const SizedBox(height: 8),
-                  Text('BergaStream', style: Theme.of(context).textTheme.displayMedium),
-                  const SizedBox(height: 4),
                   Text('Streaming privado e sem anúncios', style: Theme.of(context).textTheme.bodyMedium),
                   const SizedBox(height: 48),
                   TextFormField(
@@ -82,11 +82,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2))
                           : const Text('Entrar'),
                     ),
-                  ),
-                  const SizedBox(height: 16),
-                  TextButton(
-                    onPressed: () => context.go('/register'),
-                    child: const Text('Não tem conta? Criar agora', style: TextStyle(color: AppColors.primary)),
                   ),
                 ],
               ),

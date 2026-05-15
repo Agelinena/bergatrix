@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 160">
+  <!--
+    BergaStream – full horizontal logo (icon + wordmark)
+    Canvas: 720×160
+    Icon area: 160×160  (left)
+    Text area: x=192, vertically centred at y=80
+  -->
+
+  <!-- ── Icon (scaled to 160×160) ───────────────────────────────────────── -->
+  <!-- scale factor: 160/512 ≈ 0.3125 → rx=35, bar_w=12.5→13, gap=6 -->
+  <rect x="0" y="0" width="160" height="160" rx="35" fill="#1DB954"/>
+
+  <!-- 5 bars centred at (80, 80); total bar span = 5×13+4×6=89, start_x=35.5→36 -->
+  <!-- heights scaled: 30, 55, 85, 55, 30 ; centred at y=80 -->
+  <rect x="36"  y="65"  width="13" height="30" rx="7" fill="#000000"/>
+  <rect x="55"  y="52"  width="13" height="56" rx="7" fill="#000000"/>
+  <rect x="74"  y="37"  width="13" height="86" rx="7" fill="#000000"/>
+  <rect x="93"  y="52"  width="13" height="56" rx="7" fill="#000000"/>
+  <rect x="112" y="65"  width="13" height="30" rx="7" fill="#000000"/>
+
+  <!-- ── Wordmark ──────────────────────────────────────────────────────── -->
+  <!--
+    "berga" in white + "stream" in #1DB954 green
+    Font: system-ui / sans-serif bold  (renders fine in browser and Inkscape)
+    Baseline at y=105 for 72px text, so vertical centre ≈ (105-72*0.25)=87 ≈ 80 ✓
+  -->
+  <text
+    x="192" y="105"
+    font-family="system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif"
+    font-size="72"
+    font-weight="700"
+    letter-spacing="-2"
+    fill="#FFFFFF">berga</text>
+  <text
+    x="413" y="105"
+    font-family="system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif"
+    font-size="72"
+    font-weight="700"
+    letter-spacing="-2"
+    fill="#1DB954">stream</text>
+</svg>

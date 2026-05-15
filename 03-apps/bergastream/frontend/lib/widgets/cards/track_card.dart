@@ -1,13 +1,17 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/track.dart';
 import '../../models/playlist.dart';
 import '../../providers/player_provider.dart';
+import '../../providers/radio_queue_provider.dart';
 import '../../providers/library_provider.dart';
+import '../../providers/liked_provider.dart';
 import '../../core/api_client.dart';
+import '../../core/error_messages.dart';
 import '../../screens/radio/radio_screen.dart';
 
 class TrackCard extends ConsumerWidget {
@@ -82,6 +86,9 @@ class TrackCard extends ConsumerWidget {
   }
 
   void _playTrack(WidgetRef ref) async {
+    // Desativa rádio ao tocar de playlist/biblioteca (rádio só ativa na busca)
+    ref.read(radioQueueProvider.notifier).deactivate();
+
     final client = ref.read(apiClientProvider);
     await client.registerTrack(track.toJson());
     final q = queue.isEmpty ? [track] : queue;
@@ -112,29 +119,70 @@ class TrackMenuSheet extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final client = ref.read(apiClientProvider);
+    final isLiked = ref.watch(likedProvider.select((s) => s.contains(track.id)));
 
     return SafeArea(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
+          // ── Cabeçalho ────────────────────────────────────────────────────
+          ListTile(
+            leading: track.coverUrl != null
+                ? ClipRRect(
+                    borderRadius: BorderRadius.circular(4),
+                    child: Image.network(track.coverUrl!, width: 40, height: 40, fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => const Icon(Icons.music_note)),
+                  )
+                : const Icon(Icons.music_note),
+            title: Text(track.title, style: const TextStyle(fontWeight: FontWeight.bold)),
+            subtitle: Text(track.artist, style: const TextStyle(color: AppColors.textSecondary)),
+          ),
+          const Divider(height: 1),
+
+          // ── Ações ─────────────────────────────────────────────────────────
           ListTile(
             leading: const Icon(Icons.play_arrow),
             title: const Text('Tocar agora'),
             onTap: () {
               Navigator.pop(context);
-              client.registerTrack(track.toJson()).then((_) =>
-                ref.read(playerProvider.notifier).play(track));
+              client.registerTrack(track.toJson()).then((_) {
+                ref.read(radioQueueProvider.notifier).deactivate();
+                ref.read(playerProvider.notifier).play(track);
+              });
             },
           ),
           ListTile(
             leading: const Icon(Icons.queue_music),
-            title: const Text('Adicionar à fila'),
+            title: const Text('Tocar a seguir'),
             onTap: () {
               Navigator.pop(context);
-              // insertNextInQueue → toca logo após a faixa atual (antes do rádio)
               ref.read(playerProvider.notifier).insertNextInQueue(track);
             },
           ),
+
+          // ── Curtir ────────────────────────────────────────────────────────
+          ListTile(
+            leading: Icon(
+              isLiked ? Icons.favorite : Icons.favorite_border,
+              color: isLiked ? Colors.pinkAccent : null,
+            ),
+            title: Text(isLiked ? 'Descurtir' : 'Curtir'),
+            onTap: () {
+              Navigator.pop(context);
+              ref.read(likedProvider.notifier).toggle(track.id);
+            },
+          ),
+
+          // ── Compartilhar ──────────────────────────────────────────────────
+          ListTile(
+            leading: const Icon(Icons.share_outlined),
+            title: const Text('Compartilhar'),
+            onTap: () {
+              Navigator.pop(context);
+              _showShareSheet(context, ref);
+            },
+          ),
+
           if (playlistId != null)
             ListTile(
               leading: const Icon(Icons.remove_circle_outline, color: Colors.redAccent),
@@ -145,39 +193,29 @@ class TrackMenuSheet extends ConsumerWidget {
                 onRemoved?.call();
               },
             ),
-          ListTile(
-            leading: const Icon(Icons.favorite_border),
-            title: const Text('Curtir'),
-            onTap: () {
-              Navigator.pop(context);
-              client.likeTrack(track.id);
-            },
-          ),
           if (showRadioOption)
-          ListTile(
-            leading: const Icon(Icons.radio),
-            title: const Text('Modo Rádio'),
-            onTap: () {
-              Navigator.pop(context);
-              // Open synchronously — registering the track happens inside RadioScreen
-              // before the seed request so there's no race with the sheet animation.
-              showModalBottomSheet(
-                context: context,
-                useRootNavigator: true,
-                isScrollControlled: true,
-                backgroundColor: Colors.transparent,
-                builder: (_) => DraggableScrollableSheet(
-                  initialChildSize: 0.9,
-                  minChildSize: 0.5,
-                  maxChildSize: 1.0,
-                  builder: (_, ctrl) => ClipRRect(
-                    borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-                    child: RadioScreen(seedTrack: track),
+            ListTile(
+              leading: const Icon(Icons.radio),
+              title: const Text('Modo Rádio'),
+              onTap: () {
+                Navigator.pop(context);
+                showModalBottomSheet(
+                  context: context,
+                  useRootNavigator: true,
+                  isScrollControlled: true,
+                  backgroundColor: Colors.transparent,
+                  builder: (_) => DraggableScrollableSheet(
+                    initialChildSize: 0.9,
+                    minChildSize: 0.5,
+                    maxChildSize: 1.0,
+                    builder: (_, ctrl) => ClipRRect(
+                      borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+                      child: RadioScreen(seedTrack: track),
+                    ),
                   ),
-                ),
-              );
-            },
-          ),
+                );
+              },
+            ),
           ListTile(
             leading: const Icon(Icons.playlist_add),
             title: const Text('Adicionar a playlist'),
@@ -194,24 +232,109 @@ class TrackMenuSheet extends ConsumerWidget {
             leading: const Icon(Icons.refresh),
             title: const Text('Baixar novamente'),
             onTap: () async {
-              // Capture messenger before pop — context is deactivated after dismiss
               final messenger = ScaffoldMessenger.of(context);
               Navigator.pop(context);
               try {
                 await client.deleteTrackCache(track.id);
-                messenger.showSnackBar(
-                  const SnackBar(
-                    content: Text('Cache apagado — toque a música para re-baixar'),
-                    duration: Duration(seconds: 3),
-                  ),
-                );
+                messenger.showSnackBar(const SnackBar(
+                  content: Text('Cache apagado — toque para re-baixar'),
+                  duration: Duration(seconds: 3),
+                ));
               } catch (_) {
-                messenger.showSnackBar(
-                  const SnackBar(content: Text('Erro ao apagar cache'), duration: Duration(seconds: 2)),
-                );
+                messenger.showSnackBar(const SnackBar(
+                  content: Text('Não foi possível apagar o cache'),
+                  duration: Duration(seconds: 2),
+                ));
               }
             },
           ),
+        ],
+      ),
+    );
+  }
+
+  // ── Share sheet ───────────────────────────────────────────────────────────
+
+  void _showShareSheet(BuildContext context, WidgetRef ref) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppColors.surfaceVariant,
+      builder: (_) => _ShareSheet(track: track),
+    );
+  }
+}
+
+class _ShareSheet extends StatelessWidget {
+  final Track track;
+  const _ShareSheet({required this.track});
+
+  String? _spotifyUrl() {
+    if (track.source == 'spotify' && track.sourceId != null) {
+      return 'https://open.spotify.com/track/${track.sourceId}';
+    }
+    return null;
+  }
+
+  String? _deezerUrl() {
+    if (track.source == 'deezer' && track.sourceId != null) {
+      return 'https://www.deezer.com/track/${track.sourceId}';
+    }
+    return null;
+  }
+
+  String _bergaUrl() {
+    final q = Uri.encodeQueryComponent('${track.title} ${track.artist}');
+    return 'https://stream.bergaestudio.xyz/search?q=$q';
+  }
+
+  void _copy(BuildContext context, String url, String platform) {
+    Clipboard.setData(ClipboardData(text: url));
+    Navigator.pop(context);
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text('Link do $platform copiado!'),
+      duration: const Duration(seconds: 2),
+    ));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final spotifyUrl = _spotifyUrl();
+    final deezerUrl = _deezerUrl();
+
+    return SafeArea(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+            child: Text('Compartilhar "${track.title}"',
+                style: Theme.of(context).textTheme.titleMedium),
+          ),
+          const Divider(height: 1),
+          if (spotifyUrl != null)
+            ListTile(
+              leading: const Icon(Icons.music_note, color: Color(0xFF1DB954)),
+              title: const Text('Spotify'),
+              subtitle: Text(spotifyUrl, style: const TextStyle(fontSize: 11, color: AppColors.textSecondary), overflow: TextOverflow.ellipsis),
+              onTap: () => _copy(context, spotifyUrl, 'Spotify'),
+              trailing: const Icon(Icons.copy, size: 18),
+            ),
+          if (deezerUrl != null)
+            ListTile(
+              leading: const Icon(Icons.music_note, color: Color(0xFFEF5466)),
+              title: const Text('Deezer'),
+              subtitle: Text(deezerUrl, style: const TextStyle(fontSize: 11, color: AppColors.textSecondary), overflow: TextOverflow.ellipsis),
+              onTap: () => _copy(context, deezerUrl, 'Deezer'),
+              trailing: const Icon(Icons.copy, size: 18),
+            ),
+          ListTile(
+            leading: const Icon(Icons.music_note, color: AppColors.primary),
+            title: const Text('BergaStream'),
+            subtitle: Text(_bergaUrl(), style: const TextStyle(fontSize: 11, color: AppColors.textSecondary), overflow: TextOverflow.ellipsis),
+            onTap: () => _copy(context, _bergaUrl(), 'BergaStream'),
+            trailing: const Icon(Icons.copy, size: 18),
+          ),
+          const SizedBox(height: 8),
         ],
       ),
     );

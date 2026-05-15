@@ -60,6 +60,12 @@ class Auth extends _$Auth {
     state = const AsyncValue.data(null);
   }
 
+  Future<void> updateUsername(String username) async {
+    final client = ref.read(apiClientProvider);
+    final data = await client.updateMe(username: username);
+    state = AsyncValue.data(AppUser.fromJson(data));
+  }
+
   AppUser? get user => state.valueOrNull;
   bool get isAuthenticated => user != null;
 }

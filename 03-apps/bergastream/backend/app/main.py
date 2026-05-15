@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from app.config import get_settings
-from app.routers import auth, search, stream, library, playlists, history, radio, users
+from app.routers import auth, search, stream, library, playlists, history, radio, users, admin, resolve
 from app.routers.users import offline_router
 
 settings = get_settings()
@@ -57,6 +57,8 @@ app.include_router(history.router, prefix="/api")
 app.include_router(radio.router, prefix="/api")
 app.include_router(users.router, prefix="/api")
 app.include_router(offline_router, prefix="/api")
+app.include_router(admin.router, prefix="/api")
+app.include_router(resolve.router, prefix="/api")
 
 
 os.makedirs(settings.media_covers_path, exist_ok=True)

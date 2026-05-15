@@ -1,5 +1,27 @@
 import 'track.dart';
 
+class PlaylistCollaborator {
+  final String userId;
+  final String username;
+  final String email;
+  final DateTime addedAt;
+
+  const PlaylistCollaborator({
+    required this.userId,
+    required this.username,
+    required this.email,
+    required this.addedAt,
+  });
+
+  factory PlaylistCollaborator.fromJson(Map<String, dynamic> json) =>
+      PlaylistCollaborator(
+        userId: json['user_id'] as String,
+        username: json['username'] as String,
+        email: json['email'] as String,
+        addedAt: DateTime.parse(json['added_at'] as String),
+      );
+}
+
 class Playlist {
   final String id;
   final String name;
@@ -11,6 +33,9 @@ class Playlist {
   final String ownerId;
   final int trackCount;
   final List<PlaylistTrack> tracks;
+  final List<PlaylistCollaborator> collaborators;
+  /// true when the current user is a collaborator (not the owner).
+  final bool isCollaborative;
 
   const Playlist({
     required this.id,
@@ -23,6 +48,8 @@ class Playlist {
     required this.ownerId,
     this.trackCount = 0,
     this.tracks = const [],
+    this.collaborators = const [],
+    this.isCollaborative = false,
   });
 
   factory Playlist.fromJson(Map<String, dynamic> json) => Playlist(
@@ -36,8 +63,14 @@ class Playlist {
     ownerId: json['owner_id'] as String,
     trackCount: json['track_count'] as int? ?? 0,
     tracks: (json['tracks'] as List<dynamic>?)
-        ?.map((t) => PlaylistTrack.fromJson(t as Map<String, dynamic>))
-        .toList() ?? [],
+            ?.map((t) => PlaylistTrack.fromJson(t as Map<String, dynamic>))
+            .toList() ??
+        [],
+    collaborators: (json['collaborators'] as List<dynamic>?)
+            ?.map((c) => PlaylistCollaborator.fromJson(c as Map<String, dynamic>))
+            .toList() ??
+        [],
+    isCollaborative: json['is_collaborative'] as bool? ?? false,
   );
 }
 

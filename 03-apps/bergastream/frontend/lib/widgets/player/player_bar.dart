@@ -8,6 +8,7 @@ import '../../providers/ui_provider.dart';
 import '../../screens/player/full_player_screen.dart';
 import '../../models/track.dart';
 import '../cards/track_card.dart';
+import '../cast_button.dart';
 
 class PlayerBar extends ConsumerWidget {
   const PlayerBar({super.key});
@@ -155,6 +156,8 @@ class _DesktopRow extends ConsumerWidget {
             children: [
               // Volume
               const _VolumeControl(),
+              // Chromecast
+              const CastButton(),
               // Painel lateral "Fila / Tocando agora"
               IconButton(
                 icon: Icon(
@@ -244,6 +247,7 @@ class _MobileRow extends ConsumerWidget {
           icon: const Icon(Icons.skip_next, size: 26),
           onPressed: () => ref.read(playerProvider.notifier).next(),
         ),
+        const CastButton(),
       ],
     );
   }

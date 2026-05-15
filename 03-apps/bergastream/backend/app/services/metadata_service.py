@@ -364,3 +364,199 @@ async def search_all(query: str, limit: int = 20) -> SearchResponse:
         albums=d.albums + s.albums,
         artists=d.artists + s.artists,
     )
+
+
+# ── URL resolution ─────────────────────────────────────────────────────────────
+
+import re as _re
+
+
+def _parse_track_url(url: str) -> tuple[str, str] | None:
+    """Returns (platform, id) from a track URL, or None if not recognised."""
+    # Spotify track
+    m = _re.search(r'open\.spotify\.com/(?:[a-z-]+/)?track/([A-Za-z0-9]+)', url)
+    if m:
+        return ("spotify", m.group(1))
+
+    # Deezer track
+    m = _re.search(r'deezer\.com/(?:[a-z]+/)?track/(\d+)', url)
+    if m:
+        return ("deezer", m.group(1))
+
+    # YouTube full URL
+    m = _re.search(r'youtube\.com/watch\?.*?v=([A-Za-z0-9_-]{11})', url)
+    if m:
+        return ("youtube", m.group(1))
+
+    # youtu.be short URL
+    m = _re.search(r'youtu\.be/([A-Za-z0-9_-]{11})', url)
+    if m:
+        return ("youtube", m.group(1))
+
+    return None
+
+
+def _parse_playlist_url(url: str) -> tuple[str, str] | None:
+    """Returns (platform, id) from a playlist URL, or None if not recognised."""
+    # Spotify playlist
+    m = _re.search(r'open\.spotify\.com/(?:[a-z-]+/)?playlist/([A-Za-z0-9]+)', url)
+    if m:
+        return ("spotify", m.group(1))
+
+    # Deezer playlist
+    m = _re.search(r'deezer\.com/(?:[a-z]+/)?playlist/(\d+)', url)
+    if m:
+        return ("deezer", m.group(1))
+
+    # YouTube playlist
+    m = _re.search(r'youtube\.com/playlist\?.*?list=([A-Za-z0-9_-]+)', url)
+    if m:
+        return ("youtube", m.group(1))
+
+    return None
+
+
+async def get_spotify_track(spotify_id: str) -> TrackSchema | None:
+    """Fetch a single Spotify track by its raw ID."""
+    if not settings.spotipy_client_id or not settings.spotipy_client_secret:
+        return None
+    try:
+        import spotipy
+        from spotipy.oauth2 import SpotifyClientCredentials
+        sp = spotipy.Spotify(auth_manager=SpotifyClientCredentials(
+            client_id=settings.spotipy_client_id,
+            client_secret=settings.spotipy_client_secret,
+        ))
+        loop = asyncio.get_event_loop()
+        t = await loop.run_in_executor(None, lambda: sp.track(spotify_id))
+        return _spotify_track(t)
+    except Exception:
+        return None
+
+
+async def get_youtube_track(video_id: str) -> TrackSchema | None:
+    """Fetch a YouTube video as a TrackSchema via YTMusic."""
+    try:
+        from ytmusicapi import YTMusic
+        loop = asyncio.get_event_loop()
+        yt = YTMusic()
+        song = await loop.run_in_executor(None, lambda: yt.get_song(video_id))
+        vd = song.get("videoDetails", {})
+        thumb = vd.get("thumbnail", {}).get("thumbnails", [])
+        cover = thumb[-1].get("url") if thumb else None
+        duration_sec = int(vd.get("lengthSeconds", 0))
+        return TrackSchema(
+            id=f"youtube_{video_id}",
+            title=vd.get("title", ""),
+            artist=vd.get("author", ""),
+            album=None,
+            album_id=None,
+            artist_id=None,
+            duration_ms=duration_sec * 1000 if duration_sec else None,
+            year=None,
+            cover_url=cover,
+            source="youtube",
+            source_id=video_id,
+            is_permanent=False,
+            audio_quality="mp3_128",
+        )
+    except Exception:
+        return None
+
+
+async def resolve_track_url(url: str) -> TrackSchema | None:
+    """Resolve a Spotify / Deezer / YouTube track URL to a TrackSchema."""
+    parsed = _parse_track_url(url)
+    if parsed is None:
+        return None
+    platform, track_id = parsed
+    if platform == "deezer":
+        return await get_deezer_track(track_id)
+    if platform == "spotify":
+        return await get_spotify_track(track_id)
+    if platform == "youtube":
+        return await get_youtube_track(track_id)
+    return None
+
+
+async def get_deezer_playlist(deezer_id: str) -> tuple[str, list[TrackSchema]] | None:
+    """Fetch a public Deezer playlist by ID. Returns (name, tracks)."""
+    async with httpx.AsyncClient(timeout=15) as client:
+        resp = await client.get(f"{DEEZER_API}/playlist/{deezer_id}")
+    if resp.status_code != 200:
+        return None
+    data = resp.json()
+    name = data.get("title", "Playlist")
+    tracks = [_deezer_track_to_schema(t) for t in data.get("tracks", {}).get("data", [])]
+    return name, tracks
+
+
+async def get_spotify_playlist(spotify_id: str) -> tuple[str, list[TrackSchema]] | None:
+    """Fetch a Spotify playlist by ID. Returns (name, tracks)."""
+    if not settings.spotipy_client_id or not settings.spotipy_client_secret:
+        return None
+    try:
+        import spotipy
+        from spotipy.oauth2 import SpotifyClientCredentials
+        sp = spotipy.Spotify(auth_manager=SpotifyClientCredentials(
+            client_id=settings.spotipy_client_id,
+            client_secret=settings.spotipy_client_secret,
+        ))
+        loop = asyncio.get_event_loop()
+
+        pl = await loop.run_in_executor(None, lambda: sp.playlist(spotify_id, fields="name,tracks.items(track)"))
+        name = pl.get("name", "Playlist")
+        tracks = []
+        for item in pl.get("tracks", {}).get("items", []):
+            t = item.get("track")
+            if t and t.get("id"):
+                tracks.append(_spotify_track(t))
+        return name, tracks
+    except Exception:
+        return None
+
+
+async def get_youtube_playlist(yt_id: str) -> tuple[str, list[TrackSchema]] | None:
+    """Fetch a YouTube playlist by ID using YTMusic."""
+    try:
+        from ytmusicapi import YTMusic
+        loop = asyncio.get_event_loop()
+        yt = YTMusic()
+        pl = await loop.run_in_executor(None, lambda: yt.get_playlist(yt_id, limit=100))
+        name = pl.get("title", "Playlist")
+        tracks = []
+        for t in pl.get("tracks", []):
+            vid_id = t.get("videoId")
+            if not vid_id:
+                continue
+            thumb = t.get("thumbnails", [])
+            cover = thumb[-1].get("url") if thumb else None
+            duration_ms = t.get("duration_seconds", 0) * 1000 if t.get("duration_seconds") else None
+            tracks.append(TrackSchema(
+                id=f"youtube_{vid_id}",
+                title=t.get("title", ""),
+                artist=t.get("artists", [{}])[0].get("name", "") if t.get("artists") else "",
+                album=t.get("album", {}).get("name") if t.get("album") else None,
+                album_id=None, artist_id=None,
+                duration_ms=duration_ms, year=None, cover_url=cover,
+                source="youtube", source_id=vid_id,
+                is_permanent=False, audio_quality="mp3_128",
+            ))
+        return name, tracks
+    except Exception:
+        return None
+
+
+async def resolve_playlist_url(url: str) -> tuple[str, list[TrackSchema]] | None:
+    """Resolve a Spotify / Deezer / YouTube playlist URL to (name, tracks)."""
+    parsed = _parse_playlist_url(url)
+    if parsed is None:
+        return None
+    platform, pl_id = parsed
+    if platform == "deezer":
+        return await get_deezer_playlist(pl_id)
+    if platform == "spotify":
+        return await get_spotify_playlist(pl_id)
+    if platform == "youtube":
+        return await get_youtube_playlist(pl_id)
+    return None

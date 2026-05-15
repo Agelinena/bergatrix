@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!--
+    BergaStream app icon
+    Design: 5-bar equalizer (soundwave mountain silhouette) in #000 on #1DB954 green
+    Geometry:
+      - Background: 512×512 rounded square, rx=112 (~22% – matches iOS/Android guides)
+      - 5 bars: width=40, gap=20 → total=280, start_x=116 (centred at 256)
+      - Heights (symmetric, centred at y=256): 96, 176, 272, 176, 96
+      - Corner radius on bars: 20px (half of bar width → pill/stadium ends)
+  -->
+
+  <!-- ── Background ─────────────────────────────────────────────────────── -->
+  <rect width="512" height="512" rx="112" fill="#1DB954"/>
+
+  <!-- ── Equalizer bars ─────────────────────────────────────────────────── -->
+  <!-- bar 1 -->
+  <rect x="116" y="208" width="40" height="96"  rx="20" fill="#000000"/>
+  <!-- bar 2 -->
+  <rect x="176" y="168" width="40" height="176" rx="20" fill="#000000"/>
+  <!-- bar 3 (tallest – centre) -->
+  <rect x="236" y="120" width="40" height="272" rx="20" fill="#000000"/>
+  <!-- bar 4 -->
+  <rect x="296" y="168" width="40" height="176" rx="20" fill="#000000"/>
+  <!-- bar 5 -->
+  <rect x="356" y="208" width="40" height="96"  rx="20" fill="#000000"/>
+</svg>

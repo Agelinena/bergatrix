@@ -1,17 +1,18 @@
-// ignore: avoid_web_libraries_in_flutter
-import 'dart:html' as html;
 import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:go_router/go_router.dart';
+import '../../core/error_messages.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/api_client.dart';
 import '../../models/playlist.dart';
+import '../../providers/auth_provider.dart';
 import '../../providers/player_provider.dart';
 import '../../providers/library_provider.dart';
 import '../../widgets/cards/track_card.dart';
@@ -144,13 +145,18 @@ class _PlaylistScreenState extends ConsumerState<PlaylistScreen> {
     }
   }
 
-  String _extractError(Object e) {
-    try {
-      // ignore: avoid_dynamic_calls
-      final detail = (e as dynamic).response?.data?['detail'];
-      if (detail is String) return detail;
-    } catch (_) {}
-    return 'Erro ao deletar playlist';
+  String _extractError(Object e) => friendlyError(e, fallback: 'Algo deu errado. Tente novamente.');
+
+  void _showCollaboratorsDialog() {
+    if (_playlist == null) return;
+    showDialog(
+      context: context,
+      builder: (_) => _CollaboratorsDialog(
+        playlistId: widget.id,
+        collaborators: _playlist!.collaborators,
+        onChanged: _load,
+      ),
+    );
   }
 
   @override
@@ -192,19 +198,29 @@ class _PlaylistScreenState extends ConsumerState<PlaylistScreen> {
                   child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primary)),
                 )
               else
-              PopupMenuButton<String>(
-                icon: const Icon(Icons.more_vert),
-                onSelected: (v) {
-                  if (v == 'edit') _showEditDialog();
-                  if (v == 'share') _share();
-                  if (v == 'delete') _delete();
-                },
-                itemBuilder: (_) => [
-                  const PopupMenuItem(value: 'edit', child: ListTile(leading: Icon(Icons.edit_outlined), title: Text('Editar'))),
-                  const PopupMenuItem(value: 'share', child: ListTile(leading: Icon(Icons.share_outlined), title: Text('Compartilhar'))),
-                  const PopupMenuItem(value: 'delete', child: ListTile(leading: Icon(Icons.delete_outline, color: Colors.red), title: Text('Deletar', style: TextStyle(color: Colors.red)))),
-                ],
-              ),
+              Builder(builder: (context) {
+                final currentUserId = ref.read(authProvider).valueOrNull?.id;
+                final isOwner = currentUserId != null && pl.ownerId == currentUserId;
+                return PopupMenuButton<String>(
+                  icon: const Icon(Icons.more_vert),
+                  onSelected: (v) {
+                    if (v == 'edit') _showEditDialog();
+                    if (v == 'collaborators') _showCollaboratorsDialog();
+                    if (v == 'share') _share();
+                    if (v == 'delete') _delete();
+                  },
+                  itemBuilder: (_) => [
+                    if (isOwner) ...[
+                      const PopupMenuItem(value: 'edit', child: ListTile(leading: Icon(Icons.edit_outlined), title: Text('Editar'))),
+                      const PopupMenuItem(value: 'collaborators', child: ListTile(leading: Icon(Icons.group_add_outlined), title: Text('Colaboradores'))),
+                      const PopupMenuItem(value: 'share', child: ListTile(leading: Icon(Icons.share_outlined), title: Text('Compartilhar'))),
+                      const PopupMenuItem(value: 'delete', child: ListTile(leading: Icon(Icons.delete_outline, color: Colors.red), title: Text('Deletar', style: TextStyle(color: Colors.red)))),
+                    ] else ...[
+                      const PopupMenuItem(value: 'share', child: ListTile(leading: Icon(Icons.share_outlined), title: Text('Compartilhar'))),
+                    ],
+                  ],
+                );
+              }),
             ],
             flexibleSpace: FlexibleSpaceBar(
               background: Stack(
@@ -336,25 +352,17 @@ class _EditPlaylistDialogState extends ConsumerState<_EditPlaylistDialog> {
   // ── Seleção e crop de imagem ─────────────────────────────────────────────
 
   Future<void> _pickAndCrop() async {
-    // Anexa o input ao DOM — obrigatório para o diálogo de arquivo abrir no browser.
-    final input = html.FileUploadInputElement()
-      ..accept = 'image/jpeg,image/png,image/webp'
-      ..style.display = 'none';
-    html.document.body!.append(input);
-    input.click();
-
     try {
-      await input.onChange.first;
-      final file = input.files?.first;
-      input.remove();
-      if (file == null || !mounted) return;
+      // file_picker works on web, Android, Linux, Windows, macOS
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.image,
+        allowMultiple: false,
+        withData: true,
+      );
+      if (result == null || result.files.isEmpty || !mounted) return;
 
-      // Lê os bytes
-      final reader = html.FileReader();
-      reader.readAsArrayBuffer(file);
-      await reader.onLoad.first;
-      final bytes = (reader.result as ByteBuffer).asUint8List();
-      if (!mounted) return;
+      final bytes = result.files.first.bytes;
+      if (bytes == null || !mounted) return;
 
       // Abre o modal de crop — retorna PNG cropado ou null se cancelado
       final cropped = await showDialog<Uint8List>(
@@ -370,9 +378,6 @@ class _EditPlaylistDialogState extends ConsumerState<_EditPlaylistDialog> {
     } catch (e) {
       debugPrint('[EditPlaylist] pickAndCrop error: $e');
       if (mounted) setState(() => _uploading = false);
-    } finally {
-      // Garante remoção do input mesmo em caso de erro
-      try { input.remove(); } catch (_) {}
     }
   }
 
@@ -804,4 +809,192 @@ class _CropGridPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+// ── Colaboradores ─────────────────────────────────────────────────────────────
+
+class _CollaboratorsDialog extends ConsumerStatefulWidget {
+  final String playlistId;
+  final List<PlaylistCollaborator> collaborators;
+  final VoidCallback onChanged;
+
+  const _CollaboratorsDialog({
+    required this.playlistId,
+    required this.collaborators,
+    required this.onChanged,
+  });
+
+  @override
+  ConsumerState<_CollaboratorsDialog> createState() => _CollaboratorsDialogState();
+}
+
+class _CollaboratorsDialogState extends ConsumerState<_CollaboratorsDialog> {
+  late List<PlaylistCollaborator> _collabs;
+  final _addCtrl = TextEditingController();
+  bool _adding = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _collabs = List.from(widget.collaborators);
+  }
+
+  @override
+  void dispose() {
+    _addCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _add() async {
+    final identifier = _addCtrl.text.trim();
+    if (identifier.isEmpty) return;
+    setState(() => _adding = true);
+    try {
+      await ref.read(apiClientProvider).addCollaborator(widget.playlistId, identifier);
+      _addCtrl.clear();
+      // Reload collaborators from the API
+      final data = await ref.read(apiClientProvider).getCollaborators(widget.playlistId);
+      setState(() {
+        _collabs = data
+            .map((c) => PlaylistCollaborator.fromJson(c as Map<String, dynamic>))
+            .toList();
+      });
+      widget.onChanged();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(friendlyError(e)), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _adding = false);
+    }
+  }
+
+  Future<void> _remove(PlaylistCollaborator collab) async {
+    try {
+      await ref.read(apiClientProvider).removeCollaborator(widget.playlistId, collab.userId);
+      setState(() => _collabs.removeWhere((c) => c.userId == collab.userId));
+      widget.onChanged();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(friendlyError(e)), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      backgroundColor: AppColors.surface,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 480, maxHeight: 560),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // Header
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 16, 8, 8),
+              child: Row(
+                children: [
+                  const Icon(Icons.group_outlined, color: AppColors.primary),
+                  const SizedBox(width: 12),
+                  const Text('Colaboradores',
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  const Spacer(),
+                  IconButton(
+                    icon: const Icon(Icons.close),
+                    onPressed: () => Navigator.of(context).pop(),
+                  ),
+                ],
+              ),
+            ),
+            const Divider(height: 1),
+
+            // Add collaborator input
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _addCtrl,
+                      decoration: const InputDecoration(
+                        hintText: 'Usuário ou e-mail',
+                        prefixIcon: Icon(Icons.person_add_outlined, size: 20),
+                        isDense: true,
+                      ),
+                      onSubmitted: (_) => _add(),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  FilledButton(
+                    onPressed: _adding ? null : _add,
+                    style: FilledButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    ),
+                    child: _adding
+                        ? const SizedBox(
+                            width: 16, height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black))
+                        : const Text('Adicionar'),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 4),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Text(
+                'Colaboradores podem adicionar e remover músicas desta playlist.',
+                style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+              ),
+            ),
+            const SizedBox(height: 8),
+            const Divider(height: 1),
+
+            // Collaborator list
+            Expanded(
+              child: _collabs.isEmpty
+                  ? const Center(
+                      child: Text(
+                        'Nenhum colaborador ainda.',
+                        style: TextStyle(color: AppColors.textSecondary),
+                      ),
+                    )
+                  : ListView.separated(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      itemCount: _collabs.length,
+                      separatorBuilder: (_, __) => const Divider(height: 1, indent: 16),
+                      itemBuilder: (_, i) {
+                        final c = _collabs[i];
+                        return ListTile(
+                          leading: CircleAvatar(
+                            backgroundColor: AppColors.surfaceVariant,
+                            child: Text(
+                              c.username.isNotEmpty ? c.username[0].toUpperCase() : '?',
+                              style: const TextStyle(fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                          title: Text(c.username,
+                              style: const TextStyle(fontWeight: FontWeight.w600)),
+                          subtitle: Text(c.email,
+                              style: const TextStyle(
+                                  color: AppColors.textSecondary, fontSize: 12)),
+                          trailing: IconButton(
+                            icon: const Icon(Icons.remove_circle_outline, color: Colors.red),
+                            tooltip: 'Remover colaborador',
+                            onPressed: () => _remove(c),
+                          ),
+                        );
+                      },
+                    ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }

@@ -27,6 +27,9 @@ class Playlist(Base):
         cascade="all, delete-orphan",
         order_by="PlaylistTrack.position",
     )
+    collaborators: Mapped[list["PlaylistCollaborator"]] = relationship(
+        "PlaylistCollaborator", back_populates="playlist", cascade="all, delete-orphan",
+    )
 
     def generate_share_token(self) -> str:
         self.share_token = secrets.token_urlsafe(48)
@@ -47,6 +50,19 @@ class PlaylistTrack(Base):
 
     playlist: Mapped[Playlist] = relationship("Playlist", back_populates="tracks")
     track: Mapped["Track"] = relationship("Track", back_populates="playlist_tracks")
+
+
+class PlaylistCollaborator(Base):
+    """Users who can add/remove tracks from a playlist (but are not the owner)."""
+    __tablename__ = "playlist_collaborators"
+    __table_args__ = (UniqueConstraint("playlist_id", "user_id", name="uq_playlist_collaborator"),)
+
+    playlist_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("playlists.id", ondelete="CASCADE"), primary_key=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    added_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    playlist: Mapped[Playlist] = relationship("Playlist", back_populates="collaborators")
+    user: Mapped["User"] = relationship("User", back_populates="collaborating_playlists")
 
 
 class LikedSong(Base):
