@@ -292,7 +292,7 @@ class _PlaylistScreenState extends ConsumerState<PlaylistScreen> {
   }
 }
 
-class _EditPlaylistDialog extends StatefulWidget {
+class _EditPlaylistDialog extends ConsumerStatefulWidget {
   final String playlistId;
   final Playlist playlist;
   final Future<void> Function(String? name, String? description, String? coverUrl, bool? isPublic) onSaved;
@@ -300,10 +300,10 @@ class _EditPlaylistDialog extends StatefulWidget {
   const _EditPlaylistDialog({required this.playlistId, required this.playlist, required this.onSaved});
 
   @override
-  State<_EditPlaylistDialog> createState() => _EditPlaylistDialogState();
+  ConsumerState<_EditPlaylistDialog> createState() => _EditPlaylistDialogState();
 }
 
-class _EditPlaylistDialogState extends State<_EditPlaylistDialog> {
+class _EditPlaylistDialogState extends ConsumerState<_EditPlaylistDialog> {
   late final TextEditingController _nameCtrl;
   late final TextEditingController _descCtrl;
   late final TextEditingController _coverCtrl;
@@ -356,9 +356,9 @@ class _EditPlaylistDialogState extends State<_EditPlaylistDialog> {
 
   // Separate method so we can call it after await
   void _uploadCoverBytes(Uint8List bytes, String mimeType) async {
-    // Access ApiClient directly without ref (it's stateless)
     try {
-      final client = ApiClient();
+      // Usa o cliente autenticado via ref (ConsumerStatefulWidget)
+      final client = ref.read(apiClientProvider);
       final url = await client.uploadPlaylistCover(widget.playlistId, bytes, mimeType);
       if (url != null && mounted) {
         setState(() {
@@ -366,7 +366,8 @@ class _EditPlaylistDialogState extends State<_EditPlaylistDialog> {
           _uploading = false;
         });
       }
-    } catch (_) {
+    } catch (e) {
+      debugPrint('[EditPlaylist] uploadCover error: $e');
       if (mounted) setState(() => _uploading = false);
     }
   }

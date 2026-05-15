@@ -12,6 +12,7 @@ import '../../screens/playlist/playlist_screen.dart';
 import '../../screens/album/album_screen.dart';
 import '../../screens/artist/artist_screen.dart';
 import '../../screens/history/history_screen.dart';
+import '../../screens/library/liked_songs_screen.dart';
 import '../../screens/radio/radio_screen.dart';
 import '../../screens/settings/settings_screen.dart';
 import '../../widgets/layout/main_scaffold.dart';
@@ -43,6 +44,7 @@ GoRouter appRouter(AppRouterRef ref) {
           GoRoute(path: '/', builder: (_, __) => const HomeScreen()),
           GoRoute(path: '/search', builder: (_, __) => const SearchScreen()),
           GoRoute(path: '/library', builder: (_, __) => const LibraryScreen()),
+          GoRoute(path: '/library/likes', builder: (_, __) => const LikedSongsScreen()),
           GoRoute(
             path: '/playlist/:id',
             builder: (_, state) => PlaylistScreen(id: state.pathParameters['id']!),

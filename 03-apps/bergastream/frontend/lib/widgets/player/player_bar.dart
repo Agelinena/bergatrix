@@ -155,28 +155,14 @@ class _DesktopRow extends ConsumerWidget {
             children: [
               // Volume
               const _VolumeControl(),
-              // Fila modal
-              IconButton(
-                icon: const Icon(Icons.queue_music, size: 20, color: AppColors.textSecondary),
-                tooltip: 'Ver fila',
-                onPressed: () => showModalBottomSheet(
-                  context: context,
-                  backgroundColor: AppColors.surfaceVariant,
-                  isScrollControlled: true,
-                  builder: (_) => _QueueSheet(
-                    queue: player.queue,
-                    currentIndex: player.queueIndex,
-                  ),
-                ),
-              ),
-              // Painel "Tocando agora"
+              // Painel lateral "Fila / Tocando agora"
               IconButton(
                 icon: Icon(
-                  Icons.queue_music_outlined,
+                  Icons.queue_music,
                   size: 20,
                   color: nowPlayingVisible ? AppColors.primary : AppColors.textSecondary,
                 ),
-                tooltip: 'Fila / Tocando agora',
+                tooltip: 'Fila',
                 onPressed: () => ref.read(nowPlayingVisibleProvider.notifier).state =
                     !nowPlayingVisible,
               ),

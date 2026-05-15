@@ -128,6 +128,34 @@ class _SidebarState extends ConsumerState<_Sidebar> {
     });
   }
 
+  Future<void> _showCreatePlaylist() async {
+    final nameCtrl = TextEditingController();
+    final name = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surfaceVariant,
+        title: const Text('Nova playlist'),
+        content: TextField(
+          controller: nameCtrl,
+          autofocus: true,
+          decoration: const InputDecoration(hintText: 'Nome da playlist'),
+          onSubmitted: (v) => Navigator.pop(ctx, v.trim()),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, nameCtrl.text.trim()),
+            child: const Text('Criar'),
+          ),
+        ],
+      ),
+    );
+    nameCtrl.dispose();
+    if (name == null || name.isEmpty || !mounted) return;
+    await ref.read(libraryProvider.notifier).createPlaylist(name);
+  }
+
   @override
   Widget build(BuildContext context) {
     final library = ref.watch(libraryProvider);
@@ -168,24 +196,37 @@ class _SidebarState extends ConsumerState<_Sidebar> {
 
           // Cabeçalho "Sua Biblioteca"
           Padding(
-            padding: const EdgeInsets.fromLTRB(20, 8, 8, 4),
+            padding: const EdgeInsets.fromLTRB(12, 8, 8, 4),
             child: Row(
               children: [
-                const Icon(Icons.library_music, size: 18, color: AppColors.textSecondary),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text('Sua Biblioteca',
-                      style: Theme.of(context)
-                          .textTheme
-                          .labelMedium
-                          ?.copyWith(color: AppColors.textSecondary)),
+                // Clique no ícone/label abre a tela de biblioteca
+                InkWell(
+                  onTap: () => context.go('/library'),
+                  borderRadius: BorderRadius.circular(4),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.library_music, size: 18, color: AppColors.textSecondary),
+                        const SizedBox(width: 8),
+                        Text('Sua Biblioteca',
+                            style: Theme.of(context)
+                                .textTheme
+                                .labelMedium
+                                ?.copyWith(color: AppColors.textSecondary)),
+                      ],
+                    ),
+                  ),
                 ),
+                const Spacer(),
+                // Botão "+" abre dialog de criar playlist diretamente
                 IconButton(
                   icon: const Icon(Icons.add, size: 18, color: AppColors.textSecondary),
                   tooltip: 'Nova playlist',
                   padding: EdgeInsets.zero,
                   constraints: const BoxConstraints(),
-                  onPressed: () => context.go('/library'),
+                  onPressed: _showCreatePlaylist,
                 ),
               ],
             ),

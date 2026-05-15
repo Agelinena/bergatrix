@@ -171,10 +171,31 @@ class Player extends _$Player {
   }
 
   void addToQueue(Track track) {
-    state = state.copyWith(queue: [...state.queue, track]);
+    // Insere logo após a faixa atual (não no final), assim a música aparece
+    // imediatamente na fila em vez de só depois de toda a rádio/fila longa.
+    final insertAt = (state.queueIndex + 1).clamp(0, state.queue.length);
+    final newQueue = [...state.queue];
+    newQueue.insert(insertAt, track);
+    state = state.copyWith(queue: newQueue);
     // Prefetch is NOT triggered here — the radio provider calls prefetchTracks()
     // in bulk after all tracks are added. Calling it per-add caused 20 redundant
     // prefetch requests for every radio activation.
+  }
+
+  /// Reordena a fila de "próximas" músicas (itens após o atual).
+  /// [oldIndex] e [newIndex] são relativos ao trecho pós-atual.
+  void reorderQueue(int oldIndex, int newIndex) {
+    final base = state.queueIndex + 1;
+    final queue = [...state.queue];
+    final from = base + oldIndex;
+    var to = base + newIndex;
+    // ReorderableListView já ajusta newIndex quando move para baixo,
+    // mas aplicamos a correção padrão do Flutter.
+    if (to > from) to -= 1;
+    if (from < 0 || from >= queue.length || to < 0 || to >= queue.length) return;
+    final item = queue.removeAt(from);
+    queue.insert(to, item);
+    state = state.copyWith(queue: queue);
   }
 
   /// Prefetches the next [_prefetchAhead] tracks from the current queue position
