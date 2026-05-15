@@ -591,8 +591,46 @@ async def get_deezer_playlist(deezer_id: str) -> tuple[str, list[TrackSchema]] |
     return name, [_deezer_track_to_schema(t) for t in all_raw if "id" in t and "error" not in t]
 
 
+async def _isrc_to_deezer(isrc: str) -> TrackSchema | None:
+    """
+    Resolve a track by ISRC (International Standard Recording Code) on Deezer.
+    ISRC is a universal recording identifier shared across platforms — this gives
+    an exact match with no text-search ambiguity.
+    Returns None if Deezer doesn't have the ISRC.
+    """
+    try:
+        async with httpx.AsyncClient(timeout=8) as client:
+            resp = await client.get(f"{DEEZER_API}/track/isrc:{isrc}")
+        if resp.status_code != 200:
+            return None
+        data = resp.json()
+        if "error" in data or "id" not in data:
+            return None
+        return _deezer_track_to_schema(data)
+    except Exception:
+        return None
+
+
+async def _resolve_spotify_track_to_deezer(t: dict) -> TrackSchema:
+    """
+    Convert a raw Spotify track dict to a Deezer TrackSchema using ISRC lookup.
+    Falls back to keeping the Spotify metadata if Deezer doesn't have the track.
+    """
+    isrc = t.get("external_ids", {}).get("isrc")
+    if isrc:
+        deezer = await _isrc_to_deezer(isrc)
+        if deezer:
+            return deezer
+    # Fallback: return Spotify metadata as-is (downloader will text-search Deezer later)
+    return _spotify_track(t)
+
+
 async def get_spotify_playlist(spotify_id: str) -> tuple[str, list[TrackSchema]] | None:
-    """Fetch a Spotify playlist by ID, paginando todas as faixas. Returns (name, tracks)."""
+    """Fetch a Spotify playlist by ID, paginando todas as faixas. Returns (name, tracks).
+
+    Each Spotify track is resolved to its Deezer equivalent via ISRC lookup so that
+    the downloader uses a direct Deezer ID instead of a potentially-ambiguous text search.
+    """
     if not settings.spotipy_client_id or not settings.spotipy_client_secret:
         return None
     try:
@@ -608,18 +646,34 @@ async def get_spotify_playlist(spotify_id: str) -> tuple[str, list[TrackSchema]]
         pl = await loop.run_in_executor(None, lambda: sp.playlist(spotify_id, fields="name"))
         name = pl.get("name", "Playlist")
 
-        # Faixas com paginação completa via sp.playlist_tracks + sp.next
-        tracks: list[TrackSchema] = []
+        # 1. Coleta todas as faixas Spotify com paginação completa
+        raw_tracks: list[dict] = []
         page = await loop.run_in_executor(None, lambda: sp.playlist_tracks(spotify_id))
         while page:
             for item in page.get("items", []):
                 t = item.get("track")
                 if t and t.get("id") and not t.get("is_local", False):
-                    tracks.append(_spotify_track(t))
+                    raw_tracks.append(t)
             if page.get("next"):
                 page = await loop.run_in_executor(None, lambda p=page: sp.next(p))
             else:
                 break
+
+        # 2. Resolve cada faixa para Deezer via ISRC em lotes de 20
+        #    (ISRC = código universal → match exato, sem ambiguidade de busca por texto)
+        BATCH = 20
+        tracks: list[TrackSchema] = []
+        for i in range(0, len(raw_tracks), BATCH):
+            batch = raw_tracks[i: i + BATCH]
+            results = await asyncio.gather(
+                *[_resolve_spotify_track_to_deezer(t) for t in batch],
+                return_exceptions=True,
+            )
+            for t, result in zip(batch, results):
+                if isinstance(result, TrackSchema):
+                    tracks.append(result)
+                else:
+                    tracks.append(_spotify_track(t))  # fallback on error
 
         return name, tracks
     except Exception:
