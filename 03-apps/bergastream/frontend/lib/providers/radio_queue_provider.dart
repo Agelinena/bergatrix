@@ -114,6 +114,7 @@ class RadioQueueNotifier extends Notifier<RadioQueueState> {
       isRefilling: true,
     );
 
+    var tracksAdded = 0;
     try {
       final client = ref.read(apiClientProvider);
       final data = await client.getRadioSeeds(
@@ -134,6 +135,7 @@ class RadioQueueNotifier extends Notifier<RadioQueueState> {
       for (final t in tracks) {
         ref.read(playerProvider.notifier).addToQueue(t);
       }
+      tracksAdded = tracks.length;
       if (tracks.isNotEmpty) {
         client.prefetchTracks(tracks.map((t) => t.id).toList());
       }
@@ -142,6 +144,17 @@ class RadioQueueNotifier extends Notifier<RadioQueueState> {
       debugPrint('[RadioQueue] activate error: $e\n$st');
     } finally {
       state = state.copyWith(isRefilling: false);
+    }
+
+    // Faixa em cache pode terminar ANTES de activate() completar a request:
+    // _handleTrackComplete → next() → fila vazia → player fica idle.
+    // Quando as seeds chegam, precisamos avançar manualmente.
+    if (tracksAdded > 0) {
+      final ps = ref.read(playerProvider);
+      if (ps.hasTrack && ps.status == PlayerStatus.idle) {
+        debugPrint('[RadioQueue] activate: player travado em idle, avançando para primeira seed');
+        await ref.read(playerProvider.notifier).next();
+      }
     }
   }
 
@@ -163,6 +176,7 @@ class RadioQueueNotifier extends Notifier<RadioQueueState> {
 
     state = state.copyWith(isRefilling: true);
 
+    var tracksAdded = 0;
     try {
       final playerState = ref.read(playerProvider);
       final remaining = playerState.queue.length - (playerState.queueIndex + 1);
@@ -195,6 +209,7 @@ class RadioQueueNotifier extends Notifier<RadioQueueState> {
       for (final t in tracks) {
         ref.read(playerProvider.notifier).addToQueue(t);
       }
+      tracksAdded = tracks.length;
       if (tracks.isNotEmpty) {
         client.prefetchTracks(tracks.map((t) => t.id).toList());
       }
@@ -206,6 +221,16 @@ class RadioQueueNotifier extends Notifier<RadioQueueState> {
     } finally {
       _refillInFlight = false;
       state = state.copyWith(isRefilling: false);
+    }
+
+    // Se o player ficou idle enquanto esperávamos pela request (remaining chegou a 0
+    // e _handleTrackComplete foi chamado antes de termos tracks), avançamos agora.
+    if (tracksAdded > 0) {
+      final ps = ref.read(playerProvider);
+      if (ps.hasTrack && ps.status == PlayerStatus.idle) {
+        debugPrint('[RadioQueue] _refill: player travado em idle, avançando');
+        await ref.read(playerProvider.notifier).next();
+      }
     }
   }
 }
