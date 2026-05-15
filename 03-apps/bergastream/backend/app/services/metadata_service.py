@@ -232,22 +232,78 @@ async def get_deezer_radio(deezer_id: str, limit: int = 10) -> list[TrackSchema]
 
 
 async def get_deezer_artist_tracks(deezer_id: str, index: int = 0, limit: int = 100) -> tuple[list[TrackSchema], bool]:
-    """Returns (tracks, has_more) for an artist via Deezer top endpoint with offset pagination."""
-    async with httpx.AsyncClient(timeout=15) as client:
-        resp = await client.get(
-            f"{DEEZER_API}/artist/{deezer_id}/top",
-            params={"limit": limit, "index": index},
-        )
-    if resp.status_code != 200:
+    """Returns ALL tracks of an artist by iterating through their albums.
+    The index/limit params are kept for API compatibility but all tracks are
+    returned on the first call (index=0); subsequent calls return empty + has_more=False.
+    """
+    if index > 0:
+        # Everything was already returned on the first call
         return [], False
-    data = resp.json()
-    if "error" in data or "data" not in data:
+
+    # ── 1. Collect all albums (paginate via 'next') ────────────────────────
+    all_albums: list[dict] = []
+    async with httpx.AsyncClient(timeout=30) as client:
+        next_url: str | None = f"{DEEZER_API}/artist/{deezer_id}/albums"
+        first = True
+        while next_url:
+            resp = await client.get(next_url, params={"limit": 100} if first else {})
+            first = False
+            if resp.status_code != 200:
+                break
+            data = resp.json()
+            if "error" in data:
+                break
+            all_albums.extend(data.get("data", []))
+            next_url = data.get("next")
+
+    if not all_albums:
+        # Fallback: top tracks (at least something)
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.get(f"{DEEZER_API}/artist/{deezer_id}/top", params={"limit": 100})
+        if resp.status_code == 200:
+            data = resp.json()
+            tracks = [_deezer_track_to_schema(t) for t in data.get("data", []) if "id" in t and "error" not in t]
+            return tracks, False
         return [], False
-    tracks = [_deezer_track_to_schema(t) for t in data["data"] if "id" in t and "error" not in t]
-    # Use Deezer's reported total to determine whether more pages exist
-    total = data.get("total", 0)
-    has_more = (index + len(tracks)) < total
-    return tracks, has_more
+
+    # ── 2. Fetch tracks from each album in parallel (batches of 10) ───────
+    seen_ids: set[int] = set()
+    all_tracks: list[TrackSchema] = []
+
+    async def _album_tracks(client: httpx.AsyncClient, album: dict) -> list[dict]:
+        album_id = album.get("id")
+        if not album_id:
+            return []
+        r = await client.get(f"{DEEZER_API}/album/{album_id}")
+        if r.status_code != 200:
+            return []
+        d = r.json()
+        if "error" in d:
+            return []
+        raw = d.get("tracks", {}).get("data", [])
+        # Inject album cover so _deezer_track_to_schema has artwork
+        for t in raw:
+            t.setdefault("album", {
+                "id": album_id,
+                "title": album.get("title", ""),
+                "cover_xl": album.get("cover_xl"),
+                "cover_medium": album.get("cover_medium"),
+            })
+        return raw
+
+    BATCH = 10
+    async with httpx.AsyncClient(timeout=30) as client:
+        for i in range(0, len(all_albums), BATCH):
+            batch = all_albums[i : i + BATCH]
+            results = await asyncio.gather(*[_album_tracks(client, a) for a in batch])
+            for raw_tracks in results:
+                for t in raw_tracks:
+                    tid = t.get("id")
+                    if tid and tid not in seen_ids and "error" not in t:
+                        seen_ids.add(tid)
+                        all_tracks.append(_deezer_track_to_schema(t))
+
+    return all_tracks, False
 
 
 async def search_spotify(query: str, limit: int = 20) -> SearchResponse:
