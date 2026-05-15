@@ -21,7 +21,8 @@ class SearchScreen extends ConsumerStatefulWidget {
   ConsumerState<SearchScreen> createState() => _SearchScreenState();
 }
 
-class _SearchScreenState extends ConsumerState<SearchScreen> with SingleTickerProviderStateMixin {
+class _SearchScreenState extends ConsumerState<SearchScreen>
+    with SingleTickerProviderStateMixin {
   final _queryCtrl = TextEditingController();
   final _focusNode = FocusNode();
   Timer? _debounce;
@@ -30,7 +31,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> with SingleTickerPr
   final _sources = ['deezer', 'spotify', 'all'];
   final _sourceLabels = ['Deezer', 'Spotify', 'Todos'];
   List<String> _history = [];
-  bool _showHistory = false;
+  bool _showHistory = true; // começa mostrando histórico (campo vazio + autofocus)
 
   static const _historyKey = 'search_history';
   static const _maxHistory = 15;
@@ -40,8 +41,12 @@ class _SearchScreenState extends ConsumerState<SearchScreen> with SingleTickerPr
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
     _loadHistory();
+    // Mostrar histórico quando o campo ganha foco e está vazio
     _focusNode.addListener(() {
-      if (mounted) setState(() => _showHistory = _focusNode.hasFocus && _queryCtrl.text.isEmpty);
+      if (!mounted) return;
+      if (_focusNode.hasFocus && _queryCtrl.text.isEmpty) {
+        setState(() => _showHistory = true);
+      }
     });
   }
 
@@ -54,27 +59,32 @@ class _SearchScreenState extends ConsumerState<SearchScreen> with SingleTickerPr
     super.dispose();
   }
 
+  // ── Histórico ─────────────────────────────────────────────────────────────
+
   void _loadHistory() {
     try {
       final raw = html.window.localStorage[_historyKey];
-      if (raw != null) setState(() => _history = List<String>.from(jsonDecode(raw)));
+      if (raw != null) {
+        final list = List<String>.from(jsonDecode(raw));
+        setState(() => _history = list);
+      }
     } catch (_) {}
   }
 
   void _saveHistory(String query) {
-    if (query.trim().isEmpty) return;
-    final updated = [query, ..._history.where((h) => h != query)].take(_maxHistory).toList();
-    setState(() => _history = updated);
+    final q = query.trim();
+    if (q.isEmpty) return;
+    final updated = [q, ..._history.where((h) => h != q)].take(_maxHistory).toList();
+    _history = updated;
     try {
       html.window.localStorage[_historyKey] = jsonEncode(updated);
     } catch (_) {}
   }
 
   void _removeHistory(String query) {
-    final updated = _history.where((h) => h != query).toList();
-    setState(() => _history = updated);
+    setState(() => _history = _history.where((h) => h != query).toList());
     try {
-      html.window.localStorage[_historyKey] = jsonEncode(updated);
+      html.window.localStorage[_historyKey] = jsonEncode(_history);
     } catch (_) {}
   }
 
@@ -85,31 +95,38 @@ class _SearchScreenState extends ConsumerState<SearchScreen> with SingleTickerPr
     } catch (_) {}
   }
 
-  void _runSearch(String q) {
-    if (q.trim().isEmpty) {
-      setState(() => _showHistory = true);
-      return;
-    }
+  // ── Busca ─────────────────────────────────────────────────────────────────
+
+  void _search(String q) {
+    if (q.trim().isEmpty) return;
     setState(() => _showHistory = false);
     ref.read(searchProvider.notifier).search(q.trim(), source: _selectedSource);
   }
 
-  /// Chamado só no submit explícito (Enter/Go) — salva no histórico.
+  /// Chamado pelo Enter/Go — salva no histórico antes de buscar.
   void _submitSearch(String q) {
     _debounce?.cancel();
     if (q.trim().isEmpty) return;
-    _saveHistory(q.trim());
-    _runSearch(q);
+    _saveHistory(q);
+    _search(q);
   }
 
   void _onQueryChanged(String q) {
     if (q.isEmpty) {
-      setState(() => _showHistory = _focusNode.hasFocus);
+      setState(() => _showHistory = true);
+      _debounce?.cancel();
       return;
     }
     setState(() => _showHistory = false);
     _debounce?.cancel();
-    _debounce = Timer(const Duration(milliseconds: 500), () => _runSearch(q));
+    _debounce = Timer(const Duration(milliseconds: 500), () => _search(q));
+  }
+
+  /// Clique em item do histórico: preenche o campo e busca imediatamente.
+  void _tapHistory(String q) {
+    _debounce?.cancel();
+    _queryCtrl.text = q;
+    _search(q); // já faz setState(_showHistory = false)
   }
 
   void _playFromSearch(Track track, List<Track> queue) async {
@@ -120,7 +137,6 @@ class _SearchScreenState extends ConsumerState<SearchScreen> with SingleTickerPr
       debugPrint('[Search] registerTrack error: $e');
     }
     try {
-      // Play only this track — radio queue provider fills the rest
       await ref.read(playerProvider.notifier).play(track, queue: [track]);
     } catch (e) {
       debugPrint('[Search] play error: $e');
@@ -131,6 +147,8 @@ class _SearchScreenState extends ConsumerState<SearchScreen> with SingleTickerPr
       debugPrint('[Search] activate error: $e');
     }
   }
+
+  // ── Build ──────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
@@ -175,7 +193,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> with SingleTickerPr
                     selected: _selectedSource == _sources[i],
                     onSelected: (_) {
                       setState(() => _selectedSource = _sources[i]);
-                      if (_queryCtrl.text.isNotEmpty) _runSearch(_queryCtrl.text);
+                      if (_queryCtrl.text.isNotEmpty) _search(_queryCtrl.text);
                     },
                     selectedColor: AppColors.primary.withOpacity(0.2),
                     checkmarkColor: AppColors.primary,
@@ -191,149 +209,152 @@ class _SearchScreenState extends ConsumerState<SearchScreen> with SingleTickerPr
               TabBar(
                 controller: _tabController,
                 indicatorColor: AppColors.primary,
-                tabs: const [Tab(text: 'Músicas'), Tab(text: 'Álbuns'), Tab(text: 'Artistas')],
+                tabs: const [
+                  Tab(text: 'Músicas'),
+                  Tab(text: 'Álbuns'),
+                  Tab(text: 'Artistas'),
+                ],
               ),
             ],
           ),
         ),
       ),
-      body: _showHistory
-          ? _HistoryList(
-              history: _history,
-              onTap: (q) {
-                _debounce?.cancel();
-                _queryCtrl.text = q;
-                _focusNode.unfocus();
-                setState(() => _showHistory = false);
-                ref.read(searchProvider.notifier).search(q.trim(), source: _selectedSource);
-              },
-              onRemove: _removeHistory,
-              onClear: _clearHistory,
-            )
-          : search.loading
-              ? _ShimmerList()
-              : TabBarView(
-                  controller: _tabController,
-                  children: [
-                    // Tracks
-                    search.tracks.isEmpty
-                        ? const _EmptyState()
-                        : ListView.builder(
-                            itemCount: search.tracks.length,
-                            itemBuilder: (_, i) => TrackCard(
-                              track: search.tracks[i],
-                              queue: search.tracks,
-                              onTap: () => _playFromSearch(search.tracks[i], search.tracks),
-                              showRadioOption: false,
-                            ),
-                          ),
-                    // Albums
-                    search.albums.isEmpty
-                        ? const _EmptyState()
-                        : ListView.builder(
-                            itemCount: search.albums.length,
-                            itemBuilder: (_, i) {
-                              final album = search.albums[i];
-                              return ListTile(
-                                leading: ClipRRect(
-                                  borderRadius: BorderRadius.circular(4),
-                                  child: Image.network(
-                                    album['cover_url'] ?? '',
-                                    width: 48, height: 48, fit: BoxFit.cover,
-                                    errorBuilder: (_, __, ___) => const Icon(Icons.album),
-                                  ),
-                                ),
-                                title: Text(album['title'] ?? ''),
-                                subtitle: Text(album['artist'] ?? '',
-                                    style: const TextStyle(color: AppColors.textSecondary)),
-                                onTap: () => context.push('/album/${album['id']}'),
-                              );
-                            },
-                          ),
-                    // Artists
-                    search.artists.isEmpty
-                        ? const _EmptyState()
-                        : ListView.builder(
-                            itemCount: search.artists.length,
-                            itemBuilder: (_, i) {
-                              final artist = search.artists[i];
-                              return ListTile(
-                                leading: CircleAvatar(
-                                  backgroundImage: artist['picture_url'] != null
-                                      ? NetworkImage(artist['picture_url'] as String)
-                                      : null,
-                                  child: artist['picture_url'] == null
-                                      ? const Icon(Icons.person)
-                                      : null,
-                                ),
-                                title: Text(artist['name'] ?? ''),
-                                onTap: () => context.push('/artist/${artist['id']}'),
-                              );
-                            },
-                          ),
-                  ],
-                ),
+      body: _showHistory ? _buildHistory(context) : _buildResults(search),
     );
   }
-}
 
-class _HistoryList extends StatelessWidget {
-  final List<String> history;
-  final void Function(String) onTap;
-  final void Function(String) onRemove;
-  final VoidCallback onClear;
+  // ── Histórico inline ───────────────────────────────────────────────────────
 
-  const _HistoryList({
-    required this.history,
-    required this.onTap,
-    required this.onRemove,
-    required this.onClear,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    if (history.isEmpty) {
+  Widget _buildHistory(BuildContext context) {
+    if (_history.isEmpty) {
       return const Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(Icons.history, size: 64, color: AppColors.textSecondary),
             SizedBox(height: 16),
-            Text('Sem pesquisas recentes', style: TextStyle(color: AppColors.textSecondary)),
+            Text('Sem pesquisas recentes',
+                style: TextStyle(color: AppColors.textSecondary)),
           ],
         ),
       );
     }
+
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 12, 8, 4),
           child: Row(
             children: [
-              Text('Pesquisas recentes', style: Theme.of(context).textTheme.titleSmall),
+              Text('Pesquisas recentes',
+                  style: Theme.of(context).textTheme.titleSmall),
               const Spacer(),
-              TextButton(onPressed: onClear, child: const Text('Limpar tudo')),
+              TextButton(
+                onPressed: _clearHistory,
+                child: const Text('Limpar tudo'),
+              ),
             ],
           ),
         ),
         Expanded(
           child: ListView.builder(
-            itemCount: history.length,
-            itemBuilder: (_, i) => ListTile(
-              leading: const Icon(Icons.history, color: AppColors.textSecondary),
-              title: Text(history[i]),
-              trailing: IconButton(
-                icon: const Icon(Icons.close, size: 18, color: AppColors.textSecondary),
-                onPressed: () => onRemove(history[i]),
-              ),
-              onTap: () => onTap(history[i]),
-            ),
+            itemCount: _history.length,
+            itemBuilder: (_, i) {
+              final q = _history[i];
+              return ListTile(
+                leading: const Icon(Icons.history, color: AppColors.textSecondary),
+                title: Text(q),
+                trailing: IconButton(
+                  icon: const Icon(Icons.close,
+                      size: 18, color: AppColors.textSecondary),
+                  onPressed: () => _removeHistory(q),
+                ),
+                onTap: () => _tapHistory(q),
+              );
+            },
           ),
         ),
       ],
     );
   }
+
+  // ── Resultados ─────────────────────────────────────────────────────────────
+
+  Widget _buildResults(SearchState search) {
+    if (search.loading) return _ShimmerList();
+
+    return TabBarView(
+      controller: _tabController,
+      children: [
+        // Músicas
+        search.tracks.isEmpty
+            ? const _EmptyState()
+            : ListView.builder(
+                itemCount: search.tracks.length,
+                itemBuilder: (_, i) => TrackCard(
+                  track: search.tracks[i],
+                  queue: search.tracks,
+                  onTap: () => _playFromSearch(search.tracks[i], search.tracks),
+                  showRadioOption: false,
+                ),
+              ),
+
+        // Álbuns
+        search.albums.isEmpty
+            ? const _EmptyState()
+            : ListView.builder(
+                itemCount: search.albums.length,
+                itemBuilder: (_, i) {
+                  final album = search.albums[i];
+                  return ListTile(
+                    leading: ClipRRect(
+                      borderRadius: BorderRadius.circular(4),
+                      child: Image.network(
+                        album['cover_url'] ?? '',
+                        width: 48,
+                        height: 48,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) =>
+                            const Icon(Icons.album),
+                      ),
+                    ),
+                    title: Text(album['title'] ?? ''),
+                    subtitle: Text(album['artist'] ?? '',
+                        style: const TextStyle(
+                            color: AppColors.textSecondary)),
+                    onTap: () => context.push('/album/${album['id']}'),
+                  );
+                },
+              ),
+
+        // Artistas
+        search.artists.isEmpty
+            ? const _EmptyState()
+            : ListView.builder(
+                itemCount: search.artists.length,
+                itemBuilder: (_, i) {
+                  final artist = search.artists[i];
+                  return ListTile(
+                    leading: CircleAvatar(
+                      backgroundImage: artist['picture_url'] != null
+                          ? NetworkImage(artist['picture_url'] as String)
+                          : null,
+                      child: artist['picture_url'] == null
+                          ? const Icon(Icons.person)
+                          : null,
+                    ),
+                    title: Text(artist['name'] ?? ''),
+                    onTap: () => context.push('/artist/${artist['id']}'),
+                  );
+                },
+              ),
+      ],
+    );
+  }
 }
+
+// ── Widgets auxiliares ─────────────────────────────────────────────────────
 
 class _EmptyState extends StatelessWidget {
   const _EmptyState();
@@ -346,7 +367,8 @@ class _EmptyState extends StatelessWidget {
         children: [
           Icon(Icons.search, size: 64, color: AppColors.textSecondary),
           SizedBox(height: 16),
-          Text('Nenhum resultado', style: TextStyle(color: AppColors.textSecondary)),
+          Text('Nenhum resultado',
+              style: TextStyle(color: AppColors.textSecondary)),
         ],
       ),
     );
@@ -362,7 +384,8 @@ class _ShimmerList extends StatelessWidget {
         baseColor: AppColors.surfaceVariant,
         highlightColor: AppColors.surface,
         child: ListTile(
-          leading: Container(width: 48, height: 48, color: AppColors.surfaceVariant),
+          leading:
+              Container(width: 48, height: 48, color: AppColors.surfaceVariant),
           title: Container(height: 14, color: AppColors.surfaceVariant),
           subtitle: Container(height: 12, color: AppColors.surfaceVariant),
         ),
