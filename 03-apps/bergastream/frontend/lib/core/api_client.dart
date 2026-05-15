@@ -285,6 +285,12 @@ class ApiClient {
     await _dio.delete('/api/admin/users/$userId');
   }
 
+  // Enfileira todas as faixas de uma playlist para download permanente em background
+  Future<Map<String, dynamic>> downloadPlaylistPermanent(String playlistId) async {
+    final resp = await _dio.post('/api/playlists/$playlistId/download');
+    return resp.data as Map<String, dynamic>;
+  }
+
   // Artist all tracks — backend fetches via albums; first call can take a few seconds
   Future<Map<String, dynamic>> getArtistTracks(String artistId, {int index = 0, int limit = 100}) async {
     final resp = await _dio.get(

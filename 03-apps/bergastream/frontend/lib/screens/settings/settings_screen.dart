@@ -489,11 +489,16 @@ class _ImportPlaylistDialogState extends ConsumerState<_ImportPlaylistDialog> {
           await client.addTrackToPlaylist(playlistId, track.id, force: false);
         } catch (_) {}
       }
+      // 3. Dispara download permanente em background (fire-and-forget)
+      client.downloadPlaylistPermanent(playlistId).ignore();
       widget.onImported();
       if (mounted) {
         Navigator.of(context).pop();
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('"$_resolvedName" importada com ${_resolvedTracks.length} músicas!')),
+          SnackBar(
+            content: Text('"$_resolvedName" importada com ${_resolvedTracks.length} músicas! Download iniciado em background.'),
+            duration: const Duration(seconds: 4),
+          ),
         );
       }
     } catch (e) {
