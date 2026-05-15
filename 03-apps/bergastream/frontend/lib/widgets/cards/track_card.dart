@@ -236,6 +236,56 @@ class _AddToPlaylistSheetState extends ConsumerState<_AddToPlaylistSheet> {
     });
   }
 
+  Future<void> _createAndAdd() async {
+    final nameCtrl = TextEditingController();
+    final name = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surfaceVariant,
+        title: const Text('Nova playlist'),
+        content: TextField(
+          controller: nameCtrl,
+          autofocus: true,
+          decoration: const InputDecoration(hintText: 'Nome da playlist'),
+          onSubmitted: (v) => Navigator.pop(ctx, v.trim()),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancelar'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, nameCtrl.text.trim()),
+            child: const Text('Criar'),
+          ),
+        ],
+      ),
+    );
+    nameCtrl.dispose();
+    if (name == null || name.isEmpty || !mounted) return;
+
+    setState(() => _adding = '__new__');
+    try {
+      final client = ref.read(apiClientProvider);
+      await client.registerTrack(widget.track.toJson());
+      final newPlaylist = await client.createPlaylist(name);
+      final newId = newPlaylist['id'] as String;
+      await client.addTrackToPlaylist(newId, widget.track.id);
+      await ref.read(libraryProvider.notifier).load();
+      if (mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Playlist "$name" criada e música adicionada'),
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    } catch (_) {
+      if (mounted) setState(() => _adding = null);
+    }
+  }
+
   Future<void> _add(Playlist playlist, {bool force = false}) async {
     setState(() => _adding = playlist.id);
     try {
@@ -282,6 +332,15 @@ class _AddToPlaylistSheetState extends ConsumerState<_AddToPlaylistSheet> {
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
             child: Text('Adicionar a playlist', style: Theme.of(context).textTheme.titleMedium),
+          ),
+          const Divider(height: 1),
+          ListTile(
+            leading: const Icon(Icons.add_circle_outline, color: AppColors.primary),
+            title: const Text('Nova playlist', style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.w600)),
+            onTap: _adding != null ? null : _createAndAdd,
+            trailing: _adding == '__new__'
+                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                : null,
           ),
           const Divider(height: 1),
           library.when(

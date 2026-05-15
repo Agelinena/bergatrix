@@ -91,8 +91,15 @@ class _SearchScreenState extends ConsumerState<SearchScreen> with SingleTickerPr
       return;
     }
     setState(() => _showHistory = false);
-    _saveHistory(q.trim());
     ref.read(searchProvider.notifier).search(q.trim(), source: _selectedSource);
+  }
+
+  /// Chamado só no submit explícito (Enter/Go) — salva no histórico.
+  void _submitSearch(String q) {
+    _debounce?.cancel();
+    if (q.trim().isEmpty) return;
+    _saveHistory(q.trim());
+    _runSearch(q);
   }
 
   void _onQueryChanged(String q) {
@@ -102,7 +109,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> with SingleTickerPr
     }
     setState(() => _showHistory = false);
     _debounce?.cancel();
-    _debounce = Timer(const Duration(milliseconds: 300), () => _runSearch(q));
+    _debounce = Timer(const Duration(milliseconds: 500), () => _runSearch(q));
   }
 
   void _playFromSearch(Track track, List<Track> queue) async {
@@ -135,7 +142,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> with SingleTickerPr
           controller: _queryCtrl,
           focusNode: _focusNode,
           onChanged: _onQueryChanged,
-          onSubmitted: _runSearch,
+          onSubmitted: _submitSearch,
           decoration: InputDecoration(
             hintText: 'Buscar músicas, artistas, álbuns...',
             prefixIcon: const Icon(Icons.search),
@@ -194,12 +201,11 @@ class _SearchScreenState extends ConsumerState<SearchScreen> with SingleTickerPr
           ? _HistoryList(
               history: _history,
               onTap: (q) {
-                setState(() {
-                  _queryCtrl.text = q;
-                  _showHistory = false;
-                });
+                _debounce?.cancel();
+                _queryCtrl.text = q;
                 _focusNode.unfocus();
-                _runSearch(q);
+                setState(() => _showHistory = false);
+                ref.read(searchProvider.notifier).search(q.trim(), source: _selectedSource);
               },
               onRemove: _removeHistory,
               onClear: _clearHistory,
