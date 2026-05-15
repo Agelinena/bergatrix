@@ -59,6 +59,13 @@ class RadioQueueNotifier extends Notifier<RadioQueueState> {
   static const _targetAhead = 20;
   static const _radioKey = 'radio_source';
 
+  /// Flag síncrona (não Riverpod state) para evitar race condition onde o
+  /// listener dispara _refill() e activate() ao mesmo tempo. O problema:
+  /// state.isRefilling é Riverpod state — notifica listeners de forma assíncrona,
+  /// então entre o `_refill()` ser chamado e `isRefilling=true` se propagar,
+  /// o listener já pode ter disparado _refill() novamente.
+  bool _refillInFlight = false;
+
   @override
   RadioQueueState build() {
     ref.listen<PlayerState>(playerProvider, (prev, next) {
@@ -143,9 +150,16 @@ class RadioQueueNotifier extends Notifier<RadioQueueState> {
   }
 
   Future<void> _refill() async {
-    if (state.isRefilling) return;
+    // _refillInFlight é verificado PRIMEIRO (síncrono) para evitar que dois
+    // disparos do listener no mesmo frame passem ambos pelo check de isRefilling
+    // (que só se propaga após o microtask de state notification).
+    if (_refillInFlight || state.isRefilling) return;
+    _refillInFlight = true;   // lock síncrono imediato
     final seed = state.seedTrack;
-    if (seed == null) return;
+    if (seed == null) {
+      _refillInFlight = false;
+      return;
+    }
 
     state = state.copyWith(isRefilling: true);
 
@@ -189,6 +203,8 @@ class RadioQueueNotifier extends Notifier<RadioQueueState> {
       state = state.copyWith(isRefilling: false);
     } catch (e, st) {
       debugPrint('[RadioQueue] _refill error: $e\n$st');
+    } finally {
+      _refillInFlight = false;
       state = state.copyWith(isRefilling: false);
     }
   }

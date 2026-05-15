@@ -170,16 +170,22 @@ class Player extends _$Player {
     state = state.copyWith(repeat: next);
   }
 
+  /// Adiciona ao FINAL da fila — usado pelo rádio para preservar a ordem das sugestões.
   void addToQueue(Track track) {
-    // Insere logo após a faixa atual (não no final), assim a música aparece
-    // imediatamente na fila em vez de só depois de toda a rádio/fila longa.
+    state = state.copyWith(queue: [...state.queue, track]);
+    // Prefetch is NOT triggered here — the radio provider calls prefetchTracks()
+    // in bulk after all tracks are added. Calling it per-add caused 20 redundant
+    // prefetch requests for every radio activation.
+  }
+
+  /// Insere a faixa LOGO APÓS a faixa atual — usado pelo botão "Adicionar à fila"
+  /// do menu de faixa. Diferente de [addToQueue] (que vai ao final), esta versão
+  /// garante que a música toque na próxima posição, antes das faixas de rádio.
+  void insertNextInQueue(Track track) {
     final insertAt = (state.queueIndex + 1).clamp(0, state.queue.length);
     final newQueue = [...state.queue];
     newQueue.insert(insertAt, track);
     state = state.copyWith(queue: newQueue);
-    // Prefetch is NOT triggered here — the radio provider calls prefetchTracks()
-    // in bulk after all tracks are added. Calling it per-add caused 20 redundant
-    // prefetch requests for every radio activation.
   }
 
   /// Reordena a fila de "próximas" músicas (itens após o atual).

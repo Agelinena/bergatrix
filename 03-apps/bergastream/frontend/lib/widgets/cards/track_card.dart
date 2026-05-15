@@ -131,7 +131,8 @@ class TrackMenuSheet extends ConsumerWidget {
             title: const Text('Adicionar à fila'),
             onTap: () {
               Navigator.pop(context);
-              ref.read(playerProvider.notifier).addToQueue(track);
+              // insertNextInQueue → toca logo após a faixa atual (antes do rádio)
+              ref.read(playerProvider.notifier).insertNextInQueue(track);
             },
           ),
           if (playlistId != null)

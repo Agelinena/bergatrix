@@ -130,13 +130,13 @@ class _SearchScreenState extends ConsumerState<SearchScreen>
   }
 
   void _playFromSearch(Track track, List<Track> queue) async {
-    final client = ref.read(apiClientProvider);
+    // Desativa o rádio ANTES de play() para garantir que o listener do
+    // radioQueueProvider não dispare _refill() entre play() e activate().
+    // Se não desativarmos, play() muda currentTrack → listener fires → remaining=0
+    // → _refill() começa ANTES de activate() ser chamado → dois seeds simultâneos.
+    ref.read(radioQueueProvider.notifier).deactivate();
     try {
-      await client.registerTrack(track.toJson());
-    } catch (e) {
-      debugPrint('[Search] registerTrack error: $e');
-    }
-    try {
+      // play() já chama registerTrack internamente — não duplicar aqui.
       await ref.read(playerProvider.notifier).play(track, queue: [track]);
     } catch (e) {
       debugPrint('[Search] play error: $e');
