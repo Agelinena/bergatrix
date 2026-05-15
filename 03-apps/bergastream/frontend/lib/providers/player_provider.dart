@@ -20,6 +20,10 @@ class PlayerState {
   final double volume;
   final bool shuffle;
   final RepeatMode repeat;
+  /// Quantas faixas foram adicionadas manualmente logo após a atual.
+  /// Garante que adds manuais consecutivos empilhem em ordem FIFO:
+  /// [Atual | ManualA | ManualB | ManualC | Rádio1 | Rádio2 ...]
+  final int manualQueueAhead;
 
   const PlayerState({
     this.currentTrack,
@@ -31,6 +35,7 @@ class PlayerState {
     this.volume = 1.0,
     this.shuffle = false,
     this.repeat = RepeatMode.none,
+    this.manualQueueAhead = 0,
   });
 
   PlayerState copyWith({
@@ -43,6 +48,7 @@ class PlayerState {
     double? volume,
     bool? shuffle,
     RepeatMode? repeat,
+    int? manualQueueAhead,
   }) => PlayerState(
     currentTrack: currentTrack ?? this.currentTrack,
     queue: queue ?? this.queue,
@@ -53,6 +59,7 @@ class PlayerState {
     volume: volume ?? this.volume,
     shuffle: shuffle ?? this.shuffle,
     repeat: repeat ?? this.repeat,
+    manualQueueAhead: manualQueueAhead ?? this.manualQueueAhead,
   );
 
   bool get isPlaying => status == PlayerStatus.playing;
@@ -103,6 +110,7 @@ class Player extends _$Player {
       duration: track.durationMs != null && track.durationMs! > 0
           ? Duration(milliseconds: track.durationMs!)
           : Duration.zero,
+      manualQueueAhead: 0,
     );
     // Kick off background prefetch for upcoming tracks immediately
     _prefetchUpcoming();
@@ -135,7 +143,12 @@ class Player extends _$Player {
   Future<void> next() async {
     final nextIdx = state.queueIndex + 1;
     if (nextIdx >= state.queue.length) return;
+    // Decrementa o contador de manuais ao avançar: se havia músicas manuais
+    // na frente, a que vai tocar agora era a primeira delas.
+    final newManual = (state.manualQueueAhead - 1).clamp(0, state.manualQueueAhead);
     await play(state.queue[nextIdx], queue: state.queue);
+    // play() reseta manualQueueAhead para 0; re-aplica o valor decrementado.
+    state = state.copyWith(manualQueueAhead: newManual);
   }
 
   Future<void> previous() async {
@@ -178,14 +191,22 @@ class Player extends _$Player {
     // prefetch requests for every radio activation.
   }
 
-  /// Insere a faixa LOGO APÓS a faixa atual — usado pelo botão "Adicionar à fila"
-  /// do menu de faixa. Diferente de [addToQueue] (que vai ao final), esta versão
-  /// garante que a música toque na próxima posição, antes das faixas de rádio.
+  /// Insere a faixa logo após o bloco de músicas já adicionadas manualmente,
+  /// garantindo ordem FIFO para múltiplos "Adicionar à fila" consecutivos.
+  ///
+  /// Exemplo com [manualQueueAhead] = 2:
+  ///   [Atual | ManualA | ManualB | Rádio1 | Rádio2]
+  ///   → inserir ManualC na posição queueIndex+1+2 = queueIndex+3
+  ///   → [Atual | ManualA | ManualB | ManualC | Rádio1 | Rádio2]
   void insertNextInQueue(Track track) {
-    final insertAt = (state.queueIndex + 1).clamp(0, state.queue.length);
+    final insertAt = (state.queueIndex + 1 + state.manualQueueAhead)
+        .clamp(0, state.queue.length);
     final newQueue = [...state.queue];
     newQueue.insert(insertAt, track);
-    state = state.copyWith(queue: newQueue);
+    state = state.copyWith(
+      queue: newQueue,
+      manualQueueAhead: state.manualQueueAhead + 1,
+    );
   }
 
   /// Reordena a fila de "próximas" músicas (itens após o atual).
