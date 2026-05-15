@@ -4,6 +4,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/constants.dart';
 import '../../providers/player_provider.dart';
+import '../../providers/liked_provider.dart';
 import '../../providers/ui_provider.dart';
 import '../../screens/player/full_player_screen.dart';
 import '../../models/track.dart';
@@ -95,11 +96,7 @@ class _DesktopRow extends ConsumerWidget {
                   ),
                 ),
                 // Botão curtir
-                IconButton(
-                  icon: const Icon(Icons.favorite_border, size: 18, color: AppColors.textSecondary),
-                  tooltip: 'Curtir',
-                  onPressed: () {},
-                ),
+                _LikeButton(trackId: track.id),
               ],
             ),
           ),
@@ -491,5 +488,26 @@ class _QueueSheet extends ConsumerWidget {
     final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
     final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
     return '$m:$s';
+  }
+}
+
+// ── Like button (wired to likedProvider) ──────────────────────────────────
+
+class _LikeButton extends ConsumerWidget {
+  final String trackId;
+  const _LikeButton({required this.trackId});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final isLiked = ref.watch(likedProvider.select((s) => s.contains(trackId)));
+    return IconButton(
+      icon: Icon(
+        isLiked ? Icons.favorite : Icons.favorite_border,
+        size: 18,
+        color: isLiked ? Colors.pinkAccent : AppColors.textSecondary,
+      ),
+      tooltip: isLiked ? 'Descurtir' : 'Curtir',
+      onPressed: () => ref.read(likedProvider.notifier).toggle(trackId),
+    );
   }
 }
