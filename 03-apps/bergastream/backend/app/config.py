@@ -40,6 +40,13 @@ class Settings(BaseSettings):
 
     # App
     log_level: str = "INFO"
+    # Workers dedicados a streaming (QUEUE_HIGH) — alta prioridade, sem throttle
+    stream_workers: int = 2
+    # Workers dedicados a downloads de fundo (QUEUE_LOW) — throttled, requeue em falha
+    background_workers: int = 3
+    # Máximo de processos yt-dlp simultâneos (global, evita 429)
+    max_yt_concurrent: int = 2
+    # Mantido por compatibilidade; não mais usado diretamente
     max_download_workers: int = 10
     # CORS_ORIGINS deve incluir https://{WEB_DOMAIN}
     cors_origins: str = "http://localhost:3000,http://localhost:8080"

@@ -29,6 +29,19 @@ logger = logging.getLogger(__name__)
 _DUR_REL = 0.05       # 5% relative tolerance
 _DUR_ABS_MS = 10_000  # 10-second absolute floor
 
+# ---------------------------------------------------------------------------
+# YouTube concurrency limiter (avoids mass 429 from simultaneous yt-dlp calls)
+# ---------------------------------------------------------------------------
+
+_yt_semaphore: asyncio.Semaphore | None = None
+
+
+def _get_yt_semaphore() -> asyncio.Semaphore:
+    global _yt_semaphore
+    if _yt_semaphore is None:
+        _yt_semaphore = asyncio.Semaphore(settings.max_yt_concurrent)
+    return _yt_semaphore
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -173,7 +186,24 @@ async def find_deezer_candidate(
     if not title and not artist:
         return None
 
-    deezer_id = await find_deezer_track_id(title, artist, duration_ms)
+    # Retry on transient DNS / network failures (common with Deezer API)
+    import httpx as _httpx
+    deezer_id: str | None = None
+    for attempt in range(3):
+        try:
+            deezer_id = await find_deezer_track_id(title, artist, duration_ms)
+            break
+        except (_httpx.ConnectError, _httpx.TimeoutException) as exc:
+            if attempt < 2:
+                wait = 3 * (attempt + 1)
+                logger.warning(
+                    f"[resolve] Deezer DNS/network error (attempt {attempt + 1}/3), "
+                    f"retrying in {wait}s: {exc}"
+                )
+                await asyncio.sleep(wait)
+            else:
+                logger.warning(f"[resolve] Deezer DNS/network error, giving up: {exc}")
+
     if deezer_id:
         logger.info(f"[resolve] Deezer candidate (search): {deezer_id}")
     else:
@@ -516,9 +546,16 @@ async def download_youtube_by_id(
 ) -> tuple[Path | None, str]:
     """
     Downloads a YouTube video by ID via yt-dlp (best audio → MP3 320).
+
+    Concurrency-limited by _get_yt_semaphore() (max_yt_concurrent slots) so
+    background bulk-downloads cannot exhaust the YouTube rate limit for all workers.
+
     Creates a .lock file while downloading so stream_service can tail-follow.
+    Retries up to 2 times on HTTP 429, with 30 s / 60 s backoff.
     Post-verifies duration with mutagen.
     """
+    _MAX_YT_RETRIES = 2
+
     out_dir = Path(settings.music_cache_path)
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -528,7 +565,7 @@ async def download_youtube_by_id(
 
     url = f"https://www.youtube.com/watch?v={video_id}"
     lock = Path(str(dest) + ".lock")
-    lock.touch()
+    lock.touch()   # signals to stream_service that download is pending/in-progress
 
     cmd = [
         "yt-dlp",
@@ -539,15 +576,35 @@ async def download_youtube_by_id(
         url,
     ]
     try:
-        proc = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.DEVNULL,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        _, stderr = await asyncio.wait_for(proc.communicate(), timeout=120)
-        if proc.returncode != 0:
-            logger.warning(f"[yt-dlp] Non-zero exit for {video_id}: {stderr.decode()[:200]}")
-            return None, ""
+        async with _get_yt_semaphore():
+            for attempt in range(_MAX_YT_RETRIES + 1):
+                try:
+                    proc = await asyncio.create_subprocess_exec(
+                        *cmd,
+                        stdout=asyncio.subprocess.DEVNULL,
+                        stderr=asyncio.subprocess.PIPE,
+                    )
+                    _, stderr = await asyncio.wait_for(proc.communicate(), timeout=120)
+                except asyncio.TimeoutError:
+                    logger.warning(f"[yt-dlp] Timed out for {video_id} (attempt {attempt + 1})")
+                    return None, ""
+
+                stderr_text = stderr.decode("utf-8", errors="replace")
+
+                if proc.returncode != 0:
+                    if "429" in stderr_text and attempt < _MAX_YT_RETRIES:
+                        wait = 30 * (attempt + 1)   # 30 s, 60 s
+                        logger.warning(
+                            f"[yt-dlp] HTTP 429 rate-limit for {video_id} — "
+                            f"retrying in {wait}s (attempt {attempt + 1}/{_MAX_YT_RETRIES})"
+                        )
+                        await asyncio.sleep(wait)
+                        continue
+                    logger.warning(
+                        f"[yt-dlp] Non-zero exit for {video_id}: {stderr_text[:300]}"
+                    )
+                    return None, ""
+                break   # success
 
         actual = dest if dest.exists() else dest.with_suffix("").with_suffix(".mp3")
         if actual.exists() and actual != dest:
@@ -570,9 +627,6 @@ async def download_youtube_by_id(
         logger.info(f"[yt-dlp] Downloaded {video_id} → {dest.name}")
         return dest, "mp3_320"
 
-    except asyncio.TimeoutError:
-        logger.warning(f"[yt-dlp] Timed out for {video_id}")
-        return None, ""
     except Exception as e:
         logger.warning(f"[yt-dlp] Error for {video_id}: {e}")
         return None, ""
