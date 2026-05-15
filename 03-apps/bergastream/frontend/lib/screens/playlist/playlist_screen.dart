@@ -1,7 +1,10 @@
 // ignore: avoid_web_libraries_in_flutter
 import 'dart:html' as html;
+import 'dart:math' as math;
 import 'dart:typed_data';
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -292,6 +295,8 @@ class _PlaylistScreenState extends ConsumerState<PlaylistScreen> {
   }
 }
 
+// ── Editar playlist ────────────────────────────────────────────────────────
+
 class _EditPlaylistDialog extends ConsumerStatefulWidget {
   final String playlistId;
   final Playlist playlist;
@@ -308,7 +313,7 @@ class _EditPlaylistDialogState extends ConsumerState<_EditPlaylistDialog> {
   late final TextEditingController _descCtrl;
   late final TextEditingController _coverCtrl;
   late bool _isPublic;
-  bool _loading = false;
+  bool _saving = false;
   bool _uploading = false;
 
   @override
@@ -328,36 +333,51 @@ class _EditPlaylistDialogState extends ConsumerState<_EditPlaylistDialog> {
     super.dispose();
   }
 
-  Future<void> _pickCover() async {
-    final input = html.FileUploadInputElement()
-      ..accept = 'image/jpeg,image/png,image/webp';
-    input.click();
-    await input.onChange.first;
-    final file = input.files?.first;
-    if (file == null || !mounted) return;
+  // ── Seleção e crop de imagem ─────────────────────────────────────────────
 
-    setState(() => _uploading = true);
+  Future<void> _pickAndCrop() async {
+    // Anexa o input ao DOM — obrigatório para o diálogo de arquivo abrir no browser.
+    final input = html.FileUploadInputElement()
+      ..accept = 'image/jpeg,image/png,image/webp'
+      ..style.display = 'none';
+    html.document.body!.append(input);
+    input.click();
+
     try {
+      await input.onChange.first;
+      final file = input.files?.first;
+      input.remove();
+      if (file == null || !mounted) return;
+
+      // Lê os bytes
       final reader = html.FileReader();
       reader.readAsArrayBuffer(file);
       await reader.onLoad.first;
-
       final bytes = (reader.result as ByteBuffer).asUint8List();
-      final mimeType = file.type.isNotEmpty ? file.type : 'image/jpeg';
+      if (!mounted) return;
 
-      // We don't have ref here — use a workaround via callback
-      // The ApiClient instance is used through the parent's onSaved
-      // For cover upload, we need direct access — handled via mounted context
-      _uploadCoverBytes(bytes, mimeType);
-    } catch (_) {
+      // Abre o modal de crop — retorna PNG cropado ou null se cancelado
+      final cropped = await showDialog<Uint8List>(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => _ImageCropperDialog(imageBytes: bytes),
+      );
+      if (cropped == null || !mounted) return;
+
+      // Faz upload dos bytes cropados
+      setState(() => _uploading = true);
+      await _uploadBytes(cropped, 'image/png');
+    } catch (e) {
+      debugPrint('[EditPlaylist] pickAndCrop error: $e');
       if (mounted) setState(() => _uploading = false);
+    } finally {
+      // Garante remoção do input mesmo em caso de erro
+      try { input.remove(); } catch (_) {}
     }
   }
 
-  // Separate method so we can call it after await
-  void _uploadCoverBytes(Uint8List bytes, String mimeType) async {
+  Future<void> _uploadBytes(Uint8List bytes, String mimeType) async {
     try {
-      // Usa o cliente autenticado via ref (ConsumerStatefulWidget)
       final client = ref.read(apiClientProvider);
       final url = await client.uploadPlaylistCover(widget.playlistId, bytes, mimeType);
       if (url != null && mounted) {
@@ -365,68 +385,423 @@ class _EditPlaylistDialogState extends ConsumerState<_EditPlaylistDialog> {
           _coverCtrl.text = url;
           _uploading = false;
         });
+      } else {
+        if (mounted) setState(() => _uploading = false);
       }
     } catch (e) {
-      debugPrint('[EditPlaylist] uploadCover error: $e');
+      debugPrint('[EditPlaylist] upload error: $e');
       if (mounted) setState(() => _uploading = false);
     }
   }
 
+  // ── Build ────────────────────────────────────────────────────────────────
+
   @override
   Widget build(BuildContext context) {
+    final busy = _saving || _uploading;
+
     return AlertDialog(
       backgroundColor: AppColors.surfaceVariant,
       title: const Text('Editar playlist'),
-      content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(controller: _nameCtrl, decoration: const InputDecoration(labelText: 'Nome')),
-            const SizedBox(height: 12),
-            TextField(controller: _descCtrl, decoration: const InputDecoration(labelText: 'Descrição'), maxLines: 2),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(child: TextField(controller: _coverCtrl, decoration: const InputDecoration(labelText: 'URL da capa'))),
-                const SizedBox(width: 8),
-                _uploading
-                    ? const SizedBox(width: 36, height: 36, child: CircularProgressIndicator(strokeWidth: 2))
-                    : IconButton(
-                        icon: const Icon(Icons.upload_file),
-                        tooltip: 'Enviar arquivo',
-                        onPressed: _pickCover,
-                      ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            SwitchListTile(
-              contentPadding: EdgeInsets.zero,
-              title: const Text('Playlist pública', style: TextStyle(fontSize: 14)),
-              value: _isPublic,
-              onChanged: (v) => setState(() => _isPublic = v),
-              activeColor: AppColors.primary,
-            ),
-          ],
+      content: SizedBox(
+        width: 400,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              TextField(
+                controller: _nameCtrl,
+                decoration: const InputDecoration(labelText: 'Nome'),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _descCtrl,
+                decoration: const InputDecoration(labelText: 'Descrição'),
+                maxLines: 2,
+              ),
+              const SizedBox(height: 16),
+              // ── Capa ──────────────────────────────────────────────────────
+              const Text('Capa', style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+              const SizedBox(height: 8),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Preview
+                  _CoverPreview(url: _coverCtrl.text, uploading: _uploading),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        // URL
+                        TextField(
+                          controller: _coverCtrl,
+                          decoration: const InputDecoration(
+                            labelText: 'URL da imagem',
+                            hintText: 'https://...',
+                            isDense: true,
+                          ),
+                          onChanged: (_) => setState(() {}), // atualiza preview
+                        ),
+                        const SizedBox(height: 8),
+                        // Upload button
+                        OutlinedButton.icon(
+                          onPressed: busy ? null : _pickAndCrop,
+                          icon: _uploading
+                              ? const SizedBox(width: 14, height: 14,
+                                  child: CircularProgressIndicator(strokeWidth: 2))
+                              : const Icon(Icons.upload_file, size: 18),
+                          label: Text(_uploading ? 'Enviando...' : 'Enviar imagem'),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: AppColors.textPrimary,
+                            side: const BorderSide(color: AppColors.textSecondary),
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        const Text(
+                          'JPEG, PNG ou WebP · máx. 5 MB · saída 500×500 px',
+                          style: TextStyle(fontSize: 10, color: AppColors.textSecondary),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Playlist pública', style: TextStyle(fontSize: 14)),
+                value: _isPublic,
+                onChanged: busy ? null : (v) => setState(() => _isPublic = v),
+                activeColor: AppColors.primary,
+              ),
+            ],
+          ),
         ),
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
+        TextButton(
+          onPressed: busy ? null : () => Navigator.pop(context),
+          child: const Text('Cancelar'),
+        ),
         ElevatedButton(
-          onPressed: _loading ? null : () async {
-            setState(() => _loading = true);
-            await widget.onSaved(
-              _nameCtrl.text.trim().isNotEmpty ? _nameCtrl.text.trim() : null,
-              _descCtrl.text.trim(),
-              _coverCtrl.text.trim().isNotEmpty ? _coverCtrl.text.trim() : null,
-              _isPublic,
-            );
-            if (mounted) Navigator.pop(context);
-          },
-          child: _loading
+          onPressed: busy
+              ? null
+              : () async {
+                  setState(() => _saving = true);
+                  await widget.onSaved(
+                    _nameCtrl.text.trim().isNotEmpty ? _nameCtrl.text.trim() : null,
+                    _descCtrl.text.trim(),
+                    _coverCtrl.text.trim().isNotEmpty ? _coverCtrl.text.trim() : null,
+                    _isPublic,
+                  );
+                  if (mounted) Navigator.pop(context);
+                },
+          child: _saving
               ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
               : const Text('Salvar'),
         ),
       ],
     );
   }
+}
+
+// Preview da capa (pequeno quadrado ao lado do campo URL)
+class _CoverPreview extends StatelessWidget {
+  final String url;
+  final bool uploading;
+  const _CoverPreview({required this.url, required this.uploading});
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(6),
+      child: SizedBox(
+        width: 72,
+        height: 72,
+        child: uploading
+            ? Container(
+                color: AppColors.background,
+                child: const Center(child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primary)),
+              )
+            : url.isNotEmpty
+                ? Image.network(
+                    url,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => _placeholder(),
+                  )
+                : _placeholder(),
+      ),
+    );
+  }
+
+  Widget _placeholder() => Container(
+        color: AppColors.background,
+        child: const Icon(Icons.image_outlined, size: 32, color: AppColors.textSecondary),
+      );
+}
+
+// ── Crop modal ─────────────────────────────────────────────────────────────
+
+/// Modal de corte de imagem.
+/// – Exibe a imagem no tamanho real (ou reduzido para caber na tela).
+/// – Usuário faz pan/zoom para posicionar a área desejada.
+/// – Ao confirmar, captura a área visível do frame 420×420 e a escala
+///   para 500×500 pixels via RepaintBoundary.toImage().
+class _ImageCropperDialog extends StatefulWidget {
+  final Uint8List imageBytes;
+  const _ImageCropperDialog({required this.imageBytes});
+
+  @override
+  State<_ImageCropperDialog> createState() => _ImageCropperDialogState();
+}
+
+class _ImageCropperDialogState extends State<_ImageCropperDialog> {
+  static const _frameSize = 420.0;
+  static const _outputPx = 500.0;
+
+  final _cropKey = GlobalKey();
+  final _transformCtrl = TransformationController();
+
+  double? _natW;
+  double? _natH;
+  double _minScale = 1.0;
+  bool _ready = false;
+  bool _confirming = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadImageDimensions();
+  }
+
+  @override
+  void dispose() {
+    _transformCtrl.dispose();
+    super.dispose();
+  }
+
+  // Decodifica as dimensões reais da imagem e calcula a transformação inicial
+  // que centraliza a imagem e a escala para cobrir o frame (cover fit).
+  Future<void> _loadImageDimensions() async {
+    try {
+      final codec = await ui.instantiateImageCodec(widget.imageBytes);
+      final frame = await codec.getNextFrame();
+      final image = frame.image;
+      final natW = image.width.toDouble();
+      final natH = image.height.toDouble();
+      image.dispose();
+
+      // Escala mínima = "cover": a menor escala que ainda cobre o frame
+      final s = math.max(_frameSize / natW, _frameSize / natH);
+
+      // Offset para centralizar a imagem escalada dentro do frame
+      final tx = (_frameSize - s * natW) / 2;
+      final ty = (_frameSize - s * natH) / 2;
+
+      // Matrix4: translate(tx, ty) * scale(s)
+      // Resultado: ponto (0,0) da imagem → viewport (tx, ty)
+      //            ponto (natW, natH)     → viewport (tx+s*natW, ty+s*natH)
+      final matrix = Matrix4.identity();
+      matrix.translate(tx, ty);
+      matrix.scale(s, s, 1.0);
+
+      if (mounted) {
+        setState(() {
+          _natW = natW;
+          _natH = natH;
+          _minScale = s;
+          _ready = true;
+        });
+        _transformCtrl.value = matrix;
+      }
+    } catch (e) {
+      debugPrint('[Cropper] loadImageDimensions error: $e');
+    }
+  }
+
+  // Captura o RepaintBoundary (420×420 exibidos) e escala para 500×500 px.
+  Future<void> _confirm() async {
+    if (_confirming || !_ready) return;
+    setState(() => _confirming = true);
+    try {
+      final boundary = _cropKey.currentContext!.findRenderObject()! as RenderRepaintBoundary;
+      final img = await boundary.toImage(pixelRatio: _outputPx / _frameSize);
+      final byteData = await img.toByteData(format: ui.ImageByteFormat.png);
+      img.dispose();
+      if (!mounted) return;
+      Navigator.of(context).pop(byteData!.buffer.asUint8List());
+    } catch (e) {
+      debugPrint('[Cropper] confirm error: $e');
+      if (mounted) setState(() => _confirming = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      backgroundColor: const Color(0xFF141420),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 500),
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // ── Título ─────────────────────────────────────────────────
+              const Text(
+                'Ajustar capa',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                'Arraste para reposicionar  ·  Scroll ou pinch para zoom',
+                style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
+              ),
+              const SizedBox(height: 20),
+
+              // ── Frame de crop ──────────────────────────────────────────
+              Center(
+                child: SizedBox(
+                  width: _frameSize,
+                  height: _frameSize,
+                  child: _ready
+                      ? Stack(
+                          children: [
+                            // Conteúdo capturável
+                            RepaintBoundary(
+                              key: _cropKey,
+                              child: SizedBox(
+                                width: _frameSize,
+                                height: _frameSize,
+                                child: ClipRect(
+                                  child: ColoredBox(
+                                    color: Colors.black,
+                                    child: InteractiveViewer(
+                                      transformationController: _transformCtrl,
+                                      constrained: false,
+                                      minScale: _minScale,
+                                      maxScale: _minScale * 6,
+                                      // Sem boundaryMargin: EdgeInsets.zero impede que a
+                                      // imagem saia dos limites do frame (boundary = child rect).
+                                      boundaryMargin: EdgeInsets.zero,
+                                      child: Image.memory(
+                                        widget.imageBytes,
+                                        width: _natW,
+                                        height: _natH,
+                                        fit: BoxFit.fill,
+                                        gaplessPlayback: true,
+                                        filterQuality: FilterQuality.high,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            // Grid / overlay de guia (não capturado)
+                            Positioned.fill(
+                              child: IgnorePointer(
+                                child: CustomPaint(painter: _CropGridPainter()),
+                              ),
+                            ),
+                          ],
+                        )
+                      : Container(
+                          color: Colors.black,
+                          child: const Center(
+                            child: CircularProgressIndicator(color: AppColors.primary),
+                          ),
+                        ),
+                ),
+              ),
+
+              const SizedBox(height: 16),
+
+              // ── Rodapé ─────────────────────────────────────────────────
+              Row(
+                children: [
+                  const Icon(Icons.info_outline, size: 14, color: AppColors.textSecondary),
+                  const SizedBox(width: 4),
+                  Text(
+                    'Saída: ${_outputPx.toInt()}×${_outputPx.toInt()} px · PNG',
+                    style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+                  ),
+                  const Spacer(),
+                  TextButton(
+                    onPressed: _confirming ? null : () => Navigator.of(context).pop(null),
+                    child: const Text('Cancelar'),
+                  ),
+                  const SizedBox(width: 8),
+                  ElevatedButton.icon(
+                    onPressed: (!_ready || _confirming) ? null : _confirm,
+                    icon: _confirming
+                        ? const SizedBox(
+                            width: 14, height: 14,
+                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                          )
+                        : const Icon(Icons.crop, size: 16),
+                    label: const Text('Confirmar'),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Pinta a grade de referência (regra dos terços + borda + alças de canto)
+/// por cima do InteractiveViewer. Usa IgnorePointer para não bloquear o toque.
+class _CropGridPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    // Borda branca
+    canvas.drawRect(
+      Offset.zero & size,
+      Paint()
+        ..color = Colors.white
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.0,
+    );
+
+    // Alças de canto em L
+    const handleLen = 22.0;
+    final hp = Paint()
+      ..color = Colors.white
+      ..strokeWidth = 3.0
+      ..strokeCap = StrokeCap.round
+      ..style = PaintingStyle.stroke;
+
+    // Superior-esquerdo
+    canvas.drawLine(Offset.zero, const Offset(handleLen, 0), hp);
+    canvas.drawLine(Offset.zero, const Offset(0, handleLen), hp);
+    // Superior-direito
+    canvas.drawLine(Offset(size.width, 0), Offset(size.width - handleLen, 0), hp);
+    canvas.drawLine(Offset(size.width, 0), Offset(size.width, handleLen), hp);
+    // Inferior-esquerdo
+    canvas.drawLine(Offset(0, size.height), Offset(handleLen, size.height), hp);
+    canvas.drawLine(Offset(0, size.height), Offset(0, size.height - handleLen), hp);
+    // Inferior-direito
+    canvas.drawLine(Offset(size.width, size.height), Offset(size.width - handleLen, size.height), hp);
+    canvas.drawLine(Offset(size.width, size.height), Offset(size.width, size.height - handleLen), hp);
+
+    // Regra dos terços
+    final gp = Paint()
+      ..color = Colors.white.withOpacity(0.28)
+      ..strokeWidth = 0.8;
+    final w3 = size.width / 3;
+    final h3 = size.height / 3;
+    canvas.drawLine(Offset(w3, 0), Offset(w3, size.height), gp);
+    canvas.drawLine(Offset(w3 * 2, 0), Offset(w3 * 2, size.height), gp);
+    canvas.drawLine(Offset(0, h3), Offset(size.width, h3), gp);
+    canvas.drawLine(Offset(0, h3 * 2), Offset(size.width, h3 * 2), gp);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
