@@ -26,22 +26,22 @@ class DownloadQueueService:
         return cls._redis
 
     @classmethod
-    async def enqueue(cls, track_id: str, priority: bool = False) -> None:
+    async def enqueue(cls, track_id: str, priority: bool = False, permanent: bool = False) -> None:
         r = cls._get_redis()
         is_downloading = await r.sismember(DOWNLOADING_SET, track_id)
         if is_downloading:
             return
 
         queue = QUEUE_HIGH if priority else QUEUE_LOW
-        await r.rpush(queue, json.dumps({"track_id": track_id}))
+        await r.rpush(queue, json.dumps({"track_id": track_id, "permanent": permanent}))
 
     @classmethod
-    async def enqueue_batch(cls, track_ids: list[str]) -> None:
+    async def enqueue_batch(cls, track_ids: list[str], permanent: bool = False) -> None:
         r = cls._get_redis()
         for track_id in track_ids:
             is_downloading = await r.sismember(DOWNLOADING_SET, track_id)
             if not is_downloading:
-                await r.rpush(QUEUE_LOW, json.dumps({"track_id": track_id}))
+                await r.rpush(QUEUE_LOW, json.dumps({"track_id": track_id, "permanent": permanent}))
 
     @classmethod
     async def _worker(cls, worker_id: int) -> None:
@@ -64,6 +64,7 @@ class DownloadQueueService:
                 _, payload_str = item
                 payload = json.loads(payload_str)
                 track_id = payload["track_id"]
+                permanent = payload.get("permanent", False)
 
                 # Mark as downloading
                 await r.sadd(DOWNLOADING_SET, track_id)
@@ -75,10 +76,24 @@ class DownloadQueueService:
                         if track is None:
                             continue
 
-                        # Check if already downloaded
-                        from app.services.downloader_service import _resolve_existing
+                        # If permanent and already in cache, promote immediately
+                        from pathlib import Path as _Path
+                        from app.services.downloader_service import _resolve_existing, move_to_permanent
                         existing = _resolve_existing(track_id)
                         if existing:
+                            if permanent and not str(existing).startswith(str(settings.music_permanent_path)):
+                                perm = move_to_permanent(track_id)
+                                if perm:
+                                    await db.execute(
+                                        update(Track).where(Track.id == track_id).values(
+                                            file_path=str(perm),
+                                            cache_path=None,
+                                            cache_expires_at=None,
+                                            is_permanent=True,
+                                        )
+                                    )
+                                    await db.commit()
+                                    logger.info(f"Worker {worker_id}: promoted {track_id} → permanent")
                             continue
 
                         path, quality = await downloader_service.ensure_track_file(
@@ -87,17 +102,29 @@ class DownloadQueueService:
                         )
 
                         if path:
-                            await db.execute(
-                                update(Track)
-                                .where(Track.id == track_id)
-                                .values(
-                                    cache_path=str(path),
-                                    audio_quality=quality,
-                                    cache_expires_at=datetime.now(timezone.utc) + timedelta(hours=settings.cache_expire_hours),
+                            if permanent:
+                                perm = move_to_permanent(track_id)
+                                final_path = perm or path
+                                await db.execute(
+                                    update(Track).where(Track.id == track_id).values(
+                                        file_path=str(final_path),
+                                        cache_path=None,
+                                        cache_expires_at=None,
+                                        is_permanent=True,
+                                        audio_quality=quality,
+                                    )
                                 )
-                            )
+                                logger.info(f"Worker {worker_id}: downloaded permanent {track_id} → {final_path}")
+                            else:
+                                await db.execute(
+                                    update(Track).where(Track.id == track_id).values(
+                                        cache_path=str(path),
+                                        audio_quality=quality,
+                                        cache_expires_at=datetime.now(timezone.utc) + timedelta(hours=settings.cache_expire_hours),
+                                    )
+                                )
+                                logger.info(f"Worker {worker_id}: downloaded {track_id} → {path}")
                             await db.commit()
-                            logger.info(f"Worker {worker_id}: downloaded {track_id} → {path}")
                         else:
                             logger.warning(f"Worker {worker_id}: failed to download {track_id}")
                 finally:

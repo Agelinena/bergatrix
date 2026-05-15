@@ -393,6 +393,41 @@ async def add_collaborator(
     return {"user_id": str(user.id), "username": user.username}
 
 
+@router.post("/{playlist_id}/download", status_code=202)
+async def download_playlist_permanent(
+    playlist_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Enfileira todas as faixas da playlist para download permanente em background."""
+    from app.services.queue_service import DownloadQueueService
+
+    # Aceita dono ou colaborador como disparador
+    result = await db.execute(
+        select(PlaylistTrack)
+        .join(Playlist, Playlist.id == PlaylistTrack.playlist_id)
+        .where(PlaylistTrack.playlist_id == playlist_id)
+        .where(
+            (Playlist.owner_id == current_user.id)
+            | (
+                select(PlaylistCollaborator.user_id)
+                .where(
+                    PlaylistCollaborator.playlist_id == playlist_id,
+                    PlaylistCollaborator.user_id == current_user.id,
+                )
+                .exists()
+            )
+        )
+    )
+    pts = result.scalars().all()
+    if not pts:
+        raise HTTPException(status_code=404, detail="Playlist não encontrada ou sem faixas")
+
+    track_ids = [str(pt.track_id) for pt in pts]
+    await DownloadQueueService.enqueue_batch(track_ids, permanent=True)
+    return {"queued": len(track_ids)}
+
+
 @router.delete("/{playlist_id}/collaborators/{user_id}", status_code=204)
 async def remove_collaborator(
     playlist_id: uuid.UUID,
