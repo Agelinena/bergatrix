@@ -9,11 +9,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-# Configura yt-dlp globalmente para usar Node.js como motor JS
-# (YouTube exige execução de JS para desafios bot-detection; por padrão
-#  o yt-dlp só habilita Deno — Node.js precisa ser explicitamente ativado)
-RUN echo "--js-engine nodejs" > /etc/yt-dlp.conf
-
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 

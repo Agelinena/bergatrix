@@ -333,12 +333,7 @@ async def find_youtube_candidate(
 # ---------------------------------------------------------------------------
 
 async def _deemix_cancel_pending() -> None:
-    """Best-effort: cancel any queued/in-progress deemix downloads before starting a new one.
-
-    Without this, deemix accumulates stale entries when the API's 90s polling
-    window expires before deemix processes them.  The next worker then waits 90s
-    for *its* track while deemix is still busy finishing the previous one.
-    """
+    """Best-effort: cancel any queued/in-progress deemix downloads before starting a new one."""
     if not settings.deemix_url:
         return
     import aiohttp as _aiohttp
@@ -347,14 +342,17 @@ async def _deemix_cancel_pending() -> None:
         async with _aiohttp.ClientSession(
             timeout=_aiohttp.ClientTimeout(total=5)
         ) as sess:
-            for endpoint in ("/api/cancelAllDownloads", "/api/clearQueue"):
-                try:
-                    async with sess.get(f"{base}{endpoint}") as resp:
-                        if resp.status == 200:
-                            logger.debug(f"[deemix] Cleared queue via {endpoint}")
-                            return
-                except Exception:
-                    continue
+            # Try POST first (correct method for most deemix versions), then GET as fallback
+            for method in ("post", "get"):
+                for endpoint in ("/api/cancelAllDownloads", "/api/clearQueue"):
+                    try:
+                        call = getattr(sess, method)
+                        async with call(f"{base}{endpoint}") as resp:
+                            if resp.status == 200:
+                                logger.debug(f"[deemix] Cleared queue via {method.upper()} {endpoint}")
+                                return
+                    except Exception:
+                        continue
     except Exception as e:
         logger.debug(f"[deemix] cancel-pending failed (non-fatal): {e}")
 
@@ -452,6 +450,12 @@ async def _deemix_emit(source_id: str) -> bool:
                     return True
 
                 errid = data.get("errid", "")
+                if errid == "alreadyInQueue":
+                    # Track is already in deemix's queue (from a previous attempt).
+                    # Treat as success — keep polling the shared volume; deemix will download it.
+                    logger.info(f"[deemix] {source_id} already in deemix queue — continuing to poll")
+                    return True
+
                 logger.warning(
                     f"[deemix] addToQueue failed for {source_id}: "
                     f"errid={errid!r} data={data}"
