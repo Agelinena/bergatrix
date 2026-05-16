@@ -40,14 +40,17 @@ class Settings(BaseSettings):
 
     # App
     log_level: str = "INFO"
-    # Workers dedicados a streaming (QUEUE_HIGH) — alta prioridade, sem throttle
+    # Workers dedicados a streaming (QUEUE_STREAM) — yt-dlp only, sem throttle
     stream_workers: int = 2
-    # Workers dedicados a downloads de fundo (QUEUE_LOW) — throttled, requeue em falha
-    background_workers: int = 3
-    # Máximo de processos yt-dlp simultâneos (global, evita 429)
+    # Worker dedicado a downloads via deemix (QUEUE_BG) — sempre 1, sequencial
+    deemix_bg_workers: int = 1
+    # Workers dedicados a downloads via yt-dlp em background (QUEUE_YTDLP)
+    ytdlp_bg_workers: int = 2
+    # Máximo de processos yt-dlp simultâneos (global, compartilhado entre stream + bg)
     max_yt_concurrent: int = 2
-    # Mantido por compatibilidade; não mais usado diretamente
+    # Mantido por compatibilidade
     max_download_workers: int = 10
+    background_workers: int = 3  # deprecated — substituído por deemix_bg_workers + ytdlp_bg_workers
     # CORS_ORIGINS deve incluir https://{WEB_DOMAIN}
     cors_origins: str = "http://localhost:3000,http://localhost:8080"
 

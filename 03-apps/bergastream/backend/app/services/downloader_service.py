@@ -332,16 +332,6 @@ async def find_youtube_candidate(
 # Phase 2 — Download
 # ---------------------------------------------------------------------------
 
-_deemix_sidecar_lock: asyncio.Lock | None = None
-
-
-def _get_deemix_lock() -> asyncio.Lock:
-    global _deemix_sidecar_lock
-    if _deemix_sidecar_lock is None:
-        _deemix_sidecar_lock = asyncio.Lock()
-    return _deemix_sidecar_lock
-
-
 async def _deemix_cancel_pending() -> None:
     """Best-effort: cancel any queued/in-progress deemix downloads before starting a new one.
 
@@ -484,8 +474,8 @@ async def download_deezer(
     Downloads from Deezer via the deemix sidecar REST API.
 
     Triggers download via _deemix_emit(), then polls the shared volume for
-    the new audio file.  Serialised with a lock so file identification by
-    creation-time is unambiguous.
+    the new audio file.  With a single deemix worker, only one download is
+    ever in flight, so file identification by creation-time is unambiguous.
     """
     if not settings.deemix_url or not settings.deemix_downloads_path:
         logger.debug("[deemix] Skipped — DEEMIX_URL or DEEMIX_DOWNLOADS_PATH not configured")
@@ -498,83 +488,77 @@ async def download_deezer(
 
     import time as _time
 
-    async with _get_deemix_lock():
-        # Cancel any stale downloads from previous timed-out workers.
-        # When the API's 90s window expires, deemix still has the old track in its
-        # internal queue.  Without cancelling, the next emit lands behind the stale
-        # entry and deemix downloads the wrong track first — every worker times out.
-        await _deemix_cancel_pending()
+    await _deemix_cancel_pending()
 
-        trigger_time = _time.time() - 0.5   # small buffer for clock skew
+    trigger_time = _time.time() - 0.5   # small buffer for clock skew
 
-        if not await _deemix_emit(source_id):
-            return None, ""
-
-        # Poll shared volume for the new file (lock guarantees it's ours)
-        loop = asyncio.get_running_loop()
-        deadline = loop.time() + 90
-        # If after 30s there's still no file activity, deemix silently dropped
-        # the request (common on cold start or after internal errors).  Re-emit
-        # once to recover; deemix ignores duplicate adds (returns alreadyInQueue).
-        no_activity_reemit_at = loop.time() + 30
-        reemitted = False
-
-        while loop.time() < deadline:
-            found_candidate = False
-            for candidate in downloads_dir.rglob("*"):
-                if not candidate.is_file():
-                    continue
-                if candidate.suffix.lower() not in (".mp3", ".flac"):
-                    continue
-                try:
-                    stat = candidate.stat()
-                    if stat.st_ctime >= trigger_time and stat.st_size > 50_000:
-                        found_candidate = True
-                        # Wait for deemix to finish tagging (it opens the file
-                        # immediately after download to write ID3 tags).
-                        # We confirm stability: re-stat after 1 s and check
-                        # the size hasn't changed.
-                        await asyncio.sleep(1.0)
-                        try:
-                            stat2 = candidate.stat()
-                        except FileNotFoundError:
-                            continue  # deemix itself moved/deleted it
-                        if stat2.st_size != stat.st_size:
-                            continue  # still being written
-
-                        ext = candidate.suffix.lower().lstrip(".")
-                        dest = _cache_path(track_id, ext)
-                        shutil.move(str(candidate), str(dest))
-
-                        # Post-download duration check
-                        if expected_duration_ms and expected_duration_ms > 0:
-                            actual_ms = _file_duration_ms(dest)
-                            if actual_ms > 0 and not _duration_ok(actual_ms, expected_duration_ms):
-                                logger.warning(
-                                    f"[deemix] Duration mismatch {source_id}: "
-                                    f"expected {expected_duration_ms}ms got {actual_ms}ms — discarding"
-                                )
-                                dest.unlink(missing_ok=True)
-                                return None, ""
-
-                        quality = "flac" if ext == "flac" else "mp3_320"
-                        logger.info(f"[deemix] Downloaded {source_id} → {dest.name} ({quality})")
-                        return dest, quality
-                except Exception:
-                    continue
-
-            if not found_candidate and not reemitted and loop.time() >= no_activity_reemit_at:
-                reemitted = True
-                logger.warning(
-                    f"[deemix] No download activity after 30s for {source_id} — re-emitting"
-                )
-                await _deemix_emit(source_id)
-                trigger_time = _time.time() - 0.5  # reset detection window
-
-            await asyncio.sleep(0.5)
-
-        logger.warning(f"[deemix] Timed out waiting for {source_id}")
+    if not await _deemix_emit(source_id):
         return None, ""
+
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + 120
+    # If after 30s there's still no file activity, deemix silently dropped
+    # the request (common on cold start or after internal errors).  Re-emit
+    # once to recover; deemix ignores duplicate adds (returns alreadyInQueue).
+    no_activity_reemit_at = loop.time() + 30
+    reemitted = False
+
+    while loop.time() < deadline:
+        found_candidate = False
+        for candidate in downloads_dir.rglob("*"):
+            if not candidate.is_file():
+                continue
+            if candidate.suffix.lower() not in (".mp3", ".flac"):
+                continue
+            try:
+                stat = candidate.stat()
+                if stat.st_ctime >= trigger_time and stat.st_size > 50_000:
+                    found_candidate = True
+                    # Wait for deemix to finish tagging (it opens the file
+                    # immediately after download to write ID3 tags).
+                    # We confirm stability: re-stat after 1 s and check
+                    # the size hasn't changed.
+                    await asyncio.sleep(1.0)
+                    try:
+                        stat2 = candidate.stat()
+                    except FileNotFoundError:
+                        continue  # deemix itself moved/deleted it
+                    if stat2.st_size != stat.st_size:
+                        continue  # still being written
+
+                    ext = candidate.suffix.lower().lstrip(".")
+                    dest = _cache_path(track_id, ext)
+                    shutil.move(str(candidate), str(dest))
+
+                    # Post-download duration check
+                    if expected_duration_ms and expected_duration_ms > 0:
+                        actual_ms = _file_duration_ms(dest)
+                        if actual_ms > 0 and not _duration_ok(actual_ms, expected_duration_ms):
+                            logger.warning(
+                                f"[deemix] Duration mismatch {source_id}: "
+                                f"expected {expected_duration_ms}ms got {actual_ms}ms — discarding"
+                            )
+                            dest.unlink(missing_ok=True)
+                            return None, ""
+
+                    quality = "flac" if ext == "flac" else "mp3_320"
+                    logger.info(f"[deemix] Downloaded {source_id} → {dest.name} ({quality})")
+                    return dest, quality
+            except Exception:
+                continue
+
+        if not found_candidate and not reemitted and loop.time() >= no_activity_reemit_at:
+            reemitted = True
+            logger.warning(
+                f"[deemix] No download activity after 30s for {source_id} — re-emitting"
+            )
+            await _deemix_emit(source_id)
+            trigger_time = _time.time() - 0.5  # reset detection window
+
+        await asyncio.sleep(0.5)
+
+    logger.warning(f"[deemix] Timed out waiting for {source_id}")
+    return None, ""
 
 
 async def _youtube_first_result(query: str) -> str | None:
