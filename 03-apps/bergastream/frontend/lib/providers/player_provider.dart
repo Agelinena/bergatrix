@@ -88,10 +88,10 @@ class Player extends _$Player {
   }
 
   Future<void> play(Track track, {List<Track> queue = const []}) async {
-    // Register in DB before streaming — stream endpoint returns 404 if track unknown
-    try {
-      await ref.read(apiClientProvider).registerTrack(track.toJson());
-    } catch (_) {}
+    // Fire-and-forget: awaiting a network call here breaks the browser's user-gesture
+    // context, causing audio.play() to be rejected by the autoplay policy on web.
+    // The stream endpoint retries the track lookup for up to 1 s to handle the race.
+    ref.read(apiClientProvider).registerTrack(track.toJson()).ignore();
 
     // Record previous track before switching (if played for more than 5s)
     if (state.hasTrack && state.position.inSeconds > 5) {

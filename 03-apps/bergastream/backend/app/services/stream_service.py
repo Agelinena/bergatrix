@@ -117,6 +117,14 @@ async def serve_stream(
 ) -> StreamingResponse:
     track = await _get_or_create_track(db, track_id)
     if track is None:
+        # Registration (fire-and-forget from client) may still be in-flight.
+        # Retry for up to 1 s before giving up.
+        for _ in range(10):
+            await asyncio.sleep(0.1)
+            track = await _get_or_create_track(db, track_id)
+            if track is not None:
+                break
+    if track is None:
         raise HTTPException(status_code=404, detail="Track not found")
 
     await db.execute(

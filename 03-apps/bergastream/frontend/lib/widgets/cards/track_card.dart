@@ -90,7 +90,7 @@ class TrackCard extends ConsumerWidget {
     ref.read(radioQueueProvider.notifier).deactivate();
 
     final client = ref.read(apiClientProvider);
-    await client.registerTrack(track.toJson());
+    client.registerTrack(track.toJson()).ignore(); // fire-and-forget: preserve user gesture
     final q = queue.isEmpty ? [track] : queue;
     await ref.read(playerProvider.notifier).play(track, queue: q);
 
