@@ -165,17 +165,24 @@ class DownloadQueueService:
                 forwarded = False  # True when handed off to deemix queue
                 try:
                     if _resolve_existing(track_id):
-                        continue  # already on disk
+                        logger.info(f"[{label}] {track_id} already on disk — skipping")
+                        continue
 
                     async with AsyncSessionLocal() as db:
                         result = await db.execute(select(Track).where(Track.id == track_id))
                         track = result.scalar_one_or_none()
                     if track is None:
-                        logger.debug(f"[{label}] Track {track_id} not found — skipping")
+                        logger.warning(f"[{label}] Track {track_id} not found in DB — skipping")
                         continue
 
-                    logger.debug(f"[{label}] yt-dlp stream: {track_id}")
                     yt_source_id = track.source_id if track.source == "youtube" else ""
+                    logger.info(
+                        f"[{label}] START stream download: {track_id} | "
+                        f"source={track.source} source_id={track.source_id!r} | "
+                        f"title={track.title!r} artist={track.artist!r} | "
+                        f"duration_ms={track.duration_ms} | "
+                        f"yt_source_id={yt_source_id!r}"
+                    )
                     path, quality = await download_youtube(
                         track_id,
                         yt_source_id,
@@ -188,8 +195,9 @@ class DownloadQueueService:
                     else:
                         # yt-dlp failed — hand off to deemix queue as fallback.
                         # Keep QUEUED_SET alive so _trigger_and_wait keeps polling.
-                        logger.info(
-                            f"[{label}] yt-dlp failed for stream {track_id} "
+                        logger.warning(
+                            f"[{label}] yt-dlp FAILED for stream {track_id} "
+                            f"('{track.title}' by '{track.artist}') "
                             "— forwarding to deemix queue"
                         )
                         forwarded = True
@@ -238,34 +246,42 @@ class DownloadQueueService:
                 forwarded = False  # True when pushed to QUEUE_YTDLP
                 try:
                     if _resolve_existing(track_id):
+                        logger.info(f"[{label}] {track_id} already on disk — skipping")
                         continue
 
                     async with AsyncSessionLocal() as db:
                         result = await db.execute(select(Track).where(Track.id == track_id))
                         track = result.scalar_one_or_none()
                     if track is None:
-                        logger.debug(f"[{label}] Track {track_id} not found — skipping")
+                        logger.warning(f"[{label}] Track {track_id} not found in DB — skipping")
                         continue
 
-                    # Find Deezer candidate for any source type.
-                    # deezer source → ID already known; others → text search.
                     deezer_known = track.source_id if track.source == "deezer" else None
+                    logger.info(
+                        f"[{label}] START deemix download: {track_id} | "
+                        f"source={track.source} source_id={track.source_id!r} | "
+                        f"title={track.title!r} artist={track.artist!r} | "
+                        f"duration_ms={track.duration_ms} | "
+                        f"deezer_known={deezer_known!r}"
+                    )
                     deezer_id = await find_deezer_candidate(
                         track.title or "", track.artist or "", track.duration_ms, deezer_known
                     )
 
                     if deezer_id:
-                        logger.debug(f"[{label}] Deemix download: {track_id} (deezer/{deezer_id})")
+                        logger.info(f"[{label}] Deemix download: {track_id} via deezer/{deezer_id}")
                         path, quality = await download_deezer(track_id, deezer_id, track.duration_ms)
                         if path:
                             await cls._save_result(label, track_id, path, quality, permanent)
                             continue  # success
                         logger.warning(
-                            f"[{label}] Deemix failed for {track_id} — forwarding to yt-dlp"
+                            f"[{label}] Deemix download FAILED for {track_id} (deezer/{deezer_id}) "
+                            "— forwarding to yt-dlp"
                         )
                     else:
-                        logger.info(
-                            f"[{label}] No deezer candidate for {track_id} — forwarding to yt-dlp"
+                        logger.warning(
+                            f"[{label}] No Deezer candidate for {track_id} "
+                            f"('{track.title}' by '{track.artist}') — forwarding to yt-dlp"
                         )
 
                     # Forward to yt-dlp queue; keep QUEUED_SET entry alive for the retry
@@ -316,20 +332,25 @@ class DownloadQueueService:
                 await r.sadd(DOWNLOADING_SET, track_id)
                 try:
                     if _resolve_existing(track_id):
+                        logger.info(f"[{label}] {track_id} already on disk — skipping")
                         continue
 
                     async with AsyncSessionLocal() as db:
                         result = await db.execute(select(Track).where(Track.id == track_id))
                         track = result.scalar_one_or_none()
                     if track is None:
-                        logger.debug(f"[{label}] Track {track_id} not found — skipping")
+                        logger.warning(f"[{label}] Track {track_id} not found in DB — skipping")
                         continue
 
-                    logger.debug(
-                        f"[{label}] yt-dlp download: {track_id} "
-                        f"(attempt {retries + 1}/{_MAX_RETRIES + 1})"
-                    )
                     yt_source_id = track.source_id if track.source == "youtube" else ""
+                    logger.info(
+                        f"[{label}] START yt-dlp download: {track_id} "
+                        f"(attempt {retries + 1}/{_MAX_RETRIES + 1}) | "
+                        f"source={track.source} source_id={track.source_id!r} | "
+                        f"title={track.title!r} artist={track.artist!r} | "
+                        f"duration_ms={track.duration_ms} | "
+                        f"yt_source_id={yt_source_id!r}"
+                    )
                     path, quality = await download_youtube(
                         track_id,
                         yt_source_id,
@@ -342,16 +363,20 @@ class DownloadQueueService:
                         await cls._save_result(label, track_id, path, quality, permanent)
                     elif retries < _MAX_RETRIES:
                         wait = 30 * (retries + 1)  # 30 s, 60 s
-                        logger.info(
-                            f"[{label}] Requeueing {track_id} in {wait}s "
-                            f"(retry {retries + 1}/{_MAX_RETRIES})"
+                        logger.warning(
+                            f"[{label}] yt-dlp FAILED for {track_id} "
+                            f"('{track.title}' by '{track.artist}') — "
+                            f"requeueing in {wait}s (retry {retries + 1}/{_MAX_RETRIES})"
                         )
                         await asyncio.sleep(wait)
                         payload["retries"] = retries + 1
                         await r.rpush(QUEUE_YTDLP, json.dumps(payload))
                         continue  # keep in QUEUED_SET for the retry
                     else:
-                        logger.error(f"[{label}] All retries exhausted for {track_id}")
+                        logger.error(
+                            f"[{label}] All retries exhausted for {track_id} "
+                            f"('{track.title}' by '{track.artist}')"
+                        )
 
                 finally:
                     await r.srem(DOWNLOADING_SET, track_id)

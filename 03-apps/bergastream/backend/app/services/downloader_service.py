@@ -274,6 +274,9 @@ async def find_youtube_candidate(
         return None
 
     # Score every candidate
+    logger.info(
+        f"[resolve] yt-dlp returned {len(candidates)} candidate(s) for query='{query}'"
+    )
     scored: list[tuple[float, bool, int, dict]] = []  # (t_score, dur_ok, dur_diff_ms, c)
     for c in candidates:
         vid_ms = (c.get("duration") or 0) * 1000
@@ -281,8 +284,8 @@ async def find_youtube_candidate(
         dur_ok = _duration_ok(vid_ms, duration_ms) if (duration_ms and duration_ms > 0) else True
         dur_diff = int(abs(vid_ms - (duration_ms or 0)))
         scored.append((t_score, dur_ok, dur_diff, c))
-        logger.debug(
-            f"[resolve] YT {c.get('id')} '{c.get('title')}': "
+        logger.info(
+            f"[resolve]   YT {c.get('id')} '{c.get('title')}': "
             f"title_score={t_score:.2f} dur={vid_ms}ms dur_ok={dur_ok} Δ{dur_diff}ms"
         )
 
@@ -650,10 +653,12 @@ async def download_youtube_by_id(
                         )
                         await asyncio.sleep(wait)
                         continue
-                    logger.warning(
-                        f"[yt-dlp] Non-zero exit for {video_id}: {stderr_text[:300]}"
+                    logger.error(
+                        f"[yt-dlp] NON-ZERO EXIT (rc={proc.returncode}) for {video_id}: "
+                        f"{stderr_text[:600]}"
                     )
                     return None, ""
+                logger.info(f"[yt-dlp] Download process finished OK for {video_id}")
                 break   # success
 
         actual = dest if dest.exists() else dest.with_suffix("").with_suffix(".mp3")
@@ -661,20 +666,28 @@ async def download_youtube_by_id(
             actual.rename(dest)
 
         if not dest.exists():
+            logger.error(
+                f"[yt-dlp] File not found after download for {video_id} "
+                f"(expected at {dest})"
+            )
             return None, ""
 
         # Post-download duration verification
         if expected_duration_ms and expected_duration_ms > 0:
             actual_ms = _file_duration_ms(dest)
+            logger.info(
+                f"[yt-dlp] Duration check for {video_id}: "
+                f"file={actual_ms}ms expected={expected_duration_ms}ms"
+            )
             if actual_ms > 0 and not _duration_ok(actual_ms, expected_duration_ms):
-                logger.warning(
-                    f"[yt-dlp] Duration mismatch {video_id}: "
-                    f"expected {expected_duration_ms}ms got {actual_ms}ms — discarding"
+                logger.error(
+                    f"[yt-dlp] Duration MISMATCH {video_id}: "
+                    f"expected {expected_duration_ms}ms got {actual_ms}ms — discarding file"
                 )
                 dest.unlink(missing_ok=True)
                 return None, ""
 
-        logger.info(f"[yt-dlp] Downloaded {video_id} → {dest.name}")
+        logger.info(f"[yt-dlp] Downloaded {video_id} → {dest.name} (size={dest.stat().st_size} bytes)")
         return dest, "mp3_320"
 
     except Exception as e:
@@ -696,20 +709,40 @@ async def download_youtube(
     searching. Kept for backward compatibility with queue_service worker.
     """
     if source_id and not source_id.startswith("search:"):
+        logger.info(
+            f"[yt-dlp] download_youtube: by ID={source_id!r} for {track_id}"
+        )
         return await download_youtube_by_id(track_id, source_id, expected_duration_ms)
 
+    logger.info(
+        f"[yt-dlp] download_youtube: search mode for {track_id} "
+        f"title={title!r} artist={artist!r} duration_ms={expected_duration_ms}"
+    )
     # Search → duration-matched candidate → download
     video_id = await find_youtube_candidate(title, artist, expected_duration_ms)
     if video_id:
+        logger.info(f"[yt-dlp] Using candidate {video_id} for {track_id}")
         return await download_youtube_by_id(track_id, video_id, expected_duration_ms)
 
     # Last resort: first result, no duration check
     if title or artist:
-        video_id = await _youtube_first_result(f"{artist} {title}".strip())
+        query = f"{artist} {title}".strip()
+        logger.warning(
+            f"[yt-dlp] find_youtube_candidate returned nothing for {track_id} "
+            f"— trying last-resort first result for '{query}'"
+        )
+        video_id = await _youtube_first_result(query)
         if video_id:
-            logger.warning(f"[yt-dlp] Unverified first result for '{title}' by '{artist}'")
+            logger.warning(
+                f"[yt-dlp] Last-resort unverified first result {video_id} for "
+                f"'{title}' by '{artist}'"
+            )
             return await download_youtube_by_id(track_id, video_id, None)
 
+    logger.error(
+        f"[yt-dlp] download_youtube: no candidate found at all for {track_id} "
+        f"('{title}' by '{artist}')"
+    )
     return None, ""
 
 

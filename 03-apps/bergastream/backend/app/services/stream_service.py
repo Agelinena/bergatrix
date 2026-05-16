@@ -180,14 +180,31 @@ async def _trigger_and_wait(track: Track, db: AsyncSession) -> Path | None:
     deemix fallback when yt-dlp fails (~60 s) with headroom for queue wait.
     Streaming begins as soon as the file is created (follow-file mode kicks in).
     """
+    import logging as _logging
+    _log = _logging.getLogger(__name__)
+    _log.info(
+        f"[stream] _trigger_and_wait START: {track.id} | "
+        f"source={track.source} source_id={track.source_id!r} | "
+        f"title={track.title!r} artist={track.artist!r} | "
+        f"current_file_path={track.current_file_path!r}"
+    )
     await DownloadQueueService.enqueue(track.id, priority=True)
 
-    for _ in range(600):  # 150 seconds (600 × 0.25 s)
+    for elapsed_quarter in range(600):  # 150 seconds (600 × 0.25 s)
         await asyncio.sleep(0.25)
         for base in (settings.music_cache_path, settings.music_permanent_path):
             for ext in ("flac", "mp3"):
                 p = Path(base) / f"{track.id}.{ext}"
                 if p.exists() and p.stat().st_size > 0:
+                    _log.info(
+                        f"[stream] _trigger_and_wait FOUND: {track.id} → {p} "
+                        f"after {elapsed_quarter * 0.25:.1f}s"
+                    )
                     await _update_track_cache_path(db, track.id, str(p), ext)
                     return p
+
+    _log.error(
+        f"[stream] _trigger_and_wait TIMEOUT (150s): {track.id} "
+        f"('{track.title}' by '{track.artist}') — no file appeared"
+    )
     return None
