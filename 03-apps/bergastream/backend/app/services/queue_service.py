@@ -201,7 +201,9 @@ class DownloadQueueService:
                             "— forwarding to deemix queue"
                         )
                         forwarded = True
-                        await r.rpush(QUEUE_BG, json.dumps({"track_id": track_id, "permanent": permanent}))
+                        # lpush = front of queue → user-triggered deemix job
+                        # gets priority over background prefetch jobs (rpush).
+                        await r.lpush(QUEUE_BG, json.dumps({"track_id": track_id, "permanent": permanent}))
 
                 finally:
                     await r.srem(DOWNLOADING_SET, track_id)

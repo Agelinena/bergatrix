@@ -134,7 +134,23 @@ async def serve_stream(
 
     file_path = Path(track.current_file_path) if track.current_file_path else None
 
-    if file_path is None or not file_path.exists():
+    if file_path is not None and not file_path.exists():
+        # Stale DB record: file was deleted or volume was wiped. Clear it so
+        # _trigger_and_wait starts fresh and the next serve picks up correctly.
+        import logging as _lg
+        _lg.getLogger(__name__).warning(
+            f"[stream] Stale file path for {track_id}: {file_path} not on disk — clearing DB record"
+        )
+        await db.execute(
+            update(Track).where(Track.id == track_id).values(
+                file_path=None, cache_path=None,
+                cache_expires_at=None, is_permanent=False,
+            )
+        )
+        await db.commit()
+        file_path = None
+
+    if file_path is None:
         file_path = await _trigger_and_wait(track, db)
         if file_path is None:
             raise HTTPException(status_code=503, detail="Track could not be resolved for streaming")
