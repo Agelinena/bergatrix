@@ -162,6 +162,7 @@ class DownloadQueueService:
                 permanent = payload.get("permanent", False)
 
                 await r.sadd(DOWNLOADING_SET, track_id)
+                forwarded = False  # True when handed off to deemix queue
                 try:
                     if _resolve_existing(track_id):
                         continue  # already on disk
@@ -185,11 +186,19 @@ class DownloadQueueService:
                     if path:
                         await cls._save_result(label, track_id, path, quality, permanent)
                     else:
-                        logger.warning(f"[{label}] yt-dlp failed for stream {track_id}")
+                        # yt-dlp failed — hand off to deemix queue as fallback.
+                        # Keep QUEUED_SET alive so _trigger_and_wait keeps polling.
+                        logger.info(
+                            f"[{label}] yt-dlp failed for stream {track_id} "
+                            "— forwarding to deemix queue"
+                        )
+                        forwarded = True
+                        await r.rpush(QUEUE_BG, json.dumps({"track_id": track_id, "permanent": permanent}))
 
                 finally:
                     await r.srem(DOWNLOADING_SET, track_id)
-                    await r.srem(QUEUED_SET, track_id)
+                    if not forwarded:
+                        await r.srem(QUEUED_SET, track_id)
 
             except asyncio.CancelledError:
                 break
