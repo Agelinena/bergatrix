@@ -244,8 +244,12 @@ async def get_deezer_artist_tracks(deezer_id: str, index: int = 0, limit: int = 
     all_albums: list[dict] = []
     async with httpx.AsyncClient(timeout=30) as client:
         next_url: str | None = f"{DEEZER_API}/artist/{deezer_id}/albums"
+        seen_urls: set[str] = set()
         first = True
-        while next_url:
+        while next_url and len(seen_urls) < 50:
+            if next_url in seen_urls:
+                break
+            seen_urls.add(next_url)
             resp = await client.get(next_url, params={"limit": 100} if first else {})
             first = False
             if resp.status_code != 200:

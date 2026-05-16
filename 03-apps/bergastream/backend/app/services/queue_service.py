@@ -174,9 +174,10 @@ class DownloadQueueService:
                         continue
 
                     logger.debug(f"[{label}] yt-dlp stream: {track_id}")
+                    yt_source_id = track.source_id if track.source == "youtube" else ""
                     path, quality = await download_youtube(
                         track_id,
-                        track.source_id or "",
+                        yt_source_id,
                         track.title or "",
                         track.artist or "",
                         track.duration_ms,
@@ -319,9 +320,10 @@ class DownloadQueueService:
                         f"[{label}] yt-dlp download: {track_id} "
                         f"(attempt {retries + 1}/{_MAX_RETRIES + 1})"
                     )
+                    yt_source_id = track.source_id if track.source == "youtube" else ""
                     path, quality = await download_youtube(
                         track_id,
-                        track.source_id or "",
+                        yt_source_id,
                         track.title or "",
                         track.artist or "",
                         track.duration_ms,

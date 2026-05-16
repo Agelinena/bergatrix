@@ -156,7 +156,7 @@ class RadioService:
         if not seed or not seed.artist_id:
             return []
         numeric_artist_id = seed.artist_id.replace("deezer_", "")
-        all_tracks = await get_deezer_artist_tracks(numeric_artist_id, limit=limit * 2)
+        all_tracks, _ = await get_deezer_artist_tracks(numeric_artist_id, limit=limit * 2)
         return [t for t in all_tracks if t.source_id != deezer_id][:limit]
 
     @staticmethod
