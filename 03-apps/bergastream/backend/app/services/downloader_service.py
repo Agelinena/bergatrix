@@ -242,15 +242,22 @@ async def find_youtube_candidate(
         proc = await asyncio.create_subprocess_exec(
             *cmd,
             stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.PIPE,
         )
-        stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=30)
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=30)
     except asyncio.TimeoutError:
         logger.warning(f"[resolve] yt-dlp candidate search timed out for '{query}'")
         return None
     except Exception as e:
         logger.warning(f"[resolve] yt-dlp candidate search error: {e}")
         return None
+
+    if stderr:
+        stderr_text = stderr.decode("utf-8", errors="replace")
+        if "429" in stderr_text:
+            logger.warning(f"[resolve] yt-dlp search rate-limited (429) for '{query}'")
+        elif stderr_text.strip():
+            logger.debug(f"[resolve] yt-dlp search stderr for '{query}': {stderr_text[:300]}")
 
     candidates: list[dict] = []
     for line in stdout.decode("utf-8", errors="replace").strip().splitlines():
@@ -333,6 +340,33 @@ def _get_deemix_lock() -> asyncio.Lock:
     if _deemix_sidecar_lock is None:
         _deemix_sidecar_lock = asyncio.Lock()
     return _deemix_sidecar_lock
+
+
+async def _deemix_cancel_pending() -> None:
+    """Best-effort: cancel any queued/in-progress deemix downloads before starting a new one.
+
+    Without this, deemix accumulates stale entries when the API's 90s polling
+    window expires before deemix processes them.  The next worker then waits 90s
+    for *its* track while deemix is still busy finishing the previous one.
+    """
+    if not settings.deemix_url:
+        return
+    import aiohttp as _aiohttp
+    base = settings.deemix_url.rstrip("/")
+    try:
+        async with _aiohttp.ClientSession(
+            timeout=_aiohttp.ClientTimeout(total=5)
+        ) as sess:
+            for endpoint in ("/api/cancelAllDownloads", "/api/clearQueue"):
+                try:
+                    async with sess.get(f"{base}{endpoint}") as resp:
+                        if resp.status == 200:
+                            logger.debug(f"[deemix] Cleared queue via {endpoint}")
+                            return
+                except Exception:
+                    continue
+    except Exception as e:
+        logger.debug(f"[deemix] cancel-pending failed (non-fatal): {e}")
 
 
 async def _deemix_emit(source_id: str) -> bool:
@@ -465,6 +499,12 @@ async def download_deezer(
     import time as _time
 
     async with _get_deemix_lock():
+        # Cancel any stale downloads from previous timed-out workers.
+        # When the API's 90s window expires, deemix still has the old track in its
+        # internal queue.  Without cancelling, the next emit lands behind the stale
+        # entry and deemix downloads the wrong track first — every worker times out.
+        await _deemix_cancel_pending()
+
         trigger_time = _time.time() - 0.5   # small buffer for clock skew
 
         if not await _deemix_emit(source_id):
@@ -473,7 +513,14 @@ async def download_deezer(
         # Poll shared volume for the new file (lock guarantees it's ours)
         loop = asyncio.get_running_loop()
         deadline = loop.time() + 90
+        # If after 30s there's still no file activity, deemix silently dropped
+        # the request (common on cold start or after internal errors).  Re-emit
+        # once to recover; deemix ignores duplicate adds (returns alreadyInQueue).
+        no_activity_reemit_at = loop.time() + 30
+        reemitted = False
+
         while loop.time() < deadline:
+            found_candidate = False
             for candidate in downloads_dir.rglob("*"):
                 if not candidate.is_file():
                     continue
@@ -482,6 +529,7 @@ async def download_deezer(
                 try:
                     stat = candidate.stat()
                     if stat.st_ctime >= trigger_time and stat.st_size > 50_000:
+                        found_candidate = True
                         # Wait for deemix to finish tagging (it opens the file
                         # immediately after download to write ID3 tags).
                         # We confirm stability: re-stat after 1 s and check
@@ -515,6 +563,14 @@ async def download_deezer(
                 except Exception:
                     continue
 
+            if not found_candidate and not reemitted and loop.time() >= no_activity_reemit_at:
+                reemitted = True
+                logger.warning(
+                    f"[deemix] No download activity after 30s for {source_id} — re-emitting"
+                )
+                await _deemix_emit(source_id)
+                trigger_time = _time.time() - 0.5  # reset detection window
+
             await asyncio.sleep(0.5)
 
         logger.warning(f"[deemix] Timed out waiting for {source_id}")
@@ -528,9 +584,15 @@ async def _youtube_first_result(query: str) -> str | None:
         proc = await asyncio.create_subprocess_exec(
             *cmd,
             stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.PIPE,
         )
-        stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=20)
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=20)
+        if stderr:
+            stderr_text = stderr.decode("utf-8", errors="replace")
+            if "429" in stderr_text:
+                logger.warning(f"[resolve] yt-dlp last-resort search rate-limited (429) for '{query}'")
+            elif stderr_text.strip():
+                logger.debug(f"[resolve] yt-dlp last-resort stderr: {stderr_text[:200]}")
         lines = stdout.decode("utf-8", errors="replace").strip().splitlines()
         if lines:
             return json.loads(lines[0]).get("id")
