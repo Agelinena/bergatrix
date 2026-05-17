@@ -14,24 +14,22 @@ services:
       WEBUI_NAME: "Bergatrix AI"
 
       # ─── Backend: LiteLLM como OpenAI-compatible endpoint ───────────────────
-      # Aponta para o LiteLLM proxy via rede interna bergatrix-proxy
       OPENAI_API_BASE_URL: http://litellm:4000/v1
       OPENAI_API_KEY: ${LITELLM_MASTER_KEY}
 
-      # Desativa Ollama (não estamos usando localmente)
-      ENABLE_OLLAMA_API: "false"
+      # ─── 🔌 ATIVADO: Ollama na rede interna ─────────────────────────────────
+      ENABLE_OLLAMA_API: "true"
+      OLLAMA_BASE_URL: http://ollama:11434
 
       # ─── Auth ───────────────────────────────────────────────────────────────
-      # Desativa signup público — apenas contas criadas pelo admin entram
       ENABLE_SIGNUP: "false"
-      # Primeiro login cria a conta admin automaticamente
       WEBUI_AUTH: "true"
 
       # ─── Modelo padrão ──────────────────────────────────────────────────────
       DEFAULT_MODELS: "deepseek-v3"
 
     networks:
-      - bergatrix-proxy  # acessa Traefik + litellm:4000
+      - bergatrix-proxy
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.openwebui.rule=Host(`chat.${DOMAIN}`)"
@@ -39,6 +37,27 @@ services:
       - "traefik.http.routers.openwebui.tls.certresolver=letsencrypt"
       - "traefik.http.routers.openwebui.middlewares=internal-only@docker"
       - "traefik.http.services.openwebui.loadbalancer.server.port=8080"
+
+  # ─── 🟢 OLLAMA COM SUPORTE A GPU NVIDIA ─────────────────────────────────────
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    restart: unless-stopped
+    volumes:
+      # Centraliza os dados do Ollama e a pasta do Mímesis no mesmo volume apontado por você
+      - ${DATA_DIR}:/root/.ollama
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+    networks:
+      - bergatrix-proxy
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
 
 networks:
   bergatrix-proxy:
