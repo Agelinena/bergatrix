@@ -172,7 +172,7 @@ class DownloadQueueService:
                         result = await db.execute(select(Track).where(Track.id == track_id))
                         track = result.scalar_one_or_none()
                     if track is None:
-                        logger.warning(f"[{label}] Track {track_id} not found in DB — skipping")
+                        logger.info(f"[{label}] Track {track_id} not in DB yet — skipping")
                         continue
 
                     yt_source_id = track.source_id if track.source == "youtube" else ""
@@ -255,7 +255,7 @@ class DownloadQueueService:
                         result = await db.execute(select(Track).where(Track.id == track_id))
                         track = result.scalar_one_or_none()
                     if track is None:
-                        logger.warning(f"[{label}] Track {track_id} not found in DB — skipping")
+                        logger.info(f"[{label}] Track {track_id} not in DB yet — skipping")
                         continue
 
                     deezer_known = track.source_id if track.source == "deezer" else None
@@ -341,7 +341,7 @@ class DownloadQueueService:
                         result = await db.execute(select(Track).where(Track.id == track_id))
                         track = result.scalar_one_or_none()
                     if track is None:
-                        logger.warning(f"[{label}] Track {track_id} not found in DB — skipping")
+                        logger.info(f"[{label}] Track {track_id} not in DB yet — skipping")
                         continue
 
                     yt_source_id = track.source_id if track.source == "youtube" else ""
@@ -398,6 +398,21 @@ class DownloadQueueService:
 
     @classmethod
     async def start_workers(cls) -> None:
+        r = cls._get_redis()
+
+        # DOWNLOADING_SET entries are per-process state: every entry left from a
+        # previous run belongs to a worker that no longer exists.  Clear it so
+        # enqueue() doesn't mistake them for active downloads and block forever.
+        stale = await r.smembers(DOWNLOADING_SET)
+        if stale:
+            await r.delete(DOWNLOADING_SET)
+            logger.warning(
+                f"[startup] Cleared {len(stale)} stale DOWNLOADING_SET entries "
+                f"from previous run: {stale}"
+            )
+        else:
+            logger.info("[startup] DOWNLOADING_SET clean — no stale entries")
+
         n_stream = settings.stream_workers
         n_deemix = settings.deemix_bg_workers  # keep at 1 — deemix is single-consumer
         n_ytdlp  = settings.ytdlp_bg_workers
