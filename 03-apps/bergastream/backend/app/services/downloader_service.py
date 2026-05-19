@@ -613,29 +613,60 @@ async def _deemix_emit_once(source_id: str) -> bool:
 
 def _try_hardlink_or_copy(src: Path, dest: Path) -> bool:
     """
-    Create a hardlink from src to dest if possible (same filesystem).
-    Falls back to copying the initial contents if hardlinking fails.
+    Make `dest` resolve to the same data as `src`, with follow-mode support
+    if at all possible.
 
-    Returns True if the dest now exists and shares (or contains) data with src.
+    Strategy (in order of preference):
+      1. **Hardlink** — best: both paths share an inode, so as deemix
+         writes more bytes to `src`, `dest.stat().st_size` reflects it
+         immediately and follow-mode serves the partial file.  Only works
+         within the same filesystem.
+      2. **Symlink** — works across filesystems (Errno 18 case).  `dest`
+         is a path that resolves to `src`, so `open(dest)` reads from the
+         live, growing file.  Slightly more fragile than hardlink: if
+         someone replaces `dest` we lose the link, but in practice we
+         atomically replace it at the very end of the download.
+      3. **One-shot copy** — last resort.  Only the initial bytes get
+         copied; follow-mode will only serve those.  Streaming effectively
+         waits for the final move at the end of download.
+
+    Returns True if the dest exists and is usable for streaming.
     """
     try:
-        if dest.exists():
+        if dest.exists() or dest.is_symlink():
             return True
         dest.parent.mkdir(parents=True, exist_ok=True)
-        os.link(src, dest)
-        logger.info(f"[deemix] Hardlinked {src.name} → {dest}")
-        return True
-    except OSError as e:
-        logger.warning(
-            f"[deemix] Hardlink failed ({e}) — falling back to copy. "
-            f"Streaming will start only after download completes."
-        )
         try:
-            shutil.copy2(src, dest)
+            os.link(src, dest)
+            logger.info(f"[deemix] Hardlinked {src.name} → {dest}")
             return True
-        except Exception as ce:
-            logger.warning(f"[deemix] Copy fallback also failed: {ce}")
-            return False
+        except OSError as e_link:
+            # Errno 18 = EXDEV (cross-device link).  Try a symlink — those
+            # work across filesystems and let stream_service tail-follow
+            # the live deemix output.
+            try:
+                os.symlink(src, dest)
+                logger.info(
+                    f"[deemix] Hardlink failed ({e_link.errno}); using symlink "
+                    f"{dest} → {src.name} for live streaming"
+                )
+                return True
+            except OSError as e_sym:
+                logger.warning(
+                    f"[deemix] Hardlink AND symlink failed "
+                    f"(link errno={e_link.errno}, symlink errno={e_sym.errno}) — "
+                    f"falling back to one-shot copy.  Streaming will only "
+                    f"start after download completes."
+                )
+                try:
+                    shutil.copy2(src, dest)
+                    return True
+                except Exception as ce:
+                    logger.warning(f"[deemix] Copy fallback also failed: {ce}")
+                    return False
+    except Exception as e:
+        logger.warning(f"[deemix] _try_hardlink_or_copy unexpected error: {e}")
+        return False
 
 
 async def download_deezer(
@@ -734,18 +765,40 @@ async def download_deezer(
                     if stat2.st_size != stat.st_size:
                         continue  # still being written
 
-                    # Stable — final move + verification.
-                    if linked_dest and linked_dest.exists():
-                        # Hardlinked path already exists. Remove deemix's
-                        # original to avoid leaving duplicates in the shared volume.
+                    # Stable — finalize: ensure `final_dest` is a real,
+                    # standalone file (not a symlink) before deemix cleans
+                    # up the shared volume.
+                    final_dest = linked_dest or _cache_path(track_id, ext)
+                    if linked_dest is not None and linked_dest.is_symlink():
+                        # Replace the symlink with a real copy of the file's
+                        # current contents.  Use a .tmp file + os.replace for
+                        # atomicity: a stream reading via final_dest never
+                        # sees a half-written file.
+                        tmp_dest = final_dest.with_suffix(final_dest.suffix + ".tmp")
+                        try:
+                            shutil.copy2(candidate, tmp_dest)
+                            # Remove the symlink and atomically swap in the real file.
+                            final_dest.unlink(missing_ok=True)
+                            os.replace(tmp_dest, final_dest)
+                            # deemix's original copy can now go away.
+                            candidate.unlink(missing_ok=True)
+                            logger.info(
+                                f"[deemix] Promoted symlink to standalone file: {final_dest}"
+                            )
+                        except Exception as e:
+                            logger.warning(
+                                f"[deemix] Failed to promote symlink to real file: {e}. "
+                                f"Leaving symlink in place."
+                            )
+                    elif linked_dest is not None and linked_dest.exists():
+                        # Hardlink succeeded — both paths share an inode.
+                        # deemix's original is redundant; drop it.
                         try:
                             candidate.unlink(missing_ok=True)
                         except Exception:
                             pass
-                        final_dest = linked_dest
                     else:
-                        # No hardlink succeeded; do a regular move.
-                        final_dest = _cache_path(track_id, ext)
+                        # Neither hardlink nor symlink worked; do a regular move.
                         shutil.move(str(candidate), str(final_dest))
 
                     # Post-download duration check
@@ -826,7 +879,13 @@ async def download_youtube_by_id(
     Retries up to 2 times on HTTP 429, with 30 s / 60 s backoff.
     Post-verifies duration with mutagen.
     """
-    _MAX_YT_RETRIES = 2
+    # No retries on 429.  Sleeping 30 s + 60 s before giving up only makes
+    # the rate-limit worse (each retry is another hit) AND keeps the
+    # stream-worker reserved for 90+ seconds — meanwhile a deemix fallback
+    # would have finished in <10 s.  Other transient failures are also
+    # not retried at this layer; the queue_service forward-to-deemix
+    # path is faster and more reliable.
+    _MAX_YT_RETRIES = 0
 
     out_dir = Path(settings.music_cache_path)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -849,36 +908,33 @@ async def download_youtube_by_id(
     ]
     try:
         async with _get_yt_semaphore():
-            for attempt in range(_MAX_YT_RETRIES + 1):
-                try:
-                    proc = await asyncio.create_subprocess_exec(
-                        *cmd,
-                        stdout=asyncio.subprocess.DEVNULL,
-                        stderr=asyncio.subprocess.PIPE,
-                    )
-                    _, stderr = await asyncio.wait_for(proc.communicate(), timeout=120)
-                except asyncio.TimeoutError:
-                    logger.warning(f"[yt-dlp] Timed out for {video_id} (attempt {attempt + 1})")
-                    return None, ""
+            try:
+                proc = await asyncio.create_subprocess_exec(
+                    *cmd,
+                    stdout=asyncio.subprocess.DEVNULL,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                _, stderr = await asyncio.wait_for(proc.communicate(), timeout=120)
+            except asyncio.TimeoutError:
+                logger.warning(f"[yt-dlp] Timed out for {video_id}")
+                return None, ""
 
-                stderr_text = stderr.decode("utf-8", errors="replace")
+            stderr_text = stderr.decode("utf-8", errors="replace")
 
-                if proc.returncode != 0:
-                    if "429" in stderr_text and attempt < _MAX_YT_RETRIES:
-                        wait = 30 * (attempt + 1)   # 30 s, 60 s
-                        logger.warning(
-                            f"[yt-dlp] HTTP 429 rate-limit for {video_id} — "
-                            f"retrying in {wait}s (attempt {attempt + 1}/{_MAX_YT_RETRIES})"
-                        )
-                        await asyncio.sleep(wait)
-                        continue
-                    logger.error(
-                        f"[yt-dlp] NON-ZERO EXIT (rc={proc.returncode}) for {video_id}: "
-                        f"{stderr_text[:600]}"
+            if proc.returncode != 0:
+                if "429" in stderr_text:
+                    # Don't retry — let queue_service forward to deemix immediately.
+                    logger.warning(
+                        f"[yt-dlp] HTTP 429 rate-limit for {video_id} — "
+                        f"aborting yt-dlp (forwarding to deemix)"
                     )
                     return None, ""
-                logger.info(f"[yt-dlp] Download process finished OK for {video_id}")
-                break   # success
+                logger.error(
+                    f"[yt-dlp] NON-ZERO EXIT (rc={proc.returncode}) for {video_id}: "
+                    f"{stderr_text[:600]}"
+                )
+                return None, ""
+            logger.info(f"[yt-dlp] Download process finished OK for {video_id}")
 
         actual = dest if dest.exists() else dest.with_suffix("").with_suffix(".mp3")
         if actual.exists() and actual != dest:

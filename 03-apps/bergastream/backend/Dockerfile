@@ -5,7 +5,20 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     git \
     nodejs \
+    unzip \
+    ca-certificates \
     && rm -rf /var/lib/apt/lists/*
+
+# Install deno — yt-dlp's modern YouTube extractor requires a JavaScript
+# runtime to solve player challenges.  Without it, yt-dlp logs:
+#   "No supported JavaScript runtime could be found"
+# and falls back to limited formats that get rate-limited (HTTP 429)
+# much faster than the full-format path.
+RUN curl -fsSL https://github.com/denoland/deno/releases/latest/download/deno-x86_64-unknown-linux-gnu.zip -o /tmp/deno.zip \
+    && unzip /tmp/deno.zip -d /usr/local/bin \
+    && rm /tmp/deno.zip \
+    && chmod +x /usr/local/bin/deno \
+    && deno --version
 
 WORKDIR /app
 
