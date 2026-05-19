@@ -231,17 +231,59 @@ async def get_deezer_radio(deezer_id: str, limit: int = 10) -> list[TrackSchema]
     return [_deezer_track_to_schema(t) for t in data["data"][:limit] if "id" in t and "error" not in t]
 
 
+async def search_deezer_tracks(query: str, limit: int = 1) -> list[TrackSchema]:
+    """
+    Lightweight track-only search.  One HTTP call to /search, returns TrackSchemas.
+    Used by radio resolvers that don't need album/artist results.
+    """
+    if not query.strip():
+        return []
+    async with httpx.AsyncClient(timeout=10) as client:
+        resp = await client.get(f"{DEEZER_API}/search", params={"q": query, "limit": limit})
+    if resp.status_code != 200:
+        return []
+    data = resp.json().get("data", [])
+    return [_deezer_track_to_schema(t) for t in data if "id" in t and "error" not in t]
+
+
+async def get_deezer_artist_top(deezer_id: str, limit: int = 50) -> list[TrackSchema]:
+    """
+    One HTTP call to /artist/{id}/top.  Used by the radio "artist top tracks"
+    fallback, which previously iterated every album of the artist (~100
+    requests for a prolific artist).
+    """
+    async with httpx.AsyncClient(timeout=15) as client:
+        resp = await client.get(
+            f"{DEEZER_API}/artist/{deezer_id}/top", params={"limit": limit},
+        )
+    if resp.status_code != 200:
+        return []
+    data = resp.json()
+    if "error" in data:
+        return []
+    return [
+        _deezer_track_to_schema(t)
+        for t in data.get("data", [])
+        if "id" in t and "error" not in t
+    ]
+
+
 async def get_deezer_artist_tracks(deezer_id: str, index: int = 0, limit: int = 100) -> tuple[list[TrackSchema], bool]:
     """Returns ALL tracks of an artist by iterating through their albums.
     The index/limit params are kept for API compatibility but all tracks are
     returned on the first call (index=0); subsequent calls return empty + has_more=False.
+
+    Dedupes both the URL pagination cursor AND the album IDs themselves —
+    Deezer occasionally returns the same album across pages, which previously
+    caused N redundant `/album/{id}` requests.
     """
     if index > 0:
         # Everything was already returned on the first call
         return [], False
 
-    # ── 1. Collect all albums (paginate via 'next') ────────────────────────
+    # ── 1. Collect all albums (paginate via 'next', dedupe by album id) ────
     all_albums: list[dict] = []
+    seen_album_ids: set[int] = set()
     async with httpx.AsyncClient(timeout=30) as client:
         next_url: str | None = f"{DEEZER_API}/artist/{deezer_id}/albums"
         seen_urls: set[str] = set()
@@ -257,18 +299,16 @@ async def get_deezer_artist_tracks(deezer_id: str, index: int = 0, limit: int = 
             data = resp.json()
             if "error" in data:
                 break
-            all_albums.extend(data.get("data", []))
+            for alb in data.get("data", []):
+                aid = alb.get("id")
+                if aid and aid not in seen_album_ids:
+                    seen_album_ids.add(aid)
+                    all_albums.append(alb)
             next_url = data.get("next")
 
     if not all_albums:
         # Fallback: top tracks (at least something)
-        async with httpx.AsyncClient(timeout=15) as client:
-            resp = await client.get(f"{DEEZER_API}/artist/{deezer_id}/top", params={"limit": 100})
-        if resp.status_code == 200:
-            data = resp.json()
-            tracks = [_deezer_track_to_schema(t) for t in data.get("data", []) if "id" in t and "error" not in t]
-            return tracks, False
-        return [], False
+        return await get_deezer_artist_top(deezer_id, limit=100), False
 
     # ── 2. Fetch tracks from each album in parallel (batches of 10) ───────
     seen_ids: set[int] = set()

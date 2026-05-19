@@ -46,8 +46,13 @@ class Settings(BaseSettings):
     deemix_bg_workers: int = 1
     # Workers dedicados a downloads via yt-dlp em background (QUEUE_YTDLP)
     ytdlp_bg_workers: int = 2
-    # Máximo de processos yt-dlp simultâneos (global, compartilhado entre stream + bg)
+    # Máximo de processos yt-dlp simultâneos em modo DOWNLOAD (20–60 s cada).
+    # Compartilhado entre stream workers e ytdlp bg workers.
     max_yt_concurrent: int = 2
+    # Máximo de processos yt-dlp simultâneos em modo BUSCA (`ytsearch5 --dump-json`).
+    # Buscas duram ~1–2 s; separar o semáforo evita que streams travem
+    # esperando uma busca passar atrás de downloads ativos.
+    max_yt_search_concurrent: int = 4
     # Mantido por compatibilidade
     max_download_workers: int = 10
     background_workers: int = 3  # deprecated — substituído por deemix_bg_workers + ytdlp_bg_workers

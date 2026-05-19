@@ -50,17 +50,33 @@ _DUR_ABS_MS = 10_000  # 10-second absolute floor
 _CANDIDATE_TTL = 24 * 3600
 
 # ---------------------------------------------------------------------------
-# YouTube concurrency limiter (avoids mass 429 from simultaneous yt-dlp calls)
+# YouTube concurrency limiters
 # ---------------------------------------------------------------------------
+# Two separate semaphores so quick searches (~1–2 s) don't compete with
+# heavy downloads (~20–60 s).  Sharing a single semaphore caused the
+# scenario where a third stream request had to wait for two parallel
+# downloads to finish before its search could even start.
+#   * _yt_semaphore:        downloads (max_yt_concurrent slots)
+#   * _yt_search_semaphore: searches  (max_yt_search_concurrent slots)
 
 _yt_semaphore: asyncio.Semaphore | None = None
+_yt_search_semaphore: asyncio.Semaphore | None = None
 
 
 def _get_yt_semaphore() -> asyncio.Semaphore:
+    """Semaphore for yt-dlp DOWNLOADS (heavy, long-running)."""
     global _yt_semaphore
     if _yt_semaphore is None:
         _yt_semaphore = asyncio.Semaphore(settings.max_yt_concurrent)
     return _yt_semaphore
+
+
+def _get_yt_search_semaphore() -> asyncio.Semaphore:
+    """Semaphore for yt-dlp SEARCHES (light, sub-second to a few seconds)."""
+    global _yt_search_semaphore
+    if _yt_search_semaphore is None:
+        _yt_search_semaphore = asyncio.Semaphore(settings.max_yt_search_concurrent)
+    return _yt_search_semaphore
 
 
 # ---------------------------------------------------------------------------
@@ -285,8 +301,9 @@ async def find_youtube_candidate(
     downloading. Scores by title+artist similarity (primary) and duration (secondary).
 
     Cached for 24 h to avoid re-searching the same query.
-    The search subprocess runs inside `_get_yt_semaphore()` so concurrent
-    searches don't exceed `max_yt_concurrent` and trigger 429s.
+    The search subprocess runs inside `_get_yt_search_semaphore()` (a
+    separate pool from downloads) so a busy download queue doesn't block
+    new searches from kicking off.
 
     Priority buckets (checked in order):
       1. Title match  ✓  AND  Duration match ✓  →  best combined score
@@ -313,7 +330,7 @@ async def find_youtube_candidate(
         f"ytsearch5:{query}",
     ]
     try:
-        async with _get_yt_semaphore():
+        async with _get_yt_search_semaphore():
             proc = await asyncio.create_subprocess_exec(
                 *cmd,
                 stdout=asyncio.subprocess.PIPE,
@@ -768,11 +785,12 @@ async def download_deezer(
 
 async def _youtube_first_result(query: str) -> str | None:
     """Gets the first yt-dlp search result with no duration constraint (last resort).
-    Runs inside _get_yt_semaphore to respect the global yt-dlp concurrency cap.
+    Runs inside _get_yt_search_semaphore — separate from downloads so it doesn't
+    block on long-running downloads.
     """
     cmd = ["yt-dlp", "--dump-json", "--no-download", f"ytsearch1:{query}"]
     try:
-        async with _get_yt_semaphore():
+        async with _get_yt_search_semaphore():
             proc = await asyncio.create_subprocess_exec(
                 *cmd,
                 stdout=asyncio.subprocess.PIPE,
