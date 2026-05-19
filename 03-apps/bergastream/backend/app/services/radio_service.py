@@ -65,6 +65,13 @@ def _clean_title(title: str) -> str:
     return cleaned or title  # never return empty string
 
 
+def _norm_artist(name: str) -> str:
+    """Lowercase + collapse whitespace.  Used to detect "same artist" across
+    minor formatting differences ("Jota.pê" vs "jota.pê", "MC RN Original"
+    vs "Mc RN Original")."""
+    return re.sub(r"\s+", " ", (name or "").strip().lower())
+
+
 def _cache_key(source: str, track_id: str, limit: int) -> str:
     return f"bergastream:radio:{source}:{track_id}:{limit}"
 
@@ -175,45 +182,161 @@ class RadioService:
 
     @staticmethod
     async def _lastfm_similar(title: str, artist: str, limit: int) -> list[dict]:
+        """
+        Build a diversified radio queue using Last.fm.
+
+        Algorithm:
+          1. Call track.getSimilar for global track suggestions.
+          2. For tracks with little data, Last.fm tends to return many tracks
+             by the SAME seed artist.  We cap that at MAX_SAME_ARTIST.
+          3. If the result is still too homogeneous (too many seed-artist
+             tracks, or too few unique artists), supplement with
+             artist.getSimilar → top track of each similar artist.
+        """
+        MAX_SAME_ARTIST = 2          # at most 2 tracks by seed artist
+        MAX_PER_OTHER_ARTIST = 2     # at most 2 tracks by any single other artist
+        MIN_UNIQUE_ARTISTS = max(3, limit // 3)  # require some artist diversity
+
+        seed_artist_norm = _norm_artist(artist)
+
         try:
-            async with httpx.AsyncClient(timeout=10) as client:
-                resp = await client.get(LASTFM_API, params={
-                    "method": "track.getSimilar",
-                    "artist": artist,
-                    "track": title,
-                    "api_key": settings.lastfm_api_key,
-                    "limit": min(limit * 2, 50),
-                    "format": "json",
-                })
-            if resp.status_code != 200:
-                logger.warning(f"Last.fm returned {resp.status_code}")
-                return []
+            similar = await RadioService._lastfm_track_similar(title, artist, limit * 3)
+            artist_similar_pool = await RadioService._lastfm_artist_similar_pool(artist)
 
-            data = resp.json()
-            similar = data.get("similartracks", {}).get("track", [])
-            if not similar:
-                return []
+            logger.info(
+                f"[radio] Last.fm track.getSimilar returned {len(similar)} suggestions "
+                f"for '{title}' by '{artist}'"
+            )
 
-            # Resolve each suggestion via Deezer TRACK search only (1 HTTP call each
-            # instead of 3 — _lastfm_similar previously fanned out to /search,
-            # /search/album and /search/artist for every suggestion).
-            tracks: list[dict] = []
+            # First pass: track.getSimilar suggestions, diversity-filtered
+            tracks_by_artist: dict[str, list[dict]] = {}
+            seed_artist_count = 0
 
-            async def resolve(item: dict) -> None:
+            async def resolve(item: dict) -> dict | None:
                 t_title = item.get("name", "")
                 t_artist = item.get("artist", {}).get("name", "")
                 if not t_title or not t_artist:
-                    return
+                    return None
                 results = await search_deezer_tracks(f"{t_artist} {t_title}", 1)
-                if results:
-                    tracks.append(results[0].model_dump())
+                if not results:
+                    return None
+                return results[0].model_dump()
 
-            # Overshoot Last.fm fetch to compensate for Deezer resolution failures
-            fetch_count = min(limit * 2, 50)
-            await asyncio.gather(*[resolve(s) for s in similar[:fetch_count]])
-            return tracks[:limit]
+            resolved_results = await asyncio.gather(
+                *[resolve(s) for s in similar[:min(len(similar), 50)]]
+            )
+
+            picked: list[dict] = []
+            for t in resolved_results:
+                if t is None:
+                    continue
+                a_norm = _norm_artist(t.get("artist", ""))
+                if not a_norm:
+                    continue
+
+                # Diversity gates
+                if a_norm == seed_artist_norm:
+                    if seed_artist_count >= MAX_SAME_ARTIST:
+                        continue
+                    seed_artist_count += 1
+                else:
+                    bucket = tracks_by_artist.setdefault(a_norm, [])
+                    if len(bucket) >= MAX_PER_OTHER_ARTIST:
+                        continue
+                    bucket.append(t)
+
+                picked.append(t)
+                if len(picked) >= limit:
+                    break
+
+            unique_artists = len(tracks_by_artist) + (1 if seed_artist_count else 0)
+            logger.info(
+                f"[radio] After diversity filter: {len(picked)} tracks, "
+                f"{unique_artists} unique artists "
+                f"(seed_artist_used={seed_artist_count}/{MAX_SAME_ARTIST})"
+            )
+
+            need_more = (
+                len(picked) < limit
+                or unique_artists < MIN_UNIQUE_ARTISTS
+            )
+
+            if need_more and artist_similar_pool:
+                logger.info(
+                    f"[radio] Supplementing with artist.getSimilar "
+                    f"({len(artist_similar_pool)} similar artists available)"
+                )
+                # For each similar artist, pull their TOP track via Deezer search.
+                used_artists = set(tracks_by_artist.keys())
+                if seed_artist_count:
+                    used_artists.add(seed_artist_norm)
+
+                async def resolve_artist(artist_name: str) -> dict | None:
+                    if _norm_artist(artist_name) in used_artists:
+                        return None
+                    results = await search_deezer_tracks(artist_name, 1)
+                    if not results:
+                        return None
+                    return results[0].model_dump()
+
+                supplement_results = await asyncio.gather(
+                    *[resolve_artist(a) for a in artist_similar_pool[:limit * 2]]
+                )
+                for t in supplement_results:
+                    if t is None:
+                        continue
+                    a_norm = _norm_artist(t.get("artist", ""))
+                    if not a_norm or a_norm in used_artists:
+                        continue
+                    used_artists.add(a_norm)
+                    picked.append(t)
+                    if len(picked) >= limit:
+                        break
+
+                logger.info(
+                    f"[radio] After artist.getSimilar supplement: {len(picked)} tracks"
+                )
+
+            return picked[:limit]
         except Exception as e:
             logger.warning(f"Last.fm similar failed: {e}")
+            return []
+
+    @staticmethod
+    async def _lastfm_track_similar(title: str, artist: str, limit: int) -> list[dict]:
+        """One call to Last.fm track.getSimilar.  Returns the raw similar-track list."""
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.get(LASTFM_API, params={
+                "method": "track.getSimilar",
+                "artist": artist,
+                "track": title,
+                "api_key": settings.lastfm_api_key,
+                "limit": min(limit, 50),
+                "format": "json",
+            })
+        if resp.status_code != 200:
+            logger.warning(f"Last.fm track.getSimilar returned {resp.status_code}")
+            return []
+        return resp.json().get("similartracks", {}).get("track", []) or []
+
+    @staticmethod
+    async def _lastfm_artist_similar_pool(artist: str) -> list[str]:
+        """Names of similar artists via Last.fm artist.getSimilar (used as supplement)."""
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                resp = await client.get(LASTFM_API, params={
+                    "method": "artist.getSimilar",
+                    "artist": artist,
+                    "api_key": settings.lastfm_api_key,
+                    "limit": 30,
+                    "format": "json",
+                })
+            if resp.status_code != 200:
+                return []
+            data = resp.json().get("similarartists", {}).get("artist", []) or []
+            return [a.get("name", "") for a in data if a.get("name")]
+        except Exception as e:
+            logger.debug(f"artist.getSimilar failed: {e}")
             return []
 
     @staticmethod

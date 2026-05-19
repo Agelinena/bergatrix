@@ -195,6 +195,21 @@ class Player extends _$Player {
     // prefetch requests for every radio activation.
   }
 
+  /// Limpa o "tail" da fila — usado pelo RadioQueueNotifier quando o seed
+  /// muda, para não misturar a rádio antiga com a nova.
+  ///
+  /// Mantém:
+  ///   * a track atual e tudo antes dela (histórico)
+  ///   * as próximas [manualQueueAhead] tracks (adicionadas manualmente
+  ///     pelo usuário via "Tocar a seguir" / "Adicionar à fila")
+  /// Remove o resto, que veio de uma rádio anterior.
+  void clearRadioTail() {
+    final keepUntil =
+        (state.queueIndex + 1 + state.manualQueueAhead).clamp(0, state.queue.length);
+    if (keepUntil >= state.queue.length) return; // nada a remover
+    state = state.copyWith(queue: state.queue.sublist(0, keepUntil));
+  }
+
   /// Insere a faixa logo após o bloco de músicas já adicionadas manualmente,
   /// garantindo ordem FIFO para múltiplos "Adicionar à fila" consecutivos.
   ///

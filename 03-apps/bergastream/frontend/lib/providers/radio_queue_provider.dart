@@ -103,6 +103,17 @@ class RadioQueueNotifier extends Notifier<RadioQueueState> {
     final myId = ++_activationId;
 
     final src = source ?? await _savedSource();
+
+    // Se há uma rádio anterior ativa e o seed mudou, expurga as tracks da
+    // rádio antiga da fila do player ANTES de buscar as novas. Sem isso, a
+    // fila vira "rádio antiga + rádio nova" e o usuário ouve as duas
+    // misturadas (sintoma: "rádio do Juão" depois "rádio do Love Bites").
+    final prevSeed = state.seedTrack;
+    if (state.isActive && prevSeed != null && prevSeed.id != seed.id) {
+      ref.read(playerProvider.notifier).clearRadioTail();
+      debugPrint('[RadioQueue] seed mudou ${prevSeed.id} → ${seed.id} — limpando tail');
+    }
+
     final playerState = ref.read(playerProvider);
     final alreadyQueued = playerState.queue.map((t) => t.id).toSet();
 

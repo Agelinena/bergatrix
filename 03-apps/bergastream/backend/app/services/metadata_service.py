@@ -3,13 +3,46 @@ Fetches track/album/artist metadata from Deezer, Spotify, and YouTube Music.
 Falls back across sources transparently.
 """
 import asyncio
+import hashlib
+import json
+import logging
 import httpx
 from app.config import get_settings
 from app.schemas.track import TrackSchema, ArtistSchema, AlbumSchema, SearchResponse
 
 settings = get_settings()
+logger = logging.getLogger(__name__)
 
 DEEZER_API = "https://api.deezer.com"
+
+# search_deezer_tracks results cached in Redis (24 h TTL).
+_DEEZER_SEARCH_TTL = 24 * 3600
+
+
+async def _search_cache_get(query: str, limit: int) -> list[TrackSchema] | None:
+    try:
+        from app.services.queue_service import DownloadQueueService
+        r = DownloadQueueService._get_redis()
+        digest = hashlib.sha1(f"{query.lower().strip()}|{limit}".encode("utf-8")).hexdigest()[:16]
+        raw = await r.get(f"bergastream:deezer_search:{digest}")
+        if not raw:
+            return None
+        data = json.loads(raw)
+        return [TrackSchema(**d) for d in data]
+    except Exception as e:
+        logger.debug(f"[deezer-search-cache] get error: {e}")
+        return None
+
+
+async def _search_cache_set(query: str, limit: int, tracks: list[TrackSchema]) -> None:
+    try:
+        from app.services.queue_service import DownloadQueueService
+        r = DownloadQueueService._get_redis()
+        digest = hashlib.sha1(f"{query.lower().strip()}|{limit}".encode("utf-8")).hexdigest()[:16]
+        payload = json.dumps([t.model_dump() for t in tracks])
+        await r.set(f"bergastream:deezer_search:{digest}", payload, ex=_DEEZER_SEARCH_TTL)
+    except Exception as e:
+        logger.debug(f"[deezer-search-cache] set error: {e}")
 
 
 def _deezer_track_to_schema(t: dict) -> TrackSchema:
@@ -235,15 +268,26 @@ async def search_deezer_tracks(query: str, limit: int = 1) -> list[TrackSchema]:
     """
     Lightweight track-only search.  One HTTP call to /search, returns TrackSchemas.
     Used by radio resolvers that don't need album/artist results.
+
+    Results cached in Redis (24 h TTL) — drastically speeds up repeated
+    radio refills on the same Last.fm / AI suggestion pools.
     """
     if not query.strip():
         return []
+
+    cached = await _search_cache_get(query, limit)
+    if cached is not None:
+        return cached
+
     async with httpx.AsyncClient(timeout=10) as client:
         resp = await client.get(f"{DEEZER_API}/search", params={"q": query, "limit": limit})
     if resp.status_code != 200:
         return []
     data = resp.json().get("data", [])
-    return [_deezer_track_to_schema(t) for t in data if "id" in t and "error" not in t]
+    tracks = [_deezer_track_to_schema(t) for t in data if "id" in t and "error" not in t]
+    if tracks:
+        await _search_cache_set(query, limit, tracks)
+    return tracks
 
 
 async def get_deezer_artist_top(deezer_id: str, limit: int = 50) -> list[TrackSchema]:
