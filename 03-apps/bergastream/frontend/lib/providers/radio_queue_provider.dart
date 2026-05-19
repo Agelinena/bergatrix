@@ -111,7 +111,11 @@ class RadioQueueNotifier extends Notifier<RadioQueueState> {
     final prevSeed = state.seedTrack;
     if (state.isActive && prevSeed != null && prevSeed.id != seed.id) {
       ref.read(playerProvider.notifier).clearRadioTail();
-      debugPrint('[RadioQueue] seed mudou ${prevSeed.id} → ${seed.id} — limpando tail');
+      // Também limpa a fila bg do backend para que o deemix worker não
+      // continue baixando as tracks da rádio anterior na frente das novas.
+      // Fire-and-forget — não bloqueamos a activação por causa disso.
+      ref.read(apiClientProvider).clearQueue().ignore();
+      debugPrint('[RadioQueue] seed mudou ${prevSeed.id} → ${seed.id} — limpando tail + bg queue');
     }
 
     final playerState = ref.read(playerProvider);
@@ -186,7 +190,14 @@ class RadioQueueNotifier extends Notifier<RadioQueueState> {
 
   void deactivate() {
     _activationId++; // Cancela qualquer activate() ainda em voo
+    // Limpa a fila bg do backend — sem isso o deemix continuaria baixando
+    // as tracks da rádio que acabamos de desativar.
+    final wasActive = state.isActive;
     state = state.copyWith(isActive: false);
+    if (wasActive) {
+      ref.read(apiClientProvider).clearQueue().ignore();
+      debugPrint('[RadioQueue] deactivated — limpando bg queue');
+    }
   }
 
   Future<void> _refill() async {

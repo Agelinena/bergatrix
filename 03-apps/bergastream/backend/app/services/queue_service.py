@@ -581,6 +581,89 @@ class DownloadQueueService:
                 await asyncio.sleep(1)
 
     # -------------------------------------------------------------------------
+    # Queue maintenance
+    # -------------------------------------------------------------------------
+
+    @classmethod
+    async def clear_pending(
+        cls, cutoff_time: float | None = None,
+    ) -> dict[str, int]:
+        """
+        Drop background queue entries that were enqueued before `cutoff_time`.
+
+        This is used when the user switches the active radio: the previous
+        radio's tracks are still queued in QUEUE_BG / QUEUE_YTDLP, and the
+        deemix worker (single consumer) would process all of them before
+        getting to the new radio's tracks. Clearing the stale entries lets
+        the next-in-line user-relevant track start downloading immediately.
+
+        Entries with `enqueued_at >= cutoff_time` are preserved, so a
+        concurrent prefetch arriving slightly after this call doesn't lose
+        its just-enqueued entries.  Tracks currently downloading
+        (DOWNLOADING_SET) are NOT interrupted — they finish naturally.
+
+        Default cutoff_time = now, i.e. drop everything queued so far.
+
+        Returns a dict {queue_name: cleared_count}.
+        """
+        if cutoff_time is None:
+            cutoff_time = time.time()
+
+        r = cls._get_redis()
+        result: dict[str, int] = {}
+        all_dropped_ids: list[str] = []
+
+        for queue_name in (QUEUE_BG, QUEUE_YTDLP):
+            items = await r.lrange(queue_name, 0, -1)
+            kept_payloads: list[str] = []
+            dropped_ids: list[str] = []
+            for raw in items:
+                try:
+                    payload = json.loads(raw)
+                except Exception:
+                    # Malformed entry — drop it.
+                    continue
+                enqueued_at = payload.get("enqueued_at", 0)
+                if enqueued_at >= cutoff_time:
+                    kept_payloads.append(raw)
+                else:
+                    tid = payload.get("track_id", "")
+                    if tid:
+                        dropped_ids.append(tid)
+
+            # Atomically replace the queue with only the kept entries.
+            pipe = r.pipeline()
+            pipe.delete(queue_name)
+            if kept_payloads:
+                pipe.rpush(queue_name, *kept_payloads)
+            await pipe.execute()
+
+            result[queue_name] = len(dropped_ids)
+            all_dropped_ids.extend(dropped_ids)
+
+        # Remove dropped IDs from QUEUED_SET so future enqueues for the same
+        # tracks (e.g. user comes back) aren't blocked by the dedupe gate.
+        # Filter out IDs that might still be in another (non-cleared) queue
+        # entry — we only srem IDs that don't appear in any kept payload.
+        if all_dropped_ids:
+            await r.srem(QUEUED_SET, *all_dropped_ids)
+
+        # Also clear STREAM_PROMOTED entries that pointed at dropped tracks.
+        if all_dropped_ids:
+            await r.srem(STREAM_PROMOTED, *all_dropped_ids)
+
+        total = sum(result.values())
+        if total > 0:
+            logger.info(
+                f"[clear_pending] Dropped {total} stale jobs "
+                f"(bg={result.get(QUEUE_BG, 0)} ytdlp={result.get(QUEUE_YTDLP, 0)}) "
+                f"cutoff={cutoff_time:.3f}"
+            )
+        else:
+            logger.debug(f"[clear_pending] Nothing to drop (cutoff={cutoff_time:.3f})")
+        return result
+
+    # -------------------------------------------------------------------------
     # Diagnostics
     # -------------------------------------------------------------------------
 

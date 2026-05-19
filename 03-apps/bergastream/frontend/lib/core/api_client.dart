@@ -225,6 +225,16 @@ class ApiClient {
     await _dio.post('/api/queue/prefetch', data: body);
   }
 
+  /// Drop pending background download jobs from a previous radio.
+  ///
+  /// Called when the user switches the active radio or deactivates it —
+  /// without this, the deemix worker (single consumer, sequential) would
+  /// keep downloading the old radio's tracks for minutes before getting
+  /// to the new ones. Currently-downloading jobs are NOT interrupted.
+  Future<void> clearQueue() async {
+    await _dio.post('/api/queue/clear', data: {});
+  }
+
   // Cache
   Future<void> deleteTrackCache(String trackId) async {
     await _dio.delete('/api/stream/$trackId/cache');

@@ -44,6 +44,23 @@ async def stream_track(
     return await stream_service.serve_stream(track_id, range_header, db)
 
 
+@router.post("/queue/clear", status_code=200)
+async def clear_queue(
+    _: User = Depends(get_current_user),
+):
+    """
+    Drop background queue entries that were enqueued before this request.
+
+    Called by the frontend when the user switches the active radio seed or
+    deactivates the radio. The previous radio's prefetched tracks would
+    otherwise keep the deemix worker (single consumer) busy for minutes
+    before getting to the new tracks. Tracks currently downloading are
+    NOT interrupted — only pending entries.
+    """
+    cleared = await DownloadQueueService.clear_pending()
+    return {"cleared": cleared}
+
+
 @router.post("/queue/prefetch", status_code=202)
 async def prefetch_queue(
     body: dict,
