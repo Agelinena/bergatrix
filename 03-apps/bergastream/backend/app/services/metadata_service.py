@@ -1,6 +1,14 @@
 """
 Fetches track/album/artist metadata from Deezer, Spotify, and YouTube Music.
 Falls back across sources transparently.
+
+Shared HTTP client
+------------------
+A single module-level `httpx.AsyncClient` is used for outbound calls so that
+TLS handshakes and TCP connections are reused across requests. With per-call
+clients (the previous behaviour) every Deezer search re-handshook TLS — that
+alone dominated the radio resolution latency when Last.fm returned 40+
+suggestions.
 """
 import asyncio
 import hashlib
@@ -17,6 +25,37 @@ DEEZER_API = "https://api.deezer.com"
 
 # search_deezer_tracks results cached in Redis (24 h TTL).
 _DEEZER_SEARCH_TTL = 24 * 3600
+
+# Shared HTTP client with keep-alive + connection pool.
+_shared_client: httpx.AsyncClient | None = None
+# Concurrency cap on Deezer API to avoid rate-limiting under burst load.
+_deezer_search_semaphore: asyncio.Semaphore | None = None
+
+
+def get_shared_client() -> httpx.AsyncClient:
+    """Module-wide HTTP client.  Lazily created; reused across calls."""
+    global _shared_client
+    if _shared_client is None:
+        _shared_client = httpx.AsyncClient(
+            timeout=httpx.Timeout(10.0, connect=5.0),
+            limits=httpx.Limits(
+                max_connections=20,
+                max_keepalive_connections=10,
+                keepalive_expiry=30.0,
+            ),
+            headers={"User-Agent": "BergaStream/1.0"},
+        )
+    return _shared_client
+
+
+def _get_deezer_search_semaphore() -> asyncio.Semaphore:
+    """Caps simultaneous Deezer /search calls.  ~10 is comfortable in
+    practice — beyond that Deezer starts returning slow responses or
+    rate-limit errors."""
+    global _deezer_search_semaphore
+    if _deezer_search_semaphore is None:
+        _deezer_search_semaphore = asyncio.Semaphore(10)
+    return _deezer_search_semaphore
 
 
 async def _search_cache_get(query: str, limit: int) -> list[TrackSchema] | None:
@@ -269,8 +308,11 @@ async def search_deezer_tracks(query: str, limit: int = 1) -> list[TrackSchema]:
     Lightweight track-only search.  One HTTP call to /search, returns TrackSchemas.
     Used by radio resolvers that don't need album/artist results.
 
-    Results cached in Redis (24 h TTL) — drastically speeds up repeated
-    radio refills on the same Last.fm / AI suggestion pools.
+    Performance:
+      * Uses the shared HTTP client (TLS handshake reused across calls).
+      * Concurrency capped at 10 simultaneous Deezer searches to avoid
+        rate-limiting bursts during radio resolution.
+      * Results cached in Redis (24 h TTL).
     """
     if not query.strip():
         return []
@@ -279,8 +321,14 @@ async def search_deezer_tracks(query: str, limit: int = 1) -> list[TrackSchema]:
     if cached is not None:
         return cached
 
-    async with httpx.AsyncClient(timeout=10) as client:
-        resp = await client.get(f"{DEEZER_API}/search", params={"q": query, "limit": limit})
+    client = get_shared_client()
+    sem = _get_deezer_search_semaphore()
+    async with sem:
+        try:
+            resp = await client.get(f"{DEEZER_API}/search", params={"q": query, "limit": limit})
+        except (httpx.ConnectError, httpx.TimeoutException) as e:
+            logger.debug(f"[search_deezer_tracks] network error for '{query[:50]}': {e}")
+            return []
     if resp.status_code != 200:
         return []
     data = resp.json().get("data", [])

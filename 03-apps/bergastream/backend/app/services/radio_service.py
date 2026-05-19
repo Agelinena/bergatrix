@@ -11,6 +11,14 @@ Performance notes
   HTTP call to `/search`) instead of `search_deezer` (which also fans out
   to `/search/album` and `/search/artist` — wasted requests because radio
   only consumes the tracks bucket).
+* `_lastfm_similar` processes Last.fm suggestions in chunks of 10, stopping
+  early once it has `limit` diverse tracks.  Previously we awaited all 50
+  resolutions before filtering — Deezer was hit 30-50 times even when
+  only 20 tracks were needed.  The chunked approach typically issues
+  20-30 Deezer requests instead.
+* Outbound HTTP uses the shared `httpx.AsyncClient` from `metadata_service`
+  (keep-alive + connection pool).  Without this, TLS handshakes dominated
+  radio-resolution latency.
 * Final results are cached in Redis for 1 h, keyed by `(source, seed_id)`.
   The same seed re-played within an hour is served instantly.
 """
@@ -18,7 +26,7 @@ import asyncio
 import json
 import logging
 import re
-import httpx
+import httpx  # only used by _ai_radio (OpenRouter); other callers use the shared client
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.config import get_settings
@@ -26,6 +34,7 @@ from app.models.track import Track
 from app.services.metadata_service import (
     get_deezer_radio, get_deezer_track,
     search_deezer_tracks, get_deezer_artist_top,
+    get_shared_client,
 )
 
 settings = get_settings()
@@ -259,9 +268,13 @@ class RadioService:
                 f"(variants tried: {artist_variants})"
             )
 
-            # First pass: track.getSimilar suggestions, diversity-filtered
+            # First pass: track.getSimilar suggestions, diversity-filtered.
+            # Process in chunks of 10 with EARLY STOP once we have `limit`
+            # diverse tracks — avoids resolving 50 Deezer searches when only
+            # ~20 are needed.
             tracks_by_artist: dict[str, list[dict]] = {}
             seed_artist_count = 0
+            picked: list[dict] = []
 
             async def resolve(item: dict) -> dict | None:
                 try:
@@ -277,33 +290,39 @@ class RadioService:
                     logger.debug(f"[radio] resolve failed for {item.get('name')}: {e}")
                     return None
 
-            resolved_results = await asyncio.gather(
-                *[resolve(s) for s in similar[:min(len(similar), 50)]],
-                return_exceptions=True,
-            )
-
-            picked: list[dict] = []
-            for t in resolved_results:
-                if t is None or isinstance(t, Exception):
-                    continue
-                a_norm = _norm_artist(t.get("artist", ""))
-                if not a_norm:
-                    continue
-
-                # Diversity gates
-                if a_norm == seed_artist_norm:
-                    if seed_artist_count >= MAX_SAME_ARTIST:
-                        continue
-                    seed_artist_count += 1
-                else:
-                    bucket = tracks_by_artist.setdefault(a_norm, [])
-                    if len(bucket) >= MAX_PER_OTHER_ARTIST:
-                        continue
-                    bucket.append(t)
-
-                picked.append(t)
-                if len(picked) >= limit:
+            CHUNK = 10
+            similar_capped = similar[:min(len(similar), 50)]
+            stop = False
+            for i in range(0, len(similar_capped), CHUNK):
+                if stop:
                     break
+                batch = similar_capped[i:i + CHUNK]
+                batch_results = await asyncio.gather(
+                    *[resolve(s) for s in batch],
+                    return_exceptions=True,
+                )
+                for t in batch_results:
+                    if t is None or isinstance(t, Exception):
+                        continue
+                    a_norm = _norm_artist(t.get("artist", ""))
+                    if not a_norm:
+                        continue
+
+                    # Diversity gates
+                    if a_norm == seed_artist_norm:
+                        if seed_artist_count >= MAX_SAME_ARTIST:
+                            continue
+                        seed_artist_count += 1
+                    else:
+                        bucket = tracks_by_artist.setdefault(a_norm, [])
+                        if len(bucket) >= MAX_PER_OTHER_ARTIST:
+                            continue
+                        bucket.append(t)
+
+                    picked.append(t)
+                    if len(picked) >= limit:
+                        stop = True
+                        break
 
             unique_artists = len(tracks_by_artist) + (1 if seed_artist_count else 0)
             logger.info(
@@ -339,20 +358,28 @@ class RadioService:
                         logger.debug(f"[radio] resolve_artist failed for {artist_name}: {e}")
                         return None
 
-                supplement_results = await asyncio.gather(
-                    *[resolve_artist(a) for a in artist_similar_pool[:limit * 2]],
-                    return_exceptions=True,
-                )
-                for t in supplement_results:
-                    if t is None or isinstance(t, Exception):
-                        continue
-                    a_norm = _norm_artist(t.get("artist", ""))
-                    if not a_norm or a_norm in used_artists:
-                        continue
-                    used_artists.add(a_norm)
-                    picked.append(t)
-                    if len(picked) >= limit:
+                # Same chunk + early-stop pattern as the main pass.
+                supp_capped = artist_similar_pool[:limit * 2]
+                supp_stop = False
+                for i in range(0, len(supp_capped), CHUNK):
+                    if supp_stop:
                         break
+                    batch = supp_capped[i:i + CHUNK]
+                    batch_results = await asyncio.gather(
+                        *[resolve_artist(a) for a in batch],
+                        return_exceptions=True,
+                    )
+                    for t in batch_results:
+                        if t is None or isinstance(t, Exception):
+                            continue
+                        a_norm = _norm_artist(t.get("artist", ""))
+                        if not a_norm or a_norm in used_artists:
+                            continue
+                        used_artists.add(a_norm)
+                        picked.append(t)
+                        if len(picked) >= limit:
+                            supp_stop = True
+                            break
 
                 logger.info(
                     f"[radio] After artist.getSimilar supplement: {len(picked)} tracks"
@@ -369,7 +396,8 @@ class RadioService:
     @staticmethod
     async def _lastfm_track_similar(title: str, artist: str, limit: int) -> list[dict]:
         """One call to Last.fm track.getSimilar.  Returns the raw similar-track list."""
-        async with httpx.AsyncClient(timeout=10) as client:
+        try:
+            client = get_shared_client()
             resp = await client.get(LASTFM_API, params={
                 "method": "track.getSimilar",
                 "artist": artist,
@@ -378,6 +406,9 @@ class RadioService:
                 "limit": min(limit, 50),
                 "format": "json",
             })
+        except Exception as e:
+            logger.warning(f"Last.fm track.getSimilar request error: {e}")
+            return []
         if resp.status_code != 200:
             logger.warning(f"Last.fm track.getSimilar returned {resp.status_code}")
             return []
@@ -387,14 +418,14 @@ class RadioService:
     async def _lastfm_artist_similar_pool(artist: str) -> list[str]:
         """Names of similar artists via Last.fm artist.getSimilar (used as supplement)."""
         try:
-            async with httpx.AsyncClient(timeout=10) as client:
-                resp = await client.get(LASTFM_API, params={
-                    "method": "artist.getSimilar",
-                    "artist": artist,
-                    "api_key": settings.lastfm_api_key,
-                    "limit": 30,
-                    "format": "json",
-                })
+            client = get_shared_client()
+            resp = await client.get(LASTFM_API, params={
+                "method": "artist.getSimilar",
+                "artist": artist,
+                "api_key": settings.lastfm_api_key,
+                "limit": 30,
+                "format": "json",
+            })
             if resp.status_code != 200:
                 return []
             data = resp.json().get("similarartists", {}).get("artist", []) or []
