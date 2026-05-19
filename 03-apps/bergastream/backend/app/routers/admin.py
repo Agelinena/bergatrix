@@ -1,4 +1,4 @@
-"""Admin-only endpoints for user management."""
+"""Admin-only endpoints for user management and queue diagnostics."""
 import uuid
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -8,6 +8,7 @@ from app.dependencies import require_admin
 from app.models.user import User
 from app.schemas.auth import UserResponse, AdminCreateUserRequest, AdminUpdateUserRequest
 from app.services import auth_service
+from app.services.queue_service import DownloadQueueService
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -91,3 +92,12 @@ async def delete_user(
 
     await db.delete(user)
     await db.flush()
+
+
+@router.get("/queue-stats")
+async def queue_stats(_admin: User = Depends(require_admin)):
+    """
+    Snapshot of the download queue system: queue depths, in-flight downloads,
+    queued tracks, and promotion markers.  Useful for diagnosing stuck tracks.
+    """
+    return await DownloadQueueService.queue_stats()

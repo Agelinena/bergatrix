@@ -11,10 +11,27 @@ Resolution pipeline for every track:
   5. Last resort                     →  YouTube unverified first result
 
 Duration tolerance: ±5% or ±10 s, whichever is larger.
+
+Candidate caching
+-----------------
+Successful candidate lookups (Deezer ID, YouTube video ID) are cached in Redis
+with a 24 h TTL keyed by `(title, artist, duration_bucket)`.  This lets retried
+or re-played tracks skip the search phase entirely.
+
+Deemix follow-mode
+------------------
+When a deemix download starts producing a file in the shared volume, we create
+a hardlink at the cache destination immediately and place a `.lock` file
+beside it.  Both inodes share the same data — as deemix writes more bytes, the
+hardlink grows in lockstep.  stream_service's follow-mode then serves the
+partial file to the client, so streaming starts within ~1 s of the download
+beginning instead of ~30–60 s after it completes.
 """
 import asyncio
+import hashlib
 import json
 import logging
+import os
 import re
 import shutil
 import unicodedata
@@ -28,6 +45,9 @@ logger = logging.getLogger(__name__)
 # Duration matching constants
 _DUR_REL = 0.05       # 5% relative tolerance
 _DUR_ABS_MS = 10_000  # 10-second absolute floor
+
+# Candidate cache TTL — 24 h
+_CANDIDATE_TTL = 24 * 3600
 
 # ---------------------------------------------------------------------------
 # YouTube concurrency limiter (avoids mass 429 from simultaneous yt-dlp calls)
@@ -82,6 +102,43 @@ def _file_duration_ms(path: Path) -> int:
     except Exception:
         pass
     return 0
+
+
+# ---------------------------------------------------------------------------
+# Candidate cache (Redis)
+# ---------------------------------------------------------------------------
+
+def _candidate_cache_key(prefix: str, title: str, artist: str, duration_ms: int | None) -> str:
+    # Bucket duration by 10 s so similar timings hit the same cache entry.
+    bucket = (duration_ms or 0) // 10_000
+    raw = f"{title}|{artist}|{bucket}".lower().strip()
+    digest = hashlib.sha1(raw.encode("utf-8", errors="replace")).hexdigest()[:16]
+    return f"bergastream:candidate:{prefix}:{digest}"
+
+
+async def _candidate_cache_get(prefix: str, title: str, artist: str, duration_ms: int | None) -> str | None:
+    try:
+        # Lazy import to avoid circular dependency at module-load time.
+        from app.services.queue_service import DownloadQueueService
+        r = DownloadQueueService._get_redis()
+        key = _candidate_cache_key(prefix, title, artist, duration_ms)
+        value = await r.get(key)
+        if value:
+            logger.debug(f"[candidate-cache] HIT {prefix} key={key[:30]}… → {value}")
+        return value
+    except Exception as e:
+        logger.debug(f"[candidate-cache] get error: {e}")
+        return None
+
+
+async def _candidate_cache_set(prefix: str, title: str, artist: str, duration_ms: int | None, value: str) -> None:
+    try:
+        from app.services.queue_service import DownloadQueueService
+        r = DownloadQueueService._get_redis()
+        key = _candidate_cache_key(prefix, title, artist, duration_ms)
+        await r.set(key, value, ex=_CANDIDATE_TTL)
+    except Exception as e:
+        logger.debug(f"[candidate-cache] set error: {e}")
 
 
 # ---------------------------------------------------------------------------
@@ -186,6 +243,12 @@ async def find_deezer_candidate(
     if not title and not artist:
         return None
 
+    # Candidate cache hit?
+    cached = await _candidate_cache_get("deezer", title, artist, duration_ms)
+    if cached:
+        logger.info(f"[resolve] Deezer candidate (cache): {cached}")
+        return cached
+
     # Retry on transient DNS / network failures (common with Deezer API)
     import httpx as _httpx
     deezer_id: str | None = None
@@ -206,6 +269,7 @@ async def find_deezer_candidate(
 
     if deezer_id:
         logger.info(f"[resolve] Deezer candidate (search): {deezer_id}")
+        await _candidate_cache_set("deezer", title, artist, duration_ms, deezer_id)
     else:
         logger.info(f"[resolve] No Deezer candidate for '{title}' by '{artist}'")
     return deezer_id
@@ -220,6 +284,10 @@ async def find_youtube_candidate(
     Uses `yt-dlp --dump-json ytsearch5:…` to find the best YouTube match WITHOUT
     downloading. Scores by title+artist similarity (primary) and duration (secondary).
 
+    Cached for 24 h to avoid re-searching the same query.
+    The search subprocess runs inside `_get_yt_semaphore()` so concurrent
+    searches don't exceed `max_yt_concurrent` and trigger 429s.
+
     Priority buckets (checked in order):
       1. Title match  ✓  AND  Duration match ✓  →  best combined score
       2. Title match  ✓  AND  Duration match ✗  →  acceptable (different version)
@@ -232,6 +300,12 @@ async def find_youtube_candidate(
     if not query:
         return None
 
+    # Candidate cache hit?
+    cached = await _candidate_cache_get("yt", title, artist, duration_ms)
+    if cached:
+        logger.info(f"[resolve] YouTube candidate (cache): {cached}")
+        return cached
+
     cmd = [
         "yt-dlp",
         "--dump-json",
@@ -239,12 +313,13 @@ async def find_youtube_candidate(
         f"ytsearch5:{query}",
     ]
     try:
-        proc = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=30)
+        async with _get_yt_semaphore():
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=30)
     except asyncio.TimeoutError:
         logger.warning(f"[resolve] yt-dlp candidate search timed out for '{query}'")
         return None
@@ -289,46 +364,51 @@ async def find_youtube_candidate(
             f"title_score={t_score:.2f} dur={vid_ms}ms dur_ok={dur_ok} Δ{dur_diff}ms"
         )
 
+    chosen: str | None = None
+
     # Bucket 1: title ✓ + duration ✓  (best score then smallest dur diff)
     perfect = [(s, d, c) for s, ok, d, c in scored if s >= _TITLE_THRESHOLD and ok]
     if perfect:
         best = max(perfect, key=lambda x: (x[0], -x[1]))
-        vid = best[2].get("id")
+        chosen = best[2].get("id")
         logger.info(
-            f"[resolve] YouTube candidate (title+duration, score={best[0]:.2f} Δ{best[1]}ms): {vid}"
+            f"[resolve] YouTube candidate (title+duration, score={best[0]:.2f} Δ{best[1]}ms): {chosen}"
         )
-        return vid
 
     # Bucket 2: title ✓ + duration ✗  (highest title score)
-    title_only = [(s, d, c) for s, ok, d, c in scored if s >= _TITLE_THRESHOLD and not ok]
-    if title_only:
-        best = max(title_only, key=lambda x: x[0])
-        vid = best[2].get("id")
-        logger.warning(
-            f"[resolve] YouTube candidate (title match, duration mismatch Δ{best[1]}ms, "
-            f"score={best[0]:.2f}): {vid}"
-        )
-        return vid
+    if not chosen:
+        title_only = [(s, d, c) for s, ok, d, c in scored if s >= _TITLE_THRESHOLD and not ok]
+        if title_only:
+            best = max(title_only, key=lambda x: x[0])
+            chosen = best[2].get("id")
+            logger.warning(
+                f"[resolve] YouTube candidate (title match, duration mismatch Δ{best[1]}ms, "
+                f"score={best[0]:.2f}): {chosen}"
+            )
 
     # Bucket 3: title ✗ + duration ✓  (only if duration filter requested)
-    if duration_ms and duration_ms > 0:
+    if not chosen and duration_ms and duration_ms > 0:
         dur_only = [(s, d, c) for s, ok, d, c in scored if s < _TITLE_THRESHOLD and ok]
         if dur_only:
             best = min(dur_only, key=lambda x: x[1])   # smallest duration diff
-            vid = best[2].get("id")
+            chosen = best[2].get("id")
             logger.warning(
                 f"[resolve] YouTube candidate (duration only, NO title match, "
-                f"score={best[0]:.2f} Δ{best[1]}ms) — may be wrong song: {vid}"
+                f"score={best[0]:.2f} Δ{best[1]}ms) — may be wrong song: {chosen}"
             )
-            return vid
 
-    # Bucket 4: nothing matched — first result
-    vid = candidates[0].get("id")
-    logger.warning(
-        f"[resolve] YouTube: no match found for '{title}' by '{artist}' — "
-        f"using first result (unverified): {vid}"
-    )
-    return vid
+    # Bucket 4: nothing matched — first result (unverified, NOT cached)
+    if not chosen:
+        chosen = candidates[0].get("id")
+        logger.warning(
+            f"[resolve] YouTube: no match found for '{title}' by '{artist}' — "
+            f"using first result (unverified): {chosen}"
+        )
+        return chosen  # don't cache unverified picks
+
+    if chosen:
+        await _candidate_cache_set("yt", title, artist, duration_ms, chosen)
+    return chosen
 
 
 # ---------------------------------------------------------------------------
@@ -371,7 +451,40 @@ async def _deemix_emit(source_id: str) -> bool:
                                     "bitrate": null}
                                  → returns {"result": true, "data": {...}}
                                     or      {"result": false, "errid": "..."}
+
+    Retries the whole sequence twice on network-level failures
+    (ClientConnectorError, ServerDisconnectedError, TimeoutError) with
+    1 s / 3 s backoff.  Application-level failures (HTTP 200 with result:false,
+    or auth failures) are NOT retried — those are deterministic.
     """
+    import aiohttp as _aiohttp
+
+    last_error: Exception | None = None
+    for attempt in range(3):
+        try:
+            return await _deemix_emit_once(source_id)
+        except (_aiohttp.ClientConnectorError, _aiohttp.ServerDisconnectedError,
+                asyncio.TimeoutError) as exc:
+            last_error = exc
+            if attempt < 2:
+                wait = 1 if attempt == 0 else 3
+                logger.warning(
+                    f"[deemix] Network error in emit (attempt {attempt + 1}/3), "
+                    f"retrying in {wait}s: {type(exc).__name__}: {exc}"
+                )
+                await asyncio.sleep(wait)
+            else:
+                logger.warning(
+                    f"[deemix] Network error in emit, giving up after 3 attempts: "
+                    f"{type(exc).__name__}: {exc}"
+                )
+    if last_error is not None:
+        logger.warning(f"[deemix] _deemix_emit ultimately failed: {last_error}")
+    return False
+
+
+async def _deemix_emit_once(source_id: str) -> bool:
+    """One attempt at the deemix /connect → /loginArl → /addToQueue sequence."""
     import aiohttp as _aiohttp
 
     base = settings.deemix_url.rstrip("/")   # e.g. http://bergastream-deemix:6595
@@ -391,6 +504,9 @@ async def _deemix_emit(source_id: str) -> bool:
             async with sess.get(f"{base}/api/connect") as resp:
                 body = await resp.text()
                 logger.debug(f"[deemix] connect HTTP {resp.status}: {body[:200]}")
+        except (_aiohttp.ClientConnectorError, _aiohttp.ServerDisconnectedError,
+                asyncio.TimeoutError):
+            raise  # propagate to retry layer
         except Exception as e:
             logger.warning(f"[deemix] connect call failed: {type(e).__name__}: {e}")
 
@@ -427,6 +543,9 @@ async def _deemix_emit(source_id: str) -> bool:
                     _bitrate = 3
                 else:
                     _bitrate = 1
+        except (_aiohttp.ClientConnectorError, _aiohttp.ServerDisconnectedError,
+                asyncio.TimeoutError):
+            raise
         except Exception as e:
             logger.warning(f"[deemix] loginArl request failed: {type(e).__name__}: {e}")
             return False
@@ -465,10 +584,40 @@ async def _deemix_emit(source_id: str) -> bool:
                 )
                 return False
 
+        except (_aiohttp.ClientConnectorError, _aiohttp.ServerDisconnectedError,
+                asyncio.TimeoutError):
+            raise
         except Exception as e:
             logger.warning(
                 f"[deemix] addToQueue request failed: {type(e).__name__}: {e}"
             )
+            return False
+
+
+def _try_hardlink_or_copy(src: Path, dest: Path) -> bool:
+    """
+    Create a hardlink from src to dest if possible (same filesystem).
+    Falls back to copying the initial contents if hardlinking fails.
+
+    Returns True if the dest now exists and shares (or contains) data with src.
+    """
+    try:
+        if dest.exists():
+            return True
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        os.link(src, dest)
+        logger.info(f"[deemix] Hardlinked {src.name} → {dest}")
+        return True
+    except OSError as e:
+        logger.warning(
+            f"[deemix] Hardlink failed ({e}) — falling back to copy. "
+            f"Streaming will start only after download completes."
+        )
+        try:
+            shutil.copy2(src, dest)
+            return True
+        except Exception as ce:
+            logger.warning(f"[deemix] Copy fallback also failed: {ce}")
             return False
 
 
@@ -483,6 +632,12 @@ async def download_deezer(
     Triggers download via _deemix_emit(), then polls the shared volume for
     the new audio file.  With a single deemix worker, only one download is
     ever in flight, so file identification by creation-time is unambiguous.
+
+    Follow-mode acceleration: as soon as deemix's intermediate file is
+    detected (size > 50 KB), we hardlink it to the cache destination and
+    create a `.lock` file.  stream_service's follow-file generator then
+    serves the partial file to the client immediately, instead of waiting
+    for deemix to finish + shutil.move.
     """
     if not settings.deemix_url or not settings.deemix_downloads_path:
         logger.debug("[deemix] Skipped — DEEMIX_URL or DEEMIX_DOWNLOADS_PATH not configured")
@@ -510,74 +665,120 @@ async def download_deezer(
     no_activity_reemit_at = loop.time() + 30
     reemitted = False
 
-    while loop.time() < deadline:
-        found_candidate = False
-        for candidate in downloads_dir.rglob("*"):
-            if not candidate.is_file():
-                continue
-            if candidate.suffix.lower() not in (".mp3", ".flac"):
-                continue
-            try:
-                stat = candidate.stat()
-                if stat.st_ctime >= trigger_time and stat.st_size > 50_000:
+    # State during follow-mode
+    linked_dest: Path | None = None
+    lock_file: Path | None = None
+    source_path: Path | None = None
+
+    try:
+        while loop.time() < deadline:
+            found_candidate = False
+            for candidate in downloads_dir.rglob("*"):
+                if not candidate.is_file():
+                    continue
+                if candidate.suffix.lower() not in (".mp3", ".flac"):
+                    continue
+                try:
+                    stat = candidate.stat()
+                    if not (stat.st_ctime >= trigger_time and stat.st_size > 50_000):
+                        continue
+
                     found_candidate = True
-                    # Wait for deemix to finish tagging (it opens the file
-                    # immediately after download to write ID3 tags).
-                    # We confirm stability: re-stat after 1 s and check
-                    # the size hasn't changed.
+                    source_path = candidate
+                    ext = candidate.suffix.lower().lstrip(".")
+
+                    # Establish the hardlink on first detection so stream
+                    # service can start serving immediately.
+                    if linked_dest is None:
+                        linked_dest = _cache_path(track_id, ext)
+                        lock_file = Path(str(linked_dest) + ".lock")
+                        lock_file.touch()
+                        if not _try_hardlink_or_copy(candidate, linked_dest):
+                            logger.warning(
+                                f"[deemix] Could not link/copy {candidate} — "
+                                f"will fall back to move at the end"
+                            )
+                            linked_dest = None
+                            if lock_file:
+                                lock_file.unlink(missing_ok=True)
+                                lock_file = None
+                            continue
+                        logger.info(
+                            f"[deemix] follow-mode active for {track_id}: "
+                            f"client can stream while deemix finishes writing"
+                        )
+
+                    # Wait for the file size to stabilize (deemix finished tagging).
                     await asyncio.sleep(1.0)
                     try:
                         stat2 = candidate.stat()
                     except FileNotFoundError:
-                        continue  # deemix itself moved/deleted it
+                        continue  # deemix moved/deleted it; loop again
                     if stat2.st_size != stat.st_size:
                         continue  # still being written
 
-                    ext = candidate.suffix.lower().lstrip(".")
-                    dest = _cache_path(track_id, ext)
-                    shutil.move(str(candidate), str(dest))
+                    # Stable — final move + verification.
+                    if linked_dest and linked_dest.exists():
+                        # Hardlinked path already exists. Remove deemix's
+                        # original to avoid leaving duplicates in the shared volume.
+                        try:
+                            candidate.unlink(missing_ok=True)
+                        except Exception:
+                            pass
+                        final_dest = linked_dest
+                    else:
+                        # No hardlink succeeded; do a regular move.
+                        final_dest = _cache_path(track_id, ext)
+                        shutil.move(str(candidate), str(final_dest))
 
                     # Post-download duration check
                     if expected_duration_ms and expected_duration_ms > 0:
-                        actual_ms = _file_duration_ms(dest)
+                        actual_ms = _file_duration_ms(final_dest)
                         if actual_ms > 0 and not _duration_ok(actual_ms, expected_duration_ms):
                             logger.warning(
                                 f"[deemix] Duration mismatch {source_id}: "
                                 f"expected {expected_duration_ms}ms got {actual_ms}ms — discarding"
                             )
-                            dest.unlink(missing_ok=True)
+                            final_dest.unlink(missing_ok=True)
                             return None, ""
 
                     quality = "flac" if ext == "flac" else "mp3_320"
-                    logger.info(f"[deemix] Downloaded {source_id} → {dest.name} ({quality})")
-                    return dest, quality
-            except Exception:
-                continue
+                    logger.info(f"[deemix] Downloaded {source_id} → {final_dest.name} ({quality})")
+                    return final_dest, quality
+                except Exception:
+                    continue
 
-        if not found_candidate and not reemitted and loop.time() >= no_activity_reemit_at:
-            reemitted = True
-            logger.warning(
-                f"[deemix] No download activity after 30s for {source_id} — re-emitting"
-            )
-            await _deemix_emit(source_id)
-            trigger_time = _time.time() - 0.5  # reset detection window
+            if not found_candidate and not reemitted and loop.time() >= no_activity_reemit_at:
+                reemitted = True
+                logger.warning(
+                    f"[deemix] No download activity after 30s for {source_id} — re-emitting"
+                )
+                await _deemix_emit(source_id)
+                trigger_time = _time.time() - 0.5  # reset detection window
 
-        await asyncio.sleep(0.5)
+            await asyncio.sleep(0.5)
 
-    logger.warning(f"[deemix] Timed out waiting for {source_id}")
-    return None, ""
+        logger.warning(f"[deemix] Timed out waiting for {source_id}")
+        return None, ""
+    finally:
+        # Always release the lock file if we placed one but couldn't finish.
+        if lock_file is not None and lock_file.exists():
+            lock_file.unlink(missing_ok=True)
 
 
 async def _youtube_first_result(query: str) -> str | None:
-    """Gets the first yt-dlp search result with no duration constraint (last resort)."""
+    """Gets the first yt-dlp search result with no duration constraint (last resort).
+    Runs inside _get_yt_semaphore to respect the global yt-dlp concurrency cap.
+    """
     cmd = ["yt-dlp", "--dump-json", "--no-download", f"ytsearch1:{query}"]
     try:
-        proc = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=20)
+        async with _get_yt_semaphore():
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=20)
         if stderr:
             stderr_text = stderr.decode("utf-8", errors="replace")
             if "429" in stderr_text:

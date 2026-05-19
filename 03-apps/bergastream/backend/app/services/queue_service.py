@@ -16,10 +16,26 @@ yt-dlp workers  (QUEUE_YTDLP): concurrent, global asyncio.Semaphore.
   — Semaphore shared with stream workers caps total yt-dlp processes.
   — Exponential backoff retry (30 s / 60 s) up to _MAX_RETRIES times.
   — 3-second sleep between jobs.
+
+Concurrency invariants
+----------------------
+* `DOWNLOADING_SET` is the atomic "currently downloading" lock.  Workers
+  reserve their slot via `SADD` and check the return value: 0 means another
+  worker beat us to it, so the duplicate job is dropped.  This eliminates
+  the race where the same track is downloaded twice when promoted from BG
+  to STREAM (the old BG entry stays in the queue until a worker pops it).
+
+* `STREAM_PROMOTED` marks tracks that were elevated to QUEUE_STREAM after
+  already being in a background queue.  BG workers check this set and
+  discard the duplicate job instead of starting a parallel download.
+
+* `QUEUED_SET` is informational — it tells `_trigger_and_wait` and `enqueue`
+  whether a track is already in flight so they don't enqueue twice.
 """
 import asyncio
 import json
 import logging
+import time
 from redis.asyncio import Redis
 from app.config import get_settings
 
@@ -36,6 +52,11 @@ QUEUE_LOW  = QUEUE_BG
 
 DOWNLOADING_SET = "bergastream:downloading"
 QUEUED_SET      = "bergastream:queued"
+STREAM_PROMOTED = "bergastream:promoted"   # tracks elevated from BG to STREAM
+
+# Pub/sub channel for "track file is ready on disk".
+# _trigger_and_wait subscribes; workers publish in _save_result.
+TRACK_READY_CHANNEL = "bergastream:track_ready"
 
 _MAX_RETRIES = 2
 _BG_SLEEP    = 3.0  # seconds between background jobs
@@ -56,52 +77,131 @@ class DownloadQueueService:
 
     @classmethod
     async def enqueue(cls, track_id: str, priority: bool = False, permanent: bool = False) -> None:
+        """
+        Enqueue a track for download.
+
+        Fast paths (no enqueue happens):
+          * File already on disk
+          * Track already in DOWNLOADING_SET
+
+        Promotion path: when `priority=True` and the track is already in a
+        background queue, push a duplicate to QUEUE_STREAM and mark it in
+        STREAM_PROMOTED.  The bg worker will drop the stale entry when it
+        pops it from QUEUE_BG/QUEUE_YTDLP.
+        """
+        # Fast skip: file already exists on disk
+        from app.services.downloader_service import _resolve_existing
+        if _resolve_existing(track_id):
+            return
+
         r = cls._get_redis()
         if await r.sismember(DOWNLOADING_SET, track_id):
             return  # already downloading — let it finish
+
         if await r.sismember(QUEUED_SET, track_id):
             if priority:
-                # Elevate: push to front of QUEUE_STREAM so stream workers pick it up now.
-                # The existing QUEUE_BG / QUEUE_YTDLP entry becomes a no-op:
-                # _resolve_existing() will find the file before any download starts.
-                await r.lpush(QUEUE_STREAM, json.dumps({"track_id": track_id, "permanent": permanent}))
+                # Elevate: push to front of QUEUE_STREAM and mark the existing
+                # background entry as superseded so BG worker drops it.
+                await r.sadd(STREAM_PROMOTED, track_id)
+                await r.lpush(
+                    QUEUE_STREAM,
+                    json.dumps({
+                        "track_id": track_id,
+                        "permanent": permanent,
+                        "enqueued_at": time.time(),
+                    }),
+                )
             return
+
         queue = QUEUE_STREAM if priority else QUEUE_BG
-        await r.rpush(queue, json.dumps({"track_id": track_id, "permanent": permanent}))
+        payload = json.dumps({
+            "track_id": track_id,
+            "permanent": permanent,
+            "enqueued_at": time.time(),
+        })
+        await r.rpush(queue, payload)
         await r.sadd(QUEUED_SET, track_id)
 
     @classmethod
     async def enqueue_batch(cls, track_ids: list[str], permanent: bool = False) -> int:
+        """
+        Bulk-enqueue background downloads.  Uses SADD return value to atomically
+        decide which IDs are new (not already queued/downloading).
+        """
+        from app.services.downloader_service import _resolve_existing
+
         r = cls._get_redis()
         if not track_ids:
             return 0
+
+        # Pre-filter: drop IDs whose file is already on disk.
+        track_ids = [tid for tid in track_ids if not _resolve_existing(tid)]
+        if not track_ids:
+            return 0
+
+        # Filter out IDs already downloading.
         pipe = r.pipeline()
         for tid in track_ids:
             pipe.sismember(DOWNLOADING_SET, tid)
-            pipe.sismember(QUEUED_SET, tid)
-        results = await pipe.execute()
+        downloading = await pipe.execute()
+        candidates = [tid for tid, dl in zip(track_ids, downloading) if not dl]
+        if not candidates:
+            return 0
 
+        # Atomic insert into QUEUED_SET; SADD returns count of newly-added.
+        # For each candidate, sadd individually so we know which ones were new.
+        pipe = r.pipeline()
+        for tid in candidates:
+            pipe.sadd(QUEUED_SET, tid)
+        added = await pipe.execute()
+
+        now = time.time()
         new_payloads: list[str] = []
-        new_ids: list[str] = []
-        for i, tid in enumerate(track_ids):
-            if not results[i * 2] and not results[i * 2 + 1]:
-                new_payloads.append(json.dumps({"track_id": tid, "permanent": permanent}))
-                new_ids.append(tid)
+        for tid, was_new in zip(candidates, added):
+            if was_new:
+                new_payloads.append(json.dumps({
+                    "track_id": tid,
+                    "permanent": permanent,
+                    "enqueued_at": now,
+                }))
 
         if new_payloads:
-            pipe = r.pipeline()
-            pipe.rpush(QUEUE_BG, *new_payloads)
-            pipe.sadd(QUEUED_SET, *new_ids)
-            await pipe.execute()
-        return len(new_ids)
+            await r.rpush(QUEUE_BG, *new_payloads)
+        return len(new_payloads)
 
     # -------------------------------------------------------------------------
-    # Shared helper — persist download result to DB
+    # Shared helpers
     # -------------------------------------------------------------------------
 
     @classmethod
+    async def _try_reserve(cls, track_id: str) -> bool:
+        """
+        Atomically reserve a download slot for this track.  Returns True if we
+        got the slot, False if another worker is already handling it.
+        Caller must call `_release_reservation` in a `finally` block.
+        """
+        r = cls._get_redis()
+        # SADD returns 1 if newly added, 0 if already present.
+        added = await r.sadd(DOWNLOADING_SET, track_id)
+        return bool(added)
+
+    @classmethod
+    async def _release_reservation(cls, track_id: str) -> None:
+        r = cls._get_redis()
+        await r.srem(DOWNLOADING_SET, track_id)
+
+    @classmethod
+    async def _publish_ready(cls, track_id: str) -> None:
+        try:
+            r = cls._get_redis()
+            await r.publish(TRACK_READY_CHANNEL, track_id)
+        except Exception as e:
+            logger.warning(f"[publish_ready] failed for {track_id}: {e}")
+
+    @classmethod
     async def _save_result(
-        cls, label: str, track_id: str, path, quality: str, permanent: bool
+        cls, label: str, track_id: str, path, quality: str, permanent: bool,
+        wait_ms: int | None = None, download_ms: int | None = None,
     ) -> None:
         from app.database import AsyncSessionLocal
         from sqlalchemy import update
@@ -122,7 +222,10 @@ class DownloadQueueService:
                         audio_quality=quality,
                     )
                 )
-                logger.info(f"[{label}] Saved permanent {track_id} → {final_path}")
+                timing = ""
+                if wait_ms is not None or download_ms is not None:
+                    timing = f" | wait_ms={wait_ms} download_ms={download_ms}"
+                logger.info(f"[{label}] Saved permanent {track_id} → {final_path}{timing}")
             else:
                 await db.execute(
                     update(Track).where(Track.id == track_id).values(
@@ -132,8 +235,25 @@ class DownloadQueueService:
                         + timedelta(hours=settings.cache_expire_hours),
                     )
                 )
-                logger.info(f"[{label}] Saved cache {track_id} → {path}")
+                timing = ""
+                if wait_ms is not None or download_ms is not None:
+                    timing = f" | wait_ms={wait_ms} download_ms={download_ms}"
+                logger.info(f"[{label}] Saved cache {track_id} → {path}{timing}")
             await db.commit()
+
+        # Notify any waiting _trigger_and_wait callers.
+        await cls._publish_ready(track_id)
+
+    @classmethod
+    def _parse_payload(cls, payload_str: str) -> tuple[dict, int]:
+        """Returns (payload_dict, wait_in_queue_ms)."""
+        payload = json.loads(payload_str)
+        enqueued_at = payload.get("enqueued_at")
+        if enqueued_at:
+            wait_ms = int((time.time() - enqueued_at) * 1000)
+        else:
+            wait_ms = -1
+        return payload, wait_ms
 
     # -------------------------------------------------------------------------
     # Stream workers — QUEUE_STREAM, yt-dlp only, no sleep
@@ -157,15 +277,26 @@ class DownloadQueueService:
                     continue
 
                 _, payload_str = item
-                payload = json.loads(payload_str)
+                payload, wait_ms = cls._parse_payload(payload_str)
                 track_id = payload["track_id"]
                 permanent = payload.get("permanent", False)
 
-                await r.sadd(DOWNLOADING_SET, track_id)
-                forwarded = False  # True when handed off to deemix queue
+                # Atomic slot reservation. If False, another worker is on it.
+                if not await cls._try_reserve(track_id):
+                    logger.info(f"[{label}] {track_id} already being downloaded — skipping")
+                    # Clear promotion marker if we set one
+                    await r.srem(STREAM_PROMOTED, track_id)
+                    continue
+
+                forwarded = False
+                t0 = time.time()
                 try:
+                    # Stream worker is the destination of promotions; clear the marker.
+                    await r.srem(STREAM_PROMOTED, track_id)
+
                     if _resolve_existing(track_id):
                         logger.info(f"[{label}] {track_id} already on disk — skipping")
+                        await cls._publish_ready(track_id)
                         continue
 
                     async with AsyncSessionLocal() as db:
@@ -178,6 +309,7 @@ class DownloadQueueService:
                     yt_source_id = track.source_id if track.source == "youtube" else ""
                     logger.info(
                         f"[{label}] START stream download: {track_id} | "
+                        f"wait_ms={wait_ms} | "
                         f"source={track.source} source_id={track.source_id!r} | "
                         f"title={track.title!r} artist={track.artist!r} | "
                         f"duration_ms={track.duration_ms} | "
@@ -190,23 +322,35 @@ class DownloadQueueService:
                         track.artist or "",
                         track.duration_ms,
                     )
+                    download_ms = int((time.time() - t0) * 1000)
                     if path:
-                        await cls._save_result(label, track_id, path, quality, permanent)
+                        await cls._save_result(
+                            label, track_id, path, quality, permanent,
+                            wait_ms=wait_ms, download_ms=download_ms,
+                        )
                     else:
                         # yt-dlp failed — hand off to deemix queue as fallback.
                         # Keep QUEUED_SET alive so _trigger_and_wait keeps polling.
                         logger.warning(
                             f"[{label}] yt-dlp FAILED for stream {track_id} "
-                            f"('{track.title}' by '{track.artist}') "
-                            "— forwarding to deemix queue"
+                            f"('{track.title}' by '{track.artist}') | "
+                            f"download_ms={download_ms} — forwarding to deemix queue"
                         )
                         forwarded = True
                         # lpush = front of queue → user-triggered deemix job
                         # gets priority over background prefetch jobs (rpush).
-                        await r.lpush(QUEUE_BG, json.dumps({"track_id": track_id, "permanent": permanent}))
+                        await r.lpush(
+                            QUEUE_BG,
+                            json.dumps({
+                                "track_id": track_id,
+                                "permanent": permanent,
+                                "enqueued_at": time.time(),
+                                "from_stream_fallback": True,
+                            }),
+                        )
 
                 finally:
-                    await r.srem(DOWNLOADING_SET, track_id)
+                    await cls._release_reservation(track_id)
                     if not forwarded:
                         await r.srem(QUEUED_SET, track_id)
 
@@ -240,15 +384,29 @@ class DownloadQueueService:
                     continue
 
                 _, payload_str = item
-                payload = json.loads(payload_str)
+                payload, wait_ms = cls._parse_payload(payload_str)
                 track_id = payload["track_id"]
                 permanent = payload.get("permanent", False)
 
-                await r.sadd(DOWNLOADING_SET, track_id)
-                forwarded = False  # True when pushed to QUEUE_YTDLP
+                # If this track was promoted to QUEUE_STREAM after being enqueued
+                # here, drop this duplicate.  Stream worker will handle it.
+                if await r.sismember(STREAM_PROMOTED, track_id):
+                    logger.info(
+                        f"[{label}] {track_id} promoted to STREAM — dropping bg duplicate"
+                    )
+                    continue
+
+                # Atomic slot reservation
+                if not await cls._try_reserve(track_id):
+                    logger.info(f"[{label}] {track_id} already being downloaded — skipping")
+                    continue
+
+                forwarded = False
+                t0 = time.time()
                 try:
                     if _resolve_existing(track_id):
                         logger.info(f"[{label}] {track_id} already on disk — skipping")
+                        await cls._publish_ready(track_id)
                         continue
 
                     async with AsyncSessionLocal() as db:
@@ -261,6 +419,7 @@ class DownloadQueueService:
                     deezer_known = track.source_id if track.source == "deezer" else None
                     logger.info(
                         f"[{label}] START deemix download: {track_id} | "
+                        f"wait_ms={wait_ms} | "
                         f"source={track.source} source_id={track.source_id!r} | "
                         f"title={track.title!r} artist={track.artist!r} | "
                         f"duration_ms={track.duration_ms} | "
@@ -273,12 +432,16 @@ class DownloadQueueService:
                     if deezer_id:
                         logger.info(f"[{label}] Deemix download: {track_id} via deezer/{deezer_id}")
                         path, quality = await download_deezer(track_id, deezer_id, track.duration_ms)
+                        download_ms = int((time.time() - t0) * 1000)
                         if path:
-                            await cls._save_result(label, track_id, path, quality, permanent)
+                            await cls._save_result(
+                                label, track_id, path, quality, permanent,
+                                wait_ms=wait_ms, download_ms=download_ms,
+                            )
                             continue  # success
                         logger.warning(
-                            f"[{label}] Deemix download FAILED for {track_id} (deezer/{deezer_id}) "
-                            "— forwarding to yt-dlp"
+                            f"[{label}] Deemix download FAILED for {track_id} (deezer/{deezer_id}) | "
+                            f"download_ms={download_ms} — forwarding to yt-dlp"
                         )
                     else:
                         logger.warning(
@@ -288,10 +451,14 @@ class DownloadQueueService:
 
                     # Forward to yt-dlp queue; keep QUEUED_SET entry alive for the retry
                     forwarded = True
-                    await r.rpush(QUEUE_YTDLP, json.dumps({**payload, "retries": 0}))
+                    await r.rpush(QUEUE_YTDLP, json.dumps({
+                        **payload,
+                        "retries": 0,
+                        "enqueued_at": time.time(),
+                    }))
 
                 finally:
-                    await r.srem(DOWNLOADING_SET, track_id)
+                    await cls._release_reservation(track_id)
                     if not forwarded:
                         # Only remove from queued when the track is truly done (not forwarded)
                         await r.srem(QUEUED_SET, track_id)
@@ -326,15 +493,28 @@ class DownloadQueueService:
                     continue
 
                 _, payload_str = item
-                payload = json.loads(payload_str)
+                payload, wait_ms = cls._parse_payload(payload_str)
                 track_id = payload["track_id"]
                 permanent = payload.get("permanent", False)
                 retries = payload.get("retries", 0)
 
-                await r.sadd(DOWNLOADING_SET, track_id)
+                # Same promotion check as deemix worker.
+                if await r.sismember(STREAM_PROMOTED, track_id):
+                    logger.info(
+                        f"[{label}] {track_id} promoted to STREAM — dropping ytdlp duplicate"
+                    )
+                    continue
+
+                # Atomic slot reservation
+                if not await cls._try_reserve(track_id):
+                    logger.info(f"[{label}] {track_id} already being downloaded — skipping")
+                    continue
+
+                t0 = time.time()
                 try:
                     if _resolve_existing(track_id):
                         logger.info(f"[{label}] {track_id} already on disk — skipping")
+                        await cls._publish_ready(track_id)
                         continue
 
                     async with AsyncSessionLocal() as db:
@@ -348,6 +528,7 @@ class DownloadQueueService:
                     logger.info(
                         f"[{label}] START yt-dlp download: {track_id} "
                         f"(attempt {retries + 1}/{_MAX_RETRIES + 1}) | "
+                        f"wait_ms={wait_ms} | "
                         f"source={track.source} source_id={track.source_id!r} | "
                         f"title={track.title!r} artist={track.artist!r} | "
                         f"duration_ms={track.duration_ms} | "
@@ -360,28 +541,35 @@ class DownloadQueueService:
                         track.artist or "",
                         track.duration_ms,
                     )
+                    download_ms = int((time.time() - t0) * 1000)
 
                     if path:
-                        await cls._save_result(label, track_id, path, quality, permanent)
+                        await cls._save_result(
+                            label, track_id, path, quality, permanent,
+                            wait_ms=wait_ms, download_ms=download_ms,
+                        )
                     elif retries < _MAX_RETRIES:
                         wait = 30 * (retries + 1)  # 30 s, 60 s
                         logger.warning(
                             f"[{label}] yt-dlp FAILED for {track_id} "
-                            f"('{track.title}' by '{track.artist}') — "
+                            f"('{track.title}' by '{track.artist}') | "
+                            f"download_ms={download_ms} — "
                             f"requeueing in {wait}s (retry {retries + 1}/{_MAX_RETRIES})"
                         )
                         await asyncio.sleep(wait)
                         payload["retries"] = retries + 1
+                        payload["enqueued_at"] = time.time()
                         await r.rpush(QUEUE_YTDLP, json.dumps(payload))
                         continue  # keep in QUEUED_SET for the retry
                     else:
                         logger.error(
                             f"[{label}] All retries exhausted for {track_id} "
-                            f"('{track.title}' by '{track.artist}')"
+                            f"('{track.title}' by '{track.artist}') | "
+                            f"total_download_ms={download_ms}"
                         )
 
                 finally:
-                    await r.srem(DOWNLOADING_SET, track_id)
+                    await cls._release_reservation(track_id)
                     await r.srem(QUEUED_SET, track_id)
 
                 await asyncio.sleep(_BG_SLEEP)
@@ -393,6 +581,39 @@ class DownloadQueueService:
                 await asyncio.sleep(1)
 
     # -------------------------------------------------------------------------
+    # Diagnostics
+    # -------------------------------------------------------------------------
+
+    @classmethod
+    async def queue_stats(cls) -> dict:
+        """Snapshot of every queue and control set.  Used by /api/admin/queue-stats."""
+        r = cls._get_redis()
+        pipe = r.pipeline()
+        pipe.llen(QUEUE_STREAM)
+        pipe.llen(QUEUE_BG)
+        pipe.llen(QUEUE_YTDLP)
+        pipe.smembers(DOWNLOADING_SET)
+        pipe.smembers(QUEUED_SET)
+        pipe.smembers(STREAM_PROMOTED)
+        results = await pipe.execute()
+        return {
+            "queues": {
+                "stream": results[0],
+                "bg":     results[1],
+                "ytdlp":  results[2],
+            },
+            "downloading": sorted(list(results[3])),
+            "queued":      sorted(list(results[4])),
+            "promoted":    sorted(list(results[5])),
+            "workers": {
+                "stream":   settings.stream_workers,
+                "deemix":   settings.deemix_bg_workers,
+                "ytdlp":    settings.ytdlp_bg_workers,
+                "max_yt_concurrent": settings.max_yt_concurrent,
+            },
+        }
+
+    # -------------------------------------------------------------------------
     # Start all workers
     # -------------------------------------------------------------------------
 
@@ -400,18 +621,18 @@ class DownloadQueueService:
     async def start_workers(cls) -> None:
         r = cls._get_redis()
 
-        # DOWNLOADING_SET entries are per-process state: every entry left from a
-        # previous run belongs to a worker that no longer exists.  Clear it so
-        # enqueue() doesn't mistake them for active downloads and block forever.
-        stale = await r.smembers(DOWNLOADING_SET)
-        if stale:
-            await r.delete(DOWNLOADING_SET)
-            logger.warning(
-                f"[startup] Cleared {len(stale)} stale DOWNLOADING_SET entries "
-                f"from previous run: {stale}"
-            )
-        else:
-            logger.info("[startup] DOWNLOADING_SET clean — no stale entries")
+        # All per-process control sets must be wiped at startup — they reflect
+        # the in-memory state of a no-longer-running worker pool, and stale
+        # entries will block new downloads forever.
+        for key in (DOWNLOADING_SET, STREAM_PROMOTED):
+            stale = await r.smembers(key)
+            if stale:
+                await r.delete(key)
+                logger.warning(
+                    f"[startup] Cleared {len(stale)} stale entries from {key}: {stale}"
+                )
+            else:
+                logger.info(f"[startup] {key} clean — no stale entries")
 
         n_stream = settings.stream_workers
         n_deemix = settings.deemix_bg_workers  # keep at 1 — deemix is single-consumer
