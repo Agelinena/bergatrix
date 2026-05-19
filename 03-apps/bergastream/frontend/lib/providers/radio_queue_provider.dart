@@ -156,7 +156,13 @@ class RadioQueueNotifier extends Notifier<RadioQueueState> {
       }
       tracksAdded = tracks.length;
       if (tracks.isNotEmpty) {
-        client.prefetchTracks(tracks.map((t) => t.id).toList());
+        // Pass the full Track objects so the backend can auto-register them
+        // before enqueueing. Without this, the bg workers pop the queue
+        // entry, fail to find the Track row in the DB, and skip the download.
+        client.prefetchTracks(
+          tracks.map((t) => t.id).toList(),
+          tracks: tracks,
+        );
       }
       debugPrint('[RadioQueue] activate: added ${tracks.length} tracks for "${seed.title}"');
     } catch (e, st) {
@@ -232,7 +238,12 @@ class RadioQueueNotifier extends Notifier<RadioQueueState> {
       }
       tracksAdded = tracks.length;
       if (tracks.isNotEmpty) {
-        client.prefetchTracks(tracks.map((t) => t.id).toList());
+        // Full Track payload required so backend auto-registers radio
+        // suggestions before the bg workers try to download them.
+        client.prefetchTracks(
+          tracks.map((t) => t.id).toList(),
+          tracks: tracks,
+        );
       }
 
       // Only unlock after the loop — listener will now see the full remaining count

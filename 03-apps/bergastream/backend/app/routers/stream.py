@@ -47,14 +47,58 @@ async def stream_track(
 @router.post("/queue/prefetch", status_code=202)
 async def prefetch_queue(
     body: dict,
+    db: AsyncSession = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
-    """Pre-downloads upcoming tracks in the player queue."""
-    track_ids: list[str] = body.get("track_ids", [])
+    """
+    Pre-downloads upcoming tracks in the player queue.
+
+    Body formats:
+      * `{"tracks": [<TrackSchema>, ...]}` — preferred. Auto-registers each
+        track in the DB before enqueueing.  Required for prefetch to actually
+        do anything: bg workers look up the Track row and skip with
+        "not in DB yet" otherwise.
+      * `{"track_ids": [...]}` — legacy. Only works if every track is
+        already registered.
+    """
+    tracks_payload = body.get("tracks") or []
+    track_ids: list[str] = list(body.get("track_ids", []))
+
+    if tracks_payload:
+        # Bulk auto-register: skip any track row that already exists.
+        ids = [t.get("id") for t in tracks_payload if t.get("id")]
+        if ids:
+            existing = await db.execute(select(Track.id).where(Track.id.in_(ids)))
+            existing_ids = {r[0] for r in existing.all()}
+            new_rows: list[Track] = []
+            for t in tracks_payload:
+                tid = t.get("id")
+                if not tid or tid in existing_ids:
+                    continue
+                new_rows.append(Track(
+                    id=tid,
+                    title=t.get("title", "") or "",
+                    artist=t.get("artist", "") or "",
+                    album=t.get("album"),
+                    album_id=t.get("album_id"),
+                    artist_id=t.get("artist_id"),
+                    duration_ms=t.get("duration_ms"),
+                    year=t.get("year"),
+                    cover_url=t.get("cover_url"),
+                    source=t.get("source", "") or "",
+                    source_id=t.get("source_id"),
+                ))
+            if new_rows:
+                db.add_all(new_rows)
+                await db.flush()
+                await db.commit()
+            track_ids = ids  # everything we just registered or already had
+
     if not track_ids:
         return {"queued": 0}
-    await DownloadQueueService.enqueue_batch(track_ids[:10])
-    return {"queued": len(track_ids[:10])}
+
+    queued = await DownloadQueueService.enqueue_batch(track_ids[:20])
+    return {"queued": queued}
 
 
 @router.delete("/stream/{track_id}/cache", status_code=204)

@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import '../core/constants.dart';
+import '../models/track.dart';
 
 part 'api_client.g.dart';
 
@@ -209,8 +210,19 @@ class ApiClient {
   }
 
   // Prefetch
-  Future<void> prefetchTracks(List<String> trackIds) async {
-    await _dio.post('/api/queue/prefetch', data: {'track_ids': trackIds});
+  //
+  // The backend needs the full Track object (not just IDs) when prefetching
+  // tracks that haven't been registered yet (e.g. radio suggestions). Without
+  // the full payload the bg workers pop the queue entry, fail to find the
+  // Track row in the DB, and skip with "not in DB yet — skipping".
+  //
+  // Pass `tracks` whenever they are available; legacy id-only callers still
+  // work but assume the tracks are already registered.
+  Future<void> prefetchTracks(List<String> trackIds, {List<Track>? tracks}) async {
+    final body = tracks != null && tracks.isNotEmpty
+        ? {'tracks': tracks.map((t) => t.toJson()).toList()}
+        : {'track_ids': trackIds};
+    await _dio.post('/api/queue/prefetch', data: body);
   }
 
   // Cache

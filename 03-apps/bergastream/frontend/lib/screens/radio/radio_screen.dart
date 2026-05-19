@@ -60,7 +60,10 @@ class _RadioScreenState extends ConsumerState<RadioScreen> {
         } else {
           for (final t in tracks) ref.read(playerProvider.notifier).addToQueue(t);
         }
-        client.prefetchTracks(tracks.map((t) => t.id).toList());
+        client.prefetchTracks(
+          tracks.map((t) => t.id).toList(),
+          tracks: tracks,
+        );
       }
     } catch (e) {
       if (mounted) setState(() { _loading = false; _error = e.toString(); });

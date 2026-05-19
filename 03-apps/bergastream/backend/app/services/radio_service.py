@@ -72,6 +72,33 @@ def _norm_artist(name: str) -> str:
     return re.sub(r"\s+", " ", (name or "").strip().lower())
 
 
+def _artist_search_variants(artist: str) -> list[str]:
+    """
+    Return a list of artist strings to try against Last.fm, in priority order.
+
+    Last.fm doesn't recognise comma-joined collaborator strings as a single
+    artist — sending "Halestorm, I Prevail" returns 0 matches, but
+    "Halestorm" alone returns 50.  When the input contains separators,
+    yield the full string first (in case it IS a known act), then each
+    component artist in order.
+
+    Examples:
+      "Halestorm, I Prevail"        → ["Halestorm, I Prevail", "Halestorm", "I Prevail"]
+      "DJ YUZAK, MC BN, Mc RN Original"
+                                    → [full, "DJ YUZAK", "MC BN", "Mc RN Original"]
+      "Jota.pê"                     → ["Jota.pê"]
+    """
+    artist = (artist or "").strip()
+    if not artist:
+        return []
+    variants: list[str] = [artist]
+    parts = [p.strip() for p in re.split(r"[,&/]| feat\.? | ft\.? ", artist) if p.strip()]
+    for p in parts:
+        if p not in variants:
+            variants.append(p)
+    return variants
+
+
 def _cache_key(source: str, track_id: str, limit: int) -> str:
     return f"bergastream:radio:{source}:{track_id}:{limit}"
 
@@ -186,26 +213,50 @@ class RadioService:
         Build a diversified radio queue using Last.fm.
 
         Algorithm:
-          1. Call track.getSimilar for global track suggestions.
+          1. Call track.getSimilar for global track suggestions.  When the
+             artist field has multiple comma-separated names (e.g.
+             "Halestorm, I Prevail"), we also try the FIRST name alone —
+             Last.fm doesn't index combined-artist strings.
           2. For tracks with little data, Last.fm tends to return many tracks
              by the SAME seed artist.  We cap that at MAX_SAME_ARTIST.
           3. If the result is still too homogeneous (too many seed-artist
              tracks, or too few unique artists), supplement with
              artist.getSimilar → top track of each similar artist.
+
+        All sub-tasks use `return_exceptions=True` so one failing resolve
+        doesn't blow up the whole radio response.
         """
         MAX_SAME_ARTIST = 2          # at most 2 tracks by seed artist
         MAX_PER_OTHER_ARTIST = 2     # at most 2 tracks by any single other artist
         MIN_UNIQUE_ARTISTS = max(3, limit // 3)  # require some artist diversity
 
+        # Last.fm doesn't recognise comma-joined collaborator strings as a
+        # single artist.  Try each variant in order and use whichever gives
+        # results.  This is the difference between getting 0 vs 50 similar
+        # tracks for "Halestorm, I Prevail" — Last.fm only knows "Halestorm".
+        artist_variants = _artist_search_variants(artist)
         seed_artist_norm = _norm_artist(artist)
 
         try:
-            similar = await RadioService._lastfm_track_similar(title, artist, limit * 3)
-            artist_similar_pool = await RadioService._lastfm_artist_similar_pool(artist)
+            similar: list[dict] = []
+            similar_artist_used = artist
+            for variant in artist_variants:
+                similar = await RadioService._lastfm_track_similar(title, variant, limit * 3)
+                if similar:
+                    similar_artist_used = variant
+                    break
+
+            # For the supplement pool, also try variants.
+            artist_similar_pool: list[str] = []
+            for variant in artist_variants:
+                artist_similar_pool = await RadioService._lastfm_artist_similar_pool(variant)
+                if artist_similar_pool:
+                    break
 
             logger.info(
                 f"[radio] Last.fm track.getSimilar returned {len(similar)} suggestions "
-                f"for '{title}' by '{artist}'"
+                f"for '{title}' by '{similar_artist_used}' "
+                f"(variants tried: {artist_variants})"
             )
 
             # First pass: track.getSimilar suggestions, diversity-filtered
@@ -213,22 +264,27 @@ class RadioService:
             seed_artist_count = 0
 
             async def resolve(item: dict) -> dict | None:
-                t_title = item.get("name", "")
-                t_artist = item.get("artist", {}).get("name", "")
-                if not t_title or not t_artist:
+                try:
+                    t_title = item.get("name", "")
+                    t_artist = item.get("artist", {}).get("name", "")
+                    if not t_title or not t_artist:
+                        return None
+                    results = await search_deezer_tracks(f"{t_artist} {t_title}", 1)
+                    if not results:
+                        return None
+                    return results[0].model_dump()
+                except Exception as e:
+                    logger.debug(f"[radio] resolve failed for {item.get('name')}: {e}")
                     return None
-                results = await search_deezer_tracks(f"{t_artist} {t_title}", 1)
-                if not results:
-                    return None
-                return results[0].model_dump()
 
             resolved_results = await asyncio.gather(
-                *[resolve(s) for s in similar[:min(len(similar), 50)]]
+                *[resolve(s) for s in similar[:min(len(similar), 50)]],
+                return_exceptions=True,
             )
 
             picked: list[dict] = []
             for t in resolved_results:
-                if t is None:
+                if t is None or isinstance(t, Exception):
                     continue
                 a_norm = _norm_artist(t.get("artist", ""))
                 if not a_norm:
@@ -272,18 +328,23 @@ class RadioService:
                     used_artists.add(seed_artist_norm)
 
                 async def resolve_artist(artist_name: str) -> dict | None:
-                    if _norm_artist(artist_name) in used_artists:
+                    try:
+                        if _norm_artist(artist_name) in used_artists:
+                            return None
+                        results = await search_deezer_tracks(artist_name, 1)
+                        if not results:
+                            return None
+                        return results[0].model_dump()
+                    except Exception as e:
+                        logger.debug(f"[radio] resolve_artist failed for {artist_name}: {e}")
                         return None
-                    results = await search_deezer_tracks(artist_name, 1)
-                    if not results:
-                        return None
-                    return results[0].model_dump()
 
                 supplement_results = await asyncio.gather(
-                    *[resolve_artist(a) for a in artist_similar_pool[:limit * 2]]
+                    *[resolve_artist(a) for a in artist_similar_pool[:limit * 2]],
+                    return_exceptions=True,
                 )
                 for t in supplement_results:
-                    if t is None:
+                    if t is None or isinstance(t, Exception):
                         continue
                     a_norm = _norm_artist(t.get("artist", ""))
                     if not a_norm or a_norm in used_artists:
@@ -299,7 +360,10 @@ class RadioService:
 
             return picked[:limit]
         except Exception as e:
-            logger.warning(f"Last.fm similar failed: {e}")
+            logger.warning(
+                f"Last.fm similar failed: {type(e).__name__}: {e}",
+                exc_info=True,
+            )
             return []
 
     @staticmethod

@@ -249,14 +249,18 @@ class Player extends _$Player {
   static const _prefetchAhead = 5;
 
   void _prefetchUpcoming() {
-    final upcoming = state.queue
+    final upcomingTracks = state.queue
         .skip(state.queueIndex + 1)
         .take(_prefetchAhead)
-        .map((t) => t.id)
         .toList();
-    if (upcoming.isEmpty) return;
+    if (upcomingTracks.isEmpty) return;
     try {
-      ref.read(apiClientProvider).prefetchTracks(upcoming);
+      // Send full Track payload so backend auto-registers any tracks that
+      // aren't in the DB yet (radio suggestions, etc.).
+      ref.read(apiClientProvider).prefetchTracks(
+        upcomingTracks.map((t) => t.id).toList(),
+        tracks: upcomingTracks,
+      );
     } catch (_) {}
   }
 

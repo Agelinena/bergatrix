@@ -94,10 +94,16 @@ class TrackCard extends ConsumerWidget {
     final q = queue.isEmpty ? [track] : queue;
     await ref.read(playerProvider.notifier).play(track, queue: q);
 
-    // Prefetch next 10
+    // Prefetch next 10 — send full Track objects so the backend can
+    // auto-register any that aren't in the DB yet (radio suggestions, etc.).
     final idx = q.indexWhere((t) => t.id == track.id);
-    final nextIds = q.skip(idx + 1).take(10).map((t) => t.id).toList();
-    if (nextIds.isNotEmpty) client.prefetchTracks(nextIds);
+    final nextTracks = q.skip(idx + 1).take(10).toList();
+    if (nextTracks.isNotEmpty) {
+      client.prefetchTracks(
+        nextTracks.map((t) => t.id).toList(),
+        tracks: nextTracks,
+      );
+    }
   }
 
   void _showTrackMenu(BuildContext context, WidgetRef ref) {
