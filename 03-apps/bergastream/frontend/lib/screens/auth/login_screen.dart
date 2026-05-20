@@ -1,5 +1,8 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../core/constants.dart';
 import '../../core/theme/app_theme.dart';
 import '../../providers/auth_provider.dart';
 import '../../widgets/berga_logo.dart';
@@ -25,13 +28,49 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     super.dispose();
   }
 
+  /// Maps the various failure modes into a user-readable message AND prints
+  /// the underlying error to logcat so we can debug what's actually going wrong.
+  String _humanizeLoginError(Object e) {
+    debugPrint('[Login] error: $e');
+    if (e is DioException) {
+      switch (e.type) {
+        case DioExceptionType.connectionTimeout:
+        case DioExceptionType.sendTimeout:
+        case DioExceptionType.receiveTimeout:
+          return 'O servidor demorou demais para responder.\n'
+              'Verifique sua conexão e o endereço da API.';
+        case DioExceptionType.connectionError:
+        case DioExceptionType.unknown:
+          return 'Não consegui conectar ao servidor.\n'
+              'API: $kApiBaseUrl\n'
+              'Detalhe: ${e.message ?? e.error ?? e.type.name}';
+        case DioExceptionType.badCertificate:
+          return 'Certificado HTTPS inválido para $kApiBaseUrl';
+        case DioExceptionType.badResponse:
+          final status = e.response?.statusCode;
+          if (status == 401 || status == 403) {
+            return 'Email ou senha inválidos.';
+          }
+          return 'Servidor retornou erro $status: ${e.response?.data}';
+        case DioExceptionType.cancel:
+          return 'Login cancelado.';
+      }
+    }
+    return 'Erro inesperado: $e';
+  }
+
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
     setState(() { _loading = true; _error = null; });
     try {
       await ref.read(authProvider.notifier).login(_emailCtrl.text.trim(), _passCtrl.text);
+      // Auth state.error path: provider rethrows wrapped in AsyncValue.error.
+      final auth = ref.read(authProvider);
+      if (auth.hasError) {
+        setState(() => _error = _humanizeLoginError(auth.error!));
+      }
     } catch (e) {
-      setState(() => _error = 'Email ou senha inválidos.');
+      setState(() => _error = _humanizeLoginError(e));
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -71,7 +110,18 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   ),
                   if (_error != null) ...[
                     const SizedBox(height: 12),
-                    Text(_error!, style: const TextStyle(color: AppColors.error)),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: AppColors.error.withOpacity(0.12),
+                        border: Border.all(color: AppColors.error.withOpacity(0.5)),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        _error!,
+                        style: const TextStyle(color: AppColors.error, fontSize: 13),
+                      ),
+                    ),
                   ],
                   const SizedBox(height: 24),
                   SizedBox(
@@ -81,6 +131,34 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       child: _loading
                           ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2))
                           : const Text('Entrar'),
+                    ),
+                  ),
+                  // Diagnostic footer: which API the app is configured to talk
+                  // to.  Tappable to copy — when login fails because the APK
+                  // was built without --dart-define=API_URL, this is how the
+                  // user discovers it's pointing at localhost.
+                  const SizedBox(height: 24),
+                  InkWell(
+                    onTap: () {
+                      Clipboard.setData(ClipboardData(text: kApiBaseUrl));
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Copiado: $kApiBaseUrl'),
+                          duration: const Duration(seconds: 2),
+                        ),
+                      );
+                    },
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+                      child: Text(
+                        'API: $kApiBaseUrl',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          color: AppColors.textSecondary,
+                          fontSize: 11,
+                          fontFamily: 'monospace',
+                        ),
+                      ),
                     ),
                   ),
                 ],
