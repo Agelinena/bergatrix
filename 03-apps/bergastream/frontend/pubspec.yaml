@@ -19,6 +19,11 @@ dependencies:
 
   # Audio (just_audio inclui suporte Windows/Linux nativamente desde 0.9.x)
   just_audio: ^0.9.40
+  # Reprodução em background + controles de notificação no Android.
+  # Sem isso, o áudio falha em background no Android 8+ e em alguns
+  # dispositivos não toca nem em foreground.
+  just_audio_background: ^0.0.1-beta.13
+  audio_session: ^0.1.21
 
   # HTTP
   dio: ^5.7.0

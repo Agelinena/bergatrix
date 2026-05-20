@@ -201,13 +201,34 @@ async def serve_stream(
     ext = file_path_to_use.suffix.lower()
     media_type = "audio/flac" if ext == ".flac" else "audio/mpeg"
 
-    # File still being written → follow mode (no Content-Length, not seekable)
+    # File still being written → follow mode (chunked, not seekable).
+    # We hint at the eventual size using the track's known duration so
+    # ExoPlayer (Android) doesn't reject the stream for lacking Content-Length.
+    # ExoPlayer needs *some* indication of completion to set up its buffer
+    # state; without it, Android playback fails silently on many devices.
     if _is_downloading(file_path_to_use):
+        follow_headers = {
+            "Cache-Control": "no-cache",
+            "Accept-Ranges": "none",
+            # Transfer-Encoding: chunked is what StreamingResponse does by default
+            # when Content-Length is absent — but we explicitly hint to clients
+            # that the stream is "live" via a custom header so they don't
+            # try to seek.
+            "X-BergaStream-Mode": "follow",
+        }
+        # Estimate eventual size from duration (Deezer/ytdlp normal output:
+        # MP3 320 ~= 40 KB/s, MP3 128 ~= 16 KB/s, FLAC ~= 110 KB/s).
+        # We pick a conservative estimate (MP3 320) — it's only a hint to
+        # ExoPlayer's buffer sizing; the actual EOF comes from the generator.
+        if track.duration_ms and track.duration_ms > 0:
+            bytes_per_second = 110_000 if ext == ".flac" else 40_000
+            estimated = int((track.duration_ms / 1000) * bytes_per_second)
+            follow_headers["X-BergaStream-Estimated-Length"] = str(estimated)
         return StreamingResponse(
             _follow_file_generator(file_path_to_use),
             status_code=200,
             media_type=media_type,
-            headers={"Cache-Control": "no-cache", "Accept-Ranges": "none"},
+            headers=follow_headers,
         )
 
     # Complete file → byte-range support

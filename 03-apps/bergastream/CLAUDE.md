@@ -38,9 +38,20 @@ flutter run -d chrome --dart-define=API_URL=http://localhost:8000
 ### Frontend (Android)
 ```bash
 cd frontend
+flutter pub get
+dart run build_runner build --delete-conflicting-outputs
 flutter build apk --release --dart-define=API_URL=https://bergastreamapi.seudominio.com
 # APK em frontend/build/app/outputs/flutter-apk/app-release.apk
 ```
+
+#### Notas sobre Android
+- Reprodução em background depende do `just_audio_background` (já configurado).
+  O `AndroidManifest.xml` declara o `AudioService` + `MediaButtonReceiver` —
+  não remover.
+- `minSdk = 21` é exigido pelo `just_audio_background`. O `flutter_launcher_icons`
+  já gera ícones adaptativos para esse alvo.
+- Se o áudio não tocar, verificar no log do device (`adb logcat | grep -i audio`)
+  se há erro de permissão `FOREGROUND_SERVICE_MEDIA_PLAYBACK` (Android 14+).
 
 ### Frontend (Windows desktop)
 ```bash

@@ -13,9 +13,11 @@ import '../../core/error_messages.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/api_client.dart';
 import '../../models/playlist.dart';
+import '../../models/track.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/player_provider.dart';
 import '../../providers/library_provider.dart';
+import '../../services/offline_service.dart';
 import '../../widgets/cards/track_card.dart';
 
 class PlaylistScreen extends ConsumerStatefulWidget {
@@ -131,6 +133,89 @@ class _PlaylistScreenState extends ConsumerState<PlaylistScreen> {
     } catch (_) {}
   }
 
+  Future<void> _downloadOffline() async {
+    final pl = _playlist;
+    if (pl == null || pl.tracks.isEmpty) return;
+    final tracks = pl.tracks.map((pt) => pt.track).toList();
+    final client = ref.read(apiClientProvider);
+
+    // Mostra um dialog de progresso enquanto baixa.
+    final progressNotifier = ValueNotifier<({int done, int total, Track? current})>(
+      (done: 0, total: tracks.length, current: null),
+    );
+    var cancelled = false;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: AppColors.surfaceVariant,
+        title: const Text('Baixando para uso offline'),
+        content: ValueListenableBuilder(
+          valueListenable: progressNotifier,
+          builder: (_, value, __) => Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              LinearProgressIndicator(
+                value: value.total > 0 ? value.done / value.total : null,
+                color: AppColors.primary,
+              ),
+              const SizedBox(height: 12),
+              Text('${value.done} / ${value.total} faixas'),
+              if (value.current != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Text(
+                    '${value.current!.title} — ${value.current!.artist}',
+                    style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+                    maxLines: 1, overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              cancelled = true;
+              Navigator.pop(dialogContext);
+            },
+            child: const Text('Cancelar'),
+          ),
+        ],
+      ),
+    );
+
+    try {
+      final result = await OfflineService.downloadPlaylist(
+        tracks,
+        client,
+        onProgress: (done, total, current) {
+          if (cancelled) return;
+          progressNotifier.value = (done: done, total: total, current: current);
+        },
+      );
+      if (!mounted) return;
+      // Fecha o dialog de progresso (se ainda aberto).
+      if (Navigator.canPop(context)) Navigator.pop(context);
+      final msg = result.allSucceeded
+          ? 'Baixadas ${result.succeeded} faixas (${result.skipped} já tinham)'
+          : 'Baixadas ${result.succeeded}, falharam ${result.failed} de ${result.total}';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(msg), duration: const Duration(seconds: 4)),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      if (Navigator.canPop(context)) Navigator.pop(context);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Erro ao baixar: $e'), duration: const Duration(seconds: 4)),
+      );
+    } finally {
+      progressNotifier.dispose();
+    }
+  }
+
   Future<void> _delete() async {
     if (_deleting) return;
 
@@ -238,15 +323,18 @@ class _PlaylistScreenState extends ConsumerState<PlaylistScreen> {
                     if (v == 'collaborators') _showCollaboratorsDialog();
                     if (v == 'share') _share();
                     if (v == 'delete') _delete();
+                    if (v == 'download_offline') _downloadOffline();
                   },
                   itemBuilder: (_) => [
                     if (isOwner) ...[
                       const PopupMenuItem(value: 'edit', child: ListTile(leading: Icon(Icons.edit_outlined), title: Text('Editar'))),
                       const PopupMenuItem(value: 'collaborators', child: ListTile(leading: Icon(Icons.group_add_outlined), title: Text('Colaboradores'))),
                       const PopupMenuItem(value: 'share', child: ListTile(leading: Icon(Icons.share_outlined), title: Text('Compartilhar'))),
+                      const PopupMenuItem(value: 'download_offline', child: ListTile(leading: Icon(Icons.download_for_offline_outlined), title: Text('Baixar offline'))),
                       const PopupMenuItem(value: 'delete', child: ListTile(leading: Icon(Icons.delete_outline, color: Colors.red), title: Text('Deletar', style: TextStyle(color: Colors.red)))),
                     ] else ...[
                       const PopupMenuItem(value: 'share', child: ListTile(leading: Icon(Icons.share_outlined), title: Text('Compartilhar'))),
+                      const PopupMenuItem(value: 'download_offline', child: ListTile(leading: Icon(Icons.download_for_offline_outlined), title: Text('Baixar offline'))),
                     ],
                   ],
                 );
