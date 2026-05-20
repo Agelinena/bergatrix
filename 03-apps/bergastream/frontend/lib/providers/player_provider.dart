@@ -217,6 +217,11 @@ class Player extends _$Player {
   ///   [Atual | ManualA | ManualB | Rádio1 | Rádio2]
   ///   → inserir ManualC na posição queueIndex+1+2 = queueIndex+3
   ///   → [Atual | ManualA | ManualB | ManualC | Rádio1 | Rádio2]
+  ///
+  /// Também dispara o prefetch da track no backend.  Sem isso, "Tocar a
+  /// seguir" inseria a faixa na fila do player mas o backend não sabia
+  /// que precisava baixá-la — só descobria quando o player avançava
+  /// e disparava o download on-demand (latência alta no primeiro byte).
   void insertNextInQueue(Track track) {
     final insertAt = (state.queueIndex + 1 + state.manualQueueAhead)
         .clamp(0, state.queue.length);
@@ -226,6 +231,14 @@ class Player extends _$Player {
       queue: newQueue,
       manualQueueAhead: state.manualQueueAhead + 1,
     );
+    // Fire-and-forget prefetch — passa o Track completo para auto-registro
+    // no backend caso a faixa ainda não esteja no DB.
+    try {
+      ref.read(apiClientProvider).prefetchTracks(
+        [track.id],
+        tracks: [track],
+      );
+    } catch (_) {}
   }
 
   /// Reordena a fila de "próximas" músicas (itens após o atual).

@@ -101,8 +101,10 @@ class RadioQueueNotifier extends Notifier<RadioQueueState> {
     // Snapshot do ID ANTES do await — se deactivate() ou outro activate()
     // for chamado enquanto aguardamos a API, myId ≠ _activationId e descartamos.
     final myId = ++_activationId;
+    debugPrint('[RadioQueue] activate START: seed=${seed.id} title="${seed.title}" myId=$myId');
 
     final src = source ?? await _savedSource();
+    debugPrint('[RadioQueue] activate src=$src for myId=$myId');
 
     // Se há uma rádio anterior ativa e o seed mudou, expurga as tracks da
     // rádio antiga da fila do player ANTES de buscar as novas. Sem isso, a

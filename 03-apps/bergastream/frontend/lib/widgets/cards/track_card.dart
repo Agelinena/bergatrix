@@ -21,6 +21,10 @@ class TrackCard extends ConsumerWidget {
   final String? playlistId;
   final VoidCallback? onRemoved;
   final bool showRadioOption;
+  /// Quando true, "Tocar agora" do menu de 3-pontos também ATIVA o rádio
+  /// (em vez de desativar como faz para playlist/library). Usado no search,
+  /// onde o esperado é começar uma rádio quando o usuário escolhe uma faixa.
+  final bool activateRadioOnPlay;
 
   const TrackCard({
     super.key,
@@ -30,6 +34,7 @@ class TrackCard extends ConsumerWidget {
     this.playlistId,
     this.onRemoved,
     this.showRadioOption = true,
+    this.activateRadioOnPlay = false,
   });
 
   @override
@@ -110,7 +115,13 @@ class TrackCard extends ConsumerWidget {
     showModalBottomSheet(
       context: context,
       backgroundColor: AppColors.surfaceVariant,
-      builder: (_) => TrackMenuSheet(track: track, playlistId: playlistId, onRemoved: onRemoved, showRadioOption: showRadioOption),
+      builder: (_) => TrackMenuSheet(
+        track: track,
+        playlistId: playlistId,
+        onRemoved: onRemoved,
+        showRadioOption: showRadioOption,
+        activateRadioOnPlay: activateRadioOnPlay,
+      ),
     );
   }
 }
@@ -120,7 +131,15 @@ class TrackMenuSheet extends ConsumerWidget {
   final String? playlistId;
   final VoidCallback? onRemoved;
   final bool showRadioOption;
-  const TrackMenuSheet({super.key, required this.track, this.playlistId, this.onRemoved, this.showRadioOption = true});
+  final bool activateRadioOnPlay;
+  const TrackMenuSheet({
+    super.key,
+    required this.track,
+    this.playlistId,
+    this.onRemoved,
+    this.showRadioOption = true,
+    this.activateRadioOnPlay = false,
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -149,12 +168,26 @@ class TrackMenuSheet extends ConsumerWidget {
           ListTile(
             leading: const Icon(Icons.play_arrow),
             title: const Text('Tocar agora'),
-            onTap: () {
+            onTap: () async {
               Navigator.pop(context);
-              client.registerTrack(track.toJson()).then((_) {
+              try {
+                await client.registerTrack(track.toJson());
+              } catch (_) {/* ignore: stream endpoint retry-loop cobre */}
+              if (activateRadioOnPlay) {
+                // Vindo da busca: desativar+reativar para o seed mudar e o
+                // backend limpar a fila de bg da rádio anterior.
+                ref.read(radioQueueProvider.notifier).deactivate();
+                await ref.read(playerProvider.notifier).play(track, queue: [track]);
+                try {
+                  await ref.read(radioQueueProvider.notifier).activate(track);
+                } catch (e) {
+                  debugPrint('[TrackMenu] activate radio error: $e');
+                }
+              } else {
+                // Contexto playlist/library — sem rádio.
                 ref.read(radioQueueProvider.notifier).deactivate();
                 ref.read(playerProvider.notifier).play(track);
-              });
+              }
             },
           ),
           ListTile(

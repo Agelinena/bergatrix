@@ -86,6 +86,15 @@ class _RadioScreenState extends ConsumerState<RadioScreen> {
         _loading = false;
       });
       for (final t in more) ref.read(playerProvider.notifier).addToQueue(t);
+      if (more.isNotEmpty) {
+        // Sem prefetch, as faixas extras ficam só no player.queue mas
+        // o backend não as conhece — usuário esperaria download on-demand
+        // ao avançar.
+        ref.read(apiClientProvider).prefetchTracks(
+          more.map((t) => t.id).toList(),
+          tracks: more,
+        );
+      }
     } catch (e) {
       if (mounted) setState(() { _loadMoreAttempts++; _loading = false; });
     }

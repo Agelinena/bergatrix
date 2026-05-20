@@ -157,6 +157,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen>
   }
 
   void _playFromSearch(Track track, List<Track> queue) async {
+    debugPrint('[Search] _playFromSearch START: ${track.title} by ${track.artist} (id=${track.id})');
     // Desativa o rádio ANTES de play() para garantir que o listener do
     // radioQueueProvider não dispare _refill() entre play() e activate().
     // Se não desativarmos, play() muda currentTrack → listener fires → remaining=0
@@ -165,11 +166,14 @@ class _SearchScreenState extends ConsumerState<SearchScreen>
     try {
       // play() já chama registerTrack internamente — não duplicar aqui.
       await ref.read(playerProvider.notifier).play(track, queue: [track]);
+      debugPrint('[Search] play() done for ${track.id}');
     } catch (e) {
       debugPrint('[Search] play error: $e');
     }
     try {
+      debugPrint('[Search] calling activate(${track.id})');
       await ref.read(radioQueueProvider.notifier).activate(track);
+      debugPrint('[Search] activate() done for ${track.id}');
     } catch (e) {
       debugPrint('[Search] activate error: $e');
     }
@@ -332,6 +336,10 @@ class _SearchScreenState extends ConsumerState<SearchScreen>
                   queue: search.tracks,
                   onTap: () => _playFromSearch(search.tracks[i], search.tracks),
                   showRadioOption: false,
+                  // "Tocar agora" do menu de 3-pontos também ativa rádio
+                  // quando a faixa vem da busca (mesmo comportamento do
+                  // clique direto no card).
+                  activateRadioOnPlay: true,
                 ),
               ),
 
