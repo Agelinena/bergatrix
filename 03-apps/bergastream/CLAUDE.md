@@ -36,12 +36,29 @@ flutter run -d chrome --dart-define=API_URL=http://localhost:8000
 ```
 
 ### Frontend (Android)
+
+Build completo, incluindo regenerar os ícones a partir do logo (caso o
+SVG mude):
+
 ```bash
 cd frontend
 flutter pub get
 dart run build_runner build --delete-conflicting-outputs
+
+# (Opcional) Regerar os ícones — só necessário se o logo mudou.
+# Usa Pillow puro (não precisa libcairo nativa).
+python scripts/generate_icons_pillow.py
+dart run flutter_launcher_icons
+
+# Build APK
 flutter build apk --release --dart-define=API_URL=https://bergastreamapi.seudominio.com
 # APK em frontend/build/app/outputs/flutter-apk/app-release.apk
+```
+
+Se quiser dividir por ABI (APK menor, ~40% do tamanho cada):
+```bash
+flutter build apk --release --split-per-abi --dart-define=API_URL=https://...
+# Gera: app-armeabi-v7a-release.apk, app-arm64-v8a-release.apk, app-x86_64-release.apk
 ```
 
 #### Notas sobre Android
@@ -49,9 +66,14 @@ flutter build apk --release --dart-define=API_URL=https://bergastreamapi.seudomi
   O `AndroidManifest.xml` declara o `AudioService` + `MediaButtonReceiver` —
   não remover.
 - `minSdk = 21` é exigido pelo `just_audio_background`. O `flutter_launcher_icons`
-  já gera ícones adaptativos para esse alvo.
+  gera ícones adaptativos a partir de `assets/images/icon_1024.png` e
+  `assets/images/icon_adaptive_fg.png`.
 - Se o áudio não tocar, verificar no log do device (`adb logcat | grep -i audio`)
   se há erro de permissão `FOREGROUND_SERVICE_MEDIA_PLAYBACK` (Android 14+).
+- O script `scripts/generate_icons.py` (cairosvg) renderiza a partir do SVG,
+  mas requer `libcairo` instalada no SO.  Em Windows use a alternativa
+  `scripts/generate_icons_pillow.py` que reproduz o mesmo desenho usando
+  apenas Pillow.
 
 ### Frontend (Windows desktop)
 ```bash
