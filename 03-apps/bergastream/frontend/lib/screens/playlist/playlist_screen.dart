@@ -152,12 +152,18 @@ class _PlaylistScreenState extends ConsumerState<PlaylistScreen> {
 
   /// Click handler for a row in the playlist.  Honors shuffle:
   /// - off → toca a clicada, enfileira o restante na ordem atual
-  /// - on  → embaralha TUDO e toca a primeira
+  /// - on  → toca a CLICADA e embaralha o resto da playlist depois dela
+  ///         (botão grande de Play no topo é que embaralha tudo)
   void _handleTrackTap(Track track, List<Track> tracks) {
     final prefs = ref.read(playlistPreferencesProvider(widget.id));
     if (prefs.shuffle) {
-      final shuffled = [...tracks]..shuffle();
-      ref.read(playerProvider.notifier).play(shuffled.first, queue: shuffled);
+      // Tira a clicada da lista, embaralha o restante, e a coloca na
+      // frente da fila.  Toca a clicada — o resto vem em ordem
+      // aleatória.
+      final others = [...tracks]..removeWhere((t) => t.id == track.id);
+      others.shuffle();
+      final queue = [track, ...others];
+      ref.read(playerProvider.notifier).play(track, queue: queue);
     } else {
       final idx = tracks.indexWhere((t) => t.id == track.id);
       final queue = idx < 0 ? tracks : tracks.sublist(idx);
