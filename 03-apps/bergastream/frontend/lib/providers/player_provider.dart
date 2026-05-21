@@ -24,6 +24,9 @@ class PlayerState {
   /// Garante que adds manuais consecutivos empilhem em ordem FIFO:
   /// [Atual | ManualA | ManualB | ManualC | Rádio1 | Rádio2 ...]
   final int manualQueueAhead;
+  /// Mensagem do último erro do player (exibida em SnackBar quando o
+  /// status muda para error).
+  final String? lastError;
 
   const PlayerState({
     this.currentTrack,
@@ -36,6 +39,7 @@ class PlayerState {
     this.shuffle = false,
     this.repeat = RepeatMode.none,
     this.manualQueueAhead = 0,
+    this.lastError,
   });
 
   PlayerState copyWith({
@@ -49,6 +53,7 @@ class PlayerState {
     bool? shuffle,
     RepeatMode? repeat,
     int? manualQueueAhead,
+    String? lastError,
   }) => PlayerState(
     currentTrack: currentTrack ?? this.currentTrack,
     queue: queue ?? this.queue,
@@ -60,6 +65,7 @@ class PlayerState {
     shuffle: shuffle ?? this.shuffle,
     repeat: repeat ?? this.repeat,
     manualQueueAhead: manualQueueAhead ?? this.manualQueueAhead,
+    lastError: lastError ?? this.lastError,
   );
 
   bool get isPlaying => status == PlayerStatus.playing;
@@ -84,6 +90,10 @@ class Player extends _$Player {
     };
     _service.onStatusChanged = (s) => state = state.copyWith(status: s);
     _service.onTrackComplete = () => _handleTrackComplete();
+    _service.onError = (msg) {
+      // Surface for any UI that wants to display the last error.
+      state = state.copyWith(status: PlayerStatus.error, lastError: msg);
+    };
     return const PlayerState();
   }
 
