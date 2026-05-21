@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:just_audio_background/just_audio_background.dart';
 import 'app.dart';
+import 'core/logger.dart';
 import 'providers/auth_provider.dart';
 import 'providers/player_provider.dart';
 
@@ -28,6 +29,11 @@ String? backgroundInitError;
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Captura debugPrint num buffer em memória que a tela de Configurações > Logs
+  // pode renderizar.  Antes de qualquer outro setup para que mensagens do
+  // próprio JustAudioBackground.init() já apareçam lá.
+  AppLogger.install();
 
   // Inicializa o background audio antes do runApp.  Necessário para
   // Android (controles de notificação + manter o áudio tocando em

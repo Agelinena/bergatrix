@@ -8,6 +8,7 @@ import '../../models/track.dart';
 import '../../models/user.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/library_provider.dart';
+import 'logs_screen.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -296,6 +297,24 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             ),
             const SizedBox(height: 24),
           ],
+
+          // ── Diagnóstico ────────────────────────────────────────────────
+          const Divider(),
+          _SectionHeader('Diagnóstico'),
+          ListTile(
+            leading: const Icon(Icons.bug_report_outlined),
+            title: const Text('Logs do app'),
+            subtitle: const Text(
+              'Veja o que o app registrou em memória — útil para reportar bugs',
+              style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
+            ),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const LogsScreen()),
+              );
+            },
+          ),
 
           // ── Sair ───────────────────────────────────────────────────────
           const Divider(),
