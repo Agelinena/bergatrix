@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  BergaStream network security config.
+
+  By default Android trusts the system CA store (which includes Let's
+  Encrypt). On some manufacturer ROMs that trust store is partially
+  stripped or out-of-date, causing HTTPS requests to silently fail
+  before the server ever sees them. Explicitly listing `system` here
+  makes the trust set deterministic across vendors.
+
+  cleartextTrafficPermitted is false everywhere — production must be
+  HTTPS. The base-config covers all domains; add a `domain-config`
+  block below if you ever need to permit cleartext for a specific
+  development host.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

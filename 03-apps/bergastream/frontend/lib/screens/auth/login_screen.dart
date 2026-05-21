@@ -19,7 +19,50 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _emailCtrl = TextEditingController();
   final _passCtrl = TextEditingController();
   bool _loading = false;
+  bool _testing = false;
   String? _error;
+  String? _diag;
+
+  Future<void> _testConnection() async {
+    setState(() { _testing = true; _diag = null; _error = null; });
+    final dio = Dio(BaseOptions(
+      connectTimeout: const Duration(seconds: 8),
+      receiveTimeout: const Duration(seconds: 8),
+    ));
+    final url = '$kApiBaseUrl/api/health';
+    final stopwatch = Stopwatch()..start();
+    try {
+      final resp = await dio.get(url);
+      stopwatch.stop();
+      setState(() {
+        _diag = 'OK ${resp.statusCode} em ${stopwatch.elapsedMilliseconds}ms\n'
+            'Body: ${resp.data}';
+      });
+    } on DioException catch (e) {
+      stopwatch.stop();
+      final detail = StringBuffer()
+        ..writeln('Tipo: ${e.type.name}')
+        ..writeln('Mensagem: ${e.message}')
+        ..writeln('URL: $url')
+        ..writeln('Tempo: ${stopwatch.elapsedMilliseconds}ms');
+      if (e.response != null) {
+        detail
+          ..writeln('Status: ${e.response?.statusCode}')
+          ..writeln('Resp: ${e.response?.data}');
+      }
+      if (e.error != null) {
+        detail.writeln('Erro: ${e.error}');
+      }
+      setState(() => _diag = 'FALHOU\n$detail');
+      debugPrint('[Login] /health test failed: $detail');
+    } catch (e) {
+      stopwatch.stop();
+      setState(() => _diag = 'EXCEÇÃO\n$e');
+      debugPrint('[Login] /health test threw: $e');
+    } finally {
+      if (mounted) setState(() => _testing = false);
+    }
+  }
 
   @override
   void dispose() {
@@ -161,6 +204,36 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       ),
                     ),
                   ),
+                  const SizedBox(height: 8),
+                  TextButton.icon(
+                    onPressed: _testing ? null : _testConnection,
+                    icon: _testing
+                        ? const SizedBox(
+                            width: 14, height: 14,
+                            child: CircularProgressIndicator(strokeWidth: 2))
+                        : const Icon(Icons.network_check, size: 16),
+                    label: const Text('Testar conexão com o servidor'),
+                  ),
+                  if (_diag != null) ...[
+                    const SizedBox(height: 8),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: AppColors.surface,
+                        border: Border.all(color: AppColors.surfaceVariant),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: SelectableText(
+                        _diag!,
+                        style: const TextStyle(
+                          fontSize: 10,
+                          fontFamily: 'monospace',
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
