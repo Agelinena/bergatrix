@@ -9,6 +9,10 @@
     <uses-permission android:name="android.permission.WAKE_LOCK"/>
     <!-- Lockscreen / notification media controls. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <!-- Chromecast discovery via mDNS on local network (Android 13+). -->
+    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE"/>
+    <uses-permission android:name="android.permission.NEARBY_WIFI_DEVICES"
+        android:usesPermissionFlags="neverForLocation" />
 
     <application
         android:label="BergaStream"
