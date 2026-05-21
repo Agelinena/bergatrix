@@ -44,6 +44,9 @@ dependencies:
   # Cross-platform local storage (replaces dart:html localStorage)
   shared_preferences: ^2.3.2
 
+  # Conectividade — detecta on/offline para mostrar banner e cair em cache.
+  connectivity_plus: ^6.0.5
+
   # Cross-platform file picker (replaces dart:html FileUploadInputElement)
   file_picker: ^8.1.2
 

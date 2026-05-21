@@ -8,6 +8,8 @@ import '../../providers/auth_provider.dart';
 import '../../providers/library_provider.dart';
 import '../../providers/player_provider.dart';
 import '../../providers/ui_provider.dart';
+import '../offline_banner.dart';
+import '../offline_download_banner.dart';
 import '../player/mini_player.dart';
 import '../player/player_bar.dart';
 import '../player/now_playing_panel.dart';
@@ -47,7 +49,9 @@ class _MobileLayoutState extends ConsumerState<_MobileLayout> {
     return Scaffold(
       body: Column(
         children: [
+          const OfflineBanner(),
           Expanded(child: widget.child),
+          const OfflineDownloadBanner(),
           if (hasTrack) const MiniPlayer(),
         ],
       ),
@@ -85,6 +89,7 @@ class _DesktopLayout extends ConsumerWidget {
     return Scaffold(
       body: Column(
         children: [
+          const OfflineBanner(),
           Expanded(
             child: Row(
               children: [
@@ -101,6 +106,7 @@ class _DesktopLayout extends ConsumerWidget {
               ],
             ),
           ),
+          const OfflineDownloadBanner(),
           if (hasTrack) const PlayerBar(),
         ],
       ),

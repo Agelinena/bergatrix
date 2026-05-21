@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import '../core/api_client.dart';
+import '../core/offline_cache.dart';
 import '../core/storage.dart';
 import '../models/user.dart';
 
@@ -101,6 +102,9 @@ class Auth extends _$Auth {
     final client = ref.read(apiClientProvider);
     await client.logout();
     await AppStorage.remove(_cachedUserKey);
+    // Wipe per-user offline payload cache so the next user doesn't see
+    // somebody else's playlists.
+    await OfflineCache.clearAll();
     state = const AsyncValue.data(null);
   }
 
