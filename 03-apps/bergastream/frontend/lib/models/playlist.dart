@@ -78,12 +78,24 @@ class PlaylistTrack {
   final String id;
   final Track track;
   final int position;
+  final DateTime? addedAt;
+  final String? addedByUsername;
 
-  const PlaylistTrack({required this.id, required this.track, required this.position});
+  const PlaylistTrack({
+    required this.id,
+    required this.track,
+    required this.position,
+    this.addedAt,
+    this.addedByUsername,
+  });
 
   factory PlaylistTrack.fromJson(Map<String, dynamic> json) => PlaylistTrack(
     id: json['id'] as String,
     track: Track.fromJson(json['track'] as Map<String, dynamic>),
     position: json['position'] as int,
+    addedAt: json['added_at'] != null
+        ? DateTime.tryParse(json['added_at'] as String)
+        : null,
+    addedByUsername: json['added_by_username'] as String?,
   );
 }

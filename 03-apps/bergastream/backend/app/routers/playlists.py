@@ -495,20 +495,28 @@ async def remove_collaborator(
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
 async def _build_detail(db: AsyncSession, pl: Playlist, viewer_id: uuid.UUID | None) -> PlaylistDetailSchema:
+    # Join PlaylistTrack with User to populate added_by_username in one query.
     result = await db.execute(
-        select(PlaylistTrack).where(PlaylistTrack.playlist_id == pl.id).order_by(PlaylistTrack.position)
+        select(PlaylistTrack, User.username)
+        .outerjoin(User, User.id == PlaylistTrack.added_by)
+        .where(PlaylistTrack.playlist_id == pl.id)
+        .order_by(PlaylistTrack.position)
     )
-    pts = result.scalars().all()
+    pt_rows = result.all()
 
     track_schemas = []
-    for pt in pts:
+    for pt, added_by_username in pt_rows:
         track_result = await db.execute(select(Track).where(Track.id == pt.track_id))
         track = track_result.scalar_one_or_none()
         if track:
             from app.schemas.track import TrackSchema
             ts = TrackSchema.model_validate(track)
             track_schemas.append(PlaylistTrackSchema(
-                id=str(pt.id), track=ts, position=pt.position, added_at=pt.added_at
+                id=str(pt.id),
+                track=ts,
+                position=pt.position,
+                added_at=pt.added_at,
+                added_by_username=added_by_username,
             ))
 
     # Load collaborators

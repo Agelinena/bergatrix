@@ -13,10 +13,13 @@ import '../../core/error_messages.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/api_client.dart';
 import '../../models/playlist.dart';
+import '../../models/track.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/player_provider.dart';
 import '../../providers/library_provider.dart';
 import '../../providers/offline_download_provider.dart';
+import '../../providers/playlist_prefs_provider.dart';
+import '../../services/offline_service.dart';
 import '../../widgets/cards/track_card.dart';
 
 class PlaylistScreen extends ConsumerStatefulWidget {
@@ -80,20 +83,82 @@ class _PlaylistScreenState extends ConsumerState<PlaylistScreen> {
     super.dispose();
   }
 
+  /// Press the big play button.  When shuffle is on, embaralha todas as
+  /// faixas e toca a primeira; senão toca a primeira na ordem ordenada.
+  /// Para tocar a partir de uma faixa específica, o TrackCard ainda usa
+  /// `play(track, queue: queueAfter)` no clique — exceto quando shuffle
+  /// estiver ativo, daí ele força reembaralhar tudo (lógica em
+  /// [_handleTrackTap]).
   void _playAll() {
     if (_playlist == null) return;
-    final tracks = _playlist!.tracks.map((pt) => pt.track).toList();
-    if (tracks.isNotEmpty) {
-      ref.read(playerProvider.notifier).play(tracks.first, queue: tracks);
-    }
+    final prefs = ref.read(playlistPreferencesProvider(widget.id));
+    var tracks = _sortedTracks();
+    if (tracks.isEmpty) return;
+    if (prefs.shuffle) tracks = [...tracks]..shuffle();
+    ref.read(playerProvider.notifier).play(tracks.first, queue: tracks);
   }
 
-  void _shuffle() {
-    if (_playlist == null) return;
-    final tracks = [..._playlist!.tracks.map((pt) => pt.track)]..shuffle();
-    if (tracks.isNotEmpty) {
-      ref.read(playerProvider.notifier).play(tracks.first, queue: tracks);
-      ref.read(playerProvider.notifier).toggleShuffle();
+  /// Aplica o sort persistente da playlist.  Funciona sobre uma cópia
+  /// para não mutar [_playlist.tracks].
+  List<Track> _sortedTracks() {
+    final pl = _playlist;
+    if (pl == null) return const [];
+    final prefs = ref.read(playlistPreferencesProvider(widget.id));
+    final list = pl.tracks.toList();
+
+    int cmp<T extends Comparable>(T a, T b) => a.compareTo(b);
+
+    switch (prefs.sort) {
+      case PlaylistSortMode.custom:
+        list.sort((a, b) => a.position.compareTo(b.position));
+        break;
+      case PlaylistSortMode.title:
+        list.sort((a, b) => cmp(a.track.title.toLowerCase(), b.track.title.toLowerCase()));
+        break;
+      case PlaylistSortMode.artist:
+        list.sort((a, b) => cmp(a.track.artist.toLowerCase(), b.track.artist.toLowerCase()));
+        break;
+      case PlaylistSortMode.album:
+        list.sort((a, b) => cmp((a.track.album ?? '').toLowerCase(), (b.track.album ?? '').toLowerCase()));
+        break;
+      case PlaylistSortMode.addedBy:
+        list.sort((a, b) => cmp(
+          (a.addedByUsername ?? '').toLowerCase(),
+          (b.addedByUsername ?? '').toLowerCase(),
+        ));
+        break;
+      case PlaylistSortMode.addedRecently:
+        list.sort((a, b) {
+          final at = a.addedAt;
+          final bt = b.addedAt;
+          if (at == null && bt == null) return 0;
+          if (at == null) return 1;
+          if (bt == null) return -1;
+          return bt.compareTo(at);  // recent first by default
+        });
+        break;
+      case PlaylistSortMode.duration:
+        list.sort((a, b) => (a.track.durationMs ?? 0).compareTo(b.track.durationMs ?? 0));
+        break;
+    }
+    if (prefs.descending) {
+      return list.reversed.map((pt) => pt.track).toList();
+    }
+    return list.map((pt) => pt.track).toList();
+  }
+
+  /// Click handler for a row in the playlist.  Honors shuffle:
+  /// - off → toca a clicada, enfileira o restante na ordem atual
+  /// - on  → embaralha TUDO e toca a primeira
+  void _handleTrackTap(Track track, List<Track> tracks) {
+    final prefs = ref.read(playlistPreferencesProvider(widget.id));
+    if (prefs.shuffle) {
+      final shuffled = [...tracks]..shuffle();
+      ref.read(playerProvider.notifier).play(shuffled.first, queue: shuffled);
+    } else {
+      final idx = tracks.indexWhere((t) => t.id == track.id);
+      final queue = idx < 0 ? tracks : tracks.sublist(idx);
+      ref.read(playerProvider.notifier).play(track, queue: queue);
     }
   }
 
@@ -325,46 +390,185 @@ class _PlaylistScreenState extends ConsumerState<PlaylistScreen> {
             ),
           ),
           SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-              child: Row(
-                children: [
-                  ElevatedButton.icon(
-                    onPressed: _shuffle,
-                    icon: const Icon(Icons.shuffle, size: 18),
-                    label: const Text('Aleatório'),
-                  ),
-                  const SizedBox(width: 12),
-                  OutlinedButton.icon(
-                    onPressed: _playAll,
-                    icon: const Icon(Icons.play_arrow),
-                    label: const Text('Tocar tudo'),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: AppColors.textPrimary,
-                      side: const BorderSide(color: AppColors.textSecondary),
-                      shape: const StadiumBorder(),
-                    ),
-                  ),
-                ],
-              ),
+            child: _ControlBar(
+              playlistId: widget.id,
+              onPlay: _playAll,
+              onDownloadOffline: _downloadOffline,
+              trackCount: tracks.length,
             ),
           ),
           if (_dlStatus != null)
             SliverToBoxAdapter(
               child: _DownloadStatusBanner(status: _dlStatus!),
             ),
-          SliverList(
-            delegate: SliverChildBuilderDelegate(
-              (_, i) => TrackCard(
-                track: tracks[i],
-                queue: tracks,
-                playlistId: widget.id,
-                onRemoved: _load,
+          // Use the sorted track list for rendering so the user's choice
+          // of order is reflected immediately, while still letting the
+          // tap handler honour the shuffle preference.
+          Builder(builder: (_) {
+            final sorted = _sortedTracks();
+            return SliverList(
+              delegate: SliverChildBuilderDelegate(
+                (_, i) => TrackCard(
+                  track: sorted[i],
+                  queue: sorted,
+                  playlistId: widget.id,
+                  onRemoved: _load,
+                  onTap: () => _handleTrackTap(sorted[i], sorted),
+                ),
+                childCount: sorted.length,
               ),
-              childCount: tracks.length,
-            ),
-          ),
+            );
+          }),
           const SliverToBoxAdapter(child: SizedBox(height: 80)),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Barra de controle (play, shuffle, download, sort) ─────────────────────
+
+class _ControlBar extends ConsumerStatefulWidget {
+  final String playlistId;
+  final VoidCallback onPlay;
+  final VoidCallback onDownloadOffline;
+  final int trackCount;
+  const _ControlBar({
+    required this.playlistId,
+    required this.onPlay,
+    required this.onDownloadOffline,
+    required this.trackCount,
+  });
+
+  @override
+  ConsumerState<_ControlBar> createState() => _ControlBarState();
+}
+
+class _ControlBarState extends ConsumerState<_ControlBar> {
+  int? _localOffline; // count of tracks already on device
+
+  @override
+  void initState() {
+    super.initState();
+    _refreshOffline();
+  }
+
+  Future<void> _refreshOffline() async {
+    final downloaded = await OfflineService.getDownloadedTracks();
+    if (!mounted) return;
+    setState(() => _localOffline = downloaded.length);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final prefs = ref.watch(playlistPreferencesProvider(widget.playlistId));
+    final dl = ref.watch(offlineDownloadProvider);
+    final isDownloadingThisPlaylist = dl.active && dl.label.isNotEmpty;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              // Big green play button (Spotify-style).
+              Container(
+                width: 56, height: 56,
+                decoration: const BoxDecoration(color: AppColors.primary, shape: BoxShape.circle),
+                child: IconButton(
+                  iconSize: 32,
+                  padding: EdgeInsets.zero,
+                  icon: const Icon(Icons.play_arrow, color: Colors.black),
+                  onPressed: widget.trackCount == 0 ? null : widget.onPlay,
+                ),
+              ),
+              const SizedBox(width: 16),
+              // Shuffle toggle — persistent per playlist.
+              IconButton(
+                iconSize: 26,
+                icon: Icon(
+                  Icons.shuffle,
+                  color: prefs.shuffle ? AppColors.primary : AppColors.textSecondary,
+                ),
+                tooltip: prefs.shuffle ? 'Aleatório ativo' : 'Aleatório desativado',
+                onPressed: () => ref
+                    .read(playlistPreferencesProvider(widget.playlistId).notifier)
+                    .setShuffle(!prefs.shuffle),
+              ),
+              // Download offline.
+              IconButton(
+                iconSize: 26,
+                icon: isDownloadingThisPlaylist
+                    ? const SizedBox(
+                        width: 18, height: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2, color: AppColors.primary,
+                        ),
+                      )
+                    : const Icon(Icons.download_for_offline_outlined),
+                tooltip: 'Baixar offline',
+                onPressed: widget.trackCount == 0 || isDownloadingThisPlaylist
+                    ? null
+                    : () {
+                        widget.onDownloadOffline();
+                        // Refresh local count once the batch settles.
+                        Future.delayed(const Duration(seconds: 3), _refreshOffline);
+                      },
+              ),
+              const Spacer(),
+              // Sort dropdown.
+              PopupMenuButton<PlaylistSortMode>(
+                tooltip: 'Ordenar',
+                icon: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      prefs.sort.label,
+                      style: const TextStyle(color: AppColors.textSecondary, fontSize: 13),
+                    ),
+                    Icon(
+                      prefs.descending ? Icons.arrow_downward : Icons.arrow_upward,
+                      size: 14,
+                      color: AppColors.textSecondary,
+                    ),
+                  ],
+                ),
+                onSelected: (mode) => ref
+                    .read(playlistPreferencesProvider(widget.playlistId).notifier)
+                    .setSort(mode),
+                itemBuilder: (_) => [
+                  for (final mode in PlaylistSortMode.values)
+                    PopupMenuItem(
+                      value: mode,
+                      child: Row(
+                        children: [
+                          if (mode == prefs.sort)
+                            Icon(
+                              prefs.descending ? Icons.arrow_downward : Icons.arrow_upward,
+                              size: 14,
+                              color: AppColors.primary,
+                            )
+                          else
+                            const SizedBox(width: 14),
+                          const SizedBox(width: 8),
+                          Text(
+                            mode.label,
+                            style: TextStyle(
+                              color: mode == prefs.sort
+                                  ? AppColors.primary
+                                  : AppColors.textPrimary,
+                              fontWeight: mode == prefs.sort
+                                  ? FontWeight.w600
+                                  : FontWeight.normal,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
+            ],
+          ),
         ],
       ),
     );

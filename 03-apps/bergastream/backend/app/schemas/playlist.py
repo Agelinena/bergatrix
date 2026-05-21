@@ -22,6 +22,7 @@ class PlaylistTrackSchema(BaseModel):
     track: TrackSchema
     position: int
     added_at: datetime
+    added_by_username: str | None = None  # populated server-side via join
 
     model_config = {"from_attributes": True}
 
