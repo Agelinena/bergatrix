@@ -125,20 +125,12 @@ class Player extends _$Player {
     // Kick off background prefetch for upcoming tracks immediately
     _prefetchUpcoming();
     try {
-      // Outer timeout safety net: if AudioPlayerService's internal step
-      // timeouts somehow don't fire (e.g. native plugin hang before any
-      // Dart await runs), the user still sees a SnackBar within 60 s
-      // instead of an eternal loading spinner.
-      await _service.play(track).timeout(
-        const Duration(seconds: 60),
-        onTimeout: () {
-          throw Exception('Player travou por mais de 60s sem responder. '
-              'Verifique o adb logcat para detalhes do plugin nativo.');
-        },
-      );
+      // AudioPlayerService.play() now returns when setAudioSource is done
+      // and play() has been invoked (fire-and-forget internally). It does
+      // NOT wait for the audio to actually start producing samples —
+      // those events arrive via the player's stream listeners.
+      await _service.play(track);
     } catch (e) {
-      // The service's onError callback usually populates lastError, but
-      // the outer timeout above bypasses it — set a useful message here.
       state = state.copyWith(
         status: PlayerStatus.error,
         lastError: state.lastError ?? '$e',

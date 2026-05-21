@@ -13,14 +13,9 @@ import 'providers/player_provider.dart';
 /// AudioPlayerService uses MediaItem as the AudioSource tag.  Together
 /// these power the lockscreen / notification media controls.
 ///
-/// When false: BOTH skip.  Playback runs through plain just_audio only.
-/// No background notifications, but isolates a class of Android hangs
-/// caused by audio_service deadlocking on certain ROMs (Xiaomi MIUI,
-/// some Samsung One UI builds).
-///
 /// MUST match the constant in audio_player_service.dart's
-/// `_useBackgroundMediaItem`.  Flip both to re-enable.
-const _enableBackgroundAudio = false;
+/// `_useBackgroundMediaItem`.
+const _enableBackgroundAudio = true;
 
 /// Global init error from JustAudioBackground.init.  Surfaced into the UI
 /// via a SnackBar on the first frame so the user can SEE that background

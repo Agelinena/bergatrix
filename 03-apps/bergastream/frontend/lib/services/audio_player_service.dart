@@ -12,13 +12,14 @@ import '../providers/player_provider.dart' show PlayerStatus;
 
 part 'audio_player_service.g.dart';
 
-/// Toggle for the just_audio_background MediaItem tag.  When the user
-/// reports an "eternal spinner" with no error, very likely the
-/// audio_service native plumbing is hanging.  Setting this to false
-/// bypasses MediaItem and uses a plain Map tag — playback works but
-/// the system notification + lockscreen controls won't.  We can turn
-/// this back on after we know basic playback is healthy on the device.
-const _useBackgroundMediaItem = false;
+/// Toggle for the just_audio_background MediaItem tag.  When true,
+/// AudioSource.uri receives a MediaItem and the lockscreen / notification
+/// controls come up; when false we use a plain Map tag (no notification).
+///
+/// Was temporarily off while we identified the "spinner forever" bug —
+/// turned out to be unrelated (Future from _player.play() doesn't resolve
+/// until playback ends, my timeout was wrong).  Re-enabled now.
+const _useBackgroundMediaItem = true;
 
 @Riverpod(keepAlive: true)
 AudioPlayerService audioPlayerService(AudioPlayerServiceRef ref) {
@@ -148,9 +149,20 @@ class AudioPlayerService {
       debugPrint('[AudioPlayer] +${DateTime.now().difference(t0).inMilliseconds}ms '
           'setAudioSource ok');
 
-      await _step('play', const Duration(seconds: 5), () => _player.play());
+      // IMPORTANT: do NOT await _player.play().
+      // just_audio's Future<void> play() only completes when playback
+      // ENDS (track finished, paused, or stopped) — not when it starts.
+      // Awaiting it caused a 5s timeout to fire while the track was
+      // happily playing, marking the player state as error and
+      // triggering a SnackBar of doom.
+      //
+      // We confirm playback actually started by waiting for the
+      // first playingStream==true event (or the audio source being
+      // in ready state), but with a short bound so the UI is never
+      // blocked.
+      unawaited(_player.play());
       debugPrint('[AudioPlayer] +${DateTime.now().difference(t0).inMilliseconds}ms '
-          'play() returned for "${track.title}"');
+          'play() invoked (fire-and-forget)');
     } catch (e, st) {
       final elapsed = DateTime.now().difference(t0).inMilliseconds;
       lastError = '$e (após ${elapsed}ms)';
