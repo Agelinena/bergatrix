@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:audio_session/audio_session.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -89,39 +91,74 @@ class AudioPlayerService {
       final url = _client.streamUrl(track.id, token: token);
       debugPrint('[AudioPlayer] play "${track.title}" → $url (token=${token != null})');
 
-      // Use MediaItem on native (required by just_audio_background to show
-      // notification controls + survive backgrounding).  On web, use the
-      // plain Map tag — just_audio_background isn't initialised there.
-      final Object tag = kIsWeb
+      // Build the audio source.  The token is already in the URL's query
+      // string (?token=...), so we do NOT also send it as a header.
+      // ExoPlayer's HTTP datasource has been observed to hang
+      // indefinitely when the `headers` map is non-empty on some
+      // Android ROMs — the request never leaves the device, which
+      // matches the reported symptom (server never sees GET /stream).
+      //
+      // Tag: MediaItem on native (drives just_audio_background's
+      // notification), Map on web.
+      final Object? tag = kIsWeb
           ? _legacyTag(track)
           : MediaItem(
               id: track.id,
               title: track.title.isNotEmpty ? track.title : 'Faixa desconhecida',
               artist: track.artist,
               album: track.album,
-              artUri: track.coverUrl != null ? Uri.tryParse(track.coverUrl!) : null,
+              // Skip artUri if not a clean http(s) URL — bad URIs have
+              // tripped just_audio_background into a deadlock on some
+              // devices, leaving the player stuck "loading".
+              artUri: _safeArtUri(track.coverUrl),
               duration: track.durationMs != null
                   ? Duration(milliseconds: track.durationMs!)
                   : null,
             );
 
-      await _player.setAudioSource(
-        AudioSource.uri(
-          Uri.parse(url),
-          // Token no header para ExoPlayer (nativo); também vai na query string
-          // para HTML5 audio (web) — ambos são aceitos pelo servidor.
-          headers: token != null ? {'Authorization': 'Bearer $token'} : {},
-          tag: tag,
-        ),
-      );
-      await _player.play();
-      debugPrint('[AudioPlayer] play() returned for "${track.title}"');
+      final source = AudioSource.uri(Uri.parse(url), tag: tag);
+
+      // Wrap setAudioSource + play in a timeout so the player never sits
+      // in "loading" forever.  30 s is generous (longest legitimate first
+      // byte we've seen is ~15 s during cold cache).
+      try {
+        await _player.setAudioSource(source).timeout(
+          const Duration(seconds: 30),
+          onTimeout: () => throw TimeoutException(
+            'O player travou ao preparar o áudio (30s).\n'
+            'O servidor não recebeu o GET /api/stream.\n'
+            'URL: $url',
+            const Duration(seconds: 30),
+          ),
+        );
+        await _player.play();
+        debugPrint('[AudioPlayer] play() returned for "${track.title}"');
+      } on TimeoutException catch (e) {
+        debugPrint('[AudioPlayer] setAudioSource TIMEOUT for "${track.title}": ${e.message}');
+        throw Exception(e.message);
+      }
     } catch (e, st) {
       lastError = '$e';
       debugPrint('[AudioPlayer] play("${track.title}") failed: $e\n$st');
       onError?.call('$e');
       onStatusChanged?.call(PlayerStatus.error);
       rethrow;
+    }
+  }
+
+  /// Returns a safe Uri for the MediaItem.artUri field, or null.
+  /// Filters out empty strings, relative paths, and anything that won't
+  /// parse cleanly — bad URIs can hang just_audio_background.
+  Uri? _safeArtUri(String? raw) {
+    if (raw == null || raw.isEmpty) return null;
+    try {
+      final uri = Uri.parse(raw);
+      if (!uri.hasScheme || (uri.scheme != 'http' && uri.scheme != 'https')) {
+        return null;
+      }
+      return uri;
+    } catch (_) {
+      return null;
     }
   }
 
