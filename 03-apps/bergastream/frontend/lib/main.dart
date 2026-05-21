@@ -6,6 +6,21 @@ import 'app.dart';
 import 'providers/auth_provider.dart';
 import 'providers/player_provider.dart';
 
+/// Master switch for the background-audio integration.
+///
+/// When true: JustAudioBackground.init runs at startup AND
+/// AudioPlayerService uses MediaItem as the AudioSource tag.  Together
+/// these power the lockscreen / notification media controls.
+///
+/// When false: BOTH skip.  Playback runs through plain just_audio only.
+/// No background notifications, but isolates a class of Android hangs
+/// caused by audio_service deadlocking on certain ROMs (Xiaomi MIUI,
+/// some Samsung One UI builds).
+///
+/// MUST match the constant in audio_player_service.dart's
+/// `_useBackgroundMediaItem`.  Flip both to re-enable.
+const _enableBackgroundAudio = false;
+
 /// Global init error from JustAudioBackground.init.  Surfaced into the UI
 /// via a SnackBar on the first frame so the user can SEE that background
 /// audio failed (otherwise the player just spins forever on Android).
@@ -18,7 +33,7 @@ void main() async {
   // Android (controles de notificação + manter o áudio tocando em
   // background).  Pulamos no web — não há background audio service na
   // web e o init falharia.
-  if (!kIsWeb) {
+  if (!kIsWeb && _enableBackgroundAudio) {
     try {
       await JustAudioBackground.init(
         androidNotificationChannelId: 'xyz.bergaestudio.bergastream.audio',
@@ -28,12 +43,11 @@ void main() async {
       );
       debugPrint('[main] JustAudioBackground initialised OK');
     } catch (e, st) {
-      // Don't crash the app — but record the error so the UI can show it.
-      // Symptom of this failing: the audio player loads forever and no
-      // notification appears.
       backgroundInitError = '$e';
       debugPrint('[main] JustAudioBackground.init FAILED: $e\n$st');
     }
+  } else if (!kIsWeb) {
+    debugPrint('[main] Background audio DISABLED via _enableBackgroundAudio flag');
   }
 
   final container = ProviderContainer();

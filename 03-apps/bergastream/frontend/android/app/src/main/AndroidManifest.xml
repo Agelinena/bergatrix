@@ -38,10 +38,15 @@
             android:name="flutterEmbedding"
             android:value="2" />
 
-        <!-- just_audio_background plumbing: foreground audio service +
-             media-button receiver so headsets / Bluetooth controls and the
-             lockscreen notification work. Without these, audio fails in
-             background on Android 8+. -->
+        <!--
+          just_audio_background plumbing: keep these declarations even
+          while the Dart-side flag _enableBackgroundAudio is false.
+          The plugin's PluginRegistrant references the same class names
+          at compile time, and removing the declarations causes
+          ClassNotFoundException at install on some Android targets.
+          When _enableBackgroundAudio is false the service is simply
+          never started, so it's inert.
+        -->
         <service
             android:name="com.ryanheise.audioservice.AudioService"
             android:foregroundServiceType="mediaPlayback"
