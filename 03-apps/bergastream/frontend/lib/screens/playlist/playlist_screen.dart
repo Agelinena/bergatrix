@@ -20,6 +20,7 @@ import '../../providers/library_provider.dart';
 import '../../providers/offline_download_provider.dart';
 import '../../providers/playlist_prefs_provider.dart';
 import '../../services/offline_service.dart';
+import '../../widgets/cards/playlist_track_row.dart';
 import '../../widgets/cards/track_card.dart';
 
 class PlaylistScreen extends ConsumerStatefulWidget {
@@ -99,8 +100,9 @@ class _PlaylistScreenState extends ConsumerState<PlaylistScreen> {
   }
 
   /// Aplica o sort persistente da playlist.  Funciona sobre uma cópia
-  /// para não mutar [_playlist.tracks].
-  List<Track> _sortedTracks() {
+  /// para não mutar [_playlist.tracks].  Retorna PlaylistTrack para a
+  /// renderização da tabela com colunas (added_by, added_at).
+  List<PlaylistTrack> _sortedPlaylistTracks() {
     final pl = _playlist;
     if (pl == null) return const [];
     final prefs = ref.read(playlistPreferencesProvider(widget.id));
@@ -141,11 +143,12 @@ class _PlaylistScreenState extends ConsumerState<PlaylistScreen> {
         list.sort((a, b) => (a.track.durationMs ?? 0).compareTo(b.track.durationMs ?? 0));
         break;
     }
-    if (prefs.descending) {
-      return list.reversed.map((pt) => pt.track).toList();
-    }
-    return list.map((pt) => pt.track).toList();
+    return prefs.descending ? list.reversed.toList() : list;
   }
+
+  /// Tracks-only view of the sorted list, for play/queue use.
+  List<Track> _sortedTracks() =>
+      _sortedPlaylistTracks().map((pt) => pt.track).toList();
 
   /// Click handler for a row in the playlist.  Honors shuffle:
   /// - off → toca a clicada, enfileira o restante na ordem atual
@@ -401,21 +404,32 @@ class _PlaylistScreenState extends ConsumerState<PlaylistScreen> {
             SliverToBoxAdapter(
               child: _DownloadStatusBanner(status: _dlStatus!),
             ),
-          // Use the sorted track list for rendering so the user's choice
-          // of order is reflected immediately, while still letting the
-          // tap handler honour the shuffle preference.
+          // Column header (desktop only; mobile returns SizedBox.shrink).
+          const SliverToBoxAdapter(
+            child: Divider(height: 1),
+          ),
+          const SliverToBoxAdapter(child: PlaylistTrackHeader()),
+          // Track rows — responsive: table-style on wide, compact on mobile.
           Builder(builder: (_) {
-            final sorted = _sortedTracks();
+            final sortedItems = _sortedPlaylistTracks();
+            final sortedTracks = sortedItems.map((pt) => pt.track).toList();
+            final currentTrackId =
+                ref.watch(playerProvider).currentTrack?.id;
             return SliverList(
               delegate: SliverChildBuilderDelegate(
-                (_, i) => TrackCard(
-                  track: sorted[i],
-                  queue: sorted,
-                  playlistId: widget.id,
-                  onRemoved: _load,
-                  onTap: () => _handleTrackTap(sorted[i], sorted),
-                ),
-                childCount: sorted.length,
+                (_, i) {
+                  final item = sortedItems[i];
+                  return PlaylistTrackRow(
+                    key: ValueKey('row-${item.id}'),
+                    item: item,
+                    displayIndex: i + 1,
+                    isPlaying: currentTrackId == item.track.id,
+                    onTap: () => _handleTrackTap(item.track, sortedTracks),
+                    playlistId: widget.id,
+                    onRemoved: _load,
+                  );
+                },
+                childCount: sortedItems.length,
               ),
             );
           }),

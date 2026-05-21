@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:just_audio_background/just_audio_background.dart';
+import 'package:timeago/timeago.dart' as timeago;
 import 'app.dart';
 import 'core/logger.dart';
 import 'providers/auth_provider.dart';
@@ -29,6 +30,10 @@ void main() async {
   // pode renderizar.  Antes de qualquer outro setup para que mensagens do
   // próprio JustAudioBackground.init() já apareçam lá.
   AppLogger.install();
+
+  // Localised "há 3 semanas" / "há 6 dias" labels for the playlist
+  // "Adicionada em" column and other relative timestamps.
+  timeago.setLocaleMessages('pt_BR', timeago.PtBrMessages());
 
   // Inicializa o background audio antes do runApp.  Necessário para
   // Android (controles de notificação + manter o áudio tocando em
