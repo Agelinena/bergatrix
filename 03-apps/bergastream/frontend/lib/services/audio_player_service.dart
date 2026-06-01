@@ -165,6 +165,21 @@ class AudioPlayerService {
           'play() invoked (fire-and-forget)');
     } catch (e, st) {
       final elapsed = DateTime.now().difference(t0).inMilliseconds;
+      final msg = '$e';
+      // "Connection aborted" from just_audio is what happens when a
+      // newer play() arrives mid-load and stop() cancels the in-flight
+      // setAudioSource. It is NOT a real error — the new track is
+      // already loading. Suppress the SnackBar so the user doesn't
+      // see a flash of red while the player legitimately advances.
+      final isAbort = msg.contains('Connection aborted') ||
+          msg.contains('OperationAborted') ||
+          msg.contains('PlatformException(abort');
+      if (isAbort) {
+        debugPrint('[AudioPlayer] play("${track.title}") aborted by newer call '
+            'after ${elapsed}ms (benign)');
+        // Don't trigger onError or status=error; just propagate quietly.
+        return;
+      }
       lastError = '$e (após ${elapsed}ms)';
       debugPrint('[AudioPlayer] play("${track.title}") failed after ${elapsed}ms: $e\n$st');
       onError?.call(lastError!);

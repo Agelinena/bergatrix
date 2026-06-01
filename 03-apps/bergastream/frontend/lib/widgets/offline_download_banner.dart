@@ -90,6 +90,9 @@ class OfflineDownloadBanner extends ConsumerWidget {
       return 'Concluído: ${dl.done}/${dl.total} baixadas'
           '${dl.failed > 0 ? " (${dl.failed} falharam)" : ""}';
     }
+    if (dl.waitingForNetwork) {
+      return 'Aguardando conexão… ${dl.done}/${dl.total}';
+    }
     return 'Baixando ${dl.label} — ${dl.done}/${dl.total}'
         '${dl.failed > 0 ? " (${dl.failed} erros)" : ""}';
   }

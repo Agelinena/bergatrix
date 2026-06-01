@@ -1,19 +1,20 @@
 /// Global, app-wide state for the "Download playlist offline" feature.
 ///
-/// Previously the PlaylistScreen's _downloadOffline() awaited the whole
-/// batch with a blocking dialog — the user couldn't navigate, search or
-/// play anything until every track was on disk.  The dialog was modal so
-/// even backgrounding the app paused the download.
+/// Resilient by design:
+///   * Per-track retry with exponential backoff on network errors.
+///   * If the device goes offline mid-batch we PAUSE (not fail) and
+///     resume when connectivity returns.
+///   * The user can cancel from the banner; the loop drops the rest
+///     and exits cleanly.
 ///
-/// This provider lets us:
-///   1. Kick off [start] from PlaylistScreen and return immediately.
-///   2. Track progress as a global state — every screen can read it.
-///   3. Render a slim, non-modal banner above the player while running.
-///   4. Allow the user to cancel without losing the partial download.
+/// Previously the PlaylistScreen's _downloadOffline() awaited the whole
+/// batch inside a blocking dialog.  Now we kick off [start] from any
+/// screen and watch progress through this provider's state.
 library;
 
 import 'dart:async';
 
+import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
@@ -21,6 +22,7 @@ import 'package:riverpod_annotation/riverpod_annotation.dart';
 import '../core/api_client.dart';
 import '../models/track.dart';
 import '../services/offline_service.dart';
+import 'connectivity_provider.dart';
 
 part 'offline_download_provider.g.dart';
 
@@ -33,6 +35,9 @@ class OfflineDownloadState {
   final Track? current;
   final bool active;
   final bool cancelled;
+  /// True while we're holding the loop waiting for connectivity to
+  /// return.  UI can show "Aguardando conexão…".
+  final bool waitingForNetwork;
   final String? lastError;
 
   const OfflineDownloadState({
@@ -43,6 +48,7 @@ class OfflineDownloadState {
     this.current,
     this.active = false,
     this.cancelled = false,
+    this.waitingForNetwork = false,
     this.lastError,
   });
 
@@ -56,6 +62,7 @@ class OfflineDownloadState {
     Track? current,
     bool? active,
     bool? cancelled,
+    bool? waitingForNetwork,
     String? lastError,
   }) =>
       OfflineDownloadState(
@@ -66,14 +73,13 @@ class OfflineDownloadState {
         current: current ?? this.current,
         active: active ?? this.active,
         cancelled: cancelled ?? this.cancelled,
+        waitingForNetwork: waitingForNetwork ?? this.waitingForNetwork,
         lastError: lastError ?? this.lastError,
       );
 }
 
 @Riverpod(keepAlive: true)
 class OfflineDownload extends _$OfflineDownload {
-  Completer<void>? _cancelCompleter;
-
   @override
   OfflineDownloadState build() => const OfflineDownloadState();
 
@@ -85,12 +91,11 @@ class OfflineDownload extends _$OfflineDownload {
   }) async {
     if (state.active) {
       debugPrint('[OfflineDownload] start ignored: already running '
-          '"${state.label}" ($done/${state.total})');
+          '"${state.label}" (${state.done}/${state.total})');
       return;
     }
     if (tracks.isEmpty) return;
 
-    _cancelCompleter = Completer<void>();
     state = OfflineDownloadState(
       label: label,
       total: tracks.length,
@@ -116,6 +121,13 @@ class OfflineDownload extends _$OfflineDownload {
           debugPrint('[OfflineDownload] cancelled at ${state.done}/${state.total}');
           break;
         }
+
+        // If we're offline, wait until we're back online before
+        // attempting this track. The user can still cancel during the
+        // wait — we re-check the cancelled flag every poll.
+        await _waitForNetwork();
+        if (state.cancelled) break;
+
         state = state.copyWith(current: track);
 
         if (alreadyIds.contains(track.id)) {
@@ -123,26 +135,101 @@ class OfflineDownload extends _$OfflineDownload {
           continue;
         }
 
-        try {
-          await OfflineService.download(track, client);
+        final ok = await _downloadWithRetry(client, track);
+        if (ok) {
           alreadyIds.add(track.id);
           state = state.copyWith(done: state.done + 1);
-        } catch (e) {
-          state = state.copyWith(
-            failed: state.failed + 1,
-            lastError: '$e',
-          );
-          debugPrint('[OfflineDownload] track ${track.id} failed: $e');
+        } else {
+          state = state.copyWith(failed: state.failed + 1);
         }
       }
     } finally {
-      state = state.copyWith(active: false, current: null);
-      _cancelCompleter?.complete();
-      _cancelCompleter = null;
+      state = state.copyWith(
+        active: false,
+        current: null,
+        waitingForNetwork: false,
+      );
     }
   }
 
-  int get done => state.done;
+  /// Downloads with up to 3 attempts on transient network errors.
+  Future<bool> _downloadWithRetry(ApiClient client, Track track) async {
+    const maxAttempts = 3;
+    for (var attempt = 1; attempt <= maxAttempts; attempt++) {
+      if (state.cancelled) return false;
+      try {
+        await OfflineService.download(track, client);
+        return true;
+      } on DioException catch (e) {
+        if (!_isTransientNetworkError(e)) {
+          // Non-network failure (e.g. 404) — don't retry.
+          debugPrint('[OfflineDownload] ${track.id} non-retriable: ${e.type}');
+          state = state.copyWith(lastError: '$e');
+          return false;
+        }
+        debugPrint('[OfflineDownload] ${track.id} attempt $attempt/$maxAttempts '
+            'failed: ${e.type}; backing off');
+        if (attempt < maxAttempts) {
+          // Wait either for the backoff window OR for the user to
+          // cancel, whichever comes first.
+          await _sleepCancellable(Duration(seconds: 2 * attempt));
+          // If we lost network during the wait, hold the loop until
+          // it returns before retrying.
+          await _waitForNetwork();
+        } else {
+          state = state.copyWith(lastError: '$e');
+          return false;
+        }
+      } catch (e) {
+        debugPrint('[OfflineDownload] ${track.id} unexpected: $e');
+        state = state.copyWith(lastError: '$e');
+        return false;
+      }
+    }
+    return false;
+  }
+
+  bool _isTransientNetworkError(DioException e) {
+    switch (e.type) {
+      case DioExceptionType.connectionTimeout:
+      case DioExceptionType.sendTimeout:
+      case DioExceptionType.receiveTimeout:
+      case DioExceptionType.connectionError:
+      case DioExceptionType.unknown:
+        return true;
+      case DioExceptionType.badCertificate:
+      case DioExceptionType.badResponse:
+      case DioExceptionType.cancel:
+        return false;
+    }
+  }
+
+  /// Suspends the loop until [connectivityProvider] reports online.
+  /// Updates state.waitingForNetwork so the banner can show a hint.
+  Future<void> _waitForNetwork() async {
+    if (ref.read(connectivityProvider)) return;
+    state = state.copyWith(waitingForNetwork: true);
+    debugPrint('[OfflineDownload] paused — waiting for network');
+    while (!state.cancelled) {
+      await Future.delayed(const Duration(seconds: 3));
+      // Force a refresh in case the system event never fires.
+      await ref.read(connectivityProvider.notifier).refresh();
+      if (ref.read(connectivityProvider)) {
+        state = state.copyWith(waitingForNetwork: false);
+        debugPrint('[OfflineDownload] network back — resuming');
+        return;
+      }
+    }
+    state = state.copyWith(waitingForNetwork: false);
+  }
+
+  /// Like Future.delayed but bails out early if the user cancels.
+  Future<void> _sleepCancellable(Duration d) async {
+    final deadline = DateTime.now().add(d);
+    while (!state.cancelled && DateTime.now().isBefore(deadline)) {
+      await Future.delayed(const Duration(milliseconds: 250));
+    }
+  }
 
   void cancel() {
     if (!state.active) return;
