@@ -20,14 +20,20 @@ async def lifespan(app: FastAPI):
     logger.info("BergaStream API starting up")
     from app.services.cleanup_service import CleanupService
     from app.services.queue_service import DownloadQueueService
+    from app.services.updater_service import UpdaterService
 
     cleanup_task = asyncio.create_task(CleanupService.run_periodic())
     queue_task = asyncio.create_task(DownloadQueueService.start_workers())
+    # Keep yt-dlp + ytmusicapi + spotipy fresh.  YouTube changes its
+    # extractor protocol constantly and an old yt-dlp returns 403 or
+    # "Sign in to confirm you're not a bot".  Runs every 24 h.
+    updater_task = asyncio.create_task(UpdaterService.run_periodic())
 
     yield
 
     cleanup_task.cancel()
     queue_task.cancel()
+    updater_task.cancel()
     logger.info("BergaStream API shut down")
 
 

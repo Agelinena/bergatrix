@@ -4,6 +4,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/api_client.dart';
+import '../../core/offline_cache.dart';
 import '../../models/track.dart';
 import '../../providers/player_provider.dart';
 import '../../widgets/cards/track_card.dart';
@@ -43,22 +44,42 @@ class _ArtistScreenState extends ConsumerState<ArtistScreen>
     super.dispose();
   }
 
+  String get _cacheKey => 'artist_${widget.id}';
+
+  void _applyPayload(Map<String, dynamic> payload) {
+    _artist = payload['artist'] as Map<String, dynamic>?;
+    _albums = ((payload['albums'] as List?) ?? const [])
+        .map((a) => a as Map<String, dynamic>)
+        .toList();
+    _topTracks = ((payload['top_tracks'] as List?) ?? const [])
+        .map((t) => Track.fromJson(t as Map<String, dynamic>))
+        .toList();
+  }
+
   Future<void> _load() async {
+    final cached = await OfflineCache.getMap(_cacheKey);
+    if (cached != null && mounted) {
+      try {
+        setState(() {
+          _applyPayload(cached);
+          _loading = false;
+        });
+      } catch (_) {}
+    }
+
     final client = ref.read(apiClientProvider);
     try {
       final data = await client.dio.get('/api/artist/${widget.id}');
+      final payload = data.data as Map<String, dynamic>;
+      if (!mounted) return;
       setState(() {
-        _artist = data.data['artist'] as Map<String, dynamic>;
-        _albums = (data.data['albums'] as List<dynamic>)
-            .map((a) => a as Map<String, dynamic>)
-            .toList();
-        _topTracks = ((data.data['top_tracks'] as List<dynamic>?) ?? [])
-            .map((t) => Track.fromJson(t as Map<String, dynamic>))
-            .toList();
+        _applyPayload(payload);
         _loading = false;
       });
+      await OfflineCache.set(_cacheKey, payload);
     } catch (_) {
-      setState(() => _loading = false);
+      if (!mounted) return;
+      if (_artist == null) setState(() => _loading = false);
     }
   }
 

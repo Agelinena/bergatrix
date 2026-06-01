@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/api_client.dart';
+import '../../core/offline_cache.dart';
 import '../../models/track.dart';
 import '../../widgets/cards/track_card.dart';
 
@@ -22,17 +23,33 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
     _load();
   }
 
+  static const _cacheKey = 'history_page1';
+
   Future<void> _load() async {
-    setState(() => _loading = true);
+    // Render cached history first so the screen is usable offline.
+    final cached = await OfflineCache.getList(_cacheKey);
+    if (cached.isNotEmpty && mounted) {
+      setState(() {
+        _history = cached.map((e) => e as Map<String, dynamic>).toList();
+        _loading = false;
+      });
+    } else if (mounted) {
+      setState(() => _loading = true);
+    }
+
     try {
       final client = ref.read(apiClientProvider);
       final data = await client.getHistory();
+      if (!mounted) return;
       setState(() {
         _history = data.map((e) => e as Map<String, dynamic>).toList();
         _loading = false;
       });
+      await OfflineCache.set(_cacheKey, data);
     } catch (_) {
-      setState(() => _loading = false);
+      if (!mounted) return;
+      // Keep whatever we showed from cache.
+      if (_history.isEmpty) setState(() => _loading = false);
     }
   }
 

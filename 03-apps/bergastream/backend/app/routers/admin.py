@@ -101,3 +101,20 @@ async def queue_stats(_admin: User = Depends(require_admin)):
     queued tracks, and promotion markers.  Useful for diagnosing stuck tracks.
     """
     return await DownloadQueueService.queue_stats()
+
+
+@router.get("/updater/status")
+async def updater_status(_admin: User = Depends(require_admin)):
+    """Last upgrade pass results from the background UpdaterService."""
+    from app.services.updater_service import UpdaterService
+    return UpdaterService.status()
+
+
+@router.post("/updater/run")
+async def updater_run(_admin: User = Depends(require_admin)):
+    """Force-run an upgrade pass for yt-dlp / ytmusicapi / spotipy / mutagen.
+
+    May take a few minutes if pip needs to download everything.
+    """
+    from app.services.updater_service import UpdaterService
+    return await UpdaterService.run_once()

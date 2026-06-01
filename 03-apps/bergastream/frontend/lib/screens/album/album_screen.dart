@@ -4,6 +4,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/api_client.dart';
+import '../../core/offline_cache.dart';
 import '../../models/track.dart';
 import '../../providers/player_provider.dart';
 import '../../widgets/cards/track_card.dart';
@@ -27,19 +28,40 @@ class _AlbumScreenState extends ConsumerState<AlbumScreen> {
     _load();
   }
 
+  String get _cacheKey => 'album_${widget.id}';
+
   Future<void> _load() async {
+    // Render cached payload first so the screen works offline.
+    final cached = await OfflineCache.getMap(_cacheKey);
+    if (cached != null && mounted) {
+      try {
+        setState(() {
+          _album = cached['album'] as Map<String, dynamic>?;
+          _tracks = ((cached['tracks'] as List?) ?? const [])
+              .map((t) => Track.fromJson(t as Map<String, dynamic>))
+              .toList();
+          _loading = false;
+        });
+      } catch (_) {}
+    }
+
     final client = ref.read(apiClientProvider);
     try {
       final data = await client.dio.get('/api/album/${widget.id}');
+      final payload = data.data as Map<String, dynamic>;
+      if (!mounted) return;
       setState(() {
-        _album = data.data['album'] as Map<String, dynamic>;
-        _tracks = (data.data['tracks'] as List<dynamic>)
+        _album = payload['album'] as Map<String, dynamic>?;
+        _tracks = (payload['tracks'] as List<dynamic>)
             .map((t) => Track.fromJson(t as Map<String, dynamic>))
             .toList();
         _loading = false;
       });
+      await OfflineCache.set(_cacheKey, payload);
     } catch (_) {
-      setState(() => _loading = false);
+      if (!mounted) return;
+      // Keep cached data if we already have it; otherwise drop loading.
+      if (_album == null) setState(() => _loading = false);
     }
   }
 

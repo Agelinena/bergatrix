@@ -10,6 +10,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/error_messages.dart';
+import '../../core/offline_cache.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/api_client.dart';
 import '../../models/playlist.dart';
@@ -45,16 +46,39 @@ class _PlaylistScreenState extends ConsumerState<PlaylistScreen> {
     _load();
   }
 
+  String get _cacheKey => 'playlist_${widget.id}';
+
   Future<void> _load() async {
-    setState(() { _loading = true; _error = null; });
+    // Optimistic: render the cached copy immediately so the screen
+    // never goes blank offline.  The live fetch then refreshes the
+    // data when it succeeds — and is non-fatal when it doesn't.
+    final cached = await OfflineCache.getMap(_cacheKey);
+    if (cached != null && mounted) {
+      try {
+        setState(() {
+          _playlist = Playlist.fromJson(cached);
+          _loading = false;
+        });
+      } catch (_) {}
+    } else if (mounted) {
+      setState(() { _loading = true; _error = null; });
+    }
+
     try {
       final client = ref.read(apiClientProvider);
       final data = await client.getPlaylist(widget.id);
       final playlist = Playlist.fromJson(data);
-      setState(() { _playlist = playlist; _loading = false; });
+      if (!mounted) return;
+      setState(() { _playlist = playlist; _loading = false; _error = null; });
+      await OfflineCache.set(_cacheKey, data);
       _startDownloadPolling();
     } catch (e) {
-      setState(() { _loading = false; _error = e.toString(); });
+      if (!mounted) return;
+      // If we already showed cached data, keep it.  Only mark error
+      // when we have nothing at all.
+      if (_playlist == null) {
+        setState(() { _loading = false; _error = e.toString(); });
+      }
     }
   }
 

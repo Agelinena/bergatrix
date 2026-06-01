@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shimmer/shimmer.dart';
 import '../../core/api_client.dart';
+import '../../core/offline_cache.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/playlist.dart';
 import '../../models/track.dart';
@@ -14,21 +15,36 @@ import '../../providers/radio_queue_provider.dart';
 import '../../widgets/cards/track_card.dart';
 
 /// Últimas faixas únicas ouvidas (deduplica por id, limite 10).
+/// Resilient to offline: cached on every successful fetch and falls
+/// back to that cache when the network is down.
 final _recentTracksProvider = FutureProvider.autoDispose<List<Track>>((ref) async {
-  final data = await ref.read(apiClientProvider).getHistory();
-  final seen = <String>{};
-  final tracks = <Track>[];
-  for (final item in data) {
-    final map = item as Map<String, dynamic>;
-    final trackData = map['track'] as Map<String, dynamic>?;
-    if (trackData == null) continue;
-    final t = Track.fromJson(trackData);
-    if (seen.add(t.id)) {
-      tracks.add(t);
-      if (tracks.length >= 10) break;
+  const cacheKey = 'home_recent_tracks';
+
+  List<Track> _parse(List<dynamic> raw) {
+    final seen = <String>{};
+    final tracks = <Track>[];
+    for (final item in raw) {
+      final map = item as Map<String, dynamic>;
+      final trackData = map['track'] as Map<String, dynamic>?;
+      if (trackData == null) continue;
+      final t = Track.fromJson(trackData);
+      if (seen.add(t.id)) {
+        tracks.add(t);
+        if (tracks.length >= 10) break;
+      }
     }
+    return tracks;
   }
-  return tracks;
+
+  try {
+    final data = await ref.read(apiClientProvider).getHistory();
+    await OfflineCache.set(cacheKey, data);
+    return _parse(data);
+  } catch (_) {
+    // Fall back to whatever we have cached, even if empty.
+    final cached = await OfflineCache.getList(cacheKey);
+    return _parse(cached);
+  }
 });
 
 class HomeScreen extends ConsumerStatefulWidget {

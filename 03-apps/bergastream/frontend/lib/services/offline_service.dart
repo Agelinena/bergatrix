@@ -81,6 +81,101 @@ class OfflineService {
     return '${dir.path}/bergastream/$trackId.mp3';
   }
 
+  /// Where the downloaded MP3s live on the device.  Returns null on web.
+  /// Exposed so the Settings screen can show the user the path.
+  static Future<String?> downloadsDirectory() async {
+    if (kIsWeb) return null;
+    final dir = await getApplicationDocumentsDirectory();
+    return '${dir.path}/bergastream';
+  }
+
+  /// Total disk space (in bytes) used by offline tracks.  Walks the
+  /// download dir on disk rather than trusting the SharedPreferences
+  /// index in case partial / orphan files exist.
+  static Future<int> diskUsageBytes() async {
+    if (kIsWeb) return 0;
+    final path = await downloadsDirectory();
+    if (path == null) return 0;
+    final dir = Directory(path);
+    if (!await dir.exists()) return 0;
+    var total = 0;
+    try {
+      await for (final entity in dir.list(recursive: true, followLinks: false)) {
+        if (entity is File) {
+          try {
+            total += await entity.length();
+          } catch (_) {}
+        }
+      }
+    } catch (e) {
+      debugPrint('[OfflineService] diskUsageBytes error: $e');
+    }
+    return total;
+  }
+
+  /// Number of MP3 files actually present on disk (may differ from the
+  /// SharedPreferences-tracked count if downloads were interrupted).
+  static Future<int> fileCount() async {
+    if (kIsWeb) return 0;
+    final path = await downloadsDirectory();
+    if (path == null) return 0;
+    final dir = Directory(path);
+    if (!await dir.exists()) return 0;
+    var count = 0;
+    try {
+      await for (final entity in dir.list(followLinks: false)) {
+        if (entity is File && entity.path.endsWith('.mp3')) count++;
+      }
+    } catch (_) {}
+    return count;
+  }
+
+  /// Wipes every offline MP3 and forgets every entry in the index.
+  /// Returns the number of files deleted.
+  static Future<int> clearAll() async {
+    if (kIsWeb) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_prefKey);
+      return 0;
+    }
+    final path = await downloadsDirectory();
+    var deleted = 0;
+    if (path != null) {
+      final dir = Directory(path);
+      if (await dir.exists()) {
+        try {
+          await for (final entity in dir.list(followLinks: false)) {
+            if (entity is File) {
+              try {
+                await entity.delete();
+                deleted++;
+              } catch (_) {}
+            }
+          }
+        } catch (_) {}
+      }
+    }
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_prefKey);
+    return deleted;
+  }
+
+  /// Human-friendly KiB / MiB / GiB string for [bytes].
+  static String formatBytes(int bytes) {
+    if (bytes <= 0) return '0 B';
+    const units = ['B', 'KB', 'MB', 'GB'];
+    var value = bytes.toDouble();
+    var unit = 0;
+    while (value >= 1024 && unit < units.length - 1) {
+      value /= 1024;
+      unit++;
+    }
+    final fmt = unit == 0
+        ? value.toStringAsFixed(0)
+        : value.toStringAsFixed(value < 10 ? 2 : (value < 100 ? 1 : 0));
+    return '$fmt ${units[unit]}';
+  }
+
   /// Result of a bulk download operation.  Counts what succeeded and what
   /// failed so the UI can show a precise summary.
   static Future<OfflineDownloadResult> downloadPlaylist(

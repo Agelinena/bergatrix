@@ -8,6 +8,7 @@ import '../../models/track.dart';
 import '../../models/user.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/library_provider.dart';
+import '../../services/offline_service.dart';
 import 'logs_screen.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
@@ -298,6 +299,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             const SizedBox(height: 24),
           ],
 
+          // ── Armazenamento offline ──────────────────────────────────────
+          const Divider(),
+          _SectionHeader('Armazenamento offline'),
+          const _OfflineStorageTile(),
+
           // ── Diagnóstico ────────────────────────────────────────────────
           const Divider(),
           _SectionHeader('Diagnóstico'),
@@ -342,6 +348,150 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       builder: (_) => _ImportPlaylistDialog(
         onImported: () => ref.read(libraryProvider.notifier).load(),
       ),
+    );
+  }
+}
+
+class _OfflineStorageTile extends StatefulWidget {
+  const _OfflineStorageTile();
+
+  @override
+  State<_OfflineStorageTile> createState() => _OfflineStorageTileState();
+}
+
+class _OfflineStorageTileState extends State<_OfflineStorageTile> {
+  String? _path;
+  int _bytes = 0;
+  int _count = 0;
+  bool _loading = true;
+  bool _clearing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _refresh();
+  }
+
+  Future<void> _refresh() async {
+    setState(() => _loading = true);
+    final path = await OfflineService.downloadsDirectory();
+    final bytes = await OfflineService.diskUsageBytes();
+    final count = await OfflineService.fileCount();
+    if (!mounted) return;
+    setState(() {
+      _path = path;
+      _bytes = bytes;
+      _count = count;
+      _loading = false;
+    });
+  }
+
+  Future<void> _confirmClear() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surfaceVariant,
+        title: const Text('Apagar downloads offline?'),
+        content: Text('Vai apagar $_count arquivo(s) '
+            '(${OfflineService.formatBytes(_bytes)}). '
+            'Você terá que baixar de novo para ouvir offline.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancelar')),
+          ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Apagar')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    setState(() => _clearing = true);
+    final deleted = await OfflineService.clearAll();
+    if (!mounted) return;
+    setState(() => _clearing = false);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('$deleted arquivo(s) apagados.')),
+    );
+    await _refresh();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loading) {
+      return const ListTile(
+        leading: Icon(Icons.folder_outlined),
+        title: Text('Carregando...'),
+      );
+    }
+    if (_path == null) {
+      // Web — no local storage.
+      return const ListTile(
+        leading: Icon(Icons.folder_outlined),
+        title: Text('Downloads locais'),
+        subtitle: Text(
+          'No navegador, os arquivos não ficam no dispositivo. '
+          'Use o app Android para baixar offline.',
+          style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
+        ),
+      );
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        ListTile(
+          leading: const Icon(Icons.folder_outlined),
+          title: Text('$_count faixa(s) baixada(s)'),
+          subtitle: Text(
+            'Ocupa ${OfflineService.formatBytes(_bytes)}',
+            style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+          ),
+          trailing: IconButton(
+            icon: const Icon(Icons.refresh),
+            tooltip: 'Recarregar',
+            onPressed: _refresh,
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: AppColors.surface,
+              border: Border.all(color: AppColors.surfaceVariant),
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: SelectableText(
+              _path!,
+              style: const TextStyle(
+                fontFamily: 'monospace',
+                fontSize: 11,
+                color: AppColors.textSecondary,
+              ),
+            ),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+          child: OutlinedButton.icon(
+            onPressed: _bytes == 0 || _clearing ? null : _confirmClear,
+            icon: _clearing
+                ? const SizedBox(
+                    width: 14, height: 14,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.redAccent))
+                : const Icon(Icons.delete_outline, color: Colors.redAccent, size: 18),
+            label: const Text(
+              'Apagar todos os downloads',
+              style: TextStyle(color: Colors.redAccent),
+            ),
+            style: OutlinedButton.styleFrom(
+              side: const BorderSide(color: Colors.redAccent),
+              shape: const StadiumBorder(),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
