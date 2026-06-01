@@ -98,7 +98,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen>
     _debounce?.cancel();
     if (q.trim().isEmpty) return;
     if (_isTrackUrl(q.trim())) {
-      _resolveAndPlay(q.trim());
+      _resolveAndShow(q.trim());
       return;
     }
     _saveHistory(q);
@@ -115,7 +115,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen>
     _debounce?.cancel();
     // If pasting a URL, resolve immediately (no debounce)
     if (_isTrackUrl(q.trim())) {
-      _debounce = Timer(const Duration(milliseconds: 300), () => _resolveAndPlay(q.trim()));
+      _debounce = Timer(const Duration(milliseconds: 300), () => _resolveAndShow(q.trim()));
       return;
     }
     _debounce = Timer(const Duration(milliseconds: 500), () => _search(q));
@@ -152,15 +152,34 @@ class _SearchScreenState extends ConsumerState<SearchScreen>
     return false;
   }
 
-  /// Resolves a pasted track URL, plays the result and activates radio.
-  Future<void> _resolveAndPlay(String url) async {
+  /// Resolves a pasted track URL and presents the matching tracks as
+  /// regular search results.
+  ///
+  /// We intentionally do NOT auto-play the resolved track.  The
+  /// downloader picks one YouTube candidate based on duration + title
+  /// match, and that pick is sometimes wrong (acoustic version,
+  /// remaster, live, etc.).  Showing search results lets the user
+  /// pick the correct version themselves.
+  Future<void> _resolveAndShow(String url) async {
     setState(() => _resolvingUrl = true);
     final messenger = ScaffoldMessenger.of(context);
     try {
       final client = ref.read(apiClientProvider);
       final data = await client.resolveTrackUrl(url);
       final track = Track.fromJson(data['track'] as Map<String, dynamic>);
-      _playFromSearch(track, [track]);
+
+      // Replace the URL in the search bar with the resolved
+      // "artist - title" so the user sees what they're looking at and
+      // can refine the query if they want.
+      final query = '${track.artist} ${track.title}'.trim();
+      if (!mounted) return;
+      _queryCtrl.text = query;
+      _queryCtrl.selection = TextSelection.fromPosition(
+        TextPosition(offset: query.length),
+      );
+      setState(() => _showHistory = false);
+      _saveHistory(query);
+      _search(query);
     } catch (e) {
       messenger.showSnackBar(SnackBar(
         content: Text(friendlyError(e, fallback: 'Não foi possível resolver este link.')),
