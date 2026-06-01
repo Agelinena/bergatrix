@@ -18,6 +18,7 @@ import 'package:go_router/go_router.dart';
 import 'package:timeago/timeago.dart' as timeago;
 import '../../core/theme/app_theme.dart';
 import '../../models/playlist.dart';
+import '../../providers/downloaded_tracks_provider.dart';
 import '../../providers/player_provider.dart';
 import '../cards/track_card.dart' show TrackMenuSheet;
 
@@ -58,6 +59,7 @@ class PlaylistTrackRow extends ConsumerWidget {
 
   Widget _buildMobile(BuildContext context, WidgetRef ref) {
     final track = item.track;
+    final downloaded = ref.watch(downloadedTracksProvider).contains(track.id);
     return ListTile(
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       leading: _Cover(url: track.coverUrl, isPlaying: isPlaying),
@@ -83,6 +85,8 @@ class PlaylistTrackRow extends ConsumerWidget {
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
+          _DownloadIndicator(downloaded: downloaded),
+          const SizedBox(width: 4),
           Text(track.durationFormatted,
               style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
           IconButton(
@@ -100,6 +104,7 @@ class PlaylistTrackRow extends ConsumerWidget {
   Widget _buildDesktop(BuildContext context, WidgetRef ref) {
     final track = item.track;
     final added = item.addedAt;
+    final downloaded = ref.watch(downloadedTracksProvider).contains(track.id);
 
     return Material(
       color: Colors.transparent,
@@ -178,9 +183,14 @@ class PlaylistTrackRow extends ConsumerWidget {
                   maxLines: 1, overflow: TextOverflow.ellipsis,
                 ),
               ),
+              // Download indicator
+              SizedBox(
+                width: 30,
+                child: _DownloadIndicator(downloaded: downloaded),
+              ),
               // Duration
               SizedBox(
-                width: 70,
+                width: 60,
                 child: Text(
                   track.durationFormatted,
                   textAlign: TextAlign.right,
@@ -318,7 +328,8 @@ class PlaylistTrackHeader extends StatelessWidget {
               Expanded(flex: 3, child: Text('Álbum', style: _headerStyle)),
               Expanded(flex: 2, child: Text('Adicionada por', style: _headerStyle)),
               Expanded(flex: 2, child: Text('Adicionada em', style: _headerStyle)),
-              SizedBox(width: 70, child: Icon(Icons.access_time, size: 14, color: AppColors.textSecondary)),
+              SizedBox(width: 30, child: Icon(Icons.download_done, size: 14, color: AppColors.textSecondary)),
+              SizedBox(width: 60, child: Icon(Icons.access_time, size: 14, color: AppColors.textSecondary)),
               SizedBox(width: 40),
             ],
           ),
@@ -333,3 +344,29 @@ const _headerStyle = TextStyle(
   fontSize: 12,
   letterSpacing: 0.4,
 );
+
+/// Small icon showing whether this track is on the device (green ✓)
+/// or only streamable (greyed cloud-off).  Reads the downloaded-tracks
+/// provider so it updates in real time as a batch download progresses.
+class _DownloadIndicator extends StatelessWidget {
+  final bool downloaded;
+  const _DownloadIndicator({required this.downloaded});
+
+  @override
+  Widget build(BuildContext context) {
+    if (downloaded) {
+      return const Tooltip(
+        message: 'Baixada offline',
+        child: Icon(Icons.download_done, size: 14, color: AppColors.primary),
+      );
+    }
+    return const Tooltip(
+      message: 'Disponível apenas online',
+      child: Icon(
+        Icons.cloud_outlined,
+        size: 14,
+        color: AppColors.textSecondary,
+      ),
+    );
+  }
+}

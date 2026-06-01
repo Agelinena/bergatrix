@@ -702,21 +702,17 @@ async def resolve_track_url(url: str) -> TrackSchema | None:
         return await get_deezer_track(track_id)
 
     if platform == "spotify":
-        spotify_track = await get_spotify_track(track_id)
-        if spotify_track is None:
-            return None
-        # Try to resolve to a Deezer track for reliable download
-        deezer_id = await find_deezer_track_id(
-            spotify_track.title,
-            spotify_track.artist,
-            spotify_track.duration_ms,
-        )
-        if deezer_id:
-            deezer_track = await get_deezer_track(deezer_id)
-            if deezer_track:
-                return deezer_track
-        # Fallback: return Spotify metadata as-is
-        return spotify_track
+        # Return the SPOTIFY metadata as-is so the canonical title/
+        # artist are preserved.  Previously we tried to "upgrade" to a
+        # Deezer match by searching Deezer with the track's title +
+        # artist, but Deezer's first hit isn't always the original
+        # recording: for "All My Life" by Falling In Reverse it
+        # returned an 8-Bit Arcade cover, and the user ended up with
+        # the wrong song.  The downloader runs the same search later
+        # anyway when it's time to fetch the audio — and at that
+        # point it gets duration verification + multiple fallbacks,
+        # so the conversion here is redundant.
+        return await get_spotify_track(track_id)
 
     if platform == "youtube":
         return await get_youtube_track(track_id)
