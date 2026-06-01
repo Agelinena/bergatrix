@@ -59,7 +59,12 @@ STREAM_PROMOTED = "bergastream:promoted"   # tracks elevated from BG to STREAM
 TRACK_READY_CHANNEL = "bergastream:track_ready"
 
 _MAX_RETRIES = 2
-_BG_SLEEP    = 3.0  # seconds between background jobs
+# Inter-job sleep — used to keep deemix from drowning when we used to
+# run a single sequential worker.  Now that we have a submission lock
+# (see download_deezer) and the workers can overlap on polling, the
+# big sleep is pure waste.  0.5 s gives the sidecar's REST endpoints
+# a moment to settle between calls.
+_BG_SLEEP    = 0.5
 
 
 class DownloadQueueService:

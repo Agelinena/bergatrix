@@ -1,9 +1,11 @@
 import 'dart:math';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import '../models/track.dart';
 import '../services/audio_player_service.dart';
 import '../core/api_client.dart';
+import 'sync_provider.dart';
 
 part 'player_provider.g.dart';
 
@@ -84,17 +86,59 @@ class Player extends _$Player {
     _service = ref.read(audioPlayerServiceProvider);
     _service.onPositionChanged = (pos) => state = state.copyWith(position: pos);
     _service.onDurationChanged = (dur) {
-      // Only update if audio player reports a real duration; keep metadata
-      // pre-fill when streaming in follow-file mode (just_audio reports 0).
       if (dur > Duration.zero) state = state.copyWith(duration: dur);
     };
-    _service.onStatusChanged = (s) => state = state.copyWith(status: s);
+    _service.onStatusChanged = (s) {
+      state = state.copyWith(status: s);
+      _publishSync();
+    };
     _service.onTrackComplete = () => _handleTrackComplete();
     _service.onError = (msg) {
-      // Surface for any UI that wants to display the last error.
       state = state.copyWith(status: PlayerStatus.error, lastError: msg);
     };
+
+    // Wire remote-control commands from sync_provider.  Other devices
+    // can play/pause/next/etc this device's player without re-typing.
+    final sync = ref.read(syncProvider.notifier);
+    sync.setRemoteCommandHandler((command, args) {
+      debugPrint('[Player] remote command: $command $args');
+      switch (command) {
+        case 'play':
+          if (!state.isPlaying) resume();
+        case 'pause':
+          if (state.isPlaying) pause();
+        case 'toggle':
+          togglePlayPause();
+        case 'next':
+          next();
+        case 'previous':
+          previous();
+        case 'seek':
+          final ms = (args['position_ms'] as num?)?.toInt();
+          if (ms != null) seekTo(Duration(milliseconds: ms));
+      }
+    });
+
     return const PlayerState();
+  }
+
+  /// Pushes the current player snapshot to peer devices via sync_provider.
+  /// Called after every meaningful state transition.  Throttle is on the
+  /// server side — broadcasts are cheap.
+  void _publishSync() {
+    try {
+      final t = state.currentTrack;
+      ref.read(syncProvider.notifier).publishState({
+        if (t != null) 'track': t.toJson(),
+        'position_ms': state.position.inMilliseconds,
+        'duration_ms': state.duration.inMilliseconds,
+        'playing': state.isPlaying,
+        'queue': state.queue.map((q) => q.toJson()).toList(),
+        'queue_index': state.queueIndex,
+        'shuffle': state.shuffle,
+        'repeat': state.repeat.name,
+      });
+    } catch (_) {/* ignore — sync may not be connected yet */}
   }
 
   Future<void> play(Track track, {List<Track> queue = const []}) async {

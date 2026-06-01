@@ -42,8 +42,13 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     # Workers dedicados a streaming (QUEUE_STREAM) — yt-dlp only, sem throttle
     stream_workers: int = 2
-    # Worker dedicado a downloads via deemix (QUEUE_BG) — sempre 1, sequencial
-    deemix_bg_workers: int = 1
+    # Workers de download via deemix (QUEUE_BG).  Antes era 1 (single-
+    # consumer) porque chamadas paralelas ao sidecar conflitavam.  Agora
+    # protegemos a submissão (cancel + emit) com um asyncio.Lock e cada
+    # arquivo recebido é claimado via Redis SADD — então é seguro
+    # paralelizar.  2 é um bom default; 3+ pode forçar o sidecar a ter
+    # vários downloads simultâneos e degradar a velocidade individual.
+    deemix_bg_workers: int = 2
     # Workers dedicados a downloads via yt-dlp em background (QUEUE_YTDLP)
     ytdlp_bg_workers: int = 2
     # Máximo de processos yt-dlp simultâneos em modo DOWNLOAD (20–60 s cada).

@@ -307,19 +307,32 @@ class _ShareSheet extends StatelessWidget {
   final Track track;
   const _ShareSheet({required this.track});
 
-  String? _spotifyUrl() {
+  /// Direct Spotify URL when the track came from Spotify search, else a
+  /// search URL keyed by "artist title" (best-effort fallback so the
+  /// share button is never disabled).
+  String _spotifyUrl() {
     if (track.source == 'spotify' && track.sourceId != null) {
       return 'https://open.spotify.com/track/${track.sourceId}';
     }
-    return null;
+    final q = Uri.encodeQueryComponent('${track.artist} ${track.title}');
+    return 'https://open.spotify.com/search/$q';
   }
 
-  String? _deezerUrl() {
+  /// Whether the Spotify URL above is a direct track link (true) or
+  /// just a search query (false).  Used to label the share row.
+  bool get _hasDirectSpotifyUrl =>
+      track.source == 'spotify' && track.sourceId != null;
+
+  String _deezerUrl() {
     if (track.source == 'deezer' && track.sourceId != null) {
       return 'https://www.deezer.com/track/${track.sourceId}';
     }
-    return null;
+    final q = Uri.encodeQueryComponent('${track.artist} ${track.title}');
+    return 'https://www.deezer.com/search/$q';
   }
+
+  bool get _hasDirectDeezerUrl =>
+      track.source == 'deezer' && track.sourceId != null;
 
   String _bergaUrl() {
     final q = Uri.encodeQueryComponent('${track.title} ${track.artist}');
@@ -350,22 +363,28 @@ class _ShareSheet extends StatelessWidget {
                 style: Theme.of(context).textTheme.titleMedium),
           ),
           const Divider(height: 1),
-          if (spotifyUrl != null)
-            ListTile(
-              leading: const Icon(Icons.music_note, color: Color(0xFF1DB954)),
-              title: const Text('Spotify'),
-              subtitle: Text(spotifyUrl, style: const TextStyle(fontSize: 11, color: AppColors.textSecondary), overflow: TextOverflow.ellipsis),
-              onTap: () => _copy(context, spotifyUrl, 'Spotify'),
-              trailing: const Icon(Icons.copy, size: 18),
+          ListTile(
+            leading: const Icon(Icons.music_note, color: Color(0xFF1DB954)),
+            title: Text(_hasDirectSpotifyUrl ? 'Spotify' : 'Buscar no Spotify'),
+            subtitle: Text(
+              spotifyUrl,
+              style: const TextStyle(fontSize: 11, color: AppColors.textSecondary),
+              overflow: TextOverflow.ellipsis,
             ),
-          if (deezerUrl != null)
-            ListTile(
-              leading: const Icon(Icons.music_note, color: Color(0xFFEF5466)),
-              title: const Text('Deezer'),
-              subtitle: Text(deezerUrl, style: const TextStyle(fontSize: 11, color: AppColors.textSecondary), overflow: TextOverflow.ellipsis),
-              onTap: () => _copy(context, deezerUrl, 'Deezer'),
-              trailing: const Icon(Icons.copy, size: 18),
+            onTap: () => _copy(context, spotifyUrl, 'Spotify'),
+            trailing: const Icon(Icons.copy, size: 18),
+          ),
+          ListTile(
+            leading: const Icon(Icons.music_note, color: Color(0xFFEF5466)),
+            title: Text(_hasDirectDeezerUrl ? 'Deezer' : 'Buscar no Deezer'),
+            subtitle: Text(
+              deezerUrl,
+              style: const TextStyle(fontSize: 11, color: AppColors.textSecondary),
+              overflow: TextOverflow.ellipsis,
             ),
+            onTap: () => _copy(context, deezerUrl, 'Deezer'),
+            trailing: const Icon(Icons.copy, size: 18),
+          ),
           ListTile(
             leading: const Icon(Icons.music_note, color: AppColors.primary),
             title: const Text('BergaStream'),

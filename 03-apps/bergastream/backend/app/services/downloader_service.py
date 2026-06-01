@@ -62,6 +62,52 @@ _CANDIDATE_TTL = 24 * 3600
 _yt_semaphore: asyncio.Semaphore | None = None
 _yt_search_semaphore: asyncio.Semaphore | None = None
 
+# Serialises cancel + emit calls so concurrent deemix workers don't
+# stomp on each other's submissions.  The expensive part (polling +
+# moving the file) runs in parallel.
+_deemix_submit_lock: asyncio.Lock | None = None
+
+
+def _get_deemix_submit_lock() -> asyncio.Lock:
+    global _deemix_submit_lock
+    if _deemix_submit_lock is None:
+        _deemix_submit_lock = asyncio.Lock()
+    return _deemix_submit_lock
+
+
+# Redis set used to atomically claim a deemix output file so two
+# parallel workers don't try to move the same MP3.  Keyed by full
+# absolute path.
+_DEEMIX_CLAIMED_FILES_SET = "bergastream:deemix:claimed_files"
+
+
+async def _claim_deemix_file(path: Path) -> bool:
+    """Atomically reserve the given deemix output file for the current
+    worker.  Returns True if we got it; False if another worker already
+    claimed it.  Uses SADD's "newly-added" return value."""
+    try:
+        from app.services.queue_service import DownloadQueueService
+        r = DownloadQueueService._get_redis()
+        added = await r.sadd(_DEEMIX_CLAIMED_FILES_SET, str(path))
+        if added:
+            # Expire the claim after 5 minutes — long enough for any
+            # download + move, short enough that a crash doesn't leak
+            # the lock forever.
+            await r.expire(_DEEMIX_CLAIMED_FILES_SET, 300)
+        return bool(added)
+    except Exception as e:
+        logger.debug(f"[deemix] claim error (proceeding optimistically): {e}")
+        return True
+
+
+async def _release_deemix_file(path: Path) -> None:
+    try:
+        from app.services.queue_service import DownloadQueueService
+        r = DownloadQueueService._get_redis()
+        await r.srem(_DEEMIX_CLAIMED_FILES_SET, str(path))
+    except Exception:
+        pass
+
 
 def _get_yt_semaphore() -> asyncio.Semaphore:
     """Semaphore for yt-dlp DOWNLOADS (heavy, long-running)."""
@@ -698,12 +744,13 @@ async def download_deezer(
 
     import time as _time
 
-    await _deemix_cancel_pending()
-
-    trigger_time = _time.time() - 0.5   # small buffer for clock skew
-
-    if not await _deemix_emit(source_id):
-        return None, ""
+    # Submission (cancel + emit) must be serialised — two workers calling
+    # cancelAllDownloads in parallel would each clobber the other's
+    # submission.  The polling/move below runs in parallel for free.
+    async with _get_deemix_submit_lock():
+        trigger_time = _time.time() - 0.5   # small buffer for clock skew
+        if not await _deemix_emit(source_id):
+            return None, ""
 
     loop = asyncio.get_running_loop()
     deadline = loop.time() + 120
@@ -729,6 +776,14 @@ async def download_deezer(
                 try:
                     stat = candidate.stat()
                     if not (stat.st_ctime >= trigger_time and stat.st_size > 50_000):
+                        continue
+
+                    # Atomic claim — only one worker can own a given
+                    # deemix output file.  If another worker beat us
+                    # to it, skip and look at the next file.  Without
+                    # this, parallel deemix_bg_workers would race on
+                    # the same MP3 and both try to move it.
+                    if not await _claim_deemix_file(candidate):
                         continue
 
                     found_candidate = True

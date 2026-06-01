@@ -6,7 +6,9 @@ import 'package:palette_generator/palette_generator.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/track.dart';
 import '../../providers/player_provider.dart';
+import '../../providers/sync_provider.dart';
 import '../../widgets/cast_button.dart';
+import '../../widgets/device_picker_sheet.dart';
 
 /// Full-screen now-playing view modelled after Spotify mobile.
 ///
@@ -299,6 +301,30 @@ class _FullPlayerScreenState extends ConsumerState<FullPlayerScreen> {
                     // Real CastButton — opens the discover sheet on native,
                     // a "use Chrome to cast" hint on web.
                     const CastButton(),
+                    // Multi-device sync picker.  Tinted green when there
+                    // are >1 devices connected so the user notices.
+                    Consumer(builder: (ctx, ref, _) {
+                      final sync = ref.watch(syncProvider);
+                      final multi = sync.devices.length > 1;
+                      return IconButton(
+                        icon: Icon(
+                          Icons.devices,
+                          color: multi ? AppColors.primary : AppColors.textSecondary,
+                        ),
+                        iconSize: 22,
+                        tooltip: 'Dispositivos',
+                        onPressed: () {
+                          showModalBottomSheet(
+                            context: context,
+                            backgroundColor: AppColors.surfaceVariant,
+                            shape: const RoundedRectangleBorder(
+                              borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+                            ),
+                            builder: (_) => const DevicePickerSheet(),
+                          );
+                        },
+                      );
+                    }),
                     IconButton(
                       icon: const Icon(Icons.share_outlined),
                       iconSize: 22,

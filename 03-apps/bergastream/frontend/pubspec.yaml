@@ -47,6 +47,10 @@ dependencies:
   # Conectividade — detecta on/offline para mostrar banner e cair em cache.
   connectivity_plus: ^6.0.5
 
+  # WebSocket — usado pelo sync_provider (multi-device control).
+  web_socket_channel: ^3.0.1
+  device_info_plus: ^11.1.0
+
   # Cross-platform file picker (replaces dart:html FileUploadInputElement)
   file_picker: ^8.1.2
 

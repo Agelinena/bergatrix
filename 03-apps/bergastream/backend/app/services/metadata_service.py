@@ -568,19 +568,37 @@ import re as _re
 
 
 def _parse_track_url(url: str) -> tuple[str, str] | None:
-    """Returns (platform, id) from a track URL, or None if not recognised."""
-    # Spotify track
-    m = _re.search(r'open\.spotify\.com/(?:[a-z-]+/)?track/([A-Za-z0-9]+)', url)
+    """Returns (platform, id) from a track URL, or None if not recognised.
+
+    Accepted shapes:
+      open.spotify.com/track/<id>
+      open.spotify.com/intl-pt/track/<id>?si=...
+      open.spotify.com/embed/track/<id>
+      spotify:track:<id>            (Spotify URI from share menu)
+      deezer.com/track/<id>
+      deezer.com/en/track/<id>
+      youtube.com/watch?v=<id>
+      youtu.be/<id>
+      music.youtube.com/watch?v=<id>
+    """
+    # Spotify URI (`spotify:track:abc`) — the "Copy Spotify URI" output.
+    m = _re.search(r'spotify:track:([A-Za-z0-9]+)', url)
     if m:
         return ("spotify", m.group(1))
 
-    # Deezer track
-    m = _re.search(r'deezer\.com/(?:[a-z]+/)?track/(\d+)', url)
+    # Spotify HTTPS — case-insensitive locale segment so PT-BR / IT-IT
+    # / etc. all match.
+    m = _re.search(r'open\.spotify\.com/(?:[A-Za-z-]+/)?track/([A-Za-z0-9]+)', url)
+    if m:
+        return ("spotify", m.group(1))
+
+    # Deezer track — accept both `/track/` and locale-prefixed variants.
+    m = _re.search(r'deezer\.com/(?:[A-Za-z-]+/)?track/(\d+)', url)
     if m:
         return ("deezer", m.group(1))
 
-    # YouTube full URL
-    m = _re.search(r'youtube\.com/watch\?.*?v=([A-Za-z0-9_-]{11})', url)
+    # YouTube full URL (including music.youtube.com).
+    m = _re.search(r'(?:music\.)?youtube\.com/watch\?.*?v=([A-Za-z0-9_-]{11})', url)
     if m:
         return ("youtube", m.group(1))
 
@@ -615,6 +633,12 @@ def _parse_playlist_url(url: str) -> tuple[str, str] | None:
 async def get_spotify_track(spotify_id: str) -> TrackSchema | None:
     """Fetch a single Spotify track by its raw ID."""
     if not settings.spotipy_client_id or not settings.spotipy_client_secret:
+        logger.warning(
+            "[resolve] Spotify credentials not configured "
+            "(SPOTIPY_CLIENT_ID / SPOTIPY_CLIENT_SECRET) — cannot resolve "
+            "spotify_id=%s",
+            spotify_id,
+        )
         return None
     try:
         import spotipy
@@ -626,7 +650,8 @@ async def get_spotify_track(spotify_id: str) -> TrackSchema | None:
         loop = asyncio.get_event_loop()
         t = await loop.run_in_executor(None, lambda: sp.track(spotify_id))
         return _spotify_track(t)
-    except Exception:
+    except Exception as e:
+        logger.warning(f"[resolve] Spotify API call failed for {spotify_id}: {e}")
         return None
 
 

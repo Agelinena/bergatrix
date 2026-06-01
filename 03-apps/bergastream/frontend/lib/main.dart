@@ -7,6 +7,7 @@ import 'app.dart';
 import 'core/logger.dart';
 import 'providers/auth_provider.dart';
 import 'providers/player_provider.dart';
+import 'providers/sync_provider.dart';
 
 /// Master switch for the background-audio integration.
 ///
@@ -58,6 +59,13 @@ void main() async {
 
   final container = ProviderContainer();
   await container.read(authProvider.notifier).initialize();
+  // Eagerly construct the sync provider so its auth listener is armed
+  // before any further screen rebuilds.  build() returns immediately;
+  // the websocket connection is fired off in the background.
+  container.read(syncProvider);
+  if (container.read(authProvider).valueOrNull != null) {
+    container.read(syncProvider.notifier).connect();
+  }
 
   // Note: loading overlay removal is handled in web/index.html via the
   // 'flutter-first-frame' event — no dart:html needed here.
