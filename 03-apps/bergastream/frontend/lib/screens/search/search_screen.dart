@@ -128,13 +128,28 @@ class _SearchScreenState extends ConsumerState<SearchScreen>
     _search(q); // já faz setState(_showHistory = false)
   }
 
-  /// Detects if a string is a Spotify/Deezer/YouTube URL.
+  /// Detects if a string is a Spotify/Deezer/YouTube TRACK URL.
+  ///
+  /// Mirrors backend/app/services/metadata_service.py:_parse_track_url so
+  /// the two stay in sync.  In particular:
+  ///   * accepts the locale-prefixed Spotify URL `intl-pt/` (and `pt-BR/`,
+  ///     `it/`, etc.)  — without this, pasting a Spotify share link from a
+  ///     non-en client fell through to a regular text search.
+  ///   * accepts the `spotify:track:<id>` URI from the desktop client.
+  ///   * accepts music.youtube.com.
+  static final _spotifyTrackRe =
+      RegExp(r'open\.spotify\.com/(?:[A-Za-z-]+/)?track/[A-Za-z0-9]+');
+  static final _deezerTrackRe =
+      RegExp(r'deezer\.com/(?:[A-Za-z-]+/)?track/\d+');
+
   bool _isTrackUrl(String s) {
-    return s.contains('open.spotify.com/track') ||
-        s.contains('deezer.com/track') ||
-        s.contains('deezer.com/en/track') ||
-        s.contains('youtube.com/watch') ||
-        s.contains('youtu.be/');
+    if (_spotifyTrackRe.hasMatch(s)) return true;
+    if (s.contains('spotify:track:')) return true;
+    if (_deezerTrackRe.hasMatch(s)) return true;
+    if (s.contains('youtube.com/watch')) return true;
+    if (s.contains('music.youtube.com/watch')) return true;
+    if (s.contains('youtu.be/')) return true;
+    return false;
   }
 
   /// Resolves a pasted track URL, plays the result and activates radio.
