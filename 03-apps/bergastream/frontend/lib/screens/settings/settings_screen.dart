@@ -718,12 +718,24 @@ class _ImportPlaylistDialogState extends ConsumerState<_ImportPlaylistDialog> {
       // 1. Create playlist
       final pl = await client.createPlaylist(_resolvedName!);
       final playlistId = pl['id'] as String;
-      // 2. Register + add tracks
+      // 2. Register + add tracks (two separate steps so a register failure
+      //    doesn't silently add a stale/wrong track to the playlist).
+      int added = 0;
       for (final track in _resolvedTracks) {
         try {
           await client.registerTrack(track.toJson());
+        } catch (_) {
+          // registerTrack returns the existing record on 200; only a
+          // hard network/server error ends up here — skip this track.
+          continue;
+        }
+        try {
           await client.addTrackToPlaylist(playlistId, track.id, force: false);
-        } catch (_) {}
+          added++;
+        } catch (_) {
+          // 409 = already in playlist (shouldn't happen on fresh import,
+          // but harmless to skip). Other errors: skip silently.
+        }
       }
       // 3. Dispara download permanente em background (fire-and-forget)
       client.downloadPlaylistPermanent(playlistId).ignore();
@@ -732,7 +744,7 @@ class _ImportPlaylistDialogState extends ConsumerState<_ImportPlaylistDialog> {
         Navigator.of(context).pop();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('"$_resolvedName" importada com ${_resolvedTracks.length} músicas! Download iniciado em background.'),
+            content: Text('"$_resolvedName" importada com $added músicas! Download iniciado em background.'),
             duration: const Duration(seconds: 4),
           ),
         );

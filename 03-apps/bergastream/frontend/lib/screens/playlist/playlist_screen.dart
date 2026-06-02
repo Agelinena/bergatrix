@@ -87,11 +87,15 @@ class _PlaylistScreenState extends ConsumerState<PlaylistScreen> {
     try {
       final status = await ref.read(apiClientProvider).getPlaylistDownloadStatus(widget.id);
       if (!mounted) return;
+      final wasIncomplete = (_dlStatus == null) ||
+          ((_dlStatus!['percent'] as num?)?.toInt() ?? 100) < 100;
       setState(() => _dlStatus = status);
       final percent = (status['percent'] as num?)?.toInt() ?? 100;
       if (percent >= 100) {
         _dlTimer?.cancel();
         _dlTimer = null;
+        // Refresh track list so isPermanent icons reflect the completed downloads.
+        if (wasIncomplete) _load();
       }
     } catch (_) {}
   }

@@ -60,12 +60,18 @@ class _MobileLayoutState extends ConsumerState<_MobileLayout> {
     // navigate ourselves.
     final router = GoRouter.of(context);
     final canRouterPop = router.canPop();
+    final canNativePop = Navigator.canPop(context);
+    // Allow the OS to handle the pop only when there is truly nothing to
+    // pop: no router stack, no native Navigator entry (e.g. an open modal).
     return PopScope(
-      canPop: isHome && !canRouterPop,
+      canPop: isHome && !canRouterPop && !canNativePop,
       onPopInvokedWithResult: (didPop, _) {
         if (didPop) return;
         if (canRouterPop) {
           router.pop();
+        } else if (canNativePop) {
+          // Closes modals/dialogs opened via Navigator (e.g. the full player).
+          Navigator.pop(context);
         } else if (!isHome) {
           context.go('/');
         }
@@ -358,7 +364,7 @@ class _PlaylistTile extends StatelessWidget {
         '${playlist.trackCount} músicas',
         style: const TextStyle(fontSize: 11, color: AppColors.textSecondary),
       ),
-      onTap: () => context.go(route),
+      onTap: () => context.push(route),
     );
   }
 }

@@ -32,9 +32,11 @@ class Connectivity extends _$Connectivity {
   bool build() {
     // Optimistic initial value; we'll refine asynchronously.
     _init();
-    ref.onDispose(() => _sub?.cancel());
+    ref.onDispose(() { _sub?.cancel(); _debounce?.cancel(); });
     return true;
   }
+
+  Timer? _debounce;
 
   Future<void> _init() async {
     try {
@@ -42,9 +44,24 @@ class Connectivity extends _$Connectivity {
       state = _isOnline(initial);
       _sub = _conn.onConnectivityChanged.listen((results) {
         final online = _isOnline(results);
-        if (state != online) {
-          debugPrint('[Connectivity] state changed → ${online ? "ONLINE" : "OFFLINE"}');
-          state = online;
+        if (state == online) return;
+        if (!online) {
+          // Debounce "offline" transitions by 2 s to avoid flapping
+          // when the device briefly loses signal while switching networks
+          // (WiFi → mobile data handoff).
+          _debounce?.cancel();
+          _debounce = Timer(const Duration(seconds: 2), () {
+            if (state) {
+              debugPrint('[Connectivity] state changed → OFFLINE');
+              state = false;
+            }
+          });
+        } else {
+          // Coming back online: update immediately and cancel any pending
+          // offline debounce.
+          _debounce?.cancel();
+          debugPrint('[Connectivity] state changed → ONLINE');
+          state = true;
         }
       });
     } catch (e) {
