@@ -92,24 +92,21 @@ def _find_episode(filepath: str) -> dict | None:
 def _trigger(media_type: str, media_id: int) -> bool:
     try:
         with httpx.Client(timeout=30) as c:
-            # Ao acionar, forçamos a busca ignorando o "score" padrão do release
-            # O Bazarr usa a rota de manual/wanted com certos thresholds
-            r = c.post(
-                f"{BAZARR_URL}/api/subtitles",
+            # O Bazarr não aceita POST em /api/subtitles
+            # Tentamos o endpoint correto para buscar legenda (geralmente PUT ou PATCH no recurso)
+            endpoint = f"{BAZARR_URL}/api/movies/{media_id}" if media_type == "movie" else f"{BAZARR_URL}/api/episodes/{media_id}"
+            
+            r = c.patch(
+                endpoint,
                 headers=_headers(),
-                json={
-                    "type": media_type,
-                    "id": media_id,
-                    "language": LANGUAGE,
-                    "hi": "false",
-                    "forced": "false",
-                    # Injetamos parametros extras que algumas APIs aceitam para forçar match
-                    "force": True, 
-                    "ignore_score": True
-                },
+                json={"action": "search"}
             )
+            # Se PATCH não for suportado, tente o wanted_search
+            if r.status_code == 405:
+                 r = c.post(f"{BAZARR_URL}/api/subtitles/wanted/search", headers=_headers(), json={"id": media_id, "type": media_type})
+                 
             r.raise_for_status()
-        logger.info(f"Bazarr: busca FORÇADA acionada ({media_type} id={media_id})")
+        logger.info(f"Bazarr: busca acionada ({media_type} id={media_id})")
         return True
     except Exception as e:
         logger.warning(f"Bazarr: falha ao acionar download — {e}")
