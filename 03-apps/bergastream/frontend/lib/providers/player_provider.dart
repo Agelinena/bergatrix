@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -5,6 +6,7 @@ import 'package:riverpod_annotation/riverpod_annotation.dart';
 import '../models/track.dart';
 import '../services/audio_player_service.dart';
 import '../core/api_client.dart';
+import 'playback_settings_provider.dart';
 import 'sync_provider.dart';
 
 part 'player_provider.g.dart';
@@ -81,10 +83,20 @@ class PlayerState {
 class Player extends _$Player {
   late final AudioPlayerService _service;
 
+  /// True between the moment we schedule the crossfade advance and the
+  /// moment the next [play] takes over.  Prevents [_handleTrackComplete]
+  /// from firing a second [next] when the natural end-of-track event
+  /// arrives during the fade.
+  bool _crossfadeInFlight = false;
+  Timer? _crossfadeAdvanceTimer;
+
   @override
   PlayerState build() {
     _service = ref.read(audioPlayerServiceProvider);
-    _service.onPositionChanged = (pos) => state = state.copyWith(position: pos);
+    _service.onPositionChanged = (pos) {
+      state = state.copyWith(position: pos);
+      _maybeStartCrossfade();
+    };
     _service.onDurationChanged = (dur) {
       if (dur > Duration.zero) state = state.copyWith(duration: dur);
     };
@@ -96,6 +108,15 @@ class Player extends _$Player {
     _service.onError = (msg) {
       state = state.copyWith(status: PlayerStatus.error, lastError: msg);
     };
+
+    // Push the persisted crossfade preference into the audio service
+    // and keep them in sync.  The listener fires whenever the user
+    // tweaks the slider in Settings.
+    final initial = ref.read(playbackSettingsProvider).crossfadeMs;
+    _service.crossfadeMs = initial;
+    ref.listen<PlaybackSettings>(playbackSettingsProvider, (prev, next) {
+      _service.crossfadeMs = next.crossfadeMs;
+    });
 
     // Wire remote-control commands from sync_provider.  Other devices
     // can play/pause/next/etc this device's player without re-typing.
@@ -142,6 +163,11 @@ class Player extends _$Player {
   }
 
   Future<void> play(Track track, {List<Track> queue = const []}) async {
+    // A new play() supersedes any pending crossfade timer.
+    _crossfadeAdvanceTimer?.cancel();
+    _crossfadeAdvanceTimer = null;
+    _crossfadeInFlight = false;
+
     // Fire-and-forget: awaiting a network call here breaks the browser's user-gesture
     // context, causing audio.play() to be rejected by the autoplay policy on web.
     // The stream endpoint retries the track lookup for up to 1 s to handle the race.
@@ -302,6 +328,31 @@ class Player extends _$Player {
     } catch (_) {}
   }
 
+  /// Remove a primeira ocorrência de [trackId] da fila — usado pelo
+  /// gesto de "arrastar para esquerda" na busca, que pode tirar uma
+  /// faixa que o usuário tinha adicionado por engano.
+  ///
+  /// Não remove a track atualmente tocando (item em [queueIndex]),
+  /// somente itens à frente.  Retorna `true` se algo foi removido.
+  bool removeFromQueueById(String trackId) {
+    final queue = state.queue;
+    // Procura SÓ no trecho pós-atual para não interromper a track tocando.
+    for (var i = state.queueIndex + 1; i < queue.length; i++) {
+      if (queue[i].id == trackId) {
+        final newQueue = [...queue]..removeAt(i);
+        // Decrementa manualQueueAhead se o item removido estava na faixa
+        // manual (i.e. logo após o atual, dentro do bloco manual).
+        final manualEnd = state.queueIndex + state.manualQueueAhead;
+        final newManual = (i <= manualEnd)
+            ? (state.manualQueueAhead - 1).clamp(0, state.manualQueueAhead)
+            : state.manualQueueAhead;
+        state = state.copyWith(queue: newQueue, manualQueueAhead: newManual);
+        return true;
+      }
+    }
+    return false;
+  }
+
   /// Reordena a fila de "próximas" músicas (itens após o atual).
   /// [oldIndex] e [newIndex] são relativos ao trecho pós-atual.
   void reorderQueue(int oldIndex, int newIndex) {
@@ -347,7 +398,63 @@ class Player extends _$Player {
       _service.resume();
       return;
     }
+    // If we already advanced through a scheduled crossfade, the
+    // next track is loading (or already playing).  Skip the
+    // duplicate next() — it would re-enter the queue index.
+    if (_crossfadeInFlight) return;
     next();
+  }
+
+  /// Called on every position update.  When crossfade is enabled,
+  /// computes how much time is left on the current track and — if
+  /// it fits within the crossfade window AND we have a next track —
+  /// starts the fade-out and schedules the next [play] just before
+  /// the current track ends, so the two ramps overlap.
+  void _maybeStartCrossfade() {
+    final fade = _service.crossfadeMs;
+    if (fade <= 0) return;
+    if (_crossfadeInFlight) return;
+    if (state.repeat == RepeatMode.one) return;
+    final dur = state.duration.inMilliseconds;
+    final pos = state.position.inMilliseconds;
+    if (dur <= 0 || pos <= 0) return;
+    if (state.queueIndex + 1 >= state.queue.length) return;
+    final remaining = dur - pos;
+    // Guard against the very first ticks (sometimes duration < position
+    // briefly) and against very short remaining values that don't
+    // benefit from a fade.
+    if (remaining <= 0 || remaining > fade) return;
+
+    _crossfadeInFlight = true;
+    debugPrint('[Player] crossfade start: remaining=${remaining}ms fade=${fade}ms');
+    // Fade out the current track over the remaining duration.
+    _service.fadeOut(remaining);
+    // Schedule the next track slightly before the natural end so the
+    // ramps overlap.  Half the remaining time is a reasonable midpoint
+    // — too early and we cut too much of the current track; too late
+    // and there's an audible gap.
+    final advanceIn = (remaining / 2).clamp(150, fade.toDouble()).toInt();
+    _crossfadeAdvanceTimer?.cancel();
+    _crossfadeAdvanceTimer = Timer(Duration(milliseconds: advanceIn), () {
+      if (!_crossfadeInFlight) return;
+      _advanceForCrossfade();
+    });
+  }
+
+  Future<void> _advanceForCrossfade() async {
+    if (state.currentTrack != null) {
+      _recordPlay(state.currentTrack!, state.duration, completed: true);
+    }
+    final nextIdx = state.queueIndex + 1;
+    if (nextIdx >= state.queue.length) {
+      _crossfadeInFlight = false;
+      return;
+    }
+    final newManual =
+        (state.manualQueueAhead - 1).clamp(0, state.manualQueueAhead);
+    // play() will reset _crossfadeInFlight at the top.
+    await play(state.queue[nextIdx], queue: state.queue);
+    state = state.copyWith(manualQueueAhead: newManual);
   }
 
   void _recordPlay(Track track, Duration position, {bool completed = false}) {

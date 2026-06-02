@@ -20,6 +20,7 @@ import '../../core/theme/app_theme.dart';
 import '../../models/playlist.dart';
 import '../../providers/downloaded_tracks_provider.dart';
 import '../cards/track_card.dart' show TrackMenuSheet;
+import '../swipe_track_actions.dart';
 
 /// Width at which we flip from mobile rows to the desktop table.  Kept
 /// slightly below the global kDesktopBreakpoint so a desktop user who
@@ -59,44 +60,49 @@ class PlaylistTrackRow extends ConsumerWidget {
   Widget _buildMobile(BuildContext context, WidgetRef ref) {
     final track = item.track;
     final downloaded = ref.watch(downloadedTracksProvider).contains(track.id);
-    return ListTile(
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      leading: _Cover(url: track.coverUrl, isPlaying: isPlaying),
-      title: Text(
-        track.title,
-        style: TextStyle(
-          color: isPlaying ? AppColors.primary : AppColors.textPrimary,
-          fontWeight: FontWeight.w500,
-        ),
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-      ),
-      subtitle: Text(
-        // Spotify shows "Artist • Album" when there's enough room; we do
-        // the same and let ellipsis cut the album when not.
-        track.album != null && track.album!.isNotEmpty
-            ? '${track.artist} • ${track.album}'
-            : track.artist,
-        style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-      ),
-      trailing: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          _PermanentIndicator(isPermanent: track.isPermanent),
-          const SizedBox(width: 2),
-          _DownloadIndicator(downloaded: downloaded),
-          const SizedBox(width: 4),
-          Text(track.durationFormatted,
-              style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
-          IconButton(
-            icon: const Icon(Icons.more_vert, size: 20, color: AppColors.textSecondary),
-            onPressed: () => _showMenu(context),
+    return SwipeTrackActions(
+      track: track,
+      enableEnqueue: true,
+      keySuffix: 'playlist_${playlistId ?? ''}_$displayIndex',
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+        leading: _Cover(url: track.coverUrl, isPlaying: isPlaying),
+        title: Text(
+          track.title,
+          style: TextStyle(
+            color: isPlaying ? AppColors.primary : AppColors.textPrimary,
+            fontWeight: FontWeight.w500,
           ),
-        ],
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+        subtitle: Text(
+          // Spotify shows "Artist • Album" when there's enough room; we do
+          // the same and let ellipsis cut the album when not.
+          track.album != null && track.album!.isNotEmpty
+              ? '${track.artist} • ${track.album}'
+              : track.artist,
+          style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _PermanentIndicator(isPermanent: track.isPermanent),
+            const SizedBox(width: 2),
+            _DownloadIndicator(downloaded: downloaded),
+            const SizedBox(width: 4),
+            Text(track.durationFormatted,
+                style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+            IconButton(
+              icon: const Icon(Icons.more_vert, size: 20, color: AppColors.textSecondary),
+              onPressed: () => _showMenu(context),
+            ),
+          ],
+        ),
+        onTap: onTap,
       ),
-      onTap: onTap,
     );
   }
 

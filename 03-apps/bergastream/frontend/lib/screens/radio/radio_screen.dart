@@ -186,6 +186,8 @@ class _RadioScreenState extends ConsumerState<RadioScreen> {
                             itemBuilder: (_, i) => TrackCard(
                               track: _queue[i],
                               queue: _queue,
+                              enableSwipeEnqueue: true,
+                              swipeKeySuffix: 'radio',
                             ),
                           ),
           ),

@@ -374,6 +374,12 @@ class _SearchScreenState extends ConsumerState<SearchScreen>
                   // quando a faixa vem da busca (mesmo comportamento do
                   // clique direto no card).
                   activateRadioOnPlay: true,
+                  // Mobile: swipe right adiciona à fila, swipe left
+                  // remove (a busca é o único lugar onde "tirar da fila"
+                  // é útil — em outros contextos a faixa não está lá).
+                  enableSwipeEnqueue: true,
+                  enableSwipeDequeue: true,
+                  swipeKeySuffix: 'search',
                 ),
               ),
 

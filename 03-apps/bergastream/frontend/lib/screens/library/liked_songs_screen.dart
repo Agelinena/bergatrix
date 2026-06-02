@@ -209,6 +209,8 @@ class _LikedTrackTile extends ConsumerWidget {
       onTap: () => ref.read(playerProvider.notifier).play(track, queue: queue),
       // Não mostra opção de rádio para simplificar
       showRadioOption: true,
+      enableSwipeEnqueue: true,
+      swipeKeySuffix: 'liked',
     );
   }
 }

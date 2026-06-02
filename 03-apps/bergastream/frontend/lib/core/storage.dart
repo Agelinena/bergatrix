@@ -35,6 +35,16 @@ class AppStorage {
     await prefs.setStringList(key, value);
   }
 
+  static Future<int?> getInt(String key) async {
+    final prefs = await _instance;
+    return prefs.getInt(key);
+  }
+
+  static Future<void> setInt(String key, int value) async {
+    final prefs = await _instance;
+    await prefs.setInt(key, value);
+  }
+
   static Future<void> remove(String key) async {
     final prefs = await _instance;
     await prefs.remove(key);
