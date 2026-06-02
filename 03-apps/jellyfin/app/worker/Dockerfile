@@ -1,10 +1,13 @@
 FROM python:3.11-slim
 
-# ffmpeg para extração de streams de legenda e ferramentas para baixar alass
+# ffmpeg para extração de streams de legenda e ferramentas para baixar alass e tesseract para OCR
 RUN apt-get update && apt-get install -y \
     ffmpeg \
     wget \
     xz-utils \
+    tesseract-ocr \
+    tesseract-ocr-eng \
+    tesseract-ocr-por \
     && rm -rf /var/lib/apt/lists/*
 
 # Instalar alass (usado para sincronizar legendas)

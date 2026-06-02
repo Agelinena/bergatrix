@@ -69,7 +69,7 @@ class BitmapExtractor:
 
         # Extrair .sup do MKV
         cmd = [
-            "ffmpeg", "-y",
+            "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
             "-i", filepath,
             "-map", f"0:{stream_index}",
             "-c:s", "copy",
@@ -127,7 +127,7 @@ class BitmapExtractor:
         timestamps_file = os.path.join(output_dir, "timestamps.txt")
 
         cmd = [
-            "ffmpeg", "-y",
+            "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
             "-i", filepath,
             "-map", f"0:{stream_index}",
             "-vsync", "0",
