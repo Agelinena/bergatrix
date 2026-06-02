@@ -1,6 +1,7 @@
 import time
 import logging
 import os
+import json
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 from threading import Timer, Thread
@@ -11,6 +12,7 @@ MEDIA_EXTENSIONS = ('.mkv', '.mp4', '.avi', '.mov')
 SUBTITLE_SUFFIXES = ('.por.srt', '.pt-br.srt', '.pt.srt', '.portuguese.srt', '.ptbr.srt')
 # Intervalo de varredura periódica em segundos (padrão: 1 hora)
 PERIODIC_SCAN_INTERVAL = int(os.environ.get("SCAN_INTERVAL", "3600"))
+STATS_FILE = "/app/stats/translation_stats.json"
 
 
 def _has_subtitle(filepath: str) -> bool:
@@ -18,6 +20,25 @@ def _has_subtitle(filepath: str) -> bool:
     base = os.path.splitext(filepath)[0]
     return any(os.path.exists(base + s) for s in SUBTITLE_SUFFIXES)
 
+def _is_on_cooldown(filepath: str) -> bool:
+    """Verifica se o arquivo já foi processado nos últimos 3 dias."""
+    if not os.path.exists(STATS_FILE):
+        return False
+    try:
+        with open(STATS_FILE, "r", encoding="utf-8") as f:
+            stats = json.load(f)
+        
+        # Procura de trás pra frente pela última vez que esse arquivo foi tentado
+        for entry in reversed(stats):
+            if entry.get("filepath") == filepath:
+                # Se falhou ou teve sucesso, espera 3 dias (3 * 24 * 3600 segundos) antes de tentar de novo
+                timestamp = entry.get("timestamp", 0)
+                if (time.time() - timestamp) < (3 * 24 * 3600):
+                    return True
+                break
+    except Exception:
+        pass
+    return False
 
 # ------------------------------------------------------------------ #
 # Watchdog: reage a arquivos novos/movidos                            #
@@ -89,8 +110,13 @@ class Scanner:
                         continue
                     filepath = os.path.join(root, fname)
                     count_found += 1
+                    
                     if not _has_subtitle(filepath):
-                        logger.info(f"  Sem legenda PT-BR: {fname} — agendando tradução")
+                        if _is_on_cooldown(filepath):
+                            # logger.debug(f"  Em cooldown (3 dias): {fname}")
+                            continue
+                            
+                        logger.info(f"  Sem legenda PT-BR e fora de cooldown: {fname} — agendando processamento")
                         try:
                             self.pipeline.process_file(filepath)
                             count_queued += 1
@@ -99,7 +125,7 @@ class Scanner:
 
         logger.info(
             f"━━ Varredura concluída: {count_found} verificados, "
-            f"{count_queued} sem legenda processados ━━"
+            f"{count_queued} processados (outros em cooldown ou com legenda) ━━"
         )
 
     def _periodic_scan(self):
