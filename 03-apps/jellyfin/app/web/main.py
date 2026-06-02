@@ -203,7 +203,7 @@ def scan_media(force: bool = False) -> dict:
 @app.get("/", response_class=HTMLResponse)
 async def read_root(request: Request):
     data = scan_media()
-    return templates.TemplateResponse("index.html", {"request": request, "data": data})
+    return templates.TemplateResponse(request=request, name="index.html", context={"request": request, "data": data})
 
 
 @app.get("/api/image")
