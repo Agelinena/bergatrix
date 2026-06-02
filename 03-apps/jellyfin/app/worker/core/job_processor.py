@@ -58,6 +58,16 @@ class JobProcessor:
                     force=force,
                     stream_index=stream_index,
                 )
+            elif job_type == "validate_and_translate":
+                logger.info(f"Validando áudio do recém-adicionado: {target_file}")
+                # 1. Valida áudio
+                # TODO: implementar validator
+                is_valid = self.pipeline.validate_audio(target_file, job.get("arr_event"))
+                if is_valid:
+                    # 2. Continua para tradução
+                    self.pipeline.process_file(target_file, force=False)
+                else:
+                    logger.warning(f"Arquivo rejeitado por falha na validação de áudio: {target_file}")
             elif job_type == "scan":
                 logger.info("Executando varredura manual da biblioteca...")
                 from core.scanner import _has_subtitle, MEDIA_EXTENSIONS

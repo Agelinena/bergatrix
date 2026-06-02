@@ -101,6 +101,30 @@ class Pipeline:
     # Processamento principal                                              #
     # ------------------------------------------------------------------ #
 
+    def validate_audio(self, filepath: str, arr_event: dict = None) -> bool:
+        """
+        Valida se o arquivo tem trilhas de áudio originais (ex: não é apenas dublado).
+        """
+        media_info = get_media_info(filepath)
+        if not media_info:
+            return False
+            
+        audio_streams = [s for s in media_info.get('streams', []) if s.get('codec_type') == 'audio']
+        
+        # Lógica simples: se tiver apenas áudio 'por' ou 'rus' e não tiver 'eng' ou 'jpn', rejeitar.
+        langs = [s.get('tags', {}).get('language', 'unknown').lower() for s in audio_streams]
+        
+        # Consideramos válido se tiver inglês, japonês ou se for desconhecido (para evitar falsos positivos)
+        valid_langs = ['eng', 'en', 'jpn', 'ja', 'unknown']
+        
+        if any(lang in valid_langs for lang in langs):
+            return True
+            
+        # Rejeitar
+        logger.warning(f"Áudio original ausente! Idiomas encontrados: {langs}")
+        # TODO: Adicionar requisição HTTP para Radarr/Sonarr para deletar e rebaixar
+        return False
+
     def process_file(self, filepath: str, force: bool = False, stream_index: int | None = None):
         """
         Fluxo:

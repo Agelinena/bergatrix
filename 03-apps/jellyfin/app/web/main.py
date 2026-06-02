@@ -352,6 +352,56 @@ async def trigger_scan():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.post("/api/webhook/arr")
+async def arr_webhook(request: Request):
+    """
+    Recebe webhooks do Radarr/Sonarr (On Download / On Import).
+    Cria um job de validação de áudio e processamento de legenda.
+    """
+    try:
+        payload = await request.json()
+        logger.info(f"Webhook recebido: {payload.get('eventType', 'unknown')}")
+        
+        # Sonarr envia 'episodeFile' -> 'path' e 'series' -> 'path'
+        # Radarr envia 'movieFile' -> 'path' e 'movie' -> 'folderPath'
+        
+        filepath = None
+        media_type = None
+        
+        if "movieFile" in payload:
+            filepath = payload["movieFile"].get("path")
+            media_type = "movie"
+        elif "episodeFile" in payload:
+            filepath = payload["episodeFile"].get("path")
+            media_type = "episode"
+            
+        if not filepath:
+            logger.warning("Webhook ignorado: filepath não encontrado no payload.")
+            return JSONResponse(content={"status": "ignored", "reason": "no filepath"})
+
+        # Ajusta o caminho se o Radarr/Sonarr enviar caminhos que não batem exatamente 
+        # (mas se ambos usam /media/..., deve bater perfeitamente)
+        
+        job_id = str(uuid.uuid4())
+        job = {
+            "id": job_id,
+            "type": "validate_and_translate",
+            "filepath": filepath,
+            "media_type": media_type,
+            "arr_event": payload,
+            "status": "pending"
+        }
+        
+        with open(os.path.join(JOBS_DIR, f"{job_id}.json"), "w") as f:
+            json.dump(job, f)
+            
+        logger.info(f"Job {job_id} de validação agendado para {filepath}")
+        return JSONResponse(content={"status": "ok", "job_id": job_id})
+        
+    except Exception as e:
+        logger.error(f"Erro ao processar webhook: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/api/refresh-cache")
 async def refresh_cache():
     scan_media(force=True)
