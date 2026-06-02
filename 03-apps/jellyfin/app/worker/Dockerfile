@@ -8,11 +8,8 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Instalar alass (usado para sincronizar legendas)
-RUN wget -qO alass.tar.gz https://github.com/kaegi/alass/releases/download/v2.0.0/alass-linux64.tar.gz \
-    && tar -xzf alass.tar.gz \
-    && mv alass-linux64/alass /usr/local/bin/alass \
-    && chmod +x /usr/local/bin/alass \
-    && rm -rf alass.tar.gz alass-linux64
+RUN wget -qO /usr/local/bin/alass https://github.com/kaegi/alass/releases/download/v2.0.0/alass-linux64 \
+    && chmod +x /usr/local/bin/alass
 
 WORKDIR /app
 
