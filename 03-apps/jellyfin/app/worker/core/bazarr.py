@@ -38,50 +38,56 @@ def _subtitle_exists(filepath: str) -> bool:
 # ------------------------------------------------------------------ #
 
 def _find_movie(filepath: str) -> dict | None:
-    try:
-        with httpx.Client(timeout=15) as c:
-            r = c.get(f"{BAZARR_URL}/api/movies", headers=_headers(),
-                      params={"start": 0, "length": -1})
-            r.raise_for_status()
-        target = os.path.normpath(filepath)
-        for m in r.json().get("data", []):
-            movie_path = os.path.normpath(m.get("path", ""))
-            # Bazarr pode armazenar o diretório ou o arquivo completo
-            if target.startswith(movie_path) or movie_path == target:
-                return m
-    except Exception as e:
-        logger.warning(f"Bazarr: erro ao buscar filmes — {e}")
+    for attempt in range(3):
+        try:
+            with httpx.Client(timeout=15) as c:
+                r = c.get(f"{BAZARR_URL}/api/movies", headers=_headers(),
+                          params={"start": 0, "length": -1})
+                r.raise_for_status()
+            target = os.path.normpath(filepath)
+            for m in r.json().get("data", []):
+                movie_path = os.path.normpath(m.get("path", ""))
+                # Bazarr pode armazenar o diretório ou o arquivo completo
+                if target.startswith(movie_path) or movie_path == target:
+                    return m
+            return None # File not found, no need to retry
+        except Exception as e:
+            logger.warning(f"Bazarr: erro ao buscar filmes (tentativa {attempt+1}/3) — {e}")
+            time.sleep(10)
     return None
 
 
 def _find_episode(filepath: str) -> dict | None:
     """Busca o episódio no Bazarr: primeiro lista séries, depois busca episódios por série."""
     target = os.path.normpath(filepath)
-    try:
-        with httpx.Client(timeout=15) as c:
-            r = c.get(f"{BAZARR_URL}/api/series", headers=_headers(),
-                      params={"start": 0, "length": -1})
-            r.raise_for_status()
-            series_list = r.json().get("data", [])
+    for attempt in range(3):
+        try:
+            with httpx.Client(timeout=15) as c:
+                r = c.get(f"{BAZARR_URL}/api/series", headers=_headers(),
+                          params={"start": 0, "length": -1})
+                r.raise_for_status()
+                series_list = r.json().get("data", [])
 
-        for series in series_list:
-            sonarr_id = series.get("sonarrSeriesId") or series.get("id")
-            if not sonarr_id:
-                continue
-            try:
-                with httpx.Client(timeout=15) as c:
-                    r = c.get(f"{BAZARR_URL}/api/episodes", headers=_headers(),
-                              params={"seriesid[]": sonarr_id})
-                    if r.status_code != 200:
-                        continue
-                    episodes = r.json().get("data", [])
-                for ep in episodes:
-                    if os.path.normpath(ep.get("path", "")) == target:
-                        return ep
-            except Exception:
-                continue
-    except Exception as e:
-        logger.warning(f"Bazarr: erro ao buscar episódios — {e}")
+            for series in series_list:
+                sonarr_id = series.get("sonarrSeriesId") or series.get("id")
+                if not sonarr_id:
+                    continue
+                try:
+                    with httpx.Client(timeout=15) as c:
+                        r = c.get(f"{BAZARR_URL}/api/episodes", headers=_headers(),
+                                  params={"seriesid[]": sonarr_id})
+                        if r.status_code != 200:
+                            continue
+                        episodes = r.json().get("data", [])
+                    for ep in episodes:
+                        if os.path.normpath(ep.get("path", "")) == target:
+                            return ep
+                except Exception:
+                    continue
+            return None
+        except Exception as e:
+            logger.warning(f"Bazarr: erro ao buscar episódios (tentativa {attempt+1}/3) — {e}")
+            time.sleep(10)
     return None
 
 
@@ -92,24 +98,21 @@ def _find_episode(filepath: str) -> dict | None:
 def _trigger(media_type: str, media_id: int) -> bool:
     try:
         with httpx.Client(timeout=30) as c:
-            # O Bazarr não aceita POST em /api/subtitles
-            # Tentamos o endpoint correto para buscar legenda (geralmente PUT ou PATCH no recurso)
-            endpoint = f"{BAZARR_URL}/api/movies/{media_id}" if media_type == "movie" else f"{BAZARR_URL}/api/episodes/{media_id}"
-            
-            r = c.patch(
-                endpoint,
+            if media_type == "movie":
+                payload = {"name": "MoviesSearch", "movieid": [media_id]}
+            else:
+                payload = {"name": "EpsSearch", "episodeid": [media_id]}
+                
+            r = c.post(
+                f"{BAZARR_URL}/api/command",
                 headers=_headers(),
-                json={"action": "search"}
+                json=payload
             )
-            # Se PATCH não for suportado, tente o wanted_search
-            if r.status_code == 405:
-                 r = c.post(f"{BAZARR_URL}/api/subtitles/wanted/search", headers=_headers(), json={"id": media_id, "type": media_type})
-                 
             r.raise_for_status()
-        logger.info(f"Bazarr: busca acionada ({media_type} id={media_id})")
+        logger.info(f"Bazarr: comando de busca enviado ({media_type} id={media_id})")
         return True
     except Exception as e:
-        logger.warning(f"Bazarr: falha ao acionar download — {e}")
+        logger.warning(f"Bazarr: falha ao acionar comando de busca — {e}")
         return False
 
 

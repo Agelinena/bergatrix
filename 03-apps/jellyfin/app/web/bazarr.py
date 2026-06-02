@@ -72,18 +72,15 @@ def _trigger_movie_search(radarr_id: int) -> bool:
     try:
         with httpx.Client(timeout=30) as client:
             resp = client.post(
-                f"{BAZARR_URL}/api/subtitles",
+                f"{BAZARR_URL}/api/command",
                 headers=_headers(),
                 json={
-                    "type": "movie",
-                    "id": radarr_id,
-                    "language": LANGUAGE,
-                    "hi": "false",
-                    "forced": "false",
+                    "name": "MoviesSearch", 
+                    "movieid": [radarr_id]
                 },
             )
             resp.raise_for_status()
-            logger.info(f"Bazarr: busca de legenda PT-BR iniciada para filme ID={radarr_id}")
+            logger.info(f"Bazarr: comando de busca enviado para filme ID={radarr_id}")
             return True
     except Exception as e:
         logger.error(f"Erro ao acionar busca no Bazarr (filme {radarr_id}): {e}")
@@ -95,18 +92,15 @@ def _trigger_episode_search(sonarr_episode_id: int) -> bool:
     try:
         with httpx.Client(timeout=30) as client:
             resp = client.post(
-                f"{BAZARR_URL}/api/subtitles",
+                f"{BAZARR_URL}/api/command",
                 headers=_headers(),
                 json={
-                    "type": "episode",
-                    "id": sonarr_episode_id,
-                    "language": LANGUAGE,
-                    "hi": "false",
-                    "forced": "false",
+                    "name": "EpsSearch", 
+                    "episodeid": [sonarr_episode_id]
                 },
             )
             resp.raise_for_status()
-            logger.info(f"Bazarr: busca de legenda PT-BR iniciada para episódio ID={sonarr_episode_id}")
+            logger.info(f"Bazarr: comando de busca enviado para episódio ID={sonarr_episode_id}")
             return True
     except Exception as e:
         logger.error(f"Erro ao acionar busca no Bazarr (episódio {sonarr_episode_id}): {e}")

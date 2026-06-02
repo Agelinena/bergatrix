@@ -267,6 +267,32 @@ class Pipeline:
             chosen = self._auto_select_stream(streams)
 
         if not chosen:
+            logger.info("Nenhuma legenda legível detectada. Procurando legenda bitmap (PGS) para extração...")
+            BITMAP_CODECS = ["hdmv_pgs_subtitle", "dvd_subtitle", "dvdsub"]
+            chosen_bitmap = next((s for s in streams if s.get('tags', {}).get('language', '').lower() in SOURCE_LANGUAGES and s.get('codec_name') in BITMAP_CODECS), None)
+            
+            if not chosen_bitmap:
+                # Tenta genérico bitmap
+                chosen_bitmap = next((s for s in streams if s.get('codec_name') in BITMAP_CODECS), None)
+            
+            if chosen_bitmap:
+                logger.info(f"Legenda bitmap encontrada (stream {chosen_bitmap['index']}). Extraindo OCR...")
+                from core.bitmap_extractor import BitmapExtractor
+                extractor = BitmapExtractor()
+                temp_srt = f"{base_path}.ocr.temp.srt"
+                
+                if extractor.extract_to_srt(filepath, chosen_bitmap['index'], temp_srt):
+                    logger.info("OCR concluído! Enviando para IA...")
+                    success = self.translator.process(temp_srt, output_srt)
+                    status = "success" if success else "failed"
+                    self.stats.record(filepath, status, source_lang=chosen_bitmap.get('tags', {}).get('language', 'unknown'), source_codec="ocr", stream_index=chosen_bitmap['index'], model=model_used)
+                    try:
+                        os.remove(temp_srt)
+                    except: pass
+                    return
+                else:
+                    logger.warning("Falha ao extrair OCR.")
+            
             logger.info("Nenhuma legenda em texto adequada para tradução.")
             self.stats.record(filepath, "failed", model=model_used)
             return
