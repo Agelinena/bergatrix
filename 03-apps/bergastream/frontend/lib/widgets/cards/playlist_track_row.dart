@@ -228,6 +228,7 @@ class PlaylistTrackRow extends ConsumerWidget {
     showModalBottomSheet(
       context: context,
       backgroundColor: AppColors.surfaceVariant,
+      isScrollControlled: true,
       builder: (_) => TrackMenuSheet(
         track: item.track,
         playlistId: playlistId,

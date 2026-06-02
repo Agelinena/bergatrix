@@ -168,7 +168,7 @@ class _QuickAccessCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return InkWell(
-      onTap: () => context.go('/playlist/${playlist.id}'),
+      onTap: () => context.push('/playlist/${playlist.id}'),
       borderRadius: BorderRadius.circular(4),
       child: Container(
         decoration: BoxDecoration(
@@ -218,7 +218,7 @@ class _LikedSongsCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return InkWell(
-      onTap: () => context.go('/library/likes'),
+      onTap: () => context.push('/library/likes'),
       borderRadius: BorderRadius.circular(8),
       child: Container(
         padding: const EdgeInsets.all(16),

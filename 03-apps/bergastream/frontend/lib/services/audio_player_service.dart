@@ -15,10 +15,6 @@ part 'audio_player_service.g.dart';
 /// Toggle for the just_audio_background MediaItem tag.  When true,
 /// AudioSource.uri receives a MediaItem and the lockscreen / notification
 /// controls come up; when false we use a plain Map tag (no notification).
-///
-/// Was temporarily off while we identified the "spinner forever" bug —
-/// turned out to be unrelated (Future from _player.play() doesn't resolve
-/// until playback ends, my timeout was wrong).  Re-enabled now.
 const _useBackgroundMediaItem = true;
 
 @Riverpod(keepAlive: true)
@@ -28,19 +24,33 @@ AudioPlayerService audioPlayerService(AudioPlayerServiceRef ref) {
   return service;
 }
 
+/// Wraps a [AudioPlayer] backed by a long-lived [ConcatenatingAudioSource].
+///
+/// The concat lives for the lifetime of the service — every queue
+/// change goes through clear()/addAll()/insert()/removeAt()/move()
+/// instead of setAudioSource(new).  That matters on Android: setting a
+/// new source tears down the foreground service for a moment, and the
+/// OS can kill the process between tracks (the "music stops after the
+/// first song" bug we hit when the screen was off).  Holding the same
+/// concat source keeps the foreground service alive across transitions,
+/// and as a bonus exposes skipToNext / skipToPrevious to the
+/// notification, since ExoPlayer now knows there's a real playlist.
 class AudioPlayerService {
   final ApiClient _client;
   final AudioPlayer _player = AudioPlayer();
+  final ConcatenatingAudioSource _concat =
+      ConcatenatingAudioSource(children: []);
   bool _sessionConfigured = false;
+  bool _concatInstalled = false;
 
   /// Last error captured from the player, exposed so the UI can show it.
   String? lastError;
 
-  /// Crossfade duration in milliseconds.  When > 0, [play] ramps volume
-  /// from 0 → [userVolume] over [crossfadeMs] (fade-in) and [fadeOut]
-  /// ramps volume from current → 0 over [crossfadeMs].  The player
-  /// provider calls [fadeOut] near the end of a track and schedules
-  /// the next [play] so the two ramps overlap perceptually.
+  /// Crossfade duration in milliseconds.  When > 0, [playQueue] ramps
+  /// volume from 0 → [_userVolume] over [crossfadeMs] (fade-in) and
+  /// [fadeOut] ramps volume from current → 0 over [crossfadeMs].  The
+  /// player provider calls [fadeOut] near the end of a track and
+  /// schedules a [seekToNext] so the two ramps overlap perceptually.
   int crossfadeMs = 0;
 
   /// The "real" target volume set by the user via [setVolume].  We track
@@ -48,8 +58,8 @@ class AudioPlayerService {
   /// player's volume below the user-chosen target.
   double _userVolume = 1.0;
 
-  /// Active fade-ramp tick — cancelled when a new fade starts or [stop]
-  /// is invoked, so concurrent fades don't fight each other.
+  /// Active fade-ramp tick — cancelled when a new fade starts or
+  /// [setVolume] is called, so concurrent fades don't fight each other.
   int _fadeGeneration = 0;
 
   void Function(Duration)? onPositionChanged;
@@ -58,12 +68,28 @@ class AudioPlayerService {
   void Function()? onTrackComplete;
   void Function(String error)? onError;
 
+  /// Fires whenever the underlying ExoPlayer advances/retreats to a
+  /// different item in [_concat] — either because it finished a track
+  /// naturally or because [seekToNext] / [seekToPrevious] was called.
+  /// Used by the Player provider to keep its [PlayerState.queueIndex]
+  /// in sync with the real playback position.
+  void Function(int)? onCurrentIndexChanged;
+
   AudioPlayerService(this._client) {
     debugPrint('[AudioPlayer] constructor: created AudioPlayer instance');
     _player.positionStream.listen((pos) => onPositionChanged?.call(pos));
     _player.durationStream.listen((dur) => onDurationChanged?.call(dur ?? Duration.zero));
+    _player.currentIndexStream.listen((idx) {
+      if (idx != null) {
+        debugPrint('[AudioPlayer] currentIndex=$idx');
+        onCurrentIndexChanged?.call(idx);
+      }
+    });
     _player.processingStateStream.listen((state) {
       debugPrint('[AudioPlayer] processingState=$state');
+      // Only the FINAL item's completion bubbles up as "completed" — the
+      // concat handles intra-track transitions internally, which is
+      // exactly what we want.
       if (state == ProcessingState.completed) onTrackComplete?.call();
     });
     _player.playingStream.listen((playing) {
@@ -110,7 +136,6 @@ class AudioPlayerService {
     }
   }
 
-  /// Wraps a Future with a label so timeouts produce a clearly traceable error.
   Future<T> _step<T>(String label, Duration timeout, Future<T> Function() task) {
     return task().timeout(
       timeout,
@@ -121,53 +146,76 @@ class AudioPlayerService {
     );
   }
 
-  Future<void> play(Track track) async {
+  /// Builds a single [AudioSource] for [track] using the current JWT.
+  /// Used both for initial queue load and for incremental mutations
+  /// (insert / append / replace).
+  AudioSource _sourceFor(Track track, String? token) {
+    final url = _client.streamUrl(track.id, token: token);
+    final Object tag = (_useBackgroundMediaItem && !kIsWeb)
+        ? MediaItem(
+            id: track.id,
+            title: track.title.isNotEmpty ? track.title : 'Faixa desconhecida',
+            artist: track.artist,
+            album: track.album,
+            artUri: _safeArtUri(track.coverUrl),
+            duration: track.durationMs != null
+                ? Duration(milliseconds: track.durationMs!)
+                : null,
+          )
+        : _legacyTag(track);
+    return AudioSource.uri(Uri.parse(url), tag: tag);
+  }
+
+  /// Convenience: replaces the queue with a single track.
+  Future<void> play(Track track) => playQueue([track], 0);
+
+  /// Replace the playback queue with [queue] starting at [startIndex].
+  ///
+  /// The first call wires the long-lived [_concat] as the player's
+  /// audio source and starts playback.  Subsequent calls mutate the
+  /// concat in place via clear() + addAll() instead of recreating it,
+  /// so the foreground service stays alive — critical for Android
+  /// background playback resilience.
+  Future<void> playQueue(List<Track> queue, int startIndex) async {
+    if (queue.isEmpty) return;
+    final clampedStart = startIndex.clamp(0, queue.length - 1);
     final t0 = DateTime.now();
-    debugPrint('[AudioPlayer] play() START "${track.title}" id=${track.id}');
+    debugPrint('[AudioPlayer] playQueue START len=${queue.length} '
+        'startIndex=$clampedStart');
     lastError = null;
     try {
       await _step('ensureSession', const Duration(seconds: 10), _ensureSession);
       debugPrint('[AudioPlayer] +${DateTime.now().difference(t0).inMilliseconds}ms session ok');
 
-      await _step('player.stop', const Duration(seconds: 5), () => _player.stop());
-      debugPrint('[AudioPlayer] +${DateTime.now().difference(t0).inMilliseconds}ms stop ok');
-
       final token = await _step('getToken', const Duration(seconds: 3),
           () => _client.getToken());
-      final url = _client.streamUrl(track.id, token: token);
-      debugPrint('[AudioPlayer] +${DateTime.now().difference(t0).inMilliseconds}ms '
-          'url=$url tokenLen=${token?.length ?? 0}');
 
-      // Choose tag.  Map tag works on every platform but skips the
-      // background-notification integration.  MediaItem only when
-      // _useBackgroundMediaItem and on native — but we've seen it
-      // deadlock on some Android ROMs, hence the toggle.
-      final Object tag = (_useBackgroundMediaItem && !kIsWeb)
-          ? MediaItem(
-              id: track.id,
-              title: track.title.isNotEmpty ? track.title : 'Faixa desconhecida',
-              artist: track.artist,
-              album: track.album,
-              artUri: _safeArtUri(track.coverUrl),
-              duration: track.durationMs != null
-                  ? Duration(milliseconds: track.durationMs!)
-                  : null,
-            )
-          : _legacyTag(track);
+      final sources = queue.map((t) => _sourceFor(t, token)).toList();
 
-      debugPrint('[AudioPlayer] +${DateTime.now().difference(t0).inMilliseconds}ms '
-          'tag type=${tag.runtimeType}');
-
-      final source = AudioSource.uri(Uri.parse(url), tag: tag);
-
-      await _step('setAudioSource', const Duration(seconds: 30),
-          () => _player.setAudioSource(source));
-      debugPrint('[AudioPlayer] +${DateTime.now().difference(t0).inMilliseconds}ms '
-          'setAudioSource ok');
+      if (!_concatInstalled) {
+        // First-ever play: install the concat as the player's source.
+        await _concat.addAll(sources);
+        await _step(
+          'setAudioSource',
+          const Duration(seconds: 30),
+          () => _player.setAudioSource(_concat, initialIndex: clampedStart),
+        );
+        _concatInstalled = true;
+      } else {
+        // In-place queue swap.  clear()/addAll() are concat operations
+        // that don't tear down the player or its foreground service.
+        await _concat.clear();
+        await _concat.addAll(sources);
+        try {
+          await _player.seek(Duration.zero, index: clampedStart);
+        } catch (e) {
+          debugPrint('[AudioPlayer] seek-after-swap failed: $e');
+        }
+      }
 
       // Fade-in: if crossfade is enabled, start at volume 0 and ramp up
       // to the user-chosen target over crossfadeMs.  Otherwise jump
-      // straight to userVolume (no-op if already there).
+      // straight to userVolume.
       if (crossfadeMs > 0) {
         try { await _player.setVolume(0); } catch (_) {}
         unawaited(_rampVolume(0.0, _userVolume, crossfadeMs));
@@ -175,39 +223,26 @@ class AudioPlayerService {
         try { await _player.setVolume(_userVolume); } catch (_) {}
       }
 
-      // IMPORTANT: do NOT await _player.play().
-      // just_audio's Future<void> play() only completes when playback
-      // ENDS (track finished, paused, or stopped) — not when it starts.
-      // Awaiting it caused a 5s timeout to fire while the track was
-      // happily playing, marking the player state as error and
-      // triggering a SnackBar of doom.
-      //
-      // We confirm playback actually started by waiting for the
-      // first playingStream==true event (or the audio source being
-      // in ready state), but with a short bound so the UI is never
-      // blocked.
+      // Fire-and-forget — just_audio's play() future only resolves when
+      // playback ENDS, so awaiting it would hang us forever.
       unawaited(_player.play());
       debugPrint('[AudioPlayer] +${DateTime.now().difference(t0).inMilliseconds}ms '
           'play() invoked (fire-and-forget)');
     } catch (e, st) {
       final elapsed = DateTime.now().difference(t0).inMilliseconds;
       final msg = '$e';
-      // "Connection aborted" from just_audio is what happens when a
-      // newer play() arrives mid-load and stop() cancels the in-flight
-      // setAudioSource. It is NOT a real error — the new track is
-      // already loading. Suppress the SnackBar so the user doesn't
-      // see a flash of red while the player legitimately advances.
+      // "Connection aborted" from just_audio is the benign result of a
+      // newer queue swap arriving mid-load; suppress it so the UI
+      // doesn't flash an error SnackBar.
       final isAbort = msg.contains('Connection aborted') ||
           msg.contains('OperationAborted') ||
           msg.contains('PlatformException(abort');
       if (isAbort) {
-        debugPrint('[AudioPlayer] play("${track.title}") aborted by newer call '
-            'after ${elapsed}ms (benign)');
-        // Don't trigger onError or status=error; just propagate quietly.
+        debugPrint('[AudioPlayer] playQueue aborted after ${elapsed}ms (benign)');
         return;
       }
       lastError = '$e (após ${elapsed}ms)';
-      debugPrint('[AudioPlayer] play("${track.title}") failed after ${elapsed}ms: $e\n$st');
+      debugPrint('[AudioPlayer] playQueue failed after ${elapsed}ms: $e\n$st');
       onError?.call(lastError!);
       onStatusChanged?.call(PlayerStatus.error);
       rethrow;
@@ -218,11 +253,108 @@ class AudioPlayerService {
   Future<void> resume() => _player.play();
   Future<void> seekTo(Duration position) => _player.seek(position);
 
+  /// Jump to a specific queue index (used when the user clicks a track
+  /// further down the same playlist — cheaper than reloading the
+  /// whole queue).
+  Future<void> seekToIndex(int index) async {
+    if (!_concatInstalled) return;
+    if (index < 0 || index >= _concat.length) return;
+    try {
+      await _player.seek(Duration.zero, index: index);
+      // Restore volume in case we were mid fade-out.
+      if (crossfadeMs > 0) {
+        unawaited(restoreVolumeWithFadeIn(crossfadeMs));
+      } else {
+        try { await _player.setVolume(_userVolume); } catch (_) {}
+      }
+      unawaited(_player.play());
+    } catch (e) {
+      debugPrint('[AudioPlayer] seekToIndex($index) failed: $e');
+    }
+  }
+
+  /// Skip to the next item in the queue — exposed to the notification
+  /// "next" button by just_audio_background automatically.
+  Future<void> seekToNext() async {
+    if (_player.hasNext) {
+      await _player.seekToNext();
+    }
+  }
+
+  /// Skip back: if we're more than 3s into the current track, go back
+  /// to its start instead (matches Spotify's behaviour).  Otherwise
+  /// move to the previous queue item.
+  Future<void> seekToPrevious() async {
+    if (_player.position.inSeconds > 3 || !_player.hasPrevious) {
+      await _player.seek(Duration.zero);
+      return;
+    }
+    await _player.seekToPrevious();
+  }
+
+  /// Insert [track] at [index] in the concat.  The Player provider
+  /// mirrors the same insertion into its [PlayerState.queue] list.
+  Future<void> insertInQueue(int index, Track track) async {
+    if (!_concatInstalled) return;
+    final token = await _client.getToken();
+    await _concat.insert(index, _sourceFor(track, token));
+  }
+
+  /// Append [track] to the end of the queue.
+  Future<void> appendToQueue(Track track) async {
+    if (!_concatInstalled) return;
+    final token = await _client.getToken();
+    await _concat.add(_sourceFor(track, token));
+  }
+
+  /// Remove the item at [index] from the queue.
+  Future<void> removeAtFromQueue(int index) async {
+    if (!_concatInstalled) return;
+    if (index < 0 || index >= _concat.length) return;
+    await _concat.removeAt(index);
+  }
+
+  /// Move the item at [from] to position [to] inside the queue.
+  Future<void> moveInQueue(int from, int to) async {
+    if (!_concatInstalled) return;
+    await _concat.move(from, to);
+  }
+
+  /// Replace every item past [afterIndex] with the tracks in [newTail].
+  /// Used by shuffle / clearRadioTail / reorder which can't be expressed
+  /// cleanly as a small sequence of insert/move/remove operations.
+  Future<void> replaceTailFromIndex(int afterIndex, List<Track> newTail) async {
+    if (!_concatInstalled) return;
+    // Drop everything past afterIndex in one logical pass.
+    while (_concat.length > afterIndex + 1) {
+      await _concat.removeAt(afterIndex + 1);
+    }
+    if (newTail.isEmpty) return;
+    final token = await _client.getToken();
+    final sources = newTail.map((t) => _sourceFor(t, token)).toList();
+    await _concat.addAll(sources);
+  }
+
+  /// Replace the source at [index] with one built from [track] using a
+  /// fresh JWT.  Used after the cache is invalidated ("Baixar novamente").
+  Future<void> replaceAtInQueue(int index, Track track) async {
+    if (!_concatInstalled) return;
+    if (index < 0 || index >= _concat.length) return;
+    final token = await _client.getToken();
+    final src = _sourceFor(track, token);
+    // Concat doesn't expose replaceAt; remove + insert + adjust playback.
+    final wasPlaying = _player.playing;
+    await _concat.removeAt(index);
+    await _concat.insert(index, src);
+    if (_player.currentIndex == index) {
+      try { await _player.seek(Duration.zero, index: index); } catch (_) {}
+      if (wasPlaying) unawaited(_player.play());
+    }
+  }
+
   void setVolume(double volume) {
     _userVolume = volume.clamp(0.0, 1.0);
-    // Cancel any in-flight fade — the user manually adjusted the
-    // volume, so respect that immediately.
-    _fadeGeneration++;
+    _fadeGeneration++; // cancel any in-flight fade
     _player.setVolume(_userVolume);
   }
 
@@ -253,11 +385,22 @@ class AudioPlayerService {
 
   /// Begins a fade-out on the currently playing track.  Used by the
   /// player provider when it detects the track is about to end and a
-  /// crossfade is configured.  The next [play] call replaces the
-  /// audio source — once that happens the new track does its own
-  /// fade-in (the ramp will be cancelled by the new generation).
+  /// crossfade is configured.  The next [seekToNext] resets the volume
+  /// via a fresh [_rampVolume] (the new generation cancels this one).
   Future<void> fadeOut(int durationMs) {
     return _rampVolume(_userVolume, 0.0, durationMs);
+  }
+
+  /// Resets the volume to [_userVolume] with an optional fade-in.
+  /// Called right after [seekToNext] / [seekToPrevious] so the next
+  /// track doesn't inherit the fade-out volume from the previous one.
+  Future<void> restoreVolumeWithFadeIn(int durationMs) async {
+    if (durationMs <= 0) {
+      try { await _player.setVolume(_userVolume); } catch (_) {}
+      return;
+    }
+    try { await _player.setVolume(0); } catch (_) {}
+    await _rampVolume(0.0, _userVolume, durationMs);
   }
 
   void dispose() => _player.dispose();
@@ -275,7 +418,6 @@ class AudioPlayerService {
     }
   }
 
-  /// Plain Map tag — works on every platform, no background-service hooks.
   Map<String, dynamic> _legacyTag(Track track) => {
     'id': track.id,
     'title': track.title,

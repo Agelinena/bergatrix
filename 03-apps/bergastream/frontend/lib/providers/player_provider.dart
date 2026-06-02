@@ -105,6 +105,7 @@ class Player extends _$Player {
       _publishSync();
     };
     _service.onTrackComplete = () => _handleTrackComplete();
+    _service.onCurrentIndexChanged = (idx) => _onCurrentIndexChanged(idx);
     _service.onError = (msg) {
       state = state.copyWith(status: PlayerStatus.error, lastError: msg);
     };
@@ -180,32 +181,48 @@ class Player extends _$Player {
 
     final q = queue.isEmpty ? [track] : queue;
     final idx = q.indexWhere((t) => t.id == track.id);
+    final clampedIdx = idx < 0 ? 0 : idx;
+
+    // If this is the same queue, just seek to the new index inside the
+    // existing concat — avoids tearing down the foreground service on
+    // Android.  Otherwise we hand a brand-new queue to the service.
+    final sameQueue = _queuesAreEquivalent(state.queue, q);
+
     state = state.copyWith(
       currentTrack: track,
       queue: q,
-      queueIndex: idx < 0 ? 0 : idx,
+      queueIndex: clampedIdx,
       status: PlayerStatus.loading,
       position: Duration.zero,
-      // Pre-fill duration from metadata so progress bar works in follow-file mode
       duration: track.durationMs != null && track.durationMs! > 0
           ? Duration(milliseconds: track.durationMs!)
           : Duration.zero,
       manualQueueAhead: 0,
     );
-    // Kick off background prefetch for upcoming tracks immediately
     _prefetchUpcoming();
+
     try {
-      // AudioPlayerService.play() now returns when setAudioSource is done
-      // and play() has been invoked (fire-and-forget internally). It does
-      // NOT wait for the audio to actually start producing samples —
-      // those events arrive via the player's stream listeners.
-      await _service.play(track);
+      if (sameQueue) {
+        // Same playlist, different item → in-concat seek.  Keeps the
+        // foreground service alive (Android) and is much cheaper.
+        await _service.seekToIndex(clampedIdx);
+      } else {
+        await _service.playQueue(q, clampedIdx);
+      }
     } catch (e) {
       state = state.copyWith(
         status: PlayerStatus.error,
         lastError: state.lastError ?? '$e',
       );
     }
+  }
+
+  bool _queuesAreEquivalent(List<Track> a, List<Track> b) {
+    if (a.length != b.length || a.isEmpty) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i].id != b[i].id) return false;
+    }
+    return true;
   }
 
   Future<void> pause() async {
@@ -232,14 +249,11 @@ class Player extends _$Player {
   }
 
   Future<void> next() async {
-    final nextIdx = state.queueIndex + 1;
-    if (nextIdx >= state.queue.length) return;
-    // Decrementa o contador de manuais ao avançar: se havia músicas manuais
-    // na frente, a que vai tocar agora era a primeira delas.
-    final newManual = (state.manualQueueAhead - 1).clamp(0, state.manualQueueAhead);
-    await play(state.queue[nextIdx], queue: state.queue);
-    // play() reseta manualQueueAhead para 0; re-aplica o valor decrementado.
-    state = state.copyWith(manualQueueAhead: newManual);
+    if (state.queueIndex + 1 >= state.queue.length) return;
+    // Just ask the player to advance; the onCurrentIndexChanged
+    // listener will update state.queueIndex / currentTrack /
+    // manualQueueAhead consistently.
+    await _service.seekToNext();
   }
 
   Future<void> previous() async {
@@ -247,10 +261,11 @@ class Player extends _$Player {
       await seekTo(Duration.zero);
       return;
     }
-    final prevIdx = state.queueIndex - 1;
-    if (prevIdx < 0) return;
-    await play(state.queue[prevIdx], queue: state.queue);
-    state = state.copyWith(queueIndex: prevIdx);
+    if (state.queueIndex <= 0) {
+      await seekTo(Duration.zero);
+      return;
+    }
+    await _service.seekToPrevious();
   }
 
   void setVolume(double volume) {
@@ -263,7 +278,14 @@ class Player extends _$Player {
       // Shuffle the portion of the queue that comes after the current track
       final before = state.queue.sublist(0, state.queueIndex + 1);
       final after = [...state.queue.sublist(state.queueIndex + 1)]..shuffle(Random());
-      state = state.copyWith(queue: [...before, ...after], shuffle: true);
+      final newQueue = [...before, ...after];
+      state = state.copyWith(queue: newQueue, shuffle: true);
+      // Mirror the reordering into the audio concat so skipToNext/Prev
+      // (incl. the notification buttons) follow the same sequence.
+      _service.replaceTailFromIndex(
+        state.queueIndex,
+        newQueue.sublist(state.queueIndex + 1),
+      );
     } else {
       state = state.copyWith(shuffle: false);
     }
@@ -277,6 +299,9 @@ class Player extends _$Player {
   /// Adiciona ao FINAL da fila — usado pelo rádio para preservar a ordem das sugestões.
   void addToQueue(Track track) {
     state = state.copyWith(queue: [...state.queue, track]);
+    // Mirror into the audio concat so the notification's "next" button
+    // can reach this track without re-loading the queue.
+    _service.appendToQueue(track);
     // Prefetch is NOT triggered here — the radio provider calls prefetchTracks()
     // in bulk after all tracks are added. Calling it per-add caused 20 redundant
     // prefetch requests for every radio activation.
@@ -295,6 +320,8 @@ class Player extends _$Player {
         (state.queueIndex + 1 + state.manualQueueAhead).clamp(0, state.queue.length);
     if (keepUntil >= state.queue.length) return; // nada a remover
     state = state.copyWith(queue: state.queue.sublist(0, keepUntil));
+    // Mirror in the audio concat: drop everything past keepUntil-1.
+    _service.replaceTailFromIndex(keepUntil - 1, const []);
   }
 
   /// Insere a faixa logo após o bloco de músicas já adicionadas manualmente,
@@ -318,6 +345,9 @@ class Player extends _$Player {
       queue: newQueue,
       manualQueueAhead: state.manualQueueAhead + 1,
     );
+    // Mirror into audio concat at the same index so seekToNext picks
+    // it up without us having to reload the queue.
+    _service.insertInQueue(insertAt, track);
     // Fire-and-forget prefetch — passa o Track completo para auto-registro
     // no backend caso a faixa ainda não esteja no DB.
     try {
@@ -347,6 +377,9 @@ class Player extends _$Player {
             ? (state.manualQueueAhead - 1).clamp(0, state.manualQueueAhead)
             : state.manualQueueAhead;
         state = state.copyWith(queue: newQueue, manualQueueAhead: newManual);
+        // Mirror in the audio concat — same index because the
+        // service and the provider keep parallel lists.
+        _service.removeAtFromQueue(i);
         return true;
       }
     }
@@ -367,6 +400,7 @@ class Player extends _$Player {
     final item = queue.removeAt(from);
     queue.insert(to, item);
     state = state.copyWith(queue: queue);
+    _service.moveInQueue(from, to);
   }
 
   /// Prefetches the next [_prefetchAhead] tracks from the current queue position
@@ -389,6 +423,10 @@ class Player extends _$Player {
     } catch (_) {}
   }
 
+  /// Fires only when the ConcatenatingAudioSource is fully exhausted
+  /// (no more "next" inside the concat) — so this is effectively the
+  /// "last track of the queue finished" hook.  Mid-queue transitions
+  /// are handled by [_onCurrentIndexChanged] instead.
   void _handleTrackComplete() {
     if (state.currentTrack != null) {
       _recordPlay(state.currentTrack!, state.duration, completed: true);
@@ -398,11 +436,49 @@ class Player extends _$Player {
       _service.resume();
       return;
     }
-    // If we already advanced through a scheduled crossfade, the
-    // next track is loading (or already playing).  Skip the
-    // duplicate next() — it would re-enter the queue index.
-    if (_crossfadeInFlight) return;
-    next();
+    // No more tracks — playback stops naturally.  The queue panel can
+    // still show what was last on, just paused at the end.
+  }
+
+  /// Called by the audio service whenever the underlying player moves
+  /// to a different item in the concat — either via seekToNext/Prev
+  /// (manual buttons, notification controls, crossfade advance) or
+  /// because the previous track ended and ExoPlayer auto-advanced.
+  /// We mirror the change into [PlayerState] so the UI stays in sync.
+  void _onCurrentIndexChanged(int newIdx) {
+    if (newIdx < 0 || newIdx >= state.queue.length) return;
+    if (newIdx == state.queueIndex) return;
+    final advanced = newIdx - state.queueIndex;
+    // Record play for the track we're leaving (if we moved forward).
+    if (advanced > 0 && state.currentTrack != null) {
+      _recordPlay(state.currentTrack!, state.duration, completed: true);
+    }
+    final newTrack = state.queue[newIdx];
+    // Decrement the manual-queue counter by how many manual slots we
+    // crossed.  If we jumped past everything manual, clamp to 0.
+    int newManual = state.manualQueueAhead;
+    if (advanced > 0) {
+      newManual = (state.manualQueueAhead - advanced)
+          .clamp(0, state.manualQueueAhead);
+    }
+    _crossfadeAdvanceTimer?.cancel();
+    _crossfadeAdvanceTimer = null;
+    _crossfadeInFlight = false;
+    state = state.copyWith(
+      queueIndex: newIdx,
+      currentTrack: newTrack,
+      position: Duration.zero,
+      duration: (newTrack.durationMs != null && newTrack.durationMs! > 0)
+          ? Duration(milliseconds: newTrack.durationMs!)
+          : Duration.zero,
+      manualQueueAhead: newManual,
+    );
+    _prefetchUpcoming();
+    // If we were in the middle of a fade-out, restore the volume on
+    // the new item so it doesn't start silent.
+    if (_service.crossfadeMs > 0) {
+      _service.restoreVolumeWithFadeIn(_service.crossfadeMs);
+    }
   }
 
   /// Called on every position update.  When crossfade is enabled,
@@ -442,19 +518,13 @@ class Player extends _$Player {
   }
 
   Future<void> _advanceForCrossfade() async {
-    if (state.currentTrack != null) {
-      _recordPlay(state.currentTrack!, state.duration, completed: true);
-    }
-    final nextIdx = state.queueIndex + 1;
-    if (nextIdx >= state.queue.length) {
+    if (state.queueIndex + 1 >= state.queue.length) {
       _crossfadeInFlight = false;
       return;
     }
-    final newManual =
-        (state.manualQueueAhead - 1).clamp(0, state.manualQueueAhead);
-    // play() will reset _crossfadeInFlight at the top.
-    await play(state.queue[nextIdx], queue: state.queue);
-    state = state.copyWith(manualQueueAhead: newManual);
+    // Just advance — the listener will record play, update state and
+    // ramp the new volume back up.
+    await _service.seekToNext();
   }
 
   void _recordPlay(Track track, Duration position, {bool completed = false}) {
