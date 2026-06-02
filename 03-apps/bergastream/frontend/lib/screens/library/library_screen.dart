@@ -91,7 +91,7 @@ class _LikedSongsCard extends ConsumerWidget {
       ),
       title: const Text('Músicas curtidas', style: TextStyle(fontWeight: FontWeight.w600)),
       subtitle: const Text('Playlist', style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
-      onTap: () => context.go('/library/likes'),
+      onTap: () => context.push('/library/likes'),
     );
   }
 }
@@ -131,7 +131,7 @@ class _PlaylistTile extends ConsumerWidget {
           _PlaylistOfflineBadge(playlistId: playlist.id),
         ],
       ),
-      onTap: () => context.go('/playlist/${playlist.id}'),
+      onTap: () => context.push('/playlist/${playlist.id}'),
     );
 
     // Collaborative playlists can't be deleted by the collaborator — disable swipe.

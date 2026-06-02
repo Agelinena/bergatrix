@@ -44,34 +44,60 @@ class _MobileLayoutState extends ConsumerState<_MobileLayout> {
   Widget build(BuildContext context) {
     final hasTrack = ref.watch(playerProvider).hasTrack;
     final location = GoRouterState.of(context).matchedLocation;
+    final isHome = location == '/';
     final idx = _routes.indexOf(location).clamp(0, _routes.length - 1);
 
-    return Scaffold(
-      body: Column(
-        children: [
-          const OfflineBanner(),
-          Expanded(child: widget.child),
-          const OfflineDownloadBanner(),
-          if (hasTrack) const MiniPlayer(),
-        ],
-      ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: idx,
-        backgroundColor: AppColors.surface,
-        indicatorColor: AppColors.surfaceVariant,
-        onDestinationSelected: (i) {
-          context.go(_routes[i]);
-        },
-        destinations: const [
-          NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home), label: 'Início'),
-          NavigationDestination(icon: Icon(Icons.search), label: 'Busca'),
-          NavigationDestination(icon: Icon(Icons.library_music_outlined), selectedIcon: Icon(Icons.library_music), label: 'Biblioteca'),
-          NavigationDestination(icon: Icon(Icons.settings_outlined), selectedIcon: Icon(Icons.settings), label: 'Config.'),
-        ],
+    // Android back-button behaviour, Spotify-style:
+    //   - sub-route pushed on top (e.g. /playlist/abc)  → pop the route
+    //   - tab other than "/"                            → go to "/"
+    //   - already on "/"                                → let Android
+    //                                                     send the app
+    //                                                     to background.
+    //
+    // canPop=true tells the framework "the OS may handle this pop";
+    // we only allow that when we're on / with nothing stacked.  In
+    // every other case onPopInvokedWithResult intercepts and we
+    // navigate ourselves.
+    final router = GoRouter.of(context);
+    final canRouterPop = router.canPop();
+    return PopScope(
+      canPop: isHome && !canRouterPop,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        if (canRouterPop) {
+          router.pop();
+        } else if (!isHome) {
+          context.go('/');
+        }
+      },
+      child: Scaffold(
+        body: Column(
+          children: [
+            const OfflineBanner(),
+            Expanded(child: widget.child),
+            const OfflineDownloadBanner(),
+            if (hasTrack) const MiniPlayer(),
+          ],
+        ),
+        bottomNavigationBar: NavigationBar(
+          selectedIndex: idx,
+          backgroundColor: AppColors.surface,
+          indicatorColor: AppColors.surfaceVariant,
+          onDestinationSelected: (i) {
+            context.go(_routes[i]);
+          },
+          destinations: const [
+            NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home), label: 'Início'),
+            NavigationDestination(icon: Icon(Icons.search), label: 'Busca'),
+            NavigationDestination(icon: Icon(Icons.library_music_outlined), selectedIcon: Icon(Icons.library_music), label: 'Biblioteca'),
+            NavigationDestination(icon: Icon(Icons.settings_outlined), selectedIcon: Icon(Icons.settings), label: 'Config.'),
+          ],
+        ),
       ),
     );
   }
 }
+
 
 // ── Desktop ────────────────────────────────────────────────────────────────
 

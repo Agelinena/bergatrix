@@ -140,6 +140,10 @@ class TrackCard extends ConsumerWidget {
     showModalBottomSheet(
       context: context,
       backgroundColor: AppColors.surfaceVariant,
+      // isScrollControlled lets the sheet grow past half-screen so
+      // the full menu (including the lower "Baixar novamente" item)
+      // stays visible on short Android phones.
+      isScrollControlled: true,
       builder: (_) => TrackMenuSheet(
         track: track,
         playlistId: playlistId,
@@ -172,11 +176,16 @@ class TrackMenuSheet extends ConsumerWidget {
     final isLiked = ref.watch(likedProvider.select((s) => s.contains(track.id)));
 
     return SafeArea(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // ── Cabeçalho ────────────────────────────────────────────────────
-          ListTile(
+      // SingleChildScrollView guarantees that even on short phones the
+      // last items (notably "Baixar novamente" and "Adicionar a playlist")
+      // stay reachable.  Without it, showModalBottomSheet caps the
+      // sheet at half-screen and the lower options got clipped.
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // ── Cabeçalho ────────────────────────────────────────────────────
+            ListTile(
             leading: track.coverUrl != null
                 ? ClipRRect(
                     borderRadius: BorderRadius.circular(4),
@@ -312,7 +321,8 @@ class TrackMenuSheet extends ConsumerWidget {
               }
             },
           ),
-        ],
+          ],
+        ),
       ),
     );
   }

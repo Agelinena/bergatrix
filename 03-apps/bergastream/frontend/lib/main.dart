@@ -46,7 +46,12 @@ void main() async {
         androidNotificationChannelId: 'xyz.bergaestudio.bergastream.audio',
         androidNotificationChannelName: 'BergaStream',
         androidNotificationOngoing: true,
-        androidStopForegroundOnPause: true,
+        // IMPORTANT: must stay false so the foreground service survives
+        // brief "paused" gaps that happen during track transitions
+        // (ProcessingState.completed → setAudioSource(next)).  When
+        // true, Android sometimes killed the service between tracks
+        // and playback would stop dead at the end of the first song.
+        androidStopForegroundOnPause: false,
       );
       debugPrint('[main] JustAudioBackground initialised OK');
     } catch (e, st) {

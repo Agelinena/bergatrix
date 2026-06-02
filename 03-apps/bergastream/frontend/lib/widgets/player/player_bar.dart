@@ -174,6 +174,7 @@ class _DesktopRow extends ConsumerWidget {
                 onPressed: () => showModalBottomSheet(
                   context: context,
                   backgroundColor: AppColors.surfaceVariant,
+                  isScrollControlled: true,
                   builder: (_) => TrackMenuSheet(track: track),
                 ),
               ),
