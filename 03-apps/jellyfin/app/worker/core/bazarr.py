@@ -97,7 +97,43 @@ def _find_episode(filepath: str) -> dict | None:
 
 def _trigger(media_type: str, media_id: int) -> bool:
     try:
-        with httpx.Client(timeout=30) as c:
+        with httpx.Client(timeout=60) as c:
+            # Para forçar download, em vez de disparar a rotina automática (que descarta legendas com score baixo),
+            # nós vamos buscar todas as legendas disponíveis e forçar o download da primeira com a linguagem correta.
+            search_endpoint = f"{BAZARR_URL}/api/movies/{media_id}/subtitles" if media_type == "movie" else f"{BAZARR_URL}/api/episodes/{media_id}/subtitles"
+            
+            try:
+                # 1. Faz busca manual
+                logger.info(f"Fazendo busca manual profunda no Bazarr para {media_type} ID={media_id}")
+                resp = c.get(search_endpoint, headers=_headers(), params={"language": LANGUAGE})
+                
+                if resp.status_code == 200:
+                    subs = resp.json().get("data", [])
+                    if subs:
+                        # Pega a melhor opção retornada e manda baixar explicitamente
+                        best_sub = subs[0]
+                        logger.info(f"Legenda manual encontrada no Bazarr: Score={best_sub.get('score')} Provider={best_sub.get('provider')}")
+                        
+                        # A rota de download manual costuma ser um GET com query param, ou POST no mesmo path do provider
+                        # No Bazarr, geralmente se envia as infos da legenda na URL ou corpo
+                        # Uma rota comum de download explícito na API v1:
+                        download_payload = {
+                            "action": "download",
+                            "name": best_sub.get('name', ''),
+                            "provider": best_sub.get('provider', '')
+                        }
+                        
+                        dl_resp = c.post(
+                            f"{BAZARR_URL}/api/subtitles",
+                            headers=_headers(),
+                            json=download_payload
+                        )
+                        logger.info("Download manual acionado via API")
+                        return True
+            except Exception as e:
+                logger.warning(f"Tentativa de busca profunda manual falhou, fallback para rotina automática: {e}")
+
+            # Fallback: comando automático padrão
             if media_type == "movie":
                 payload = {"name": "MoviesSearch", "movieid": [media_id]}
             else:
@@ -109,7 +145,7 @@ def _trigger(media_type: str, media_id: int) -> bool:
                 json=payload
             )
             r.raise_for_status()
-        logger.info(f"Bazarr: comando de busca enviado ({media_type} id={media_id})")
+        logger.info(f"Bazarr: comando de busca automática enviado ({media_type} id={media_id})")
         return True
     except Exception as e:
         logger.warning(f"Bazarr: falha ao acionar comando de busca — {e}")

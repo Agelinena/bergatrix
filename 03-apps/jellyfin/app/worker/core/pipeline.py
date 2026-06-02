@@ -231,10 +231,27 @@ class Pipeline:
         # --- Verificação de legenda existente ---
         if not force:
             if self._has_portuguese_subtitle(filepath, media_info):
-                self.stats.record(filepath, "skipped", model=model_used)
+                self.stats.record(filepath, "skipped_internal", model=model_used)
                 return
             if self._has_external_subtitle(filepath):
-                self.stats.record(filepath, "skipped", model=model_used)
+                # O usuário quer que o ALASS rode mesmo em legendas que já existem
+                logger.info("Legenda externa já existe. Tentando refinar a sincronia com ALASS...")
+                
+                # Tenta achar qual é o arquivo real da legenda externa PT-BR
+                base_path = os.path.splitext(filepath)[0]
+                existing_srt = next((base_path + sfx for sfx in SUBTITLE_SUFFIXES if os.path.exists(base_path + sfx)), None)
+                
+                if existing_srt:
+                    # Sincroniza com ALASS
+                    synced = self._sync_with_alass(filepath, existing_srt, streams)
+                    if synced:
+                        logger.info(f"✅ Legenda existente refinada perfeitamente via ALASS: {fname}")
+                        self.stats.record(filepath, "success_alass_refine", model="alass")
+                    else:
+                        logger.warning("ALASS não conseguiu refinar a legenda existente.")
+                        self.stats.record(filepath, "skipped_external", model=model_used)
+                else:
+                    self.stats.record(filepath, "skipped_external", model=model_used)
                 return
 
         # --- Etapa 1: Bazarr ---
