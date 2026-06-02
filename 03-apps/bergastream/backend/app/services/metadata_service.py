@@ -14,6 +14,7 @@ import asyncio
 import hashlib
 import json
 import logging
+import re
 import httpx
 from app.config import get_settings
 from app.schemas.track import TrackSchema, ArtistSchema, AlbumSchema, SearchResponse
@@ -22,6 +23,44 @@ settings = get_settings()
 logger = logging.getLogger(__name__)
 
 DEEZER_API = "https://api.deezer.com"
+
+# ---------------------------------------------------------------------------
+# Shared title-similarity helpers (mirror of downloader_service._title_match_score)
+# ---------------------------------------------------------------------------
+
+_STOP_WORDS = {"the", "a", "an", "and", "or", "of", "in", "feat", "ft", "with"}
+
+
+def _content_words(text: str) -> set[str]:
+    words = re.sub(r"[^\w\s]", " ", text.lower()).split()
+    return {w for w in words if w not in _STOP_WORDS and len(w) > 1}
+
+
+def _title_match_score(candidate_title: str, track_title: str, artist: str) -> float:
+    """
+    Returns 0.0–1.0 measuring how well a Deezer result title matches the
+    expected track title + artist.  Same weighting as the YouTube equivalent
+    in downloader_service so the two sources are scored consistently.
+    Title words contribute 70 %, artist presence 30 %.
+    """
+    ct_words = _content_words(candidate_title)
+    tt_words = _content_words(track_title)
+
+    title_score = len(tt_words & ct_words) / len(tt_words) if tt_words else 0.5
+
+    artist_score = 0.0
+    if artist:
+        for part in re.split(r"[,&/]", artist):
+            part_words = _content_words(part)
+            if not part_words:
+                continue
+            if part_words <= ct_words:
+                artist_score = 1.0
+                break
+            elif part_words & ct_words:
+                artist_score = max(artist_score, 0.5)
+
+    return round(title_score * 0.7 + artist_score * 0.3, 3)
 
 # search_deezer_tracks results cached in Redis (24 h TTL).
 _DEEZER_SEARCH_TTL = 24 * 3600
@@ -259,37 +298,70 @@ async def get_artist_for_spotify_id(spotify_id: str) -> tuple[ArtistSchema | Non
         return None, [], []
 
 
+_TITLE_THRESHOLD = 0.4  # minimum _title_match_score to accept a Deezer result
+
+
 async def find_deezer_track_id(title: str, artist: str, duration_ms: int | None = None) -> str | None:
     """
     Searches Deezer for title+artist and returns the best-matching track ID.
-    If duration_ms is provided, picks the closest-duration result within tolerance
-    (±5% or ±10 s, whichever is larger).
-    Returns None if no suitable match is found.
+
+    Scoring mirrors find_youtube_candidate in downloader_service — both
+    title similarity AND duration must agree to accept a result.  The old
+    implementation only checked duration, which caused wrong tracks to be
+    downloaded when multiple songs had similar lengths (e.g. live versions,
+    remixes, or different songs that happen to be ~3 min).
+
+    Priority buckets (same as YouTube matching):
+      1. title ✓  AND  duration ✓  →  best combined score
+      2. title ✓  AND  duration ✗  →  acceptable (different version)
+      3. Returns None if nothing passes the title threshold.
     """
     query = f"{artist} {title}".strip()
     if not query:
         return None
-    async with httpx.AsyncClient(timeout=10) as client:
+    client = get_shared_client()
+    try:
         resp = await client.get(f"{DEEZER_API}/search", params={"q": query, "limit": 20})
+    except Exception:
+        async with httpx.AsyncClient(timeout=10) as fallback:
+            resp = await fallback.get(f"{DEEZER_API}/search", params={"q": query, "limit": 20})
     if resp.status_code != 200:
         return None
     results = resp.json().get("data", [])
     if not results:
         return None
-    if not duration_ms or duration_ms <= 0:
-        return str(results[0]["id"])
-    tolerance = max(10_000, duration_ms * 0.05)  # ±5% or ±10 s floor
-    best_id: str | None = None
-    best_diff = float("inf")
+
+    tolerance = max(10_000, (duration_ms or 0) * 0.05)  # ±5% or ±10 s floor
+
+    # Score every candidate
+    scored: list[tuple[float, bool, int, dict]] = []
     for t in results:
+        t_score = _title_match_score(
+            f"{t.get('title', '')} {t.get('artist', {}).get('name', '')}",
+            title,
+            artist,
+        )
         track_ms = t.get("duration", 0) * 1000
-        if track_ms <= 0:
-            continue
-        diff = abs(track_ms - duration_ms)
-        if diff <= tolerance and diff < best_diff:
-            best_id = str(t["id"])
-            best_diff = diff
-    return best_id
+        dur_ok = (abs(track_ms - duration_ms) <= tolerance) if (duration_ms and duration_ms > 0 and track_ms > 0) else True
+        dur_diff = int(abs(track_ms - (duration_ms or 0)))
+        scored.append((t_score, dur_ok, dur_diff, t))
+
+    # Bucket 1: title ✓ + duration ✓
+    perfect = [(s, d, t) for s, ok, d, t in scored if s >= _TITLE_THRESHOLD and ok]
+    if perfect:
+        best = max(perfect, key=lambda x: (x[0], -x[1]))
+        logger.debug(f"[deezer] candidate (title+dur score={best[0]:.2f} Δ{best[1]}ms): {best[2].get('id')}")
+        return str(best[2]["id"])
+
+    # Bucket 2: title ✓ + duration ✗ (different version/edit)
+    title_only = [(s, d, t) for s, ok, d, t in scored if s >= _TITLE_THRESHOLD and not ok]
+    if title_only:
+        best = max(title_only, key=lambda x: x[0])
+        logger.debug(f"[deezer] candidate (title only score={best[0]:.2f}): {best[2].get('id')}")
+        return str(best[2]["id"])
+
+    logger.debug(f"[deezer] no candidate passed title threshold for '{title}' by '{artist}'")
+    return None
 
 
 async def get_deezer_radio(deezer_id: str, limit: int = 10) -> list[TrackSchema]:
@@ -564,8 +636,7 @@ async def search_all(query: str, limit: int = 20) -> SearchResponse:
 
 # ── URL resolution ─────────────────────────────────────────────────────────────
 
-import re as _re
-
+_re = re  # alias kept for backward-compat with code below that uses _re
 
 def _parse_track_url(url: str) -> tuple[str, str] | None:
     """Returns (platform, id) from a track URL, or None if not recognised.
