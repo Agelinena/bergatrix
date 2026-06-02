@@ -10,6 +10,7 @@ import '../../screens/player/full_player_screen.dart';
 import '../../models/track.dart';
 import '../cards/track_card.dart';
 import '../cast_button.dart';
+import '../swipe_track_actions.dart';
 
 class PlayerBar extends ConsumerWidget {
   const PlayerBar({super.key});
@@ -445,7 +446,7 @@ class _QueueSheet extends ConsumerWidget {
               itemBuilder: (_, i) {
                 final t = queue[i];
                 final isCurrent = i == currentIndex;
-                return ListTile(
+                final tile = ListTile(
                   leading: ClipRRect(
                     borderRadius: BorderRadius.circular(4),
                     child: CachedNetworkImage(
@@ -475,6 +476,15 @@ class _QueueSheet extends ConsumerWidget {
                           Navigator.pop(context);
                           ref.read(playerProvider.notifier).play(t, queue: queue);
                         },
+                );
+                // Don't allow swipe-enqueue on the currently playing
+                // track — re-adding "this" is nonsensical.
+                if (isCurrent) return tile;
+                return SwipeTrackActions(
+                  track: t,
+                  enableEnqueue: true,
+                  keySuffix: 'queuesheet_$i',
+                  child: tile,
                 );
               },
             ),

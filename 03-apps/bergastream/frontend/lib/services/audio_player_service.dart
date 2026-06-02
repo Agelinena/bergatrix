@@ -36,6 +36,22 @@ class AudioPlayerService {
   /// Last error captured from the player, exposed so the UI can show it.
   String? lastError;
 
+  /// Crossfade duration in milliseconds.  When > 0, [play] ramps volume
+  /// from 0 → [userVolume] over [crossfadeMs] (fade-in) and [fadeOut]
+  /// ramps volume from current → 0 over [crossfadeMs].  The player
+  /// provider calls [fadeOut] near the end of a track and schedules
+  /// the next [play] so the two ramps overlap perceptually.
+  int crossfadeMs = 0;
+
+  /// The "real" target volume set by the user via [setVolume].  We track
+  /// it separately because fade ramps temporarily move the playing
+  /// player's volume below the user-chosen target.
+  double _userVolume = 1.0;
+
+  /// Active fade-ramp tick — cancelled when a new fade starts or [stop]
+  /// is invoked, so concurrent fades don't fight each other.
+  int _fadeGeneration = 0;
+
   void Function(Duration)? onPositionChanged;
   void Function(Duration)? onDurationChanged;
   void Function(PlayerStatus)? onStatusChanged;
@@ -149,6 +165,16 @@ class AudioPlayerService {
       debugPrint('[AudioPlayer] +${DateTime.now().difference(t0).inMilliseconds}ms '
           'setAudioSource ok');
 
+      // Fade-in: if crossfade is enabled, start at volume 0 and ramp up
+      // to the user-chosen target over crossfadeMs.  Otherwise jump
+      // straight to userVolume (no-op if already there).
+      if (crossfadeMs > 0) {
+        try { await _player.setVolume(0); } catch (_) {}
+        unawaited(_rampVolume(0.0, _userVolume, crossfadeMs));
+      } else {
+        try { await _player.setVolume(_userVolume); } catch (_) {}
+      }
+
       // IMPORTANT: do NOT await _player.play().
       // just_audio's Future<void> play() only completes when playback
       // ENDS (track finished, paused, or stopped) — not when it starts.
@@ -191,7 +217,48 @@ class AudioPlayerService {
   Future<void> pause() => _player.pause();
   Future<void> resume() => _player.play();
   Future<void> seekTo(Duration position) => _player.seek(position);
-  void setVolume(double volume) => _player.setVolume(volume);
+
+  void setVolume(double volume) {
+    _userVolume = volume.clamp(0.0, 1.0);
+    // Cancel any in-flight fade — the user manually adjusted the
+    // volume, so respect that immediately.
+    _fadeGeneration++;
+    _player.setVolume(_userVolume);
+  }
+
+  /// Ramps the player volume from [from] to [to] in [durationMs].
+  /// Cancels itself if another fade starts in the meantime.
+  Future<void> _rampVolume(double from, double to, int durationMs) async {
+    if (durationMs <= 0) {
+      try { await _player.setVolume(to); } catch (_) {}
+      return;
+    }
+    final gen = ++_fadeGeneration;
+    const stepMs = 50;
+    final steps = (durationMs / stepMs).round().clamp(1, 300);
+    final delta = (to - from) / steps;
+    var current = from;
+    for (var i = 0; i < steps; i++) {
+      if (gen != _fadeGeneration) return; // superseded
+      current += delta;
+      try {
+        await _player.setVolume(current.clamp(0.0, 1.0));
+      } catch (_) {}
+      await Future.delayed(const Duration(milliseconds: stepMs));
+    }
+    if (gen == _fadeGeneration) {
+      try { await _player.setVolume(to); } catch (_) {}
+    }
+  }
+
+  /// Begins a fade-out on the currently playing track.  Used by the
+  /// player provider when it detects the track is about to end and a
+  /// crossfade is configured.  The next [play] call replaces the
+  /// audio source — once that happens the new track does its own
+  /// fade-in (the ramp will be cancelled by the new generation).
+  Future<void> fadeOut(int durationMs) {
+    return _rampVolume(_userVolume, 0.0, durationMs);
+  }
 
   void dispose() => _player.dispose();
 

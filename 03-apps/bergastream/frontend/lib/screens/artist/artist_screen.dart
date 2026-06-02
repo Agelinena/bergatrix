@@ -229,7 +229,12 @@ class _TopAndAlbumsTab extends StatelessWidget {
           ),
           SliverList(
             delegate: SliverChildBuilderDelegate(
-              (_, i) => TrackCard(track: topTracks[i], queue: topTracks),
+              (_, i) => TrackCard(
+                track: topTracks[i],
+                queue: topTracks,
+                enableSwipeEnqueue: true,
+                swipeKeySuffix: 'artist_top',
+              ),
               childCount: topTracks.length,
             ),
           ),
@@ -388,7 +393,12 @@ class _AllTracksTabState extends State<_AllTracksTab> {
         else
           SliverList(
             delegate: SliverChildBuilderDelegate(
-              (_, i) => TrackCard(track: filtered[i], queue: filtered),
+              (_, i) => TrackCard(
+                track: filtered[i],
+                queue: filtered,
+                enableSwipeEnqueue: true,
+                swipeKeySuffix: 'artist_all',
+              ),
               childCount: filtered.length,
             ),
           ),

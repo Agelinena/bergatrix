@@ -8,6 +8,7 @@ import '../../models/track.dart';
 import '../../models/user.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/library_provider.dart';
+import '../../providers/playback_settings_provider.dart';
 import '../../services/offline_service.dart';
 import 'logs_screen.dart';
 
@@ -197,6 +198,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             value: _radioSource,
             onChanged: _setRadioSource,
           ),
+          const SizedBox(height: 24),
+
+          // ── Reprodução ─────────────────────────────────────────────────
+          _SectionHeader('Reprodução'),
+          const _CrossfadeTile(),
           const SizedBox(height: 24),
 
           // ── Segurança ──────────────────────────────────────────────────
@@ -492,6 +498,67 @@ class _OfflineStorageTileState extends State<_OfflineStorageTile> {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _CrossfadeTile extends ConsumerWidget {
+  const _CrossfadeTile();
+
+  String _format(int ms) {
+    if (ms <= 0) return 'Desligado';
+    if (ms < 1000) return '${ms}ms';
+    final seconds = ms / 1000.0;
+    if (seconds == seconds.roundToDouble()) return '${seconds.toInt()}s';
+    return '${seconds.toStringAsFixed(1)}s';
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final settings = ref.watch(playbackSettingsProvider);
+    final notifier = ref.read(playbackSettingsProvider.notifier);
+    final value = settings.crossfadeMs;
+    final maxMs = PlaybackSettingsNotifier.maxCrossfadeMs;
+    return Card(
+      margin: const EdgeInsets.symmetric(vertical: 4),
+      color: AppColors.surfaceVariant,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.graphic_eq, color: AppColors.primary),
+                const SizedBox(width: 12),
+                const Expanded(
+                  child: Text('Crossfade',
+                      style: TextStyle(fontWeight: FontWeight.w600)),
+                ),
+                Text(
+                  _format(value),
+                  style: const TextStyle(
+                      color: AppColors.primary, fontWeight: FontWeight.w600),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              'Mistura o final de uma música com o começo da próxima.',
+              style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
+            ),
+            Slider(
+              min: 0,
+              max: maxMs.toDouble(),
+              divisions: maxMs ~/ 500,
+              value: value.toDouble().clamp(0.0, maxMs.toDouble()),
+              activeColor: AppColors.primary,
+              label: _format(value),
+              onChanged: (v) => notifier.setCrossfadeMs(v.round()),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

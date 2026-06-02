@@ -90,7 +90,11 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                                 style: const TextStyle(color: AppColors.textSecondary, fontWeight: FontWeight.w600, fontSize: 13),
                               ),
                             ),
-                          TrackCard(track: track),
+                          TrackCard(
+                            track: track,
+                            enableSwipeEnqueue: true,
+                            swipeKeySuffix: 'history',
+                          ),
                         ],
                       );
                     },

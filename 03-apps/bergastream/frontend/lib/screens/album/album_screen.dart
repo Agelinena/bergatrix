@@ -154,7 +154,12 @@ class _AlbumScreenState extends ConsumerState<AlbumScreen> {
           ),
           SliverList(
             delegate: SliverChildBuilderDelegate(
-              (_, i) => TrackCard(track: _tracks[i], queue: _tracks),
+              (_, i) => TrackCard(
+                track: _tracks[i],
+                queue: _tracks,
+                enableSwipeEnqueue: true,
+                swipeKeySuffix: 'album',
+              ),
               childCount: _tracks.length,
             ),
           ),

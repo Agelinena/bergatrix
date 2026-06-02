@@ -11,8 +11,8 @@ import '../../providers/radio_queue_provider.dart';
 import '../../providers/library_provider.dart';
 import '../../providers/liked_provider.dart';
 import '../../core/api_client.dart';
-import '../../core/error_messages.dart';
 import '../../screens/radio/radio_screen.dart';
+import '../swipe_track_actions.dart';
 
 class TrackCard extends ConsumerWidget {
   final Track track;
@@ -26,6 +26,19 @@ class TrackCard extends ConsumerWidget {
   /// onde o esperado é começar uma rádio quando o usuário escolhe uma faixa.
   final bool activateRadioOnPlay;
 
+  /// Swipe-right (mobile) → "Adicionar à fila" via [Player.insertNextInQueue].
+  final bool enableSwipeEnqueue;
+
+  /// Swipe-left (mobile) → "Tirar da fila" via [Player.removeFromQueueById].
+  /// Só faz sentido em contextos onde o usuário pode ver vários candidatos
+  /// para a fila (ex.: busca).  Off por padrão.
+  final bool enableSwipeDequeue;
+
+  /// Disambiguates the Dismissible key when the same track appears in
+  /// multiple lists side by side (e.g. search results + radio).  Use
+  /// the screen name as a stable suffix.
+  final String? swipeKeySuffix;
+
   const TrackCard({
     super.key,
     required this.track,
@@ -35,6 +48,9 @@ class TrackCard extends ConsumerWidget {
     this.onRemoved,
     this.showRadioOption = true,
     this.activateRadioOnPlay = false,
+    this.enableSwipeEnqueue = false,
+    this.enableSwipeDequeue = false,
+    this.swipeKeySuffix,
   });
 
   @override
@@ -42,7 +58,7 @@ class TrackCard extends ConsumerWidget {
     final player = ref.watch(playerProvider);
     final isCurrentTrack = player.currentTrack?.id == track.id;
 
-    return ListTile(
+    final tile = ListTile(
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       leading: ClipRRect(
         borderRadius: BorderRadius.circular(4),
@@ -87,6 +103,15 @@ class TrackCard extends ConsumerWidget {
         ],
       ),
       onTap: onTap ?? () => _playTrack(ref),
+    );
+
+    if (!enableSwipeEnqueue && !enableSwipeDequeue) return tile;
+    return SwipeTrackActions(
+      track: track,
+      enableEnqueue: enableSwipeEnqueue,
+      enableDequeue: enableSwipeDequeue,
+      keySuffix: swipeKeySuffix,
+      child: tile,
     );
   }
 

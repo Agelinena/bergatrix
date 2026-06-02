@@ -9,6 +9,7 @@ import '../../providers/player_provider.dart';
 import '../../providers/sync_provider.dart';
 import '../../widgets/cast_button.dart';
 import '../../widgets/device_picker_sheet.dart';
+import '../../widgets/swipe_track_actions.dart';
 
 /// Full-screen now-playing view modelled after Spotify mobile.
 ///
@@ -451,26 +452,33 @@ class _QueueRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ListTile(
-      contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
-      leading: ClipRRect(
-        borderRadius: BorderRadius.circular(4),
-        child: CachedNetworkImage(
-          imageUrl: track.coverUrl ?? '',
-          width: 44, height: 44, fit: BoxFit.cover,
-          errorWidget: (_, __, ___) => Container(
-            width: 44, height: 44, color: AppColors.surfaceVariant,
-            child: const Icon(Icons.music_note, size: 20),
+    return SwipeTrackActions(
+      track: track,
+      // Mobile-only.  Swipe-right re-enqueues (clones) the track so
+      // the user can repeat a song without leaving the queue sheet.
+      enableEnqueue: true,
+      keySuffix: 'queue',
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+        leading: ClipRRect(
+          borderRadius: BorderRadius.circular(4),
+          child: CachedNetworkImage(
+            imageUrl: track.coverUrl ?? '',
+            width: 44, height: 44, fit: BoxFit.cover,
+            errorWidget: (_, __, ___) => Container(
+              width: 44, height: 44, color: AppColors.surfaceVariant,
+              child: const Icon(Icons.music_note, size: 20),
+            ),
           ),
         ),
+        title: Text(track.title, maxLines: 1, overflow: TextOverflow.ellipsis),
+        subtitle: Text(track.artist,
+          style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+          maxLines: 1, overflow: TextOverflow.ellipsis,
+        ),
+        trailing: const Icon(Icons.drag_handle, color: AppColors.textSecondary),
+        onTap: onTap,
       ),
-      title: Text(track.title, maxLines: 1, overflow: TextOverflow.ellipsis),
-      subtitle: Text(track.artist,
-        style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
-        maxLines: 1, overflow: TextOverflow.ellipsis,
-      ),
-      trailing: const Icon(Icons.drag_handle, color: AppColors.textSecondary),
-      onTap: onTap,
     );
   }
 }
