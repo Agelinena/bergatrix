@@ -92,6 +92,8 @@ def _find_episode(filepath: str) -> dict | None:
 def _trigger(media_type: str, media_id: int) -> bool:
     try:
         with httpx.Client(timeout=30) as c:
+            # Ao acionar, forçamos a busca ignorando o "score" padrão do release
+            # O Bazarr usa a rota de manual/wanted com certos thresholds
             r = c.post(
                 f"{BAZARR_URL}/api/subtitles",
                 headers=_headers(),
@@ -101,10 +103,13 @@ def _trigger(media_type: str, media_id: int) -> bool:
                     "language": LANGUAGE,
                     "hi": "false",
                     "forced": "false",
+                    # Injetamos parametros extras que algumas APIs aceitam para forçar match
+                    "force": True, 
+                    "ignore_score": True
                 },
             )
             r.raise_for_status()
-        logger.info(f"Bazarr: busca de legenda PT-BR acionada ({media_type} id={media_id})")
+        logger.info(f"Bazarr: busca FORÇADA acionada ({media_type} id={media_id})")
         return True
     except Exception as e:
         logger.warning(f"Bazarr: falha ao acionar download — {e}")
