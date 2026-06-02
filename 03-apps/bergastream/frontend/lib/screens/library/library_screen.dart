@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/api_client.dart';
 import '../../providers/library_provider.dart';
+import '../../providers/playlist_offline_summary_provider.dart';
 import '../../models/playlist.dart';
 
 class LibraryScreen extends ConsumerStatefulWidget {
@@ -126,6 +127,8 @@ class _PlaylistTile extends ConsumerWidget {
             const Text('Colaborador',
                 style: TextStyle(color: AppColors.textSecondary, fontSize: 11)),
           ],
+          const SizedBox(width: 6),
+          _PlaylistOfflineBadge(playlistId: playlist.id),
         ],
       ),
       onTap: () => context.go('/playlist/${playlist.id}'),
@@ -240,6 +243,50 @@ class _CreatePlaylistDialogState extends State<_CreatePlaylistDialog> {
           child: _loading ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('Criar'),
         ),
       ],
+    );
+  }
+}
+
+/// Small badge that shows how many tracks of a playlist are downloaded
+/// offline on this device.  Hides itself if the playlist has never been
+/// opened (no cached track list) or if no track is downloaded.
+///
+///  - 100% offline → green check + "Offline"
+///  - partial      → primary-color download icon + "X/Y offline"
+///  - 0 / unknown  → empty SizedBox
+class _PlaylistOfflineBadge extends ConsumerWidget {
+  final String playlistId;
+  const _PlaylistOfflineBadge({required this.playlistId});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final summaryAsync = ref.watch(playlistOfflineSummaryProvider(playlistId));
+    return summaryAsync.when(
+      data: (s) {
+        if (s == null || s.downloaded == 0) return const SizedBox.shrink();
+        if (s.isFullyOffline) {
+          return Row(
+            mainAxisSize: MainAxisSize.min,
+            children: const [
+              Icon(Icons.download_done_rounded, size: 13, color: AppColors.primary),
+              SizedBox(width: 2),
+              Text('Offline',
+                  style: TextStyle(color: AppColors.primary, fontSize: 11, fontWeight: FontWeight.w600)),
+            ],
+          );
+        }
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.download_rounded, size: 13, color: AppColors.textSecondary),
+            const SizedBox(width: 2),
+            Text('${s.downloaded}/${s.total} offline',
+                style: const TextStyle(color: AppColors.textSecondary, fontSize: 11)),
+          ],
+        );
+      },
+      loading: () => const SizedBox.shrink(),
+      error: (_, __) => const SizedBox.shrink(),
     );
   }
 }

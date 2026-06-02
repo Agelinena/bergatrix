@@ -19,7 +19,6 @@ import 'package:timeago/timeago.dart' as timeago;
 import '../../core/theme/app_theme.dart';
 import '../../models/playlist.dart';
 import '../../providers/downloaded_tracks_provider.dart';
-import '../../providers/player_provider.dart';
 import '../cards/track_card.dart' show TrackMenuSheet;
 
 /// Width at which we flip from mobile rows to the desktop table.  Kept
@@ -85,6 +84,8 @@ class PlaylistTrackRow extends ConsumerWidget {
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
+          _PermanentIndicator(isPermanent: track.isPermanent),
+          const SizedBox(width: 2),
           _DownloadIndicator(downloaded: downloaded),
           const SizedBox(width: 4),
           Text(track.durationFormatted,
@@ -183,9 +184,14 @@ class PlaylistTrackRow extends ConsumerWidget {
                   maxLines: 1, overflow: TextOverflow.ellipsis,
                 ),
               ),
-              // Download indicator
+              // Permanent (server-side download) indicator
               SizedBox(
-                width: 30,
+                width: 24,
+                child: _PermanentIndicator(isPermanent: track.isPermanent),
+              ),
+              // Offline (on-device download) indicator
+              SizedBox(
+                width: 28,
                 child: _DownloadIndicator(downloaded: downloaded),
               ),
               // Duration
@@ -328,7 +334,8 @@ class PlaylistTrackHeader extends StatelessWidget {
               Expanded(flex: 3, child: Text('Álbum', style: _headerStyle)),
               Expanded(flex: 2, child: Text('Adicionada por', style: _headerStyle)),
               Expanded(flex: 2, child: Text('Adicionada em', style: _headerStyle)),
-              SizedBox(width: 30, child: Icon(Icons.download_done, size: 14, color: AppColors.textSecondary)),
+              SizedBox(width: 24, child: Icon(Icons.push_pin_outlined, size: 13, color: AppColors.textSecondary)),
+              SizedBox(width: 28, child: Icon(Icons.download_done, size: 14, color: AppColors.textSecondary)),
               SizedBox(width: 60, child: Icon(Icons.access_time, size: 14, color: AppColors.textSecondary)),
               SizedBox(width: 40),
             ],
@@ -356,17 +363,35 @@ class _DownloadIndicator extends StatelessWidget {
   Widget build(BuildContext context) {
     if (downloaded) {
       return const Tooltip(
-        message: 'Baixada offline',
+        message: 'Baixada no dispositivo (offline)',
         child: Icon(Icons.download_done, size: 14, color: AppColors.primary),
       );
     }
     return const Tooltip(
-      message: 'Disponível apenas online',
+      message: 'Não está no dispositivo — precisa de internet',
       child: Icon(
         Icons.cloud_outlined,
         size: 14,
         color: AppColors.textSecondary,
       ),
+    );
+  }
+}
+
+/// Indicates a track that's been "pinned" on the server — i.e. someone
+/// hit "Baixar playlist" so this track lives in the permanent storage
+/// folder instead of the 48 h cache.  Distinct from the offline-on-device
+/// indicator: this is shared by all listeners of the playlist.
+class _PermanentIndicator extends StatelessWidget {
+  final bool isPermanent;
+  const _PermanentIndicator({required this.isPermanent});
+
+  @override
+  Widget build(BuildContext context) {
+    if (!isPermanent) return const SizedBox.shrink();
+    return const Tooltip(
+      message: 'Baixada no servidor (não expira)',
+      child: Icon(Icons.push_pin, size: 13, color: AppColors.primary),
     );
   }
 }
