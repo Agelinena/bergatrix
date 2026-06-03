@@ -52,3 +52,8 @@ __pycache__/
 node_modules/
 dist/
 build/
+
+# === Legendarr: dados de runtime (gerados pelos containers) ===
+03-apps/jellyfin/app/stats/*.json
+03-apps/jellyfin/app/stats/*.bak
+03-apps/jellyfin/app/jobs/*.json

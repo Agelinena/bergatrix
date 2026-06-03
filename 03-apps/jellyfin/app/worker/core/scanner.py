@@ -2,6 +2,7 @@ import time
 import logging
 import os
 import json
+from datetime import datetime
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 from threading import Timer, Thread
@@ -9,9 +10,12 @@ from threading import Timer, Thread
 logger = logging.getLogger(__name__)
 
 MEDIA_EXTENSIONS = ('.mkv', '.mp4', '.avi', '.mov')
-SUBTITLE_SUFFIXES = ('.por.srt', '.pt-br.srt', '.pt.srt', '.portuguese.srt', '.ptbr.srt')
+# Inclui .pb.srt — formato que o Bazarr usa para Brazilian Portuguese (alpha-2 "pb")
+SUBTITLE_SUFFIXES = ('.por.srt', '.pt-br.srt', '.pt.srt', '.portuguese.srt', '.ptbr.srt', '.pb.srt')
 # Intervalo de varredura periódica em segundos (padrão: 1 hora)
 PERIODIC_SCAN_INTERVAL = int(os.environ.get("SCAN_INTERVAL", "3600"))
+# Janela de cooldown: tempo mínimo antes de retentar um arquivo já processado (padrão: 72h)
+COOLDOWN_SECONDS = int(os.environ.get("COOLDOWN_HOURS", "72")) * 3600
 STATS_FILE = "/app/stats/translation_stats.json"
 
 
@@ -20,25 +24,60 @@ def _has_subtitle(filepath: str) -> bool:
     base = os.path.splitext(filepath)[0]
     return any(os.path.exists(base + s) for s in SUBTITLE_SUFFIXES)
 
-def _is_on_cooldown(filepath: str) -> bool:
-    """Verifica se o arquivo já foi processado nos últimos 3 dias."""
+
+def _parse_timestamp(value) -> float:
+    """
+    Converte um timestamp para epoch (float).
+
+    Aceita tanto epoch numérico quanto string ISO-8601 (ex.: "2026-03-14T19:30:22").
+    Esse é o cerne do bug do cooldown: as stats gravam ISO string, mas a comparação
+    antiga subtraía string de float (TypeError silencioso → cooldown nunca ativava).
+    """
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        try:
+            return datetime.fromisoformat(value).timestamp()
+        except ValueError:
+            return 0.0
+    return 0.0
+
+
+def _load_cooldown_index() -> dict:
+    """
+    Lê o arquivo de stats UMA única vez e retorna {filepath: epoch_mais_recente}.
+
+    Evita reabrir/parsear o JSON inteiro para cada arquivo da biblioteca a cada scan
+    (que tornava a varredura O(arquivos × histórico)).
+    """
     if not os.path.exists(STATS_FILE):
-        return False
+        return {}
     try:
         with open(STATS_FILE, "r", encoding="utf-8") as f:
             stats = json.load(f)
-        
-        # Procura de trás pra frente pela última vez que esse arquivo foi tentado
-        for entry in reversed(stats):
-            if entry.get("filepath") == filepath:
-                # Se falhou ou teve sucesso, espera 3 dias (3 * 24 * 3600 segundos) antes de tentar de novo
-                timestamp = entry.get("timestamp", 0)
-                if (time.time() - timestamp) < (3 * 24 * 3600):
-                    return True
-                break
-    except Exception:
-        pass
-    return False
+    except Exception as e:
+        logger.warning(f"Não foi possível carregar índice de cooldown: {e}")
+        return {}
+
+    index: dict = {}
+    for entry in stats:
+        fp = entry.get("filepath")
+        if not fp:
+            continue
+        ts = _parse_timestamp(entry.get("timestamp", 0))
+        if ts > index.get(fp, 0.0):
+            index[fp] = ts
+    return index
+
+
+def _is_on_cooldown(filepath: str, cooldown_index: dict | None = None) -> bool:
+    """Verifica se o arquivo foi processado dentro da janela de cooldown."""
+    if cooldown_index is None:
+        cooldown_index = _load_cooldown_index()
+    last = cooldown_index.get(filepath)
+    if last is None:
+        return False
+    return (time.time() - last) < COOLDOWN_SECONDS
 
 # ------------------------------------------------------------------ #
 # Watchdog: reage a arquivos novos/movidos                            #
@@ -98,6 +137,10 @@ class Scanner:
         logger.info(f"━━ Iniciando varredura ━━")
         count_found = 0
         count_queued = 0
+        count_cooldown = 0
+
+        # Carrega o índice de cooldown UMA vez por varredura (em vez de reler o JSON por arquivo)
+        cooldown_index = _load_cooldown_index()
 
         for watch_dir in self.watch_dirs:
             if not os.path.exists(watch_dir):
@@ -110,12 +153,12 @@ class Scanner:
                         continue
                     filepath = os.path.join(root, fname)
                     count_found += 1
-                    
+
                     if not _has_subtitle(filepath):
-                        if _is_on_cooldown(filepath):
-                            # logger.debug(f"  Em cooldown (3 dias): {fname}")
+                        if _is_on_cooldown(filepath, cooldown_index):
+                            count_cooldown += 1
                             continue
-                            
+
                         logger.info(f"  Sem legenda PT-BR e fora de cooldown: {fname} — agendando processamento")
                         try:
                             self.pipeline.process_file(filepath)
@@ -125,7 +168,7 @@ class Scanner:
 
         logger.info(
             f"━━ Varredura concluída: {count_found} verificados, "
-            f"{count_queued} processados (outros em cooldown ou com legenda) ━━"
+            f"{count_queued} processados, {count_cooldown} em cooldown ━━"
         )
 
     def _periodic_scan(self):

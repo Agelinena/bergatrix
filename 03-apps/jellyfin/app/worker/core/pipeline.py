@@ -7,14 +7,14 @@ from . import bazarr
 
 logger = logging.getLogger(__name__)
 
-# Idiomas que consideramos como "português"
-TARGET_LANGUAGES = ['por', 'pt', 'bra', 'pt-br', 'por-br', 'pob', 'portuguese']
+# Idiomas que consideramos como "português" ('pb' = alpha-2 do Bazarr para Brazilian Portuguese)
+TARGET_LANGUAGES = ['por', 'pt', 'pb', 'bra', 'pt-br', 'por-br', 'pob', 'portuguese']
 # Idiomas de origem preferidos
 SOURCE_LANGUAGES = ['eng', 'en']
 # Codecs de legenda em texto (suportados diretamente)
 TEXT_CODECS = ['subrip', 'ass', 'ssa', 'webvtt', 'mov_text', 'text']
-# Variantes de nome de arquivo de legenda PT-BR
-SUBTITLE_SUFFIXES = ['.por.srt', '.pt-br.srt', '.pt.srt', '.portuguese.srt', '.ptbr.srt']
+# Variantes de nome de arquivo de legenda PT-BR (.pb.srt é o padrão do Bazarr)
+SUBTITLE_SUFFIXES = ['.por.srt', '.pt-br.srt', '.pt.srt', '.portuguese.srt', '.ptbr.srt', '.pb.srt']
 # Títulos de tracks a ignorar
 IGNORE_TITLES = ['commentary', 'director', 'description', 'sdh', 'forced', 'signs']
 
@@ -266,7 +266,10 @@ class Pipeline:
                 self.stats.record(filepath, "success", model="bazarr_alass")
                 return
             else:
-                logger.warning("Falha na sincronização alass. Mantendo a original ou caindo pra IA...")
+                logger.warning("Sincronização alass não aplicada. Mantendo a legenda do Bazarr.")
+                # Garante que a legenda fique como .por.srt (Bazarr salva como .pb.srt),
+                # formato que o Jellyfin reconhece como Português.
+                self._ensure_por_name(filepath, output_srt)
                 self.stats.record(filepath, "success", model="bazarr_raw")
                 return
 
@@ -330,6 +333,27 @@ class Pipeline:
             stream_index=chosen['index'],
             model=model_used,
         )
+
+    def _ensure_por_name(self, filepath: str, output_srt: str) -> None:
+        """
+        Renomeia a legenda baixada pelo Bazarr para o padrão .por.srt.
+
+        O Bazarr salva como .pb.srt (alpha-2 de Brazilian Portuguese), que o sistema
+        detecta mas o Jellyfin não rotula como Português. Normalizar para .por.srt
+        garante reconhecimento tanto aqui quanto no player.
+        """
+        if os.path.exists(output_srt):
+            return  # já está no formato correto (ex.: alass gerou)
+        base_path = os.path.splitext(filepath)[0]
+        for sfx in SUBTITLE_SUFFIXES:
+            cand = base_path + sfx
+            if cand != output_srt and os.path.exists(cand):
+                try:
+                    os.rename(cand, output_srt)
+                    logger.info(f"Legenda normalizada para o Jellyfin: {os.path.basename(output_srt)}")
+                except Exception as e:
+                    logger.error(f"Falha ao normalizar nome da legenda: {e}")
+                return
 
     def _sync_with_alass(self, filepath: str, downloaded_srt: str, streams: list) -> bool:
         """Extrai legenda embutida original e sincroniza a legenda do Bazarr via alass."""

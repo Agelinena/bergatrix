@@ -31,13 +31,22 @@ class TranslationStats:
         stream_index: int | None = None,
         model: str = "unknown",
     ):
-        """Registra uma tradução (bem-sucedida ou falha)."""
+        """Registra uma tradução (bem-sucedida ou falha).
+
+        Mantém apenas a entrada MAIS RECENTE por arquivo. Antes o histórico crescia
+        sem limite (chegou a 3 MB / ~7,8 mil entradas, com cada arquivo repetido 100+
+        vezes por causa do cooldown quebrado), e o arquivo inteiro era reescrito a
+        cada registro. Deduplicar por filepath limita o tamanho ao nº de arquivos
+        da biblioteca.
+        """
         with self.lock:
             data = self._load()
+            # Remove registros antigos do mesmo arquivo (mantém só o estado atual)
+            data = [e for e in data if e.get("filepath") != filepath]
             entry = {
                 "filepath": filepath,
                 "filename": os.path.basename(filepath),
-                "status": status,          # "success" | "failed" | "skipped"
+                "status": status,          # "success" | "failed" | "skipped" | ...
                 "source_lang": source_lang,
                 "source_codec": source_codec,
                 "stream_index": stream_index,

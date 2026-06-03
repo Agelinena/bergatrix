@@ -119,7 +119,7 @@ def scan_media(force: bool = False) -> dict:
     def get_subtitle_status(filepath):
         """Verifica legenda PT-BR (arquivo e interna via legenda externa)."""
         base = os.path.splitext(filepath)[0]
-        suffixes = [".por.srt", ".pt-br.srt", ".pt.srt", ".portuguese.srt", ".ptbr.srt"]
+        suffixes = [".por.srt", ".pt-br.srt", ".pt.srt", ".portuguese.srt", ".ptbr.srt", ".pb.srt"]
         for s in suffixes:
             if os.path.exists(base + s):
                 return "🟢"
