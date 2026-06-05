@@ -52,7 +52,12 @@ class JobProcessor:
                 f"force={force} | stream_index={stream_index}"
             )
 
-            if job_type == "translate":
+            if job_type in ("translate", "validate_and_translate") and target_file and not os.path.exists(target_file):
+                logger.info(
+                    f"Job {job_id}: arquivo não existe mais (substituído/deletado pelo Arr) — ignorando: "
+                    f"{os.path.basename(target_file)}"
+                )
+            elif job_type == "translate":
                 self.pipeline.process_file(
                     target_file,
                     force=force,
@@ -60,11 +65,8 @@ class JobProcessor:
                 )
             elif job_type == "validate_and_translate":
                 logger.info(f"Validando áudio do recém-adicionado: {target_file}")
-                # 1. Valida áudio
-                # TODO: implementar validator
                 is_valid = self.pipeline.validate_audio(target_file, job.get("arr_event"))
                 if is_valid:
-                    # 2. Continua para tradução
                     self.pipeline.process_file(target_file, force=False)
                 else:
                     logger.warning(f"Arquivo rejeitado por falha na validação de áudio: {target_file}")

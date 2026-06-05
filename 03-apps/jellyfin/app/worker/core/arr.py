@@ -145,6 +145,50 @@ def list_series_episode_files(series_id: int) -> list:
 
 
 # ------------------------------------------------------------------ #
+# Tags (exceções: "manter o áudio como está")                          #
+# ------------------------------------------------------------------ #
+
+_tag_id_cache: dict = {}
+
+
+def _tag_id(base: str, key: str, label: str) -> int | None:
+    """Resolve o nome de uma tag para o ID interno do Arr (com cache)."""
+    ck = (base, label.lower())
+    if ck not in _tag_id_cache:
+        tid = None
+        for t in (_get(base, key, "/api/v3/tag") or []):
+            if str(t.get("label", "")).lower() == label.lower():
+                tid = t.get("id")
+                break
+        _tag_id_cache[ck] = tid
+    return _tag_id_cache[ck]
+
+
+def radarr_tag_id(label: str) -> int | None:
+    return _tag_id(RADARR_URL, RADARR_API_KEY, label)
+
+
+def sonarr_tag_id(label: str) -> int | None:
+    return _tag_id(SONARR_URL, SONARR_API_KEY, label)
+
+
+def movie_has_tag(movie_id: int, label: str) -> bool:
+    tid = radarr_tag_id(label)
+    if tid is None:
+        return False
+    d = _get(RADARR_URL, RADARR_API_KEY, f"/api/v3/movie/{movie_id}")
+    return bool(d and tid in (d.get("tags") or []))
+
+
+def series_has_tag(series_id: int, label: str) -> bool:
+    tid = sonarr_tag_id(label)
+    if tid is None:
+        return False
+    d = _get(SONARR_URL, SONARR_API_KEY, f"/api/v3/series/{series_id}")
+    return bool(d and tid in (d.get("tags") or []))
+
+
+# ------------------------------------------------------------------ #
 # Rejeição: blocklist + re-busca (pega OUTRO release)                  #
 # ------------------------------------------------------------------ #
 

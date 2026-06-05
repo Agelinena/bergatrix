@@ -52,6 +52,10 @@ def get_media_info(filepath):
     """
     Uses ffprobe to get media information (streams, duration, etc.)
     """
+    # Arquivo pode ter sido substituído/deletado pelo Arr entre a criação do job e aqui.
+    if not os.path.exists(filepath):
+        logger.info(f"Arquivo não existe mais (substituído/deletado): {os.path.basename(filepath)}")
+        return None
     try:
         cmd = [
             'ffprobe',

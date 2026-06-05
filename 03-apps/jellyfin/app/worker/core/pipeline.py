@@ -24,6 +24,8 @@ AUDIO_CHECK_STRICT = os.environ.get("AUDIO_CHECK_STRICT", "false").lower() == "t
 # Máximo de re-downloads por mídia antes de desistir (evita loop infinito)
 MAX_REDOWNLOAD_ATTEMPTS = int(os.environ.get("MAX_REDOWNLOAD_ATTEMPTS", "5"))
 REJECTION_FILE = "/app/stats/audio_rejections.json"
+# Tag no Radarr/Sonarr que ISENTA o item da validação de áudio (p/ manter dublado/outro idioma de propósito)
+AUDIO_KEEP_TAG = os.environ.get("AUDIO_KEEP_TAG", "keep-audio").strip()
 
 # Nome do idioma (originalLanguage do Radarr/Sonarr) → códigos aceitos nas tags de áudio (ffprobe).
 # Cobre variantes ISO-639-2 B/T e alpha-2. Idiomas fora do mapa → validação é pulada (seguro).
@@ -115,6 +117,29 @@ class Pipeline:
     # Processamento principal                                              #
     # ------------------------------------------------------------------ #
 
+    def _should_keep_by_tag(self, arr_event: dict) -> bool:
+        """
+        True se o filme/série tem a tag de exceção (AUDIO_KEEP_TAG) no Radarr/Sonarr.
+        Permite manter, de propósito, um item dublado/em outro idioma sem ser rejeitado.
+        """
+        if not AUDIO_KEEP_TAG or not arr_event:
+            return False
+        movie = arr_event.get('movie') or {}
+        series = arr_event.get('series') or {}
+        if movie.get('id'):
+            tags = movie.get('tags')  # a varredura proativa já inclui as tags no evento
+            if tags is not None:
+                tid = arr.radarr_tag_id(AUDIO_KEEP_TAG)
+                return tid is not None and tid in tags
+            return arr.movie_has_tag(movie['id'], AUDIO_KEEP_TAG)
+        if series.get('id'):
+            tags = series.get('tags')
+            if tags is not None:
+                tid = arr.sonarr_tag_id(AUDIO_KEEP_TAG)
+                return tid is not None and tid in tags
+            return arr.series_has_tag(series['id'], AUDIO_KEEP_TAG)
+        return False
+
     def _get_original_language(self, arr_event: dict) -> str | None:
         """Descobre o idioma original (nome, lower). Usa o payload do Arr; se faltar, consulta a API."""
         if not arr_event:
@@ -142,6 +167,11 @@ class Pipeline:
         comprovadamente ausente — caso em que deleta o arquivo, blocklista o release
         e dispara nova busca (o Arr baixa OUTRO release e o novo import re-verifica).
         """
+        # Exceção: item marcado com a tag de "manter áudio" no Radarr/Sonarr → não mexe.
+        if self._should_keep_by_tag(arr_event):
+            logger.info(f"validate_audio: tag '{AUDIO_KEEP_TAG}' presente — mantendo o áudio como está (exceção).")
+            return True
+
         media_info = get_media_info(filepath)
         if not media_info:
             logger.warning("validate_audio: não foi possível ler o arquivo — pulando validação.")

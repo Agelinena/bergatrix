@@ -267,6 +267,7 @@ services:
       - SONARR_API_KEY=${SONARR_API_KEY}
       - AUDIO_CHECK_STRICT=${AUDIO_CHECK_STRICT:-false}
       - MAX_REDOWNLOAD_ATTEMPTS=${MAX_REDOWNLOAD_ATTEMPTS:-5}
+      - AUDIO_KEEP_TAG=${AUDIO_KEEP_TAG:-keep-audio}
       - PUID=${PUID}
       - PGID=${PGID}
     deploy:

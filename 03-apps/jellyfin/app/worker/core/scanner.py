@@ -216,7 +216,8 @@ class Scanner:
                 if not path or not os.path.exists(path):
                     continue
                 event = {
-                    "movie": {"id": m.get("id"), "originalLanguage": m.get("originalLanguage")},
+                    "movie": {"id": m.get("id"), "originalLanguage": m.get("originalLanguage"),
+                              "tags": m.get("tags") or []},
                     "movieFile": {"id": mf.get("id")},
                     "downloadId": None,
                 }
@@ -236,7 +237,8 @@ class Scanner:
                     if not os.path.exists(path):
                         continue
                     event = {
-                        "series": {"id": s.get("id"), "originalLanguage": ol},
+                        "series": {"id": s.get("id"), "originalLanguage": ol,
+                                   "tags": s.get("tags") or []},
                         "episodeFile": {"id": ef["episode_file_id"]},
                         "episodes": [{"id": ef["episode_id"]}],
                         "downloadId": None,
