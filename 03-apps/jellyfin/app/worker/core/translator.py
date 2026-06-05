@@ -10,67 +10,134 @@ logger = logging.getLogger(__name__)
 OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
 CHUNK_DURATION = 900  # 15 minutos por chunk
 
+# Modelos GRATUITOS de fallback, priorizando os melhores para PT-BR.
+# Usados quando o modelo pago fica sem créditos (HTTP 402).
+# O deepseek :free é o mesmo modelo do pago — apenas com rate limit.
+DEFAULT_FREE_MODELS = [
+    "deepseek/deepseek-chat-v3-0324:free",
+    "meta-llama/llama-3.3-70b-instruct:free",
+    "qwen/qwen-2.5-72b-instruct:free",
+    "google/gemini-2.0-flash-exp:free",
+]
+
+SYSTEM_PROMPT = (
+    "Você é um tradutor profissional de legendas (SRT). "
+    "Traduza o conteúdo abaixo para Português do Brasil (pt-br). "
+    "Adapte gírias e expressões para o contexto brasileiro. "
+    "NÃO altere a quantidade de linhas de diálogo. "
+    "Retorne APENAS o texto traduzido no formato SRT, sem explicações."
+)
+
 
 class Translator:
     def __init__(self):
         self.api_key = os.environ.get("OPENROUTER_API_KEY", "")
-        self.model = os.environ.get("OPENROUTER_MODEL", "deepseek/deepseek-v3-0324")
+        # Modelo pago padrão (preferencial)
+        self.model = os.environ.get("OPENROUTER_MODEL", "deepseek/deepseek-chat-v3-0324")
+
+        # Modelos gratuitos de fallback (CSV em OPENROUTER_FREE_MODELS sobrescreve o default)
+        free_env = os.environ.get("OPENROUTER_FREE_MODELS", "").strip()
+        self.free_models = (
+            [m.strip() for m in free_env.split(",") if m.strip()] if free_env
+            else list(DEFAULT_FREE_MODELS)
+        )
+        # Quantos modelos gratuitos tentar antes de desistir de um chunk
+        self.max_free = int(os.environ.get("MAX_FREE_FALLBACKS", "3"))
+        # Ao detectar 402 no pago, paramos de tentá-lo no resto da sessão (evita 402 a cada chunk)
+        self.paid_available = True
 
         if not self.api_key:
             raise ValueError("OPENROUTER_API_KEY não encontrada nas variáveis de ambiente.")
 
-        logger.info(f"Translator inicializado com modelo: {self.model}")
-
-    def _call_api(self, text_content: str) -> str | None:
-        """Chama a API do OpenRouter com retry simples (3 tentativas)."""
-        prompt = (
-            "Você é um tradutor profissional de legendas (SRT). "
-            "Traduza o conteúdo abaixo para Português do Brasil (pt-br). "
-            "Adapte gírias e expressões para o contexto brasileiro. "
-            "NÃO altere a quantidade de linhas de diálogo. "
-            "Retorne APENAS o texto traduzido no formato SRT, sem explicações."
+        logger.info(
+            f"Translator inicializado. Pago: {self.model} | "
+            f"Fallback gratuito (até {self.max_free}): {self.free_models[:self.max_free]}"
         )
 
+    def _request_model(self, model: str, text_content: str, retries: int = 2) -> tuple[str | None, str]:
+        """
+        Tenta UM modelo. Retorna (conteudo, motivo).
+        motivo ∈ {"ok", "no_credit", "rate_limited", "not_found", "error"}.
+        Faz retry interno para 429 (rate limit) e timeout — relevante p/ modelos free.
+        """
         headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
             "HTTP-Referer": "https://github.com/legendarr",
             "X-Title": "Legendarr",
         }
-
         payload = {
-            "model": self.model,
+            "model": model,
             "messages": [
-                {"role": "system", "content": prompt},
+                {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": text_content},
             ],
         }
 
-        for attempt in range(1, 4):
+        for attempt in range(1, retries + 1):
             try:
-                logger.info(f"[Tentativa {attempt}/3] Enviando chunk para OpenRouter ({self.model})...")
-                with httpx.Client(timeout=120.0) as client:
+                with httpx.Client(timeout=180.0) as client:
                     response = client.post(OPENROUTER_API_URL, headers=headers, json=payload)
 
                 if response.status_code == 200:
                     data = response.json()
-                    return data["choices"][0]["message"]["content"]
-                elif response.status_code == 429:
-                    wait = 30 * attempt
-                    logger.warning(f"Rate limit (429). Aguardando {wait}s...")
+                    choices = data.get("choices") or []
+                    if not choices:
+                        # Alguns modelos free devolvem erro dentro de um corpo 200
+                        logger.warning(f"[{model}] 200 sem 'choices': {str(data)[:200]}")
+                        return None, "error"
+                    content = choices[0].get("message", {}).get("content", "")
+                    if not content or not content.strip():
+                        return None, "error"
+                    return content, "ok"
+
+                if response.status_code in (401, 402):
+                    return None, "no_credit"
+                if response.status_code == 404:
+                    logger.warning(f"[{model}] modelo não encontrado (404) — pulando.")
+                    return None, "not_found"
+                if response.status_code == 429:
+                    wait = 20 * attempt
+                    logger.warning(f"[{model}] rate limit (429). Aguardando {wait}s...")
                     time.sleep(wait)
-                else:
-                    logger.error(f"Erro HTTP {response.status_code}: {response.text[:300]}")
-                    time.sleep(5 * attempt)
+                    continue
+
+                logger.error(f"[{model}] HTTP {response.status_code}: {response.text[:200]}")
+                time.sleep(3 * attempt)
 
             except httpx.TimeoutException:
-                logger.warning(f"Timeout na tentativa {attempt}. Aguardando 10s...")
-                time.sleep(10)
-            except Exception as e:
-                logger.error(f"Erro inesperado na tentativa {attempt}: {e}")
+                logger.warning(f"[{model}] timeout (tentativa {attempt}/{retries}).")
                 time.sleep(5)
+            except Exception as e:
+                logger.error(f"[{model}] erro inesperado: {e}")
+                time.sleep(3)
 
-        logger.error("Todas as 3 tentativas falharam.")
+        return None, "rate_limited"
+
+    def _call_api(self, text_content: str) -> str | None:
+        """
+        Traduz um chunk tentando, em ordem: modelo pago → modelos gratuitos.
+        Em 402 no pago, alterna para os gratuitos pelo resto da sessão.
+        """
+        chain = []
+        if self.paid_available:
+            chain.append(self.model)
+        chain += self.free_models[:self.max_free]
+
+        for model in chain:
+            content, reason = self._request_model(model, text_content)
+            if content is not None:
+                logger.info(f"Chunk traduzido via: {model}")
+                return content
+
+            if reason == "no_credit" and model == self.model:
+                logger.warning(
+                    "Modelo pago sem créditos (HTTP 402) — alternando para modelos gratuitos nesta sessão."
+                )
+                self.paid_available = False
+            # tenta o próximo modelo da cadeia
+
+        logger.error("Todos os modelos (pago + gratuitos) falharam para este chunk.")
         return None
 
     # ------------------------------------------------------------------ #
@@ -187,14 +254,30 @@ class Translator:
             logger.info(f"Conteúdo dividido em {len(chunks)} chunk(s) de ~15min.")
 
             full_map: dict = {}
+            ok_chunks = 0
 
             for i, chunk in enumerate(chunks, 1):
                 logger.info(f"Traduzindo chunk {i}/{len(chunks)}...")
                 raw = self._call_api(chunk)
                 if raw:
                     full_map.update(self.parse_translation(raw))
+                    ok_chunks += 1
                 else:
-                    logger.error(f"Chunk {i} falhou — será ignorado.")
+                    logger.error(f"Chunk {i} falhou.")
+
+            # Verifica se a tradução por IA realmente produziu conteúdo.
+            # Sem isto, uma falha total (ex.: sem créditos) salvaria um SRT só com
+            # linhas em branco e seria contabilizada como "sucesso".
+            if not full_map:
+                logger.error(
+                    "Tradução por IA NÃO foi realizada: nenhum chunk traduzido "
+                    "(verifique créditos do OpenRouter e disponibilidade dos modelos gratuitos)."
+                )
+                return False
+            if ok_chunks < len(chunks):
+                logger.warning(f"Tradução parcial: {ok_chunks}/{len(chunks)} chunks traduzidos.")
+            else:
+                logger.info(f"Tradução completa: {ok_chunks}/{len(chunks)} chunks.")
 
             return self.merge_and_save(source_srt_path, full_map, output_path)
 
