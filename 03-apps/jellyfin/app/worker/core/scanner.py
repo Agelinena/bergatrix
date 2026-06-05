@@ -41,12 +41,19 @@ def _parse_timestamp(value) -> float:
     return 0.0
 
 
-def _load_cooldown_index() -> dict:
-    """
-    Lê o arquivo de stats UMA única vez e retorna {filepath: epoch_mais_recente}.
+# Status que indicam que o arquivo já foi tratado de forma definitiva → não reprocessar.
+RESOLVED_STATUSES = {
+    "success", "success_alass_refine", "bazarr_alass", "bazarr_raw",
+    "skipped_internal", "skipped_external", "aligned",
+}
 
-    Evita reabrir/parsear o JSON inteiro para cada arquivo da biblioteca a cada scan
-    (que tornava a varredura O(arquivos × histórico)).
+
+def _load_stats_index() -> dict:
+    """
+    Lê o stats UMA vez e retorna {filepath: {"ts": epoch, "status": str}} (entrada mais recente).
+
+    Usado tanto para o cooldown quanto para saber se o arquivo já foi resolvido — evita
+    reparsear o JSON para cada arquivo da biblioteca a cada scan.
     """
     if not os.path.exists(STATS_FILE):
         return {}
@@ -54,7 +61,7 @@ def _load_cooldown_index() -> dict:
         with open(STATS_FILE, "r", encoding="utf-8") as f:
             stats = json.load(f)
     except Exception as e:
-        logger.warning(f"Não foi possível carregar índice de cooldown: {e}")
+        logger.warning(f"Não foi possível carregar índice de stats: {e}")
         return {}
 
     index: dict = {}
@@ -63,19 +70,25 @@ def _load_cooldown_index() -> dict:
         if not fp:
             continue
         ts = _parse_timestamp(entry.get("timestamp", 0))
-        if ts > index.get(fp, 0.0):
-            index[fp] = ts
+        if ts >= index.get(fp, {}).get("ts", -1.0):
+            index[fp] = {"ts": ts, "status": entry.get("status")}
     return index
 
 
-def _is_on_cooldown(filepath: str, cooldown_index: dict | None = None) -> bool:
+def _is_on_cooldown(filepath: str, stats_index: dict | None = None) -> bool:
     """Verifica se o arquivo foi processado dentro da janela de cooldown."""
-    if cooldown_index is None:
-        cooldown_index = _load_cooldown_index()
-    last = cooldown_index.get(filepath)
-    if last is None:
+    if stats_index is None:
+        stats_index = _load_stats_index()
+    info = stats_index.get(filepath)
+    if not info:
         return False
-    return (time.time() - last) < COOLDOWN_SECONDS
+    return (time.time() - info["ts"]) < COOLDOWN_SECONDS
+
+
+def _is_resolved(filepath: str, stats_index: dict) -> bool:
+    """True se o arquivo já foi tratado de forma definitiva (legenda obtida/alinhada/interna)."""
+    info = stats_index.get(filepath)
+    return bool(info and info.get("status") in RESOLVED_STATUSES)
 
 # ------------------------------------------------------------------ #
 # Watchdog: reage a arquivos novos/movidos                            #
@@ -131,14 +144,20 @@ class Scanner:
         self.observer = Observer()
 
     def _run_scan(self):
-        """Executa uma varredura completa e processa arquivos sem legenda PT-BR."""
+        """
+        Varredura completa. Para cada arquivo:
+          - já resolvido (legenda obtida/alinhada/interna) → pula;
+          - tem legenda PT-BR externa ainda não alinhada → processa (ALASS refina);
+          - sem legenda e fora de cooldown → processa (Bazarr → IA).
+        """
         logger.info(f"━━ Iniciando varredura ━━")
         count_found = 0
         count_queued = 0
         count_cooldown = 0
+        count_resolved = 0
 
-        # Carrega o índice de cooldown UMA vez por varredura (em vez de reler o JSON por arquivo)
-        cooldown_index = _load_cooldown_index()
+        # Lê o stats UMA vez por varredura (timestamp + status de cada arquivo)
+        stats_index = _load_stats_index()
 
         for watch_dir in self.watch_dirs:
             if not os.path.exists(watch_dir):
@@ -152,25 +171,90 @@ class Scanner:
                     filepath = os.path.join(root, fname)
                     count_found += 1
 
-                    if not _has_subtitle(filepath):
-                        if _is_on_cooldown(filepath, cooldown_index):
-                            count_cooldown += 1
-                            continue
+                    # Já tratado de forma definitiva (inclui legendas já alinhadas) → pula
+                    if _is_resolved(filepath, stats_index):
+                        count_resolved += 1
+                        continue
 
-                        logger.info(f"  Sem legenda PT-BR e fora de cooldown: {fname} — agendando processamento")
+                    has_ext = _has_subtitle(filepath)
+                    # Tem legenda externa não-alinhada → alinha (ALASS). Sem legenda → respeita cooldown.
+                    if has_ext or not _is_on_cooldown(filepath, stats_index):
+                        motivo = "alinhar legenda existente" if has_ext else "obter legenda (Bazarr/IA)"
+                        logger.info(f"  Processando ({motivo}): {fname}")
                         try:
                             self.pipeline.process_file(filepath)
                             count_queued += 1
                         except Exception as e:
                             logger.error(f"  Erro ao processar {fname}: {e}")
+                    else:
+                        count_cooldown += 1
 
         logger.info(
-            f"━━ Varredura concluída: {count_found} verificados, "
-            f"{count_queued} processados, {count_cooldown} em cooldown ━━"
+            f"━━ Varredura concluída: {count_found} verificados, {count_queued} processados, "
+            f"{count_resolved} já resolvidos, {count_cooldown} em cooldown ━━"
         )
+
+    def _run_audio_check(self):
+        """
+        Varredura proativa do acervo: garante que cada filme/episódio tenha o áudio
+        no idioma ORIGINAL, consultando o Radarr/Sonarr. Os que falham são deletados,
+        o release é blocklistado e uma nova busca é disparada (pega OUTRO release).
+        """
+        from . import arr
+        if not (arr.radarr_enabled() or arr.sonarr_enabled()):
+            logger.info("Varredura de áudio: RADARR/SONARR_API_KEY não configuradas — pulando.")
+            return
+
+        logger.info("━━ Varredura de áudio (idioma original) ━━")
+        checked = rejected = 0
+
+        # Filmes (Radarr)
+        if arr.radarr_enabled():
+            for m in arr.list_movies():
+                mf = m.get("movieFile") or {}
+                path = mf.get("path")
+                if not path or not os.path.exists(path):
+                    continue
+                event = {
+                    "movie": {"id": m.get("id"), "originalLanguage": m.get("originalLanguage")},
+                    "movieFile": {"id": mf.get("id")},
+                    "downloadId": None,
+                }
+                checked += 1
+                try:
+                    if not self.pipeline.validate_audio(path, event):
+                        rejected += 1
+                except Exception as e:
+                    logger.error(f"Erro na validação de áudio de {os.path.basename(path)}: {e}")
+
+        # Séries/episódios (Sonarr)
+        if arr.sonarr_enabled():
+            for s in arr.list_series():
+                ol = s.get("originalLanguage")
+                for ef in arr.list_series_episode_files(s.get("id")):
+                    path = ef["path"]
+                    if not os.path.exists(path):
+                        continue
+                    event = {
+                        "series": {"id": s.get("id"), "originalLanguage": ol},
+                        "episodeFile": {"id": ef["episode_file_id"]},
+                        "episodes": [{"id": ef["episode_id"]}],
+                        "downloadId": None,
+                    }
+                    checked += 1
+                    try:
+                        if not self.pipeline.validate_audio(path, event):
+                            rejected += 1
+                    except Exception as e:
+                        logger.error(f"Erro na validação de áudio de {os.path.basename(path)}: {e}")
+
+        logger.info(f"━━ Varredura de áudio concluída: {checked} verificados, {rejected} rejeitados (rebaixando) ━━")
 
     def _periodic_scan(self):
         """Roda o scan imediatamente e depois repete a cada SCAN_INTERVAL segundos."""
+        # Validação proativa de áudio (uma vez, no boot) antes da varredura de legendas
+        self._run_audio_check()
+
         # Scan inicial (logo após o watchdog iniciar)
         logger.info(f"Executando scan inicial...")
         self._run_scan()

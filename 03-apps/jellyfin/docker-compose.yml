@@ -259,6 +259,13 @@ services:
       - BAZARR_API_KEY=${BAZARR_API_KEY}
       - BAZARR_LANGUAGE=${BAZARR_LANGUAGE:-pb}
       - BAZARR_WAIT_SECONDS=${BAZARR_WAIT_SECONDS:-120}
+      # Verificador de áudio (idioma original) — deleta+rebaixa via Radarr/Sonarr
+      - RADARR_URL=${RADARR_URL:-http://radarr:7878}
+      - RADARR_API_KEY=${RADARR_API_KEY}
+      - SONARR_URL=${SONARR_URL:-http://sonarr:8989}
+      - SONARR_API_KEY=${SONARR_API_KEY}
+      - AUDIO_CHECK_STRICT=${AUDIO_CHECK_STRICT:-false}
+      - MAX_REDOWNLOAD_ATTEMPTS=${MAX_REDOWNLOAD_ATTEMPTS:-5}
       - PUID=${PUID}
       - PGID=${PGID}
     deploy:

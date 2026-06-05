@@ -1,9 +1,11 @@
 import os
+import json
 import logging
 from .utils import get_media_info, extract_subtitle, find_pt_subtitle
 from .translator import Translator
 from .translation_stats import TranslationStats
 from . import bazarr
+from . import arr
 
 logger = logging.getLogger(__name__)
 
@@ -15,6 +17,30 @@ SOURCE_LANGUAGES = ['eng', 'en']
 TEXT_CODECS = ['subrip', 'ass', 'ssa', 'webvtt', 'mov_text', 'text']
 # Títulos de tracks a ignorar
 IGNORE_TITLES = ['commentary', 'director', 'description', 'sdh', 'forced', 'signs']
+
+# --- Verificador de áudio ---
+# Em modo estrito, rejeita também quando só há faixas sem tag ('und'); padrão = seguro.
+AUDIO_CHECK_STRICT = os.environ.get("AUDIO_CHECK_STRICT", "false").lower() == "true"
+# Máximo de re-downloads por mídia antes de desistir (evita loop infinito)
+MAX_REDOWNLOAD_ATTEMPTS = int(os.environ.get("MAX_REDOWNLOAD_ATTEMPTS", "5"))
+REJECTION_FILE = "/app/stats/audio_rejections.json"
+
+# Nome do idioma (originalLanguage do Radarr/Sonarr) → códigos aceitos nas tags de áudio (ffprobe).
+# Cobre variantes ISO-639-2 B/T e alpha-2. Idiomas fora do mapa → validação é pulada (seguro).
+LANG_NAME_TO_CODES = {
+    'english': {'eng', 'en'}, 'japanese': {'jpn', 'ja'}, 'korean': {'kor', 'ko'},
+    'mandarin': {'chi', 'zho', 'cmn', 'zh'}, 'chinese': {'chi', 'zho', 'zh'},
+    'cantonese': {'chi', 'zho', 'yue', 'zh'}, 'spanish': {'spa', 'es'},
+    'french': {'fre', 'fra', 'fr'}, 'german': {'ger', 'deu', 'de'}, 'italian': {'ita', 'it'},
+    'portuguese': {'por', 'pt', 'pob', 'pb'}, 'russian': {'rus', 'ru'}, 'hindi': {'hin', 'hi'},
+    'dutch': {'dut', 'nld', 'nl'}, 'swedish': {'swe', 'sv'}, 'norwegian': {'nor', 'no', 'nob'},
+    'danish': {'dan', 'da'}, 'finnish': {'fin', 'fi'}, 'polish': {'pol', 'pl'},
+    'turkish': {'tur', 'tr'}, 'arabic': {'ara', 'ar'}, 'hebrew': {'heb', 'he'},
+    'thai': {'tha', 'th'}, 'vietnamese': {'vie', 'vi'}, 'indonesian': {'ind', 'id'},
+    'czech': {'cze', 'ces', 'cs'}, 'hungarian': {'hun', 'hu'}, 'greek': {'gre', 'ell', 'el'},
+    'ukrainian': {'ukr', 'uk'}, 'romanian': {'rum', 'ron', 'ro'}, 'tamil': {'tam', 'ta'},
+    'telugu': {'tel', 'te'}, 'flemish': {'dut', 'nld', 'nl'},
+}
 
 
 class Pipeline:
@@ -89,103 +115,138 @@ class Pipeline:
     # Processamento principal                                              #
     # ------------------------------------------------------------------ #
 
+    def _get_original_language(self, arr_event: dict) -> str | None:
+        """Descobre o idioma original (nome, lower). Usa o payload do Arr; se faltar, consulta a API."""
+        if not arr_event:
+            return None
+        # 1. Direto do payload do webhook
+        for key in ('movie', 'series'):
+            ol = (arr_event.get(key) or {}).get('originalLanguage') or {}
+            if ol.get('name'):
+                return ol['name'].lower()
+        # 2. Consulta confiável à API do Radarr/Sonarr pelo ID
+        movie_id = (arr_event.get('movie') or {}).get('id')
+        series_id = (arr_event.get('series') or {}).get('id')
+        if movie_id:
+            return arr.get_movie_original_language(movie_id)
+        if series_id:
+            return arr.get_series_original_language(series_id)
+        return None
+
     def validate_audio(self, filepath: str, arr_event: dict = None) -> bool:
         """
-        Valida se o arquivo tem trilhas de áudio originais baseando-se no payload do Sonarr/Radarr.
+        Verifica se o arquivo tem áudio no idioma ORIGINAL.
+
+        Retorna True se válido OU se não há como decidir com segurança (não rejeita
+        no escuro). Retorna False apenas quando o idioma original é conhecido e
+        comprovadamente ausente — caso em que deleta o arquivo, blocklista o release
+        e dispara nova busca (o Arr baixa OUTRO release e o novo import re-verifica).
         """
         media_info = get_media_info(filepath)
         if not media_info:
-            return False
-            
-        audio_streams = [s for s in media_info.get('streams', []) if s.get('codec_type') == 'audio']
-        
-        # Coleta metadados de idioma do FFprobe (tags.language e tags.title)
-        available_langs = []
-        for s in audio_streams:
-            tags = s.get('tags', {})
-            lang = tags.get('language', '').lower()
-            title = tags.get('title', '').lower()
-            available_langs.append(f"{lang} {title}")
-            
-        # Determinar idioma original pelo payload (arr_event) ou padrão para eng
-        original_lang_code = 'eng'
-        
-        if arr_event:
-            # Radarr / Sonarr normalmente não mandam o idioma original diretamente no webhook padrão,
-            # mas podemos procurar em 'movie' ou 'series'
-            if 'movie' in arr_event and 'originalLanguage' in arr_event['movie']:
-                original_lang_code = arr_event['movie']['originalLanguage'].get('name', 'English').lower()
-            elif 'series' in arr_event and 'originalLanguage' in arr_event['series']:
-                original_lang_code = arr_event['series']['originalLanguage'].get('name', 'English').lower()
-
-        # Mapeamento básico para códigos ISO-639-2
-        lang_map = {
-            'english': 'eng', 'japanese': 'jpn', 'korean': 'kor', 'spanish': 'spa',
-            'french': 'fre', 'german': 'ger', 'italian': 'ita', 'portuguese': 'por'
-        }
-        
-        expected_code = lang_map.get(original_lang_code, original_lang_code[:3])
-        
-        # Verifica se o código esperado está presente ou se tem "unknown" (pode ser a trilha principal sem tag)
-        # Além disso, verificamos pelo título da trilha caso a tag language seja estranha
-        is_valid = False
-        for lang_info in available_langs:
-            if expected_code in lang_info or 'unknown' in lang_info or original_lang_code in lang_info:
-                is_valid = True
-                break
-                
-        if is_valid:
+            logger.warning("validate_audio: não foi possível ler o arquivo — pulando validação.")
             return True
-            
-        logger.warning(f"Áudio original ({expected_code}) ausente! Encontrado: {available_langs}")
-        
-        # Deletar via API do Radarr/Sonarr
+
+        audio_streams = [s for s in media_info.get('streams', []) if s.get('codec_type') == 'audio']
+        if not audio_streams:
+            logger.warning("validate_audio: nenhuma trilha de áudio encontrada — pulando.")
+            return True
+
+        original = self._get_original_language(arr_event)
+        if not original:
+            logger.info("validate_audio: idioma original desconhecido — pulando (benefício da dúvida).")
+            return True
+
+        expected = LANG_NAME_TO_CODES.get(original)
+        if not expected:
+            logger.info(f"validate_audio: idioma original '{original}' não mapeado — pulando validação.")
+            return True
+
+        audio_langs, has_undefined = set(), False
+        for s in audio_streams:
+            lang = (s.get('tags', {}).get('language') or '').lower().strip()
+            if lang in ('', 'und', 'unknown', 'mis', 'zxx'):
+                has_undefined = True
+            else:
+                audio_langs.add(lang)
+
+        # Original presente?
+        if expected & audio_langs:
+            logger.info(f"validate_audio: OK — áudio original ({original}) presente. Trilhas: {sorted(audio_langs)}")
+            return True
+
+        # Original ausente, mas há faixa sem tag → benefício da dúvida (exceto modo estrito)
+        if has_undefined and not AUDIO_CHECK_STRICT:
+            logger.warning(
+                f"validate_audio: original ({original}) não rotulado, mas há faixa 'und' — "
+                f"mantendo (modo seguro). Trilhas: {sorted(audio_langs)}"
+            )
+            return True
+
+        logger.warning(
+            f"validate_audio: áudio ORIGINAL ({original} → {sorted(expected)}) AUSENTE! "
+            f"Trilhas: {sorted(audio_langs)} — rejeitando e mandando rebaixar."
+        )
         self._reject_media(filepath, arr_event)
         return False
 
-    def _reject_media(self, filepath: str, arr_event: dict):
-        """
-        Deleta o arquivo via API do Radarr/Sonarr e marca como falho para forçar re-download.
-        """
-        if not arr_event:
-            return
-            
+    # --- Guard contra loop de re-download ---
+    def _rejection_key(self, arr_event: dict, filepath: str) -> str:
+        if 'movie' in (arr_event or {}):
+            return f"movie:{(arr_event.get('movie') or {}).get('id')}"
+        if 'series' in (arr_event or {}):
+            eps = arr_event.get('episodes') or []
+            return f"episode:{(arr_event.get('series') or {}).get('id')}:{eps[0].get('id') if eps else '?'}"
+        return f"path:{filepath}"
+
+    def _rejection_count(self, key: str) -> int:
         try:
-            import httpx
-            import os
-            
-            if 'movieFile' in arr_event:
-                # Radarr
-                file_id = arr_event['movieFile'].get('id')
-                url = os.environ.get('RADARR_URL', 'http://radarr:7878')
-                api_key = os.environ.get('RADARR_API_KEY', '')
-                if not file_id or not api_key:
-                    return
-                    
-                with httpx.Client() as client:
-                    client.delete(
-                        f"{url}/api/v3/moviefile/{file_id}",
-                        headers={"X-Api-Key": api_key}
-                    )
-                logger.info(f"Arquivo deletado no Radarr: ID {file_id}")
-                
-            elif 'episodeFile' in arr_event:
-                # Sonarr
-                file_id = arr_event['episodeFile'].get('id')
-                url = os.environ.get('SONARR_URL', 'http://sonarr:8989')
-                api_key = os.environ.get('SONARR_API_KEY', '')
-                if not file_id or not api_key:
-                    return
-                    
-                with httpx.Client() as client:
-                    client.delete(
-                        f"{url}/api/v3/episodefile/{file_id}",
-                        headers={"X-Api-Key": api_key}
-                    )
-                logger.info(f"Arquivo deletado no Sonarr: ID {file_id}")
-                
+            with open(REJECTION_FILE, encoding="utf-8") as f:
+                return json.load(f).get(key, 0)
+        except Exception:
+            return 0
+
+    def _record_rejection(self, key: str):
+        try:
+            data = {}
+            if os.path.exists(REJECTION_FILE):
+                with open(REJECTION_FILE, encoding="utf-8") as f:
+                    data = json.load(f)
+            data[key] = data.get(key, 0) + 1
+            os.makedirs(os.path.dirname(REJECTION_FILE), exist_ok=True)
+            with open(REJECTION_FILE, "w", encoding="utf-8") as f:
+                json.dump(data, f)
         except Exception as e:
-            logger.error(f"Erro ao deletar arquivo via API Arr: {e}")
+            logger.error(f"Erro ao registrar rejeição: {e}")
+
+    def _reject_media(self, filepath: str, arr_event: dict):
+        """Deleta o arquivo, blocklista o release ruim e dispara nova busca (pega OUTRO release)."""
+        if not arr_event:
+            logger.info("_reject_media: sem dados do Arr (webhook) — não é possível rebaixar automaticamente.")
+            return
+
+        key = self._rejection_key(arr_event, filepath)
+        if self._rejection_count(key) >= MAX_REDOWNLOAD_ATTEMPTS:
+            logger.error(
+                f"_reject_media: limite de {MAX_REDOWNLOAD_ATTEMPTS} re-downloads atingido para {key}. "
+                f"Não rebaixando mais — revise manualmente (pode não haver release com o áudio original)."
+            )
+            return
+
+        download_id = arr_event.get('downloadId')
+        if 'movieFile' in arr_event:
+            movie = arr_event.get('movie') or {}
+            file_id = (arr_event.get('movieFile') or {}).get('id')
+            if movie.get('id'):
+                arr.reject_movie(movie['id'], file_id, download_id)
+        elif 'episodeFile' in arr_event:
+            series = arr_event.get('series') or {}
+            file_id = (arr_event.get('episodeFile') or {}).get('id')
+            ep_ids = [e.get('id') for e in (arr_event.get('episodes') or []) if e.get('id')]
+            if series.get('id'):
+                arr.reject_episode(series['id'], ep_ids, file_id, download_id)
+
+        self._record_rejection(key)
 
     def process_file(self, filepath: str, force: bool = False, stream_index: int | None = None):
         """
@@ -318,29 +379,42 @@ class Pipeline:
         base_stream = next((s for s in streams if s.get('tags', {}).get('language', '').lower() in SOURCE_LANGUAGES and s.get('codec_name') in TEXT_CODECS), None)
                 
         if not base_stream:
-            logger.warning("Nenhuma legenda embutida em texto para base de sincronia.")
+            logger.info("ALASS: sem legenda de texto embutida como base — mantendo a legenda sem realinhar.")
             return False
-            
+
         base_path = os.path.splitext(filepath)[0]
         ref_srt = f"{base_path}.ref.temp.srt"
-        
+        synced_srt = f"{base_path}.por.srt"
+        tmp_out = f"{base_path}.synced.temp.srt"
+
         try:
             actual_dl = find_pt_subtitle(filepath)
-            if not actual_dl: return False
+            if not actual_dl:
+                return False
 
-            if not extract_subtitle(filepath, base_stream['index'], ref_srt): return False
-                
-            synced_srt = f"{base_path}.por.srt"
-            cmd = ['alass', ref_srt, actual_dl, synced_srt]
-            subprocess.run(cmd, check=True, capture_output=True)
-            
-            if actual_dl != synced_srt: os.remove(actual_dl)
+            if not extract_subtitle(filepath, base_stream['index'], ref_srt):
+                return False
+
+            # Escreve em temp para não ler/escrever o mesmo .por.srt in-place
+            subprocess.run(['alass', ref_srt, actual_dl, tmp_out], check=True, capture_output=True)
+            if not os.path.exists(tmp_out) or os.path.getsize(tmp_out) == 0:
+                return False
+
+            os.replace(tmp_out, synced_srt)  # substitui atomicamente
+            # Remove a legenda original se tiver nome diferente do destino (.por.srt)
+            if os.path.normpath(actual_dl) != os.path.normpath(synced_srt) and os.path.exists(actual_dl):
+                os.remove(actual_dl)
             return True
         except Exception as e:
             logger.error(f"Erro no alass sync: {e}")
             return False
         finally:
-            if os.path.exists(ref_srt): os.remove(ref_srt)
+            for tmp in (ref_srt, tmp_out):
+                if os.path.exists(tmp):
+                    try:
+                        os.remove(tmp)
+                    except OSError:
+                        pass
 
     def _auto_select_stream(self, streams: list) -> dict | None:
         """Seleciona automaticamente o melhor stream de texto para tradução."""
