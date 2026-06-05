@@ -84,7 +84,7 @@
                                 <p class="text-sm font-medium text-white truncate" x-text="sub.label"></p>
                                 <div class="flex items-center space-x-2 mt-0.5">
                                     <span class="text-xs text-gray-500" x-text="'Stream ' + sub.index"></span>
-                                    <span x-show="sub.is_bitmap" class="text-xs bg-orange-900/50 text-orange-300 px-1.5 py-0.5 rounded border border-orange-800">OCR</span>
+                                    <span x-show="!sub.is_text" class="text-xs bg-orange-900/50 text-orange-300 px-1.5 py-0.5 rounded border border-orange-800">bitmap</span>
                                     <span x-show="sub.is_text" class="text-xs bg-blue-900/50 text-blue-300 px-1.5 py-0.5 rounded border border-blue-800">Texto</span>
                                 </div>
                             </div>
@@ -380,7 +380,7 @@
 
     <footer class="bg-gray-800 border-t border-gray-700 py-6 mt-auto">
         <div class="container mx-auto px-6 text-center text-gray-500 text-sm">
-            <p>&copy; 2025 Legendarr v2 — DeepSeek / OpenRouter · HEVC Optimizer · OCR Bitmap</p>
+            <p>&copy; 2025 Legendarr v2 — DeepSeek / OpenRouter · HEVC Optimizer</p>
         </div>
     </footer>
 

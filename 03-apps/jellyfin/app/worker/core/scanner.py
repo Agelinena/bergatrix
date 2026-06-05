@@ -6,12 +6,11 @@ from datetime import datetime
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 from threading import Timer, Thread
+from .utils import has_pt_subtitle
 
 logger = logging.getLogger(__name__)
 
 MEDIA_EXTENSIONS = ('.mkv', '.mp4', '.avi', '.mov')
-# Inclui .pb.srt — formato que o Bazarr usa para Brazilian Portuguese (alpha-2 "pb")
-SUBTITLE_SUFFIXES = ('.por.srt', '.pt-br.srt', '.pt.srt', '.portuguese.srt', '.ptbr.srt', '.pb.srt')
 # Intervalo de varredura periódica em segundos (padrão: 1 hora)
 PERIODIC_SCAN_INTERVAL = int(os.environ.get("SCAN_INTERVAL", "3600"))
 # Janela de cooldown: tempo mínimo antes de retentar um arquivo já processado (padrão: 72h)
@@ -20,25 +19,8 @@ STATS_FILE = "/app/stats/translation_stats.json"
 
 
 def _has_subtitle(filepath: str) -> bool:
-    """
-    Verifica (case-insensitive) se o arquivo já tem legenda PT-BR externa.
-
-    O Bazarr salva com 'BR' maiúsculo (.pt-BR.srt) e o Linux é case-sensitive,
-    então comparar com os.path.exists('.pt-br.srt') falhava — fazendo o scanner
-    reagendar arquivos que já têm legenda e o Bazarr reportar falso "não baixou".
-    """
-    base = os.path.splitext(filepath)[0]
-    base_name = os.path.basename(base)
-    base_dir = os.path.dirname(filepath)
-    try:
-        for f in os.listdir(base_dir):
-            if f.startswith(base_name):
-                suffix = f[len(base_name):].lower()
-                if suffix in SUBTITLE_SUFFIXES:
-                    return True
-    except OSError:
-        pass
-    return False
+    """Verifica se o arquivo já tem legenda PT-BR externa (case-insensitive, inclui .hi/.sdh/.forced)."""
+    return has_pt_subtitle(filepath)
 
 
 def _parse_timestamp(value) -> float:

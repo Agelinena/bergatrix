@@ -32,6 +32,30 @@ TRANSLATION_STATS_FILE = "/app/stats/translation_stats.json"
 
 os.makedirs(JOBS_DIR, exist_ok=True)
 
+# Tokens de idioma considerados PT-BR (qualquer um basta)
+PT_LANG_TOKENS = {"pt-br", "pt_br", "ptbr", "pt", "por", "pb", "pob", "bra", "portuguese"}
+
+
+def has_pt_subtitle_file(filepath: str) -> bool:
+    """
+    Detecta legenda externa PT-BR (case-insensitive), reconhecendo qualificadores
+    do Bazarr como .hi/.sdh/.forced. Ex.: base.pt-BR.srt, base.pt-BR.hi.srt, base.pb.srt
+    """
+    base_name = os.path.basename(os.path.splitext(filepath)[0])
+    base_dir = os.path.dirname(filepath)
+    try:
+        for f in os.listdir(base_dir):
+            if not f.startswith(base_name):
+                continue
+            suffix = f[len(base_name):].lower()
+            if suffix.endswith(".srt"):
+                tokens = suffix[:-4].strip(".").split(".")
+                if any(t in PT_LANG_TOKENS for t in tokens):
+                    return True
+    except OSError:
+        pass
+    return False
+
 
 # ------------------------------------------------------------------ #
 # Helpers — carregamento de dados                                      #
@@ -117,12 +141,9 @@ def scan_media(force: bool = False) -> dict:
         return None
 
     def get_subtitle_status(filepath):
-        """Verifica legenda PT-BR (arquivo e interna via legenda externa)."""
-        base = os.path.splitext(filepath)[0]
-        suffixes = [".por.srt", ".pt-br.srt", ".pt.srt", ".portuguese.srt", ".ptbr.srt", ".pb.srt"]
-        for s in suffixes:
-            if os.path.exists(base + s):
-                return "🟢"
+        """Verifica legenda PT-BR externa (inclui .hi/.sdh/.forced) ou registrada nas stats."""
+        if has_pt_subtitle_file(filepath):
+            return "🟢"
         if str(filepath) in translated_paths:
             return "🟢"
         return "🔴"
@@ -235,7 +256,6 @@ async def get_subtitles(filepath: str = Query(...)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erro ao ler arquivo: {e}")
 
-    BITMAP_CODECS = ["hdmv_pgs_subtitle", "dvd_subtitle", "dvdsub", "pgssub"]
     TEXT_CODECS = ["subrip", "ass", "ssa", "webvtt", "mov_text", "text"]
 
     subtitles = []
@@ -246,7 +266,7 @@ async def get_subtitles(filepath: str = Query(...)):
         codec = s.get("codec_name", "unknown")
         lang = tags.get("language", "unknown")
         title = tags.get("title", "")
-        is_bitmap = codec in BITMAP_CODECS
+        is_text = codec in TEXT_CODECS
 
         label_parts = []
         if lang and lang != "unknown":
@@ -254,8 +274,8 @@ async def get_subtitles(filepath: str = Query(...)):
         if title:
             label_parts.append(title)
         label_parts.append(f"[{codec}]")
-        if is_bitmap:
-            label_parts.append("🖼️ OCR")
+        if not is_text:
+            label_parts.append("⚠️ não suportado (bitmap)")
         label = " — ".join(label_parts)
 
         subtitles.append({
@@ -263,8 +283,7 @@ async def get_subtitles(filepath: str = Query(...)):
             "codec": codec,
             "language": lang,
             "title": title,
-            "is_bitmap": is_bitmap,
-            "is_text": codec in TEXT_CODECS,
+            "is_text": is_text,
             "label": label,
         })
 

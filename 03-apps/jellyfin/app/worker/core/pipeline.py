@@ -1,6 +1,6 @@
 import os
 import logging
-from .utils import get_media_info, extract_subtitle
+from .utils import get_media_info, extract_subtitle, find_pt_subtitle
 from .translator import Translator
 from .translation_stats import TranslationStats
 from . import bazarr
@@ -13,8 +13,6 @@ TARGET_LANGUAGES = ['por', 'pt', 'pb', 'bra', 'pt-br', 'por-br', 'pob', 'portugu
 SOURCE_LANGUAGES = ['eng', 'en']
 # Codecs de legenda em texto (suportados diretamente)
 TEXT_CODECS = ['subrip', 'ass', 'ssa', 'webvtt', 'mov_text', 'text']
-# Variantes de nome de arquivo de legenda PT-BR (.pb.srt é o padrão do Bazarr)
-SUBTITLE_SUFFIXES = ['.por.srt', '.pt-br.srt', '.pt.srt', '.portuguese.srt', '.ptbr.srt', '.pb.srt']
 # Títulos de tracks a ignorar
 IGNORE_TITLES = ['commentary', 'director', 'description', 'sdh', 'forced', 'signs']
 
@@ -80,21 +78,11 @@ class Pipeline:
         return False
 
     def _has_external_subtitle(self, filepath: str) -> bool:
-        """Verifica legendas externas com diversas variantes de nome."""
-        base = os.path.splitext(filepath)[0]
-        base_dir = os.path.dirname(filepath)
-        base_name = os.path.basename(base)
-
-        try:
-            for f in os.listdir(base_dir):
-                if not f.startswith(base_name):
-                    continue
-                suffix = f[len(base_name):].lower()
-                if suffix in SUBTITLE_SUFFIXES:
-                    logger.info(f"Legenda externa PT-BR encontrada: {f}")
-                    return True
-        except Exception as e:
-            logger.error(f"Erro ao verificar legendas externas: {e}")
+        """Verifica legenda externa PT-BR (case-insensitive, inclui .hi/.sdh/.forced)."""
+        found = find_pt_subtitle(filepath)
+        if found:
+            logger.info(f"Legenda externa PT-BR encontrada: {os.path.basename(found)}")
+            return True
         return False
 
     # ------------------------------------------------------------------ #
@@ -238,9 +226,8 @@ class Pipeline:
                 logger.info("Legenda externa já existe. Tentando refinar a sincronia com ALASS...")
                 
                 # Tenta achar qual é o arquivo real da legenda externa PT-BR
-                base_path = os.path.splitext(filepath)[0]
-                existing_srt = next((base_path + sfx for sfx in SUBTITLE_SUFFIXES if os.path.exists(base_path + sfx)), None)
-                
+                existing_srt = find_pt_subtitle(filepath)
+
                 if existing_srt:
                     # Sincroniza com ALASS
                     synced = self._sync_with_alass(filepath, existing_srt, streams)
@@ -287,39 +274,13 @@ class Pipeline:
             chosen = self._auto_select_stream(streams)
 
         if not chosen:
-            logger.info("Nenhuma legenda legível detectada. Procurando legenda bitmap (PGS) para extração...")
-            BITMAP_CODECS = ["hdmv_pgs_subtitle", "dvd_subtitle", "dvdsub"]
-            chosen_bitmap = next((s for s in streams if s.get('tags', {}).get('language', '').lower() in SOURCE_LANGUAGES and s.get('codec_name') in BITMAP_CODECS), None)
-            
-            if not chosen_bitmap:
-                # Tenta genérico bitmap
-                chosen_bitmap = next((s for s in streams if s.get('codec_name') in BITMAP_CODECS), None)
-            
-            if chosen_bitmap:
-                logger.info(f"Legenda bitmap encontrada (stream {chosen_bitmap['index']}). Extraindo OCR...")
-                from core.bitmap_extractor import BitmapExtractor
-                extractor = BitmapExtractor()
-                temp_srt = f"{base_path}.ocr.temp.srt"
-                
-                if extractor.extract_to_srt(filepath, chosen_bitmap['index'], temp_srt):
-                    logger.info("OCR concluído! Enviando para IA...")
-                    success = self.translator.process(temp_srt, output_srt)
-                    status = "success" if success else "failed"
-                    self.stats.record(filepath, status, source_lang=chosen_bitmap.get('tags', {}).get('language', 'unknown'), source_codec="ocr", stream_index=chosen_bitmap['index'], model=model_used)
-                    try:
-                        os.remove(temp_srt)
-                    except: pass
-                    return
-                else:
-                    logger.warning("Falha ao extrair OCR.")
-            
             logger.info("Nenhuma legenda em texto adequada para tradução.")
             self.stats.record(filepath, "failed", model=model_used)
             return
 
         codec = chosen.get('codec_name', '')
         if codec not in TEXT_CODECS:
-            logger.warning(f"Stream {chosen['index']} tem codec binário ({codec}) — não suportado sem OCR. Pulando.")
+            logger.warning(f"Stream {chosen['index']} tem codec binário ({codec}) — não suportado. Pulando.")
             self.stats.record(filepath, "skipped", model=model_used)
             return
 
@@ -338,22 +299,18 @@ class Pipeline:
         """
         Renomeia a legenda baixada pelo Bazarr para o padrão .por.srt.
 
-        O Bazarr salva como .pb.srt (alpha-2 de Brazilian Portuguese), que o sistema
-        detecta mas o Jellyfin não rotula como Português. Normalizar para .por.srt
-        garante reconhecimento tanto aqui quanto no player.
+        O Bazarr salva como .pt-BR.srt / .pt-BR.hi.srt. Normalizar para .por.srt
+        garante reconhecimento consistente tanto aqui quanto no player.
         """
         if os.path.exists(output_srt):
             return  # já está no formato correto (ex.: alass gerou)
-        base_path = os.path.splitext(filepath)[0]
-        for sfx in SUBTITLE_SUFFIXES:
-            cand = base_path + sfx
-            if cand != output_srt and os.path.exists(cand):
-                try:
-                    os.rename(cand, output_srt)
-                    logger.info(f"Legenda normalizada para o Jellyfin: {os.path.basename(output_srt)}")
-                except Exception as e:
-                    logger.error(f"Falha ao normalizar nome da legenda: {e}")
-                return
+        found = find_pt_subtitle(filepath)
+        if found and os.path.normpath(found) != os.path.normpath(output_srt):
+            try:
+                os.rename(found, output_srt)
+                logger.info(f"Legenda normalizada para o Jellyfin: {os.path.basename(output_srt)}")
+            except Exception as e:
+                logger.error(f"Falha ao normalizar nome da legenda: {e}")
 
     def _sync_with_alass(self, filepath: str, downloaded_srt: str, streams: list) -> bool:
         """Extrai legenda embutida original e sincroniza a legenda do Bazarr via alass."""
@@ -368,7 +325,7 @@ class Pipeline:
         ref_srt = f"{base_path}.ref.temp.srt"
         
         try:
-            actual_dl = next((base_path + sfx for sfx in SUBTITLE_SUFFIXES if os.path.exists(base_path + sfx)), None)
+            actual_dl = find_pt_subtitle(filepath)
             if not actual_dl: return False
 
             if not extract_subtitle(filepath, base_stream['index'], ref_srt): return False

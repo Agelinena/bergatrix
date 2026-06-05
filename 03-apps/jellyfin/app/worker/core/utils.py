@@ -6,6 +6,48 @@ import logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
+# Tokens de idioma considerados PT-BR (qualquer um basta para detectar a legenda).
+# 'pb'/'pob' = códigos do Bazarr para Brazilian Portuguese.
+PT_LANG_TOKENS = {'pt-br', 'pt_br', 'ptbr', 'pt', 'por', 'pb', 'pob', 'bra', 'portuguese'}
+
+
+def _is_pt_subtitle_name(filename: str, base_name: str) -> bool:
+    """
+    Verifica se `filename` é uma legenda PT-BR do vídeo `base_name`.
+
+    Robusto a caixa e a qualificadores que o Bazarr insere no nome, como
+    .hi (hearing impaired), .sdh e .forced. Exemplos que casam:
+      base.pt-BR.srt | base.pt-BR.hi.srt | base.pb.srt | base.por.forced.srt
+    E que NÃO casam: base.en.srt | base.hi.srt (hindi) | base.mkv
+    """
+    if not filename.startswith(base_name):
+        return False
+    suffix = filename[len(base_name):].lower()
+    if not suffix.endswith('.srt'):
+        return False
+    # tokens entre o nome-base e ".srt" — ex.: ".pt-br.hi.srt" -> ["pt-br", "hi"]
+    tokens = suffix[:-4].strip('.').split('.')
+    return any(t in PT_LANG_TOKENS for t in tokens)
+
+
+def find_pt_subtitle(filepath: str) -> str | None:
+    """Retorna o caminho da legenda externa PT-BR do vídeo, ou None."""
+    base_name = os.path.basename(os.path.splitext(filepath)[0])
+    base_dir = os.path.dirname(filepath)
+    try:
+        for f in sorted(os.listdir(base_dir)):
+            if _is_pt_subtitle_name(f, base_name):
+                return os.path.join(base_dir, f)
+    except OSError:
+        pass
+    return None
+
+
+def has_pt_subtitle(filepath: str) -> bool:
+    """Detecção (case-insensitive) de legenda externa PT-BR, incluindo .hi/.sdh/.forced."""
+    return find_pt_subtitle(filepath) is not None
+
+
 def get_media_info(filepath):
     """
     Uses ffprobe to get media information (streams, duration, etc.)

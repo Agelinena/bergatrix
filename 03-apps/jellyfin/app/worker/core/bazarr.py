@@ -20,6 +20,7 @@ import os
 import time
 import logging
 import httpx
+from .utils import has_pt_subtitle
 
 logger = logging.getLogger(__name__)
 
@@ -31,27 +32,14 @@ LANGUAGE = os.environ.get("BAZARR_LANGUAGE", "pb")
 # Tempo máximo (segundos) para aguardar o download após acionar o Bazarr
 BAZARR_WAIT_SECONDS = int(os.environ.get("BAZARR_WAIT_SECONDS", "60"))
 
-SUBTITLE_SUFFIXES = ('.por.srt', '.pt-br.srt', '.pt.srt', '.portuguese.srt', '.ptbr.srt', '.pb.srt')
-
 
 def _headers() -> dict:
     return {"X-Api-Key": BAZARR_API_KEY, "Accept": "application/json"}
 
 
 def _subtitle_exists(filepath: str) -> bool:
-    """Detecção case-insensitive (o Bazarr salva como .pt-BR.srt, com BR maiúsculo)."""
-    base = os.path.splitext(filepath)[0]
-    base_name = os.path.basename(base)
-    base_dir = os.path.dirname(filepath)
-    try:
-        for f in os.listdir(base_dir):
-            if f.startswith(base_name):
-                suffix = f[len(base_name):].lower()
-                if suffix in SUBTITLE_SUFFIXES:
-                    return True
-    except OSError:
-        pass
-    return False
+    """Detecção da legenda baixada (case-insensitive, inclui .pt-BR.hi.srt do Bazarr)."""
+    return has_pt_subtitle(filepath)
 
 
 # ------------------------------------------------------------------ #
