@@ -1,5 +1,6 @@
 import os
 import time
+import threading
 import httpx
 import logging
 import re
@@ -8,17 +9,14 @@ from .utils import save_subtitle
 logger = logging.getLogger(__name__)
 
 OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
+OPENROUTER_MODELS_URL = "https://openrouter.ai/api/v1/models"
 CHUNK_DURATION = 900  # 15 minutos por chunk
 
-# Modelos GRATUITOS de fallback, priorizando os melhores para PT-BR.
-# Usados quando o modelo pago fica sem créditos (HTTP 402).
-# O deepseek :free é o mesmo modelo do pago — apenas com rate limit.
-DEFAULT_FREE_MODELS = [
-    "deepseek/deepseek-chat-v3-0324:free",
-    "meta-llama/llama-3.3-70b-instruct:free",
-    "qwen/qwen-2.5-72b-instruct:free",
-    "google/gemini-2.0-flash-exp:free",
-]
+# Famílias gratuitas preferidas (ordem = prioridade), melhores para PT-BR primeiro.
+# Os modelos REAIS são DESCOBERTOS dinamicamente via /api/v1/models, porque os
+# slugs ":free" mudam o tempo todo (e dão 404 se hardcoded). Configurável por env.
+DEFAULT_FREE_FAMILIES = ["deepseek", "qwen", "meta-llama", "mistralai", "google"]
+FREE_DISCOVERY_TTL = 6 * 3600  # re-descobre os modelos gratuitos a cada 6h
 
 SYSTEM_PROMPT = (
     "Você é um tradutor profissional de legendas (SRT). "
@@ -35,30 +33,80 @@ class Translator:
         # Modelo pago padrão (preferencial)
         self.model = os.environ.get("OPENROUTER_MODEL", "deepseek/deepseek-chat-v3-0324")
 
-        # Modelos gratuitos de fallback (CSV em OPENROUTER_FREE_MODELS sobrescreve o default)
+        # Override fixo (CSV) tem prioridade; senão descobre por família dinamicamente.
         free_env = os.environ.get("OPENROUTER_FREE_MODELS", "").strip()
-        self.free_models = (
-            [m.strip() for m in free_env.split(",") if m.strip()] if free_env
-            else list(DEFAULT_FREE_MODELS)
-        )
-        # Quantos modelos gratuitos tentar antes de desistir de um chunk
-        self.max_free = int(os.environ.get("MAX_FREE_FALLBACKS", "3"))
-        # Ao detectar 402 no pago, paramos de tentá-lo no resto da sessão (evita 402 a cada chunk)
-        self.paid_available = True
+        self._free_override = [m.strip() for m in free_env.split(",") if m.strip()] if free_env else None
+        fam_env = os.environ.get("OPENROUTER_FREE_FAMILIES", "").strip()
+        self.free_families = [f.strip().lower() for f in fam_env.split(",") if f.strip()] or DEFAULT_FREE_FAMILIES
+
+        self.max_free = int(os.environ.get("MAX_FREE_FALLBACKS", "4"))
+        self.paid_available = True          # 402 no pago → desliga pelo resto da sessão
+        self.dead_models = set()            # slugs que retornaram 404 nesta sessão
+        self._free_cache = None
+        self._free_cache_at = 0.0
+        self._lock = threading.Lock()       # serializa traduções concorrentes (scanner + jobs)
 
         if not self.api_key:
             raise ValueError("OPENROUTER_API_KEY não encontrada nas variáveis de ambiente.")
 
-        logger.info(
-            f"Translator inicializado. Pago: {self.model} | "
-            f"Fallback gratuito (até {self.max_free}): {self.free_models[:self.max_free]}"
-        )
+        modo = f"override fixo: {self._free_override}" if self._free_override else f"descoberta por família {self.free_families}"
+        logger.info(f"Translator inicializado. Pago: {self.model} | Gratuitos ({modo}); máx {self.max_free}")
 
-    def _request_model(self, model: str, text_content: str, retries: int = 2) -> tuple[str | None, str]:
+    # ------------------------------------------------------------------ #
+    # Descoberta dinâmica dos modelos gratuitos                            #
+    # ------------------------------------------------------------------ #
+
+    def _discover_free_models(self) -> list:
+        """Consulta /api/v1/models e retorna os modelos ':free' das famílias preferidas, ordenados."""
+        try:
+            with httpx.Client(timeout=30) as c:
+                r = c.get(OPENROUTER_MODELS_URL, headers={"Authorization": f"Bearer {self.api_key}"})
+                r.raise_for_status()
+                data = r.json().get("data", [])
+        except Exception as e:
+            logger.warning(f"Falha ao descobrir modelos gratuitos no OpenRouter: {e}")
+            return []
+
+        free_ids = []
+        for m in data:
+            mid = m.get("id", "")
+            pricing = m.get("pricing", {}) or {}
+            is_free = mid.endswith(":free") or (
+                str(pricing.get("prompt", "1")) in ("0", "0.0")
+                and str(pricing.get("completion", "1")) in ("0", "0.0")
+            )
+            if is_free and mid:
+                free_ids.append(mid)
+
+        # Ordena por prioridade de família; ignora famílias fora da lista preferida
+        ordered = []
+        for fam in self.free_families:
+            for mid in free_ids:
+                if mid.split("/")[0].lower() == fam or mid.lower().startswith(fam):
+                    if mid not in ordered:
+                        ordered.append(mid)
+        logger.info(f"Modelos gratuitos ATIVOS descobertos ({len(ordered)}): {ordered[:8]}")
+        return ordered
+
+    def _get_free_models(self) -> list:
+        """Retorna a lista de modelos gratuitos (override fixo, ou descoberta com cache de 6h)."""
+        if self._free_override is not None:
+            return self._free_override
+        now = time.time()
+        if self._free_cache is None or (now - self._free_cache_at) > FREE_DISCOVERY_TTL:
+            discovered = self._discover_free_models()
+            if discovered:
+                self._free_cache = discovered
+                self._free_cache_at = now
+            elif self._free_cache is None:
+                self._free_cache = []
+        return self._free_cache
+
+    def _request_model(self, model: str, text_content: str) -> tuple[str | None, str]:
         """
-        Tenta UM modelo. Retorna (conteudo, motivo).
-        motivo ∈ {"ok", "no_credit", "rate_limited", "not_found", "error"}.
-        Faz retry interno para 429 (rate limit) e timeout — relevante p/ modelos free.
+        Tenta UM modelo, UMA única vez. Retorna (conteudo, motivo).
+        motivo ∈ {"ok", "no_credit", "not_found", "rate_limited", "timeout", "error"}.
+        Sem retry longo aqui — quem chama passa ao PRÓXIMO modelo (há vários gratuitos).
         """
         headers = {
             "Authorization": f"Bearer {self.api_key}",
@@ -73,71 +121,63 @@ class Translator:
                 {"role": "user", "content": text_content},
             ],
         }
+        try:
+            with httpx.Client(timeout=180.0) as client:
+                response = client.post(OPENROUTER_API_URL, headers=headers, json=payload)
 
-        for attempt in range(1, retries + 1):
-            try:
-                with httpx.Client(timeout=180.0) as client:
-                    response = client.post(OPENROUTER_API_URL, headers=headers, json=payload)
-
-                if response.status_code == 200:
-                    data = response.json()
-                    choices = data.get("choices") or []
-                    if not choices:
-                        # Alguns modelos free devolvem erro dentro de um corpo 200
-                        logger.warning(f"[{model}] 200 sem 'choices': {str(data)[:200]}")
-                        return None, "error"
-                    content = choices[0].get("message", {}).get("content", "")
-                    if not content or not content.strip():
-                        return None, "error"
-                    return content, "ok"
-
-                if response.status_code in (401, 402):
-                    return None, "no_credit"
-                if response.status_code == 404:
-                    logger.warning(f"[{model}] modelo não encontrado (404) — pulando.")
-                    return None, "not_found"
-                if response.status_code == 429:
-                    wait = 20 * attempt
-                    logger.warning(f"[{model}] rate limit (429). Aguardando {wait}s...")
-                    time.sleep(wait)
-                    continue
-
-                logger.error(f"[{model}] HTTP {response.status_code}: {response.text[:200]}")
-                time.sleep(3 * attempt)
-
-            except httpx.TimeoutException:
-                logger.warning(f"[{model}] timeout (tentativa {attempt}/{retries}).")
-                time.sleep(5)
-            except Exception as e:
-                logger.error(f"[{model}] erro inesperado: {e}")
-                time.sleep(3)
-
-        return None, "rate_limited"
+            if response.status_code == 200:
+                choices = response.json().get("choices") or []
+                if not choices:
+                    return None, "error"
+                content = choices[0].get("message", {}).get("content", "")
+                return (content, "ok") if content and content.strip() else (None, "error")
+            if response.status_code in (401, 402):
+                return None, "no_credit"
+            if response.status_code == 404:
+                return None, "not_found"
+            if response.status_code == 429:
+                return None, "rate_limited"
+            logger.error(f"[{model}] HTTP {response.status_code}: {response.text[:160]}")
+            return None, "error"
+        except httpx.TimeoutException:
+            return None, "timeout"
+        except Exception as e:
+            logger.error(f"[{model}] erro inesperado: {e}")
+            return None, "error"
 
     def _call_api(self, text_content: str) -> str | None:
         """
-        Traduz um chunk tentando, em ordem: modelo pago → modelos gratuitos.
-        Em 402 no pago, alterna para os gratuitos pelo resto da sessão.
+        Traduz um chunk: modelo pago → modelos gratuitos DESCOBERTOS dinamicamente.
+        - 402 no pago → desliga o pago nesta sessão;
+        - 404 num gratuito → marca como morto (não tenta de novo);
+        - 429/timeout → passa rápido ao próximo modelo (não fica esperando).
         """
-        chain = []
-        if self.paid_available:
-            chain.append(self.model)
-        chain += self.free_models[:self.max_free]
+        free = [m for m in self._get_free_models() if m not in self.dead_models][:self.max_free]
+        chain = ([self.model] if self.paid_available else []) + free
+        if not chain:
+            logger.error("Nenhum modelo disponível (pago sem crédito e nenhum gratuito ativo).")
+            self._last_all_rate_limited = False
+            return None
 
+        rate_limited = 0
         for model in chain:
             content, reason = self._request_model(model, text_content)
             if content is not None:
                 logger.info(f"Chunk traduzido via: {model}")
                 return content
-
             if reason == "no_credit" and model == self.model:
-                logger.warning(
-                    "Modelo pago sem créditos (HTTP 402) — alternando para modelos gratuitos nesta sessão."
-                )
+                logger.warning("Modelo pago sem créditos (402) — usando apenas gratuitos nesta sessão.")
                 self.paid_available = False
-            # tenta o próximo modelo da cadeia
+            elif reason == "not_found":
+                logger.warning(f"[{model}] indisponível (404) — removido desta sessão.")
+                self.dead_models.add(model)
+            elif reason in ("rate_limited", "timeout"):
+                rate_limited += 1
+                logger.warning(f"[{model}] {reason} — tentando o próximo modelo.")
 
-        logger.error("Todos os modelos (pago + gratuitos) falharam para este chunk.")
+        # Sinaliza se TODA a cadeia falhou por rate limit/timeout (conta gratuita esgotada)
+        self._last_all_rate_limited = (rate_limited == len(chain) and rate_limited > 0)
+        logger.error("Nenhum modelo disponível traduziu este chunk.")
         return None
 
     # ------------------------------------------------------------------ #
@@ -243,9 +283,16 @@ class Translator:
     # ------------------------------------------------------------------ #
 
     def process(self, source_srt_path: str, output_path: str) -> bool:
-        """Chunk → Traduz via OpenRouter → Merge → Salva."""
-        logger.info(f"Iniciando tradução: {source_srt_path}")
+        """Chunk → Traduz via OpenRouter → Merge → Salva.
 
+        Serializado por lock: evita que o scanner e o JobProcessor traduzam ao mesmo
+        tempo e dobrem o consumo do rate limit gratuito.
+        """
+        logger.info(f"Iniciando tradução: {source_srt_path}")
+        with self._lock:
+            return self._process_locked(source_srt_path, output_path)
+
+    def _process_locked(self, source_srt_path: str, output_path: str) -> bool:
         try:
             with open(source_srt_path, "r", encoding="utf-8") as f:
                 content = f.read()
@@ -255,6 +302,7 @@ class Translator:
 
             full_map: dict = {}
             ok_chunks = 0
+            self._last_all_rate_limited = False
 
             for i, chunk in enumerate(chunks, 1):
                 logger.info(f"Traduzindo chunk {i}/{len(chunks)}...")
@@ -264,6 +312,11 @@ class Translator:
                     ok_chunks += 1
                 else:
                     logger.error(f"Chunk {i} falhou.")
+                    # Se a cadeia inteira está rate-limited (conta gratuita esgotada),
+                    # não adianta insistir nos demais chunks — aborta e tenta depois.
+                    if getattr(self, "_last_all_rate_limited", False):
+                        logger.error("Conta gratuita esgotada (rate limit) — abortando os chunks restantes.")
+                        break
 
             # Verifica se a tradução por IA realmente produziu conteúdo.
             # Sem isto, uma falha total (ex.: sem créditos) salvaria um SRT só com
