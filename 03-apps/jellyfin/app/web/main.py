@@ -29,6 +29,7 @@ MEDIA_ROOT = "/media"
 JOBS_DIR = "/app/jobs"
 STATS_FILE = "/app/stats/stats.json"
 TRANSLATION_STATS_FILE = "/app/stats/translation_stats.json"
+WORKER_LOG_FILE = "/app/stats/worker.log"
 
 os.makedirs(JOBS_DIR, exist_ok=True)
 
@@ -425,3 +426,21 @@ async def arr_webhook(request: Request):
 async def refresh_cache():
     scan_media(force=True)
     return JSONResponse(content={"status": "cache refreshed"})
+
+
+@app.get("/api/logs")
+async def get_logs(lines: int = 300):
+    """Retorna as últimas N linhas do log do worker (gravado no volume compartilhado)."""
+    lines = max(1, min(lines, 2000))
+    if not os.path.exists(WORKER_LOG_FILE):
+        return JSONResponse(content={
+            "lines": ["(worker.log ainda não foi criado — verifique se o legendarr-worker está em execução)"]
+        })
+    try:
+        with open(WORKER_LOG_FILE, "r", encoding="utf-8", errors="replace") as f:
+            all_lines = f.readlines()
+        tail = [l.rstrip("\n") for l in all_lines[-lines:]]
+        return JSONResponse(content={"lines": tail})
+    except Exception as e:
+        logger.error(f"Erro ao ler log do worker: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

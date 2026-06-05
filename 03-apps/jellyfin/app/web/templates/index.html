@@ -237,12 +237,24 @@
         </div>
 
         <!-- Logs Tab -->
-        <div x-show="activeTab === 'logs'" x-transition.opacity.duration.300ms x-cloak>
+        <div x-show="activeTab === 'logs'" x-transition.opacity.duration.300ms x-cloak
+             x-data="workerLogs()" x-init="start()">
             <div class="bg-gray-800 rounded-xl border border-gray-700 p-6 overflow-hidden">
-                <h2 class="text-xl font-bold text-white mb-4">Atividade Recente</h2>
-                <div class="bg-black p-4 rounded text-green-400 font-mono text-sm h-96 overflow-y-auto">
-                    Acompanhamento de logs será renderizado aqui... (Implementar WebSocket)
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-xl font-bold text-white">Logs do Worker</h2>
+                    <div class="flex items-center space-x-4">
+                        <label class="flex items-center space-x-2 text-sm text-gray-400 cursor-pointer select-none">
+                            <input type="checkbox" x-model="auto" class="accent-purple-500">
+                            <span>Auto-atualizar (5s)</span>
+                        </label>
+                        <button @click="fetchLogs()"
+                                class="px-3 py-1.5 rounded-lg bg-gray-700 hover:bg-gray-600 text-sm font-medium transition">
+                            Atualizar
+                        </button>
+                    </div>
                 </div>
+                <pre x-ref="box" x-text="text"
+                     class="bg-black p-4 rounded text-green-400 font-mono text-xs leading-relaxed h-96 overflow-y-auto whitespace-pre-wrap"></pre>
             </div>
         </div>
 
@@ -477,6 +489,33 @@
                         this.close();
                     }
                 }
+            }));
+
+            // ---------------------------------------------------------------- //
+            // Alpine component — Logs do Worker (polling no /api/logs)          //
+            // ---------------------------------------------------------------- //
+            Alpine.data('workerLogs', () => ({
+                text: 'Carregando logs...',
+                auto: true,
+                _timer: null,
+                start() {
+                    this.fetchLogs();
+                    this._timer = setInterval(() => { if (this.auto) this.fetchLogs(); }, 5000);
+                },
+                async fetchLogs() {
+                    try {
+                        const resp = await fetch('/api/logs?lines=400');
+                        if (!resp.ok) return;
+                        const data = await resp.json();
+                        const box = this.$refs.box;
+                        // Auto-scroll só se o usuário já estava no fim (não atrapalha a leitura)
+                        const atBottom = box ? (box.scrollTop + box.clientHeight >= box.scrollHeight - 40) : true;
+                        this.text = (data.lines || []).join('\n') || '(sem logs ainda)';
+                        if (atBottom) {
+                            this.$nextTick(() => { if (this.$refs.box) this.$refs.box.scrollTop = this.$refs.box.scrollHeight; });
+                        }
+                    } catch (e) { /* silencioso */ }
+                },
             }));
         });
 

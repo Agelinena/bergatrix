@@ -1,18 +1,29 @@
 import logging
 import time
 import httpx
+import os
+from logging.handlers import RotatingFileHandler
 from dotenv import load_dotenv
 from core.pipeline import Pipeline
 from core.scanner import Scanner
-import os
 
 # Load environment variables
 load_dotenv()
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
-)
+_LOG_FORMAT = '%(asctime)s - %(levelname)s - %(message)s'
+logging.basicConfig(level=logging.INFO, format=_LOG_FORMAT)
+
+# Além do stdout, grava os logs em arquivo no volume compartilhado (/app/stats),
+# para a interface web exibi-los. Rotaciona em ~1MB (mantém 2 backups) p/ não crescer.
+_LOG_FILE = "/app/stats/worker.log"
+try:
+    os.makedirs(os.path.dirname(_LOG_FILE), exist_ok=True)
+    _file_handler = RotatingFileHandler(_LOG_FILE, maxBytes=1_000_000, backupCount=2, encoding="utf-8")
+    _file_handler.setFormatter(logging.Formatter(_LOG_FORMAT))
+    logging.getLogger().addHandler(_file_handler)
+except Exception as _e:
+    logging.warning(f"Não foi possível configurar log em arquivo ({_LOG_FILE}): {_e}")
+
 logger = logging.getLogger(__name__)
 
 def wait_for_bazarr():
