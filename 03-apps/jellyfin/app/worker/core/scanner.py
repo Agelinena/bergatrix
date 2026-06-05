@@ -20,9 +20,25 @@ STATS_FILE = "/app/stats/translation_stats.json"
 
 
 def _has_subtitle(filepath: str) -> bool:
-    """Verifica de forma rápida se o arquivo já tem legenda PT-BR externa."""
+    """
+    Verifica (case-insensitive) se o arquivo já tem legenda PT-BR externa.
+
+    O Bazarr salva com 'BR' maiúsculo (.pt-BR.srt) e o Linux é case-sensitive,
+    então comparar com os.path.exists('.pt-br.srt') falhava — fazendo o scanner
+    reagendar arquivos que já têm legenda e o Bazarr reportar falso "não baixou".
+    """
     base = os.path.splitext(filepath)[0]
-    return any(os.path.exists(base + s) for s in SUBTITLE_SUFFIXES)
+    base_name = os.path.basename(base)
+    base_dir = os.path.dirname(filepath)
+    try:
+        for f in os.listdir(base_dir):
+            if f.startswith(base_name):
+                suffix = f[len(base_name):].lower()
+                if suffix in SUBTITLE_SUFFIXES:
+                    return True
+    except OSError:
+        pass
+    return False
 
 
 def _parse_timestamp(value) -> float:

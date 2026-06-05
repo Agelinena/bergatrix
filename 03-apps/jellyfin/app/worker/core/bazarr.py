@@ -39,8 +39,19 @@ def _headers() -> dict:
 
 
 def _subtitle_exists(filepath: str) -> bool:
+    """Detecção case-insensitive (o Bazarr salva como .pt-BR.srt, com BR maiúsculo)."""
     base = os.path.splitext(filepath)[0]
-    return any(os.path.exists(base + s) for s in SUBTITLE_SUFFIXES)
+    base_name = os.path.basename(base)
+    base_dir = os.path.dirname(filepath)
+    try:
+        for f in os.listdir(base_dir):
+            if f.startswith(base_name):
+                suffix = f[len(base_name):].lower()
+                if suffix in SUBTITLE_SUFFIXES:
+                    return True
+    except OSError:
+        pass
+    return False
 
 
 # ------------------------------------------------------------------ #
