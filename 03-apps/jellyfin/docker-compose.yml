@@ -258,7 +258,7 @@ services:
       - BAZARR_URL=${BAZARR_URL:-http://bazarr:6767}
       - BAZARR_API_KEY=${BAZARR_API_KEY}
       - BAZARR_LANGUAGE=${BAZARR_LANGUAGE:-pb}
-      - BAZARR_WAIT_SECONDS=${BAZARR_WAIT_SECONDS:-60}
+      - BAZARR_WAIT_SECONDS=${BAZARR_WAIT_SECONDS:-120}
       - PUID=${PUID}
       - PGID=${PGID}
     deploy:

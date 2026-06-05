@@ -30,7 +30,7 @@ BAZARR_API_KEY = os.environ.get("BAZARR_API_KEY", "")
 # (Use "pt" se o seu Languages Profile estiver configurado como Português europeu.)
 LANGUAGE = os.environ.get("BAZARR_LANGUAGE", "pb")
 # Tempo máximo (segundos) para aguardar o download após acionar o Bazarr
-BAZARR_WAIT_SECONDS = int(os.environ.get("BAZARR_WAIT_SECONDS", "60"))
+BAZARR_WAIT_SECONDS = int(os.environ.get("BAZARR_WAIT_SECONDS", "120"))
 
 
 def _headers() -> dict:
