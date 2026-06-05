@@ -210,8 +210,8 @@ services:
       - BAZARR_LANGUAGE=${BAZARR_LANGUAGE:-pb}
     volumes:
       - ${STORAGE_PATH}:/media
-      - ./app/jobs:/app/jobs
-      - ./app/stats:/app/stats
+      - ${STORAGE_PATH}/config/legendarr/jobs:/app/jobs
+      - ${STORAGE_PATH}/config/legendarr/stats:/app/stats
     networks:
       - bergatrix-proxy
       - media-network
@@ -246,8 +246,8 @@ services:
       - 1.1.1.1
     volumes:
       - ${STORAGE_PATH}:/media
-      - ./app/jobs:/app/jobs
-      - ./app/stats:/app/stats
+      - ${STORAGE_PATH}/config/legendarr/jobs:/app/jobs
+      - ${STORAGE_PATH}/config/legendarr/stats:/app/stats
     environment:
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
       - OPENROUTER_MODEL=${OPENROUTER_MODEL}
@@ -281,7 +281,7 @@ services:
       - 1.1.1.1
     volumes:
       - ${STORAGE_PATH}:/media
-      - ./app/stats:/app/stats
+      - ${STORAGE_PATH}/config/legendarr/stats:/app/stats
       - ./temp:/app/temp
     environment:
       - NVIDIA_VISIBLE_DEVICES=all
