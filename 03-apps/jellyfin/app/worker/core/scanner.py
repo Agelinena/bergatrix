@@ -16,6 +16,9 @@ PERIODIC_SCAN_INTERVAL = int(os.environ.get("SCAN_INTERVAL", "3600"))
 # Janela de cooldown: tempo mínimo antes de retentar um arquivo já processado (padrão: 72h)
 COOLDOWN_SECONDS = int(os.environ.get("COOLDOWN_HOURS", "72")) * 3600
 STATS_FILE = "/app/stats/translation_stats.json"
+# Cache {filepath: mtime} dos arquivos cujo áudio já foi verificado e está OK —
+# evita re-checar (ffprobe) a cada boot. Re-verifica só quando o arquivo muda.
+AUDIO_VERIFIED_FILE = "/app/stats/audio_verified.json"
 
 
 def _has_subtitle(filepath: str) -> bool:
@@ -89,6 +92,26 @@ def _is_resolved(filepath: str, stats_index: dict) -> bool:
     """True se o arquivo já foi tratado de forma definitiva (legenda obtida/alinhada/interna)."""
     info = stats_index.get(filepath)
     return bool(info and info.get("status") in RESOLVED_STATUSES)
+
+
+def _load_audio_verified() -> dict:
+    """Cache {filepath: mtime} dos arquivos cujo áudio já foi verificado e está OK."""
+    if not os.path.exists(AUDIO_VERIFIED_FILE):
+        return {}
+    try:
+        with open(AUDIO_VERIFIED_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def _save_audio_verified(cache: dict):
+    try:
+        os.makedirs(os.path.dirname(AUDIO_VERIFIED_FILE), exist_ok=True)
+        with open(AUDIO_VERIFIED_FILE, "w", encoding="utf-8") as f:
+            json.dump(cache, f)
+    except Exception as e:
+        logger.warning(f"Não foi possível salvar cache de áudio verificado: {e}")
 
 # ------------------------------------------------------------------ #
 # Watchdog: reage a arquivos novos/movidos                            #
@@ -206,7 +229,30 @@ class Scanner:
             return
 
         logger.info("━━ Varredura de áudio (idioma original) ━━")
-        checked = rejected = 0
+        checked = rejected = skipped = 0
+        verified = _load_audio_verified()  # {filepath: mtime}
+
+        def _process(path: str, event: dict):
+            nonlocal checked, rejected, skipped
+            try:
+                mtime = os.path.getmtime(path)
+            except OSError:
+                return
+            # Já verificado e o arquivo não mudou → não re-checa (não mexe mais)
+            if verified.get(path) == mtime:
+                skipped += 1
+                return
+            checked += 1
+            try:
+                ok = self.pipeline.validate_audio(path, event)
+            except Exception as e:
+                logger.error(f"Erro na validação de áudio de {os.path.basename(path)}: {e}")
+                return
+            if ok and os.path.exists(path):
+                verified[path] = mtime           # marca como OK — não mexe até o arquivo mudar
+            elif not ok:
+                rejected += 1
+                verified.pop(path, None)          # rejeitado/deletado: sai do cache
 
         # Filmes (Radarr)
         if arr.radarr_enabled():
@@ -215,18 +261,12 @@ class Scanner:
                 path = mf.get("path")
                 if not path or not os.path.exists(path):
                     continue
-                event = {
+                _process(path, {
                     "movie": {"id": m.get("id"), "originalLanguage": m.get("originalLanguage"),
                               "tags": m.get("tags") or []},
                     "movieFile": {"id": mf.get("id")},
                     "downloadId": None,
-                }
-                checked += 1
-                try:
-                    if not self.pipeline.validate_audio(path, event):
-                        rejected += 1
-                except Exception as e:
-                    logger.error(f"Erro na validação de áudio de {os.path.basename(path)}: {e}")
+                })
 
         # Séries/episódios (Sonarr)
         if arr.sonarr_enabled():
@@ -236,21 +276,19 @@ class Scanner:
                     path = ef["path"]
                     if not os.path.exists(path):
                         continue
-                    event = {
+                    _process(path, {
                         "series": {"id": s.get("id"), "originalLanguage": ol,
                                    "tags": s.get("tags") or []},
                         "episodeFile": {"id": ef["episode_file_id"]},
                         "episodes": [{"id": ef["episode_id"]}],
                         "downloadId": None,
-                    }
-                    checked += 1
-                    try:
-                        if not self.pipeline.validate_audio(path, event):
-                            rejected += 1
-                    except Exception as e:
-                        logger.error(f"Erro na validação de áudio de {os.path.basename(path)}: {e}")
+                    })
 
-        logger.info(f"━━ Varredura de áudio concluída: {checked} verificados, {rejected} rejeitados (rebaixando) ━━")
+        _save_audio_verified(verified)
+        logger.info(
+            f"━━ Varredura de áudio concluída: {checked} verificados, {rejected} rejeitados, "
+            f"{skipped} já OK (pulados pelo cache) ━━"
+        )
 
     def _periodic_scan(self):
         """Roda o scan imediatamente e depois repete a cada SCAN_INTERVAL segundos."""
