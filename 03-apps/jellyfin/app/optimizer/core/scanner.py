@@ -8,62 +8,71 @@ from threading import Timer
 logger = logging.getLogger(__name__)
 
 class MediaEventHandler(FileSystemEventHandler):
-    def __init__(self, job_queue, debounce_interval=60):
+    def __init__(self, job_queue, debounce_interval=60, stable_seconds=10):
         self.job_queue = job_queue
         self.debounce_interval = debounce_interval
+        self.stable_seconds = stable_seconds
         self.timers = {}
 
     def on_created(self, event):
-        if event.is_directory:
-            return
-        self._process_event(event.src_path)
+        if not event.is_directory:
+            self._schedule(event.src_path)
 
     def on_moved(self, event):
-        if event.is_directory:
-            return
-        self._process_event(event.dest_path)
+        if not event.is_directory:
+            self._schedule(event.dest_path)
 
-    def _process_event(self, filepath):
-        # Strict filtering
-        # 1. Check extensions
+    def on_modified(self, event):
+        # Reinicia o debounce enquanto o arquivo ainda está sendo gravado (import/cópia)
+        if not event.is_directory:
+            self._schedule(event.src_path, quiet=True)
+
+    def _accept(self, filepath: str) -> bool:
         if not any(filepath.lower().endswith(ext) for ext in ['.mkv', '.mp4', '.avi', '.mov']):
-            return
-
-        # 2. Check strict paths (must be in /media/filmes or /media/series)
-        # Assuming container has /media mounted as ROOT
-        # Normalize path
+            return False
         abs_path = os.path.abspath(filepath)
-        
-        is_filmes = "/media/filmes" in abs_path
-        is_series = "/media/series" in abs_path
-        
-        if not (is_filmes or is_series):
-            # logger.debug(f"Ignored file outside target dirs: {filepath}")
-            return
-            
-        # 3. Ignore cache/downloads explicitly just in case they are nested (though they shouldn't be based on plan)
+        if not ("/media/filmes" in abs_path or "/media/series" in abs_path):
+            return False
         parts = filepath.split(os.sep)
         if "downloads" in parts or "cache" in parts or ".temp." in filepath:
-            return
+            return False
+        return True
 
-        logger.info(f"File detected: {filepath}. Waiting {self.debounce_interval}s to stabilize...")
-        
+    def _schedule(self, filepath, quiet=False):
+        if not self._accept(filepath):
+            return
         if filepath in self.timers:
             self.timers[filepath].cancel()
-        
+        elif not quiet:
+            logger.info(f"File detected: {filepath}. Aguardando {self.debounce_interval}s sem alterações...")
         timer = Timer(self.debounce_interval, self._trigger_queue, [filepath])
         self.timers[filepath] = timer
         timer.start()
 
     def _trigger_queue(self, filepath):
-        if filepath in self.timers:
-            del self.timers[filepath]
-        
-        if os.path.exists(filepath):
-            logger.info(f"File stabilized: {filepath}. Queueing for processing.")
-            self.job_queue.put(filepath)
-        else:
+        self.timers.pop(filepath, None)
+        if not os.path.exists(filepath):
             logger.warning(f"File {filepath} disappeared before processing.")
+            return
+
+        # CRÍTICO: confirma que o arquivo parou de crescer antes de processar.
+        # Sem isto, o optimizer pegava arquivos ainda sendo importados (cópia em
+        # andamento) e os re-encodava parciais, TRUNCANDO o filme.
+        try:
+            size1 = os.path.getsize(filepath)
+            time.sleep(self.stable_seconds)
+            size2 = os.path.getsize(filepath)
+        except OSError:
+            return
+        if size1 != size2:
+            logger.info(f"Ainda sendo gravado (import em andamento?): {os.path.basename(filepath)} — reagendando.")
+            timer = Timer(self.debounce_interval, self._trigger_queue, [filepath])
+            self.timers[filepath] = timer
+            timer.start()
+            return
+
+        logger.info(f"File stabilized: {filepath}. Queueing for processing.")
+        self.job_queue.put(filepath)
 
 class Scanner:
     def __init__(self, job_queue, watch_dirs):

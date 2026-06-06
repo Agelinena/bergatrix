@@ -132,6 +132,17 @@ class Processor:
             if process.returncode != 0:
                 raise subprocess.CalledProcessError(process.returncode, cmd)
 
+            # PROTEÇÃO ANTI-TRUNCAMENTO: nunca substituir o original por um vídeo de
+            # duração menor (arquivo parcial em import, falha de GPU no meio, etc.).
+            nova_duracao = self.get_duration(temp_file)
+            if duration > 0 and nova_duracao > 0 and nova_duracao < duration * 0.98:
+                logger.error(
+                    f"❌ Resultado mais curto que o original ({nova_duracao:.0f}s < {duration:.0f}s) — "
+                    f"possível corte/arquivo parcial. Mantendo o original e descartando: {filename}"
+                )
+                os.remove(temp_file)
+                return
+
             # Verification and Move
             tamanho_original = os.path.getsize(input_file)
             tamanho_novo = os.path.getsize(temp_file)
