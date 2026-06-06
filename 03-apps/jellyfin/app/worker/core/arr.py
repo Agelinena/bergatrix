@@ -64,10 +64,10 @@ def _post(base: str, key: str, path: str, payload: dict):
         return False
 
 
-def _delete(base: str, key: str, path: str):
+def _delete(base: str, key: str, path: str, params: dict | None = None):
     try:
         with httpx.Client(timeout=30) as c:
-            r = c.delete(f"{base}{path}", headers=_headers(key))
+            r = c.delete(f"{base}{path}", headers=_headers(key), params=params or {})
             r.raise_for_status()
             return True
     except Exception as e:
@@ -260,3 +260,39 @@ def reject_episode(series_id: int, episode_ids: list, file_id: int | None, downl
               {"name": "EpisodeSearch", "episodeIds": episode_ids})
         logger.info(f"Sonarr: EpisodeSearch disparado para episodeIds={episode_ids}")
     return True
+
+
+# ------------------------------------------------------------------ #
+# Fila de downloads (remover stalled e rebaixar)                       #
+# ------------------------------------------------------------------ #
+
+def _queue(base: str, key: str) -> list:
+    data = _get(base, key, "/api/v3/queue", {"pageSize": 1000})
+    if isinstance(data, dict):
+        return data.get("records", [])
+    return data or []
+
+
+def radarr_queue() -> list:
+    return _queue(RADARR_URL, RADARR_API_KEY) if radarr_enabled() else []
+
+
+def sonarr_queue() -> list:
+    return _queue(SONARR_URL, SONARR_API_KEY) if sonarr_enabled() else []
+
+
+def _remove_queue(base: str, key: str, item_id: int, blocklist: bool) -> bool:
+    """Remove um item da fila: tira do download client, blocklista o release e rebaixa."""
+    return _delete(base, key, f"/api/v3/queue/{item_id}", {
+        "removeFromClient": "true",
+        "blocklist": "true" if blocklist else "false",
+        "skipRedownload": "false",   # dispara nova busca (pega OUTRO release)
+    })
+
+
+def radarr_remove_queue(item_id: int, blocklist: bool = True) -> bool:
+    return _remove_queue(RADARR_URL, RADARR_API_KEY, item_id, blocklist)
+
+
+def sonarr_remove_queue(item_id: int, blocklist: bool = True) -> bool:
+    return _remove_queue(SONARR_URL, SONARR_API_KEY, item_id, blocklist)

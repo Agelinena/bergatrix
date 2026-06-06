@@ -278,6 +278,9 @@ services:
       - AUDIO_KEEP_TAG=${AUDIO_KEEP_TAG:-keep-audio}
       # Duração mínima (% do runtime do Arr) para o arquivo não ser tratado como cortado
       - MIN_DURATION_PERCENT=${MIN_DURATION_PERCENT:-80}
+      # Remove downloads travados (stalled) no Radarr/Sonarr após N minutos e rebaixa
+      - STALLED_TIMEOUT_MINUTES=${STALLED_TIMEOUT_MINUTES:-5}
+      - STALLED_CHECK_INTERVAL=${STALLED_CHECK_INTERVAL:-60}
       - PUID=${PUID}
       - PGID=${PGID}
     deploy:

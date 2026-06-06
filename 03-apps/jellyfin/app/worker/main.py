@@ -65,6 +65,10 @@ def main():
     job_processor = JobProcessor(pipeline)
     job_processor.start()
 
+    # Monitor de downloads travados (stalled) no Radarr/Sonarr
+    from core.stalled_monitor import StalledMonitor
+    StalledMonitor().start()
+
     scanner.start()
 
 
