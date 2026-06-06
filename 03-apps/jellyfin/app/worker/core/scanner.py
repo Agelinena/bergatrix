@@ -271,7 +271,7 @@ class Scanner:
                     continue
                 _process(path, {
                     "movie": {"id": m.get("id"), "originalLanguage": m.get("originalLanguage"),
-                              "tags": m.get("tags") or []},
+                              "tags": m.get("tags") or [], "runtime": m.get("runtime")},
                     "movieFile": {"id": mf.get("id")},
                     "downloadId": None,
                 })
@@ -280,13 +280,14 @@ class Scanner:
         if arr.sonarr_enabled():
             for s in arr.list_series():
                 ol = s.get("originalLanguage")
+                s_runtime = s.get("runtime")
                 for ef in arr.list_series_episode_files(s.get("id")):
                     path = ef["path"]
                     if not os.path.exists(path):
                         continue
                     _process(path, {
                         "series": {"id": s.get("id"), "originalLanguage": ol,
-                                   "tags": s.get("tags") or []},
+                                   "tags": s.get("tags") or [], "runtime": s_runtime},
                         "episodeFile": {"id": ef["episode_file_id"]},
                         "episodes": [{"id": ef["episode_id"]}],
                         "downloadId": None,

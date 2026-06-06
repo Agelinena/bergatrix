@@ -276,6 +276,8 @@ services:
       - AUDIO_CHECK_STRICT=${AUDIO_CHECK_STRICT:-false}
       - MAX_REDOWNLOAD_ATTEMPTS=${MAX_REDOWNLOAD_ATTEMPTS:-5}
       - AUDIO_KEEP_TAG=${AUDIO_KEEP_TAG:-keep-audio}
+      # Duração mínima (% do runtime do Arr) para o arquivo não ser tratado como cortado
+      - MIN_DURATION_PERCENT=${MIN_DURATION_PERCENT:-80}
       - PUID=${PUID}
       - PGID=${PGID}
     deploy:

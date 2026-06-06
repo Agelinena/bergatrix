@@ -26,6 +26,8 @@ MAX_REDOWNLOAD_ATTEMPTS = int(os.environ.get("MAX_REDOWNLOAD_ATTEMPTS", "5"))
 REJECTION_FILE = "/app/stats/audio_rejections.json"
 # Tag no Radarr/Sonarr que ISENTA o item da validação de áudio (p/ manter dublado/outro idioma de propósito)
 AUDIO_KEEP_TAG = os.environ.get("AUDIO_KEEP_TAG", "keep-audio").strip()
+# Duração mínima (fração do runtime do Radarr/Sonarr) para o arquivo não ser considerado cortado/truncado
+MIN_DURATION_RATIO = int(os.environ.get("MIN_DURATION_PERCENT", "80")) / 100.0
 
 # Nome do idioma (originalLanguage do Radarr/Sonarr) → códigos aceitos nas tags de áudio (ffprobe).
 # Cobre variantes ISO-639-2 B/T e alpha-2. Idiomas fora do mapa → validação é pulada (seguro).
@@ -158,6 +160,49 @@ class Pipeline:
             return arr.get_series_original_language(series_id)
         return None
 
+    def _get_runtime(self, arr_event: dict) -> int | None:
+        """Runtime esperado em minutos (payload do Arr ou consulta à API)."""
+        if not arr_event:
+            return None
+        movie = arr_event.get('movie') or {}
+        series = arr_event.get('series') or {}
+        eps = arr_event.get('episodes') or []
+        if movie.get('runtime'):
+            return movie['runtime']
+        if eps and eps[0].get('runtime'):
+            return eps[0]['runtime']
+        if series.get('runtime'):
+            return series['runtime']
+        if movie.get('id'):
+            return arr.get_movie_runtime(movie['id'])
+        if series.get('id'):
+            return arr.get_series_runtime(series['id'])
+        return None
+
+    def _check_duration(self, filepath: str, media_info: dict, arr_event: dict) -> bool:
+        """
+        Detecta arquivos cortados/truncados comparando a duração real com o runtime
+        que o Radarr/Sonarr conhecem. Se for muito menor, rejeita (deleta + blocklist
+        + rebaixa). Retorna True se OK (ou sem como decidir), False se rejeitou.
+        """
+        runtime_min = self._get_runtime(arr_event)
+        if not runtime_min or runtime_min < 5:
+            return True  # sem runtime confiável (ex.: curta-metragem)
+        try:
+            actual_sec = float((media_info.get('format') or {}).get('duration', 0))
+        except (TypeError, ValueError):
+            return True
+        if actual_sec <= 0:
+            return True
+        if actual_sec < runtime_min * 60 * MIN_DURATION_RATIO:
+            logger.warning(
+                f"Arquivo CORTADO/truncado: duração {actual_sec/60:.0f}min < esperado ~{runtime_min}min "
+                f"(mín {MIN_DURATION_RATIO*100:.0f}%) — rejeitando e mandando rebaixar."
+            )
+            self._reject_media(filepath, arr_event)
+            return False
+        return True
+
     def validate_audio(self, filepath: str, arr_event: dict = None) -> bool:
         """
         Verifica se o arquivo tem áudio no idioma ORIGINAL.
@@ -176,6 +221,10 @@ class Pipeline:
         if not media_info:
             logger.warning("validate_audio: não foi possível ler o arquivo — pulando validação.")
             return True
+
+        # Arquivo cortado/truncado? (duração muito menor que o runtime do Arr) → rejeita e rebaixa
+        if not self._check_duration(filepath, media_info, arr_event):
+            return False
 
         audio_streams = [s for s in media_info.get('streams', []) if s.get('codec_type') == 'audio']
         if not audio_streams:

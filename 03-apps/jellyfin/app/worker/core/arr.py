@@ -100,6 +100,18 @@ def get_series_original_language(series_id: int) -> str | None:
     return None
 
 
+def get_movie_runtime(movie_id: int) -> int | None:
+    """Runtime do filme em minutos (Radarr)."""
+    data = _get(RADARR_URL, RADARR_API_KEY, f"/api/v3/movie/{movie_id}")
+    return (data or {}).get("runtime") or None
+
+
+def get_series_runtime(series_id: int) -> int | None:
+    """Runtime médio dos episódios da série em minutos (Sonarr)."""
+    data = _get(SONARR_URL, SONARR_API_KEY, f"/api/v3/series/{series_id}")
+    return (data or {}).get("runtime") or None
+
+
 # ------------------------------------------------------------------ #
 # Lookup por caminho (varredura proativa)                              #
 # ------------------------------------------------------------------ #

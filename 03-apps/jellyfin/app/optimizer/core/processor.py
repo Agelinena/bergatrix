@@ -84,6 +84,12 @@ class Processor:
             '-hwaccel', 'cuda',
             '-hwaccel_output_format', 'cuda',
             '-i', input_file,
+            # -map preserva TODAS as trilhas: vídeo principal + TODOS os áudios + legendas.
+            # Sem isto, o ffmpeg mantinha só 1 faixa de áudio (a default) e descartava o
+            # resto — transformando multiáudio (ex.: ENG+ITA) em mono-áudio no Jellyfin.
+            '-map', '0:v:0',
+            '-map', '0:a',
+            '-map', '0:s?',
             '-c:v', 'hevc_nvenc',
             '-preset', PRESET,
             '-cq', NVENC_QUALITY,
