@@ -13,7 +13,10 @@ logger = logging.getLogger(__name__)
 MEDIA_EXTENSIONS = ('.mkv', '.mp4', '.avi', '.mov')
 # Intervalo de varredura periódica em segundos (padrão: 1 hora)
 PERIODIC_SCAN_INTERVAL = int(os.environ.get("SCAN_INTERVAL", "3600"))
-# Janela de cooldown: tempo mínimo antes de retentar um arquivo já processado (padrão: 72h)
+# Cooldown progressivo: revisita falhas a cada RETRY_INTERVAL_HOURS (padrão 1h);
+# após MAX_FAST_RETRIES falhas, recua para COOLDOWN_HOURS (padrão 72h / 3 dias).
+RETRY_INTERVAL_SECONDS = int(os.environ.get("RETRY_INTERVAL_HOURS", "1")) * 3600
+MAX_FAST_RETRIES = int(os.environ.get("MAX_FAST_RETRIES", "6"))
 COOLDOWN_SECONDS = int(os.environ.get("COOLDOWN_HOURS", "72")) * 3600
 STATS_FILE = "/app/stats/translation_stats.json"
 # Cache {filepath: mtime} dos arquivos cujo áudio já foi verificado e está OK —
@@ -74,18 +77,23 @@ def _load_stats_index() -> dict:
             continue
         ts = _parse_timestamp(entry.get("timestamp", 0))
         if ts >= index.get(fp, {}).get("ts", -1.0):
-            index[fp] = {"ts": ts, "status": entry.get("status")}
+            index[fp] = {"ts": ts, "status": entry.get("status"), "attempts": entry.get("attempts", 0)}
     return index
 
 
 def _is_on_cooldown(filepath: str, stats_index: dict | None = None) -> bool:
-    """Verifica se o arquivo foi processado dentro da janela de cooldown."""
+    """
+    Cooldown progressivo: nas primeiras MAX_FAST_RETRIES falhas, revisita a cada
+    RETRY_INTERVAL_SECONDS (1h). A partir daí, recua para COOLDOWN_SECONDS (3 dias).
+    """
     if stats_index is None:
         stats_index = _load_stats_index()
     info = stats_index.get(filepath)
     if not info:
         return False
-    return (time.time() - info["ts"]) < COOLDOWN_SECONDS
+    elapsed = time.time() - info["ts"]
+    window = COOLDOWN_SECONDS if info.get("attempts", 0) >= MAX_FAST_RETRIES else RETRY_INTERVAL_SECONDS
+    return elapsed < window
 
 
 def _is_resolved(filepath: str, stats_index: dict) -> bool:

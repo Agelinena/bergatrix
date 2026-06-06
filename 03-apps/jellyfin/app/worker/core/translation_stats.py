@@ -41,12 +41,18 @@ class TranslationStats:
         """
         with self.lock:
             data = self._load()
+            # Conta falhas consecutivas do mesmo arquivo (cooldown progressivo:
+            # revisita rápido nas primeiras N falhas e só depois recua para dias).
+            prev = next((e for e in data if e.get("filepath") == filepath), None)
+            prev_attempts = prev.get("attempts", 0) if prev else 0
+            attempts = (prev_attempts + 1) if status == "failed" else 0
             # Remove registros antigos do mesmo arquivo (mantém só o estado atual)
             data = [e for e in data if e.get("filepath") != filepath]
             entry = {
                 "filepath": filepath,
                 "filename": os.path.basename(filepath),
                 "status": status,          # "success" | "failed" | "skipped" | ...
+                "attempts": attempts,
                 "source_lang": source_lang,
                 "source_codec": source_codec,
                 "stream_index": stream_index,

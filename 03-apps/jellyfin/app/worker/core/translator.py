@@ -10,6 +10,7 @@ logger = logging.getLogger(__name__)
 
 OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
 OPENROUTER_MODELS_URL = "https://openrouter.ai/api/v1/models"
+GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 CHUNK_DURATION = 900  # 15 minutos por chunk
 
 # Famílias gratuitas preferidas (ordem = prioridade), melhores para PT-BR primeiro.
@@ -33,6 +34,12 @@ class Translator:
         # Modelo pago padrão (preferencial)
         self.model = os.environ.get("OPENROUTER_MODEL", "deepseek/deepseek-chat-v3-0324")
 
+        # Cadeia de fallback de IA: Gemini chave 1 → Gemini chave 2 → OpenRouter pago → OpenRouter grátis.
+        self.gemini_keys = [k.strip() for k in (os.environ.get("GEMINI_API_1", ""),
+                                                os.environ.get("GEMINI_API_2", "")) if k.strip()]
+        self.gemini_model = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+        self._gemini_dead = set()   # chaves inválidas/sem acesso nesta sessão
+
         # Override fixo (CSV) tem prioridade; senão descobre por família dinamicamente.
         free_env = os.environ.get("OPENROUTER_FREE_MODELS", "").strip()
         self._free_override = [m.strip() for m in free_env.split(",") if m.strip()] if free_env else None
@@ -46,11 +53,14 @@ class Translator:
         self._free_cache_at = 0.0
         self._lock = threading.Lock()       # serializa traduções concorrentes (scanner + jobs)
 
-        if not self.api_key:
-            raise ValueError("OPENROUTER_API_KEY não encontrada nas variáveis de ambiente.")
+        if not self.api_key and not self.gemini_keys:
+            raise ValueError("Nenhuma API de IA configurada (OPENROUTER_API_KEY ou GEMINI_API_1/GEMINI_API_2).")
 
         modo = f"override fixo: {self._free_override}" if self._free_override else f"descoberta por família {self.free_families}"
-        logger.info(f"Translator inicializado. Pago: {self.model} | Gratuitos ({modo}); máx {self.max_free}")
+        logger.info(
+            f"Translator inicializado. Cadeia: Gemini x{len(self.gemini_keys)} ({self.gemini_model}) "
+            f"→ OpenRouter pago ({self.model}) → OpenRouter grátis ({modo}; máx {self.max_free})"
+        )
 
     # ------------------------------------------------------------------ #
     # Descoberta dinâmica dos modelos gratuitos                            #
@@ -102,6 +112,35 @@ class Translator:
                 self._free_cache = []
         return self._free_cache
 
+    def _request_gemini(self, api_key: str, text_content: str) -> tuple[str | None, str]:
+        """Traduz um chunk via Gemini (Google). Retorna (conteudo, motivo)."""
+        url = GEMINI_API_URL.format(model=self.gemini_model)
+        payload = {
+            "systemInstruction": {"parts": [{"text": SYSTEM_PROMPT}]},
+            "contents": [{"role": "user", "parts": [{"text": text_content}]}],
+        }
+        try:
+            with httpx.Client(timeout=180.0) as client:
+                r = client.post(url, params={"key": api_key}, json=payload)
+            if r.status_code == 200:
+                cands = r.json().get("candidates") or []
+                if not cands:
+                    return None, "error"
+                parts = (cands[0].get("content") or {}).get("parts") or []
+                text = "".join(p.get("text", "") for p in parts)
+                return (text, "ok") if text and text.strip() else (None, "error")
+            if r.status_code == 429:
+                return None, "rate_limited"           # cota/RPM esgotada
+            if r.status_code in (400, 401, 403):
+                return None, "no_credit"              # chave inválida / sem acesso
+            logger.error(f"[gemini] HTTP {r.status_code}: {r.text[:160]}")
+            return None, "error"
+        except httpx.TimeoutException:
+            return None, "timeout"
+        except Exception as e:
+            logger.error(f"[gemini] erro inesperado: {e}")
+            return None, "error"
+
     def _request_model(self, model: str, text_content: str) -> tuple[str | None, str]:
         """
         Tenta UM modelo, UMA única vez. Retorna (conteudo, motivo).
@@ -147,37 +186,60 @@ class Translator:
 
     def _call_api(self, text_content: str) -> str | None:
         """
-        Traduz um chunk: modelo pago → modelos gratuitos DESCOBERTOS dinamicamente.
-        - 402 no pago → desliga o pago nesta sessão;
-        - 404 num gratuito → marca como morto (não tenta de novo);
-        - 429/timeout → passa rápido ao próximo modelo (não fica esperando).
+        Traduz um chunk seguindo a cadeia de fallback:
+          1) Gemini (chave 1) → 2) Gemini (chave 2) → 3) OpenRouter pago → 4) OpenRouter grátis.
+        Pula rápido em rate limit/erro; sinaliza se TODA a cadeia ficou rate-limited.
         """
-        free = [m for m in self._get_free_models() if m not in self.dead_models][:self.max_free]
-        chain = ([self.model] if self.paid_available else []) + free
-        if not chain:
-            logger.error("Nenhum modelo disponível (pago sem crédito e nenhum gratuito ativo).")
-            self._last_all_rate_limited = False
-            return None
-
+        total = 0
         rate_limited = 0
-        for model in chain:
-            content, reason = self._request_model(model, text_content)
+
+        # 1 e 2 — Gemini (chaves de projetos diferentes = cotas independentes)
+        for i, key in enumerate(self.gemini_keys, 1):
+            if key in self._gemini_dead:
+                continue
+            total += 1
+            content, reason = self._request_gemini(key, text_content)
             if content is not None:
-                logger.info(f"Chunk traduzido via: {model}")
+                logger.info(f"Chunk traduzido via: Gemini #{i} ({self.gemini_model})")
                 return content
-            if reason == "no_credit" and model == self.model:
-                logger.warning("Modelo pago sem créditos (402) — usando apenas gratuitos nesta sessão.")
-                self.paid_available = False
-            elif reason == "not_found":
-                logger.warning(f"[{model}] indisponível (404) — removido desta sessão.")
-                self.dead_models.add(model)
+            if reason == "no_credit":
+                logger.warning(f"Gemini #{i}: chave inválida/sem acesso — desativando nesta sessão.")
+                self._gemini_dead.add(key)
             elif reason in ("rate_limited", "timeout"):
                 rate_limited += 1
-                logger.warning(f"[{model}] {reason} — tentando o próximo modelo.")
+                logger.warning(f"Gemini #{i}: {reason} — tentando o próximo provedor.")
 
-        # Sinaliza se TODA a cadeia falhou por rate limit/timeout (conta gratuita esgotada)
-        self._last_all_rate_limited = (rate_limited == len(chain) and rate_limited > 0)
-        logger.error("Nenhum modelo disponível traduziu este chunk.")
+        # 3 — OpenRouter pago (DeepSeek)
+        if self.api_key and self.paid_available:
+            total += 1
+            content, reason = self._request_model(self.model, text_content)
+            if content is not None:
+                logger.info(f"Chunk traduzido via: {self.model} (OpenRouter pago)")
+                return content
+            if reason == "no_credit":
+                logger.warning("OpenRouter pago sem créditos (402) — usando apenas gratuitos nesta sessão.")
+                self.paid_available = False
+            elif reason in ("rate_limited", "timeout"):
+                rate_limited += 1
+
+        # 4 — OpenRouter grátis (descoberta dinâmica)
+        if self.api_key:
+            free = [m for m in self._get_free_models() if m not in self.dead_models][:self.max_free]
+            for model in free:
+                total += 1
+                content, reason = self._request_model(model, text_content)
+                if content is not None:
+                    logger.info(f"Chunk traduzido via: {model} (OpenRouter grátis)")
+                    return content
+                if reason == "not_found":
+                    logger.warning(f"[{model}] indisponível (404) — removido desta sessão.")
+                    self.dead_models.add(model)
+                elif reason in ("rate_limited", "timeout"):
+                    rate_limited += 1
+                    logger.warning(f"[{model}] {reason} — tentando o próximo modelo.")
+
+        self._last_all_rate_limited = (total > 0 and rate_limited == total)
+        logger.error("Nenhum provedor de IA traduziu este chunk.")
         return None
 
     # ------------------------------------------------------------------ #

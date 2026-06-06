@@ -249,12 +249,20 @@ services:
       - ${STORAGE_PATH}/config/legendarr/jobs:/app/jobs
       - ${STORAGE_PATH}/config/legendarr/stats:/app/stats
     environment:
+      # Cadeia de tradução IA: Gemini 1 → Gemini 2 → OpenRouter pago → OpenRouter grátis
+      - GEMINI_API_1=${GEMINI_API_1}
+      - GEMINI_API_2=${GEMINI_API_2}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.5-flash}
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
       - OPENROUTER_MODEL=${OPENROUTER_MODEL}
       - OPENROUTER_FREE_MODELS=${OPENROUTER_FREE_MODELS:-}
       - OPENROUTER_FREE_FAMILIES=${OPENROUTER_FREE_FAMILIES:-deepseek,qwen,meta-llama,mistralai,google}
       - MAX_FREE_FALLBACKS=${MAX_FREE_FALLBACKS:-4}
       - SCAN_INTERVAL=${SCAN_INTERVAL:-3600}
+      # Cooldown progressivo de legendas: revisita a cada RETRY_INTERVAL_HOURS;
+      # após MAX_FAST_RETRIES falhas, recua para COOLDOWN_HOURS (3 dias)
+      - RETRY_INTERVAL_HOURS=${RETRY_INTERVAL_HOURS:-1}
+      - MAX_FAST_RETRIES=${MAX_FAST_RETRIES:-6}
       - COOLDOWN_HOURS=${COOLDOWN_HOURS:-72}
       - BAZARR_URL=${BAZARR_URL:-http://bazarr:6767}
       - BAZARR_API_KEY=${BAZARR_API_KEY}
