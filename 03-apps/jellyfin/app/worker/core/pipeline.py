@@ -129,16 +129,16 @@ class Pipeline:
         movie = arr_event.get('movie') or {}
         series = arr_event.get('series') or {}
         if movie.get('id'):
-            tags = movie.get('tags')  # a varredura proativa já inclui as tags no evento
-            if tags is not None:
+            # Só confia nas tags do evento quando vêm da varredura proativa (IDs confiáveis);
+            # no webhook, as tags do payload são incompletas → consulta a API.
+            if movie.get('_tags_reliable'):
                 tid = arr.radarr_tag_id(AUDIO_KEEP_TAG)
-                return tid is not None and tid in tags
+                return tid is not None and tid in (movie.get('tags') or [])
             return arr.movie_has_tag(movie['id'], AUDIO_KEEP_TAG)
         if series.get('id'):
-            tags = series.get('tags')
-            if tags is not None:
+            if series.get('_tags_reliable'):
                 tid = arr.sonarr_tag_id(AUDIO_KEEP_TAG)
-                return tid is not None and tid in tags
+                return tid is not None and tid in (series.get('tags') or [])
             return arr.series_has_tag(series['id'], AUDIO_KEEP_TAG)
         return False
 
@@ -531,7 +531,8 @@ class Pipeline:
             logger.error(f"Falha ao extrair stream {idx}.")
             return False
 
-        success = self.translator.process(temp_srt, output_srt)
+        # guard_path: aborta a tradução se o vídeo for removido/rejeitado no meio
+        success = self.translator.process(temp_srt, output_srt, guard_path=filepath)
         try:
             os.remove(temp_srt)
         except Exception:

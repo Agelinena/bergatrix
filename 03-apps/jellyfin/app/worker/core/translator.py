@@ -344,17 +344,19 @@ class Translator:
     # Ponto de entrada principal                                           #
     # ------------------------------------------------------------------ #
 
-    def process(self, source_srt_path: str, output_path: str) -> bool:
+    def process(self, source_srt_path: str, output_path: str, guard_path: str | None = None) -> bool:
         """Chunk → Traduz via OpenRouter → Merge → Salva.
 
         Serializado por lock: evita que o scanner e o JobProcessor traduzam ao mesmo
         tempo e dobrem o consumo do rate limit gratuito.
+        guard_path: se informado e o arquivo sumir durante a tradução (ex.: rejeitado/
+        deletado pelo Arr), aborta — evita gastar cota traduzindo um arquivo morto.
         """
         logger.info(f"Iniciando tradução: {source_srt_path}")
         with self._lock:
-            return self._process_locked(source_srt_path, output_path)
+            return self._process_locked(source_srt_path, output_path, guard_path)
 
-    def _process_locked(self, source_srt_path: str, output_path: str) -> bool:
+    def _process_locked(self, source_srt_path: str, output_path: str, guard_path: str | None = None) -> bool:
         try:
             with open(source_srt_path, "r", encoding="utf-8") as f:
                 content = f.read()
@@ -367,6 +369,9 @@ class Translator:
             self._last_all_rate_limited = False
 
             for i, chunk in enumerate(chunks, 1):
+                if guard_path and not os.path.exists(guard_path):
+                    logger.warning(f"Mídia removida durante a tradução ({os.path.basename(guard_path)}) — abortando.")
+                    return False
                 logger.info(f"Traduzindo chunk {i}/{len(chunks)}...")
                 raw = self._call_api(chunk)
                 if raw:

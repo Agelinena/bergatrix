@@ -3,9 +3,6 @@ import logging
 import os
 import json
 from datetime import datetime
-from watchdog.observers import Observer
-from watchdog.events import FileSystemEventHandler
-from threading import Timer, Thread
 from .utils import has_pt_subtitle
 
 logger = logging.getLogger(__name__)
@@ -122,49 +119,6 @@ def _save_audio_verified(cache: dict):
         logger.warning(f"Não foi possível salvar cache de áudio verificado: {e}")
 
 # ------------------------------------------------------------------ #
-# Watchdog: reage a arquivos novos/movidos                            #
-# ------------------------------------------------------------------ #
-
-class MediaEventHandler(FileSystemEventHandler):
-    def __init__(self, pipeline, debounce_interval: int = 60):
-        self.pipeline = pipeline
-        self.debounce_interval = debounce_interval
-        self.timers: dict = {}
-
-    def on_created(self, event):
-        if not event.is_directory:
-            self._process_event(event.src_path)
-
-    def on_moved(self, event):
-        if not event.is_directory:
-            self._process_event(event.dest_path)
-
-    def _process_event(self, filepath: str):
-        # Ignora downloads em andamento
-        if "downloads" in filepath.split(os.sep):
-            return
-        if not filepath.lower().endswith(MEDIA_EXTENSIONS):
-            return
-
-        logger.info(f"Arquivo detectado: {os.path.basename(filepath)}. Aguardando {self.debounce_interval}s...")
-
-        # Debounce para aguardar a escrita terminar
-        if filepath in self.timers:
-            self.timers[filepath].cancel()
-        timer = Timer(self.debounce_interval, self._trigger_pipeline, [filepath])
-        self.timers[filepath] = timer
-        timer.start()
-
-    def _trigger_pipeline(self, filepath: str):
-        self.timers.pop(filepath, None)
-        if os.path.exists(filepath):
-            logger.info(f"Arquivo estabilizado: {os.path.basename(filepath)}. Processando...")
-            self.pipeline.process_file(filepath)
-        else:
-            logger.warning(f"Arquivo sumiu antes do processamento: {filepath}")
-
-
-# ------------------------------------------------------------------ #
 # Scanner principal                                                    #
 # ------------------------------------------------------------------ #
 
@@ -172,7 +126,6 @@ class Scanner:
     def __init__(self, pipeline, watch_dirs: list[str]):
         self.pipeline = pipeline
         self.watch_dirs = watch_dirs
-        self.observer = Observer()
 
     def _run_scan(self):
         """
@@ -271,7 +224,8 @@ class Scanner:
                     continue
                 _process(path, {
                     "movie": {"id": m.get("id"), "originalLanguage": m.get("originalLanguage"),
-                              "tags": m.get("tags") or [], "runtime": m.get("runtime")},
+                              "tags": m.get("tags") or [], "runtime": m.get("runtime"),
+                              "_tags_reliable": True},
                     "movieFile": {"id": mf.get("id")},
                     "downloadId": None,
                 })
@@ -287,7 +241,8 @@ class Scanner:
                         continue
                     _process(path, {
                         "series": {"id": s.get("id"), "originalLanguage": ol,
-                                   "tags": s.get("tags") or [], "runtime": s_runtime},
+                                   "tags": s.get("tags") or [], "runtime": s_runtime,
+                                   "_tags_reliable": True},
                         "episodeFile": {"id": ef["episode_file_id"]},
                         "episodes": [{"id": ef["episode_id"]}],
                         "downloadId": None,
@@ -314,25 +269,9 @@ class Scanner:
             self._run_scan()
 
     def start(self):
-        # Watchdog: monitora eventos em tempo real
-        event_handler = MediaEventHandler(self.pipeline)
-        for directory in self.watch_dirs:
-            if os.path.exists(directory):
-                logger.info(f"Monitorando (watchdog): {directory}")
-                self.observer.schedule(event_handler, directory, recursive=True)
-            else:
-                logger.warning(f"Diretório não encontrado: {directory}")
-
-        self.observer.start()
-
-        # Thread de varredura periódica (não bloqueia o watchdog)
-        scan_thread = Thread(target=self._periodic_scan, daemon=True)
-        scan_thread.start()
-        logger.info(f"Varredura periódica agendada a cada {PERIODIC_SCAN_INTERVAL}s ({PERIODIC_SCAN_INTERVAL // 60} min).")
-
-        try:
-            while True:
-                time.sleep(1)
-        except KeyboardInterrupt:
-            self.observer.stop()
-        self.observer.join()
+        # Sem watchdog de tempo real: arquivos novos são tratados pelo WEBHOOK do Arr
+        # (que valida áudio/duração/tag ANTES de mexer na legenda) e a varredura periódica
+        # cobre o restante. Isso elimina a corrida em que o watchdog traduzia, em paralelo,
+        # um arquivo que o webhook estava validando/rejeitando.
+        logger.info(f"Varredura periódica a cada {PERIODIC_SCAN_INTERVAL}s ({PERIODIC_SCAN_INTERVAL // 60} min).")
+        self._periodic_scan()  # bloqueia (loop infinito)
