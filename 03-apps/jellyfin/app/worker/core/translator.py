@@ -21,32 +21,10 @@ TRANSLATOR_SYSTEM_BASE = (
     "4. Traduza com fidelidade ao sentido e ao REGISTRO de cada fala; preserve nomes próprios.\n"
 )
 
-# O briefing do diretor entra como guia — com trava explícita contra exagero de gíria.
-DIRECTOR_GUIDE_PREFIX = (
-    "DIREÇÃO DE TRADUÇÃO (guia de tom e de consistência de termos — é orientação, NÃO "
-    "licença para inserir gírias onde o original não tem; respeite o registro de cada fala):\n"
-)
-
-# System prompt do DIRETOR — produz um briefing curto e conservador.
-DIRECTOR_SYSTEM = (
-    "Você é um DIRETOR DE LOCALIZAÇÃO. A partir de uma AMOSTRA de falas de um filme ou série, "
-    "escreva um briefing CURTO (no máximo ~120 palavras) para orientar o tradutor de PT-BR. Inclua:\n"
-    "- gênero e tom geral da obra;\n"
-    "- registro de linguagem (formal ↔ coloquial) e o nível de gíria adequado (baixo, médio ou alto);\n"
-    "- nomes próprios ou termos que devem ser MANTIDOS sem tradução;\n"
-    "- um glossário de no MÁXIMO 6 termos/expressões recorrentes com a tradução PT-BR recomendada.\n"
-    "Seja CONSERVADOR: priorize fidelidade e naturalidade; não exagere em gírias. "
-    "Responda em português, em tópicos curtos."
-)
-
 
 class Translator:
     """
-    Tradução de legendas 100% LOCAL via Ollama, com dois papéis:
-
-      • DIRETOR (DIRECTOR_MODEL): lê uma AMOSTRA do filme e gera um briefing de
-        tom/registro/termos. Roda 1x por legenda. Pode ser desligado.
-      • TRADUTOR (TRANSLATOR_MODEL): traduz os blocos em PT-BR seguindo o briefing.
+    Tradução de legendas 100% LOCAL via Ollama (TRANSLATOR_MODEL).
 
     A tradução é feita em formato numerado ([N] texto) para garantir correspondência
     1:1 com os blocos originais. Cada chunk é revisado: os blocos que não vieram
@@ -57,13 +35,9 @@ class Translator:
     def __init__(self):
         self.base_url = os.environ.get("LOCAL_AI_URL", "http://ollama:11434").rstrip("/")
         self.translator_model = os.environ.get("TRANSLATOR_MODEL", "translategemma:4b")
-        self.director_model = os.environ.get("DIRECTOR_MODEL", "qwen2.5:7b")
-        self.director_enabled = os.environ.get("DIRECTOR_ENABLED", "true").lower() == "true"
-        self.director_sample_lines = int(os.environ.get("DIRECTOR_SAMPLE_LINES", "180"))
         self.num_ctx = int(os.environ.get("OLLAMA_NUM_CTX", "8192"))
         self.timeout = float(os.environ.get("OLLAMA_TIMEOUT", "600"))
         self.translator_temp = float(os.environ.get("TRANSLATOR_TEMPERATURE", "0.2"))
-        self.director_temp = float(os.environ.get("DIRECTOR_TEMPERATURE", "0.5"))
         self.block_rounds = int(os.environ.get("BLOCK_RETRANSLATE_ROUNDS", "3"))
         self.block_batch = int(os.environ.get("TRANSLATE_BATCH_BLOCKS", "60"))
         self.min_block_coverage = float(os.environ.get("TRANSLATION_MIN_BLOCK_COVERAGE", "0.90"))
@@ -71,7 +45,6 @@ class Translator:
 
         logger.info(
             f"Translator (local/Ollama @ {self.base_url}) — "
-            f"diretor: {self.director_model if self.director_enabled else 'OFF'} | "
             f"tradutor: {self.translator_model} | ctx={self.num_ctx}"
         )
 
@@ -179,30 +152,8 @@ class Translator:
         return result
 
     # ------------------------------------------------------------------ #
-    # Diretor (contexto) + Tradutor                                        #
+    # Tradutor                                                             #
     # ------------------------------------------------------------------ #
-    def _sample_for_director(self, content: str) -> str:
-        texts = [t for _, t in self._blocks_of_chunk(content)]
-        n = self.director_sample_lines
-        if n > 0 and len(texts) > n:
-            step = len(texts) / n
-            texts = [texts[int(i * step)] for i in range(n)]
-        return "\n".join(texts)
-
-    def _build_brief(self, content: str) -> str:
-        if not self.director_enabled:
-            return ""
-        sample = self._sample_for_director(content)
-        if not sample.strip():
-            return ""
-        logger.info(f"Diretor ({self.director_model}): analisando contexto/tom do filme...")
-        brief = self._ollama_chat(self.director_model, DIRECTOR_SYSTEM, sample, self.director_temp)
-        if brief:
-            logger.info("Briefing de tradução gerado pelo diretor.")
-            return brief[:1500]
-        logger.warning("Diretor indisponível — seguindo a tradução SEM briefing de contexto.")
-        return ""
-
     def _translate_blocks(self, items: list, system: str) -> dict:
         """Traduz uma lista [(idx, texto)] em lotes de block_batch; retorna {idx: traducao}."""
         result = {}
@@ -230,13 +181,8 @@ class Translator:
                 return False
             logger.info(f"Conteúdo dividido em {len(chunks)} chunk(s) de ~15min.")
 
-            # Fase 1 — Diretor: briefing de contexto (1x por legenda)
-            brief = self._build_brief(content)
+            # Tradutor: chunk a chunk, com revisão por bloco
             system = TRANSLATOR_SYSTEM_BASE
-            if brief:
-                system = TRANSLATOR_SYSTEM_BASE + "\n" + DIRECTOR_GUIDE_PREFIX + brief
-
-            # Fase 2 — Tradutor: chunk a chunk, com revisão por bloco
             full_map: dict = {}
             total_blocks = translated_blocks = 0
             for i, chunk in enumerate(chunks, 1):

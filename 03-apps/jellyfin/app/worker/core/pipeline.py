@@ -29,6 +29,11 @@ REJECTION_FILE = "/app/stats/audio_rejections.json"
 AUDIO_KEEP_TAG = os.environ.get("AUDIO_KEEP_TAG", "keep-audio").strip()
 # Duração mínima (fração do runtime do Radarr/Sonarr) para o arquivo não ser considerado cortado/truncado
 MIN_DURATION_RATIO = int(os.environ.get("MIN_DURATION_PERCENT", "80")) / 100.0
+# Rótulo das legendas geradas por IA — vira o "título" da faixa no Jellyfin
+# (ex.: "Português - AI"), deixando explícito que é tradução automática. As legendas
+# do Bazarr NÃO recebem o rótulo. Evite "IA": colide com o idioma Interlingua (código 'ia');
+# "AI" é seguro. Deixe vazio para desativar o rótulo (volta a salvar como .por.srt).
+AI_SUBTITLE_LABEL = os.environ.get("AI_SUBTITLE_LABEL", "AI").strip()
 
 # Nome do idioma (originalLanguage do Radarr/Sonarr) → códigos aceitos nas tags de áudio (ffprobe).
 # Cobre variantes ISO-639-2 B/T e alpha-2. Idiomas fora do mapa → validação é pulada (seguro).
@@ -420,7 +425,9 @@ class Pipeline:
         """
         fname = os.path.basename(filepath)
         model_used = self.translator.translator_model
-        output_srt = os.path.splitext(filepath)[0] + ".por.srt"
+        # Legenda por IA recebe o rótulo no nome → o Jellyfin mostra "Português - AI".
+        base = os.path.splitext(filepath)[0]
+        output_srt = f"{base}.{AI_SUBTITLE_LABEL}.por.srt" if AI_SUBTITLE_LABEL else f"{base}.por.srt"
 
         if not os.path.exists(filepath):
             logger.info(f"IA: arquivo não existe mais — pulando tradução: {fname}")
