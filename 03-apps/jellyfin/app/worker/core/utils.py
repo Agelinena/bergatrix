@@ -1,4 +1,5 @@
 import os
+import re
 import json
 import subprocess
 import logging
@@ -135,3 +136,35 @@ def save_subtitle(content, output_path):
     except Exception as e:
         logger.error(f"Error saving subtitle to {output_path}: {e}")
         return False
+
+
+_SRT_TS = re.compile(
+    r"(\d{2}):(\d{2}):(\d{2}),(\d{3})\s*-->\s*(\d{2}):(\d{2}):(\d{2}),(\d{3})"
+)
+
+
+def subtitle_last_timestamp(srt_path: str) -> float | None:
+    """Maior tempo de FIM (em segundos) de um .srt, ou None se ilegível/sem timestamps."""
+    try:
+        with open(srt_path, "r", encoding="utf-8", errors="ignore") as f:
+            content = f.read()
+    except OSError:
+        return None
+    last = None
+    for m in _SRT_TS.finditer(content):
+        eh, em, es, ems = int(m.group(5)), int(m.group(6)), int(m.group(7)), int(m.group(8))
+        end = eh * 3600 + em * 60 + es + ems / 1000.0
+        if last is None or end > last:
+            last = end
+    return last
+
+
+def media_duration(filepath: str) -> float | None:
+    """Duração do vídeo em segundos (ffprobe format.duration), ou None."""
+    info = get_media_info(filepath)
+    if not info:
+        return None
+    try:
+        return float(info.get("format", {}).get("duration"))
+    except (TypeError, ValueError):
+        return None

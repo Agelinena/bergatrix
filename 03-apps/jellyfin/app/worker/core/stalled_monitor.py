@@ -1,10 +1,12 @@
 """
 Monitor de downloads travados (stalled).
 
-Vigia a fila do Radarr/Sonarr e, quando um download fica "stalled" (travado, ex.:
-sem conexões por bloqueio de firewall/VPN) por mais de STALLED_TIMEOUT, remove-o
-do download client, blocklista o release e dispara nova busca — fazendo o Arr
-pegar OUTRO release automaticamente.
+Vigia a fila do Radarr/Sonarr e age em dois casos:
+  • download FALHOU (status failed / erro de unpack-import / Usenet sem artigos):
+    remove na hora, blocklista o release e rebaixa outro;
+  • download TRAVADO ("stalled", ex.: sem conexões por firewall/VPN) por mais de
+    STALLED_TIMEOUT: remove, blocklista e dispara nova busca.
+Em ambos, o Arr pega OUTRO release automaticamente.
 
 Usa a API do Radarr/Sonarr (não precisa das credenciais do qBittorrent):
   GET    /api/v3/queue
@@ -47,14 +49,26 @@ class StalledMonitor:
             time.sleep(CHECK_INTERVAL)
 
     @staticmethod
-    def _is_stalled(item: dict) -> bool:
-        if (item.get("trackedDownloadStatus") or "").lower() != "warning":
-            return False
+    def _classify(item: dict) -> str | None:
+        """Classifica um item da fila: 'failed' (remover já), 'stalled' (remover
+        após o timeout) ou None (saudável). Cobre torrents travados e também
+        downloads que falharam de vez (Usenet sem artigos, unpack/import com erro)."""
+        status = (item.get("status") or "").lower()
+        tds = (item.get("trackedDownloadStatus") or "").lower()
+        state = (item.get("trackedDownloadState") or "").lower()
+
+        # Falha definitiva → remover/blocklistar imediatamente (não adianta esperar).
+        if status == "failed" or tds == "error" or state in ("failedpending", "failed"):
+            return "failed"
+
+        # Travado (sem conexões/seeds, firewall, etc.) → só remove se persistir.
         blob = (item.get("errorMessage") or "").lower()
         for sm in item.get("statusMessages") or []:
             blob += " " + (sm.get("title") or "").lower()
             blob += " " + " ".join(sm.get("messages") or []).lower()
-        return "stalled" in blob
+        if tds == "warning" and "stalled" in blob:
+            return "stalled"
+        return None
 
     def _check(self):
         now = time.time()
@@ -67,14 +81,27 @@ class StalledMonitor:
 
         for label, get_queue, remove in sources:
             for item in get_queue():
-                if not self._is_stalled(item):
+                kind = self._classify(item)
+                if not kind:
                     continue
                 dlid = item.get("downloadId") or f"{label}:{item.get('id')}"
+                title = item.get("title", "?")
+
+                # Falha definitiva → age na hora, sem esperar o timeout.
+                if kind == "failed":
+                    logger.warning(
+                        f"{label}: '{title}' com FALHA de download — removendo, "
+                        f"blocklistando e rebaixando outro release."
+                    )
+                    if remove(item.get("id"), blocklist=True):
+                        self._first_seen.pop(dlid, None)
+                    continue
+
+                # Stalled → só remove depois de STALLED_TIMEOUT persistindo.
                 active.add(dlid)
                 first = self._first_seen.setdefault(dlid, now)
                 elapsed = now - first
                 if elapsed >= STALLED_TIMEOUT:
-                    title = item.get("title", "?")
                     logger.warning(
                         f"{label}: '{title}' travado (stalled) há {elapsed / 60:.0f}min — "
                         f"removendo, blocklistando e rebaixando outro release."
@@ -83,7 +110,7 @@ class StalledMonitor:
                         self._first_seen.pop(dlid, None)
                 else:
                     logger.info(
-                        f"{label}: '{item.get('title', '?')}' stalled há {elapsed / 60:.0f}min "
+                        f"{label}: '{title}' stalled há {elapsed / 60:.0f}min "
                         f"(remove em {(STALLED_TIMEOUT - elapsed) / 60:.0f}min se persistir)."
                     )
 

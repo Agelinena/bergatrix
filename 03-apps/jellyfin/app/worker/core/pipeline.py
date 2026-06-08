@@ -337,7 +337,7 @@ class Pipeline:
         fname = os.path.basename(filepath)
         logger.info(f"Processando: {fname} | force={force} | stream_index={stream_index}")
 
-        model_used = self.translator.model
+        model_used = self.translator.translator_model
         base_path = os.path.splitext(filepath)[0]
         output_srt = f"{base_path}.por.srt"
 

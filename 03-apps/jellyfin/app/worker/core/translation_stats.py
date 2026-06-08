@@ -63,6 +63,17 @@ class TranslationStats:
             self._save(data)
             logger.info(f"Stats de tradução registradas para {entry['filename']} [{status}]")
 
+    def clear(self, filepath: str):
+        """Remove o registro de um arquivo — ele volta a ser elegível para
+        reprocessamento (sai de 'resolved'/cooldown). Usado pela auditoria de
+        legendas ao descartar uma tradução incompleta."""
+        with self.lock:
+            data = self._load()
+            new = [e for e in data if e.get("filepath") != filepath]
+            if len(new) != len(data):
+                self._save(new)
+                logger.info(f"Stats: registro removido para {os.path.basename(filepath)} (reprocessar).")
+
     def get_all(self) -> list:
         with self.lock:
             return self._load()

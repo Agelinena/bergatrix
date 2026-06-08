@@ -249,15 +249,20 @@ services:
       - ${STORAGE_PATH}/config/legendarr/jobs:/app/jobs
       - ${STORAGE_PATH}/config/legendarr/stats:/app/stats
     environment:
-      # Cadeia de tradução IA: Gemini 1 → Gemini 2 → OpenRouter pago → OpenRouter grátis
-      - GEMINI_API_1=${GEMINI_API_1}
-      - GEMINI_API_2=${GEMINI_API_2}
-      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.5-flash}
-      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
-      - OPENROUTER_MODEL=${OPENROUTER_MODEL}
-      - OPENROUTER_FREE_MODELS=${OPENROUTER_FREE_MODELS:-}
-      - OPENROUTER_FREE_FAMILIES=${OPENROUTER_FREE_FAMILIES:-deepseek,qwen,meta-llama,mistralai,google}
-      - MAX_FREE_FALLBACKS=${MAX_FREE_FALLBACKS:-4}
+      # Tradução 100% LOCAL via Ollama (sem APIs externas): diretor + tradutor.
+      # O worker e o ollama compartilham a rede bergatrix-proxy → http://ollama:11434
+      - LOCAL_AI_URL=${LOCAL_AI_URL:-http://ollama:11434}
+      - DIRECTOR_MODEL=${DIRECTOR_MODEL:-qwen2.5:7b}
+      - TRANSLATOR_MODEL=${TRANSLATOR_MODEL:-translategemma:4b}
+      - DIRECTOR_ENABLED=${DIRECTOR_ENABLED:-true}
+      - DIRECTOR_SAMPLE_LINES=${DIRECTOR_SAMPLE_LINES:-180}
+      - OLLAMA_NUM_CTX=${OLLAMA_NUM_CTX:-8192}
+      - OLLAMA_TIMEOUT=${OLLAMA_TIMEOUT:-600}
+      - TRANSLATOR_TEMPERATURE=${TRANSLATOR_TEMPERATURE:-0.2}
+      - DIRECTOR_TEMPERATURE=${DIRECTOR_TEMPERATURE:-0.5}
+      - BLOCK_RETRANSLATE_ROUNDS=${BLOCK_RETRANSLATE_ROUNDS:-3}
+      - TRANSLATE_BATCH_BLOCKS=${TRANSLATE_BATCH_BLOCKS:-60}
+      - TRANSLATION_MIN_BLOCK_COVERAGE=${TRANSLATION_MIN_BLOCK_COVERAGE:-0.90}
       - SCAN_INTERVAL=${SCAN_INTERVAL:-3600}
       # Cooldown progressivo de legendas: revisita a cada RETRY_INTERVAL_HOURS;
       # após MAX_FAST_RETRIES falhas, recua para COOLDOWN_HOURS (3 dias)
@@ -278,6 +283,8 @@ services:
       - AUDIO_KEEP_TAG=${AUDIO_KEEP_TAG:-keep-audio}
       # Duração mínima (% do runtime do Arr) para o arquivo não ser tratado como cortado
       - MIN_DURATION_PERCENT=${MIN_DURATION_PERCENT:-80}
+      # Auditoria de legendas: cobertura mínima (último timestamp ÷ duração) p/ não ser incompleta
+      - SUBTITLE_MIN_COVERAGE=${SUBTITLE_MIN_COVERAGE:-0.85}
       # Remove downloads travados (stalled) no Radarr/Sonarr após N minutos e rebaixa
       - STALLED_TIMEOUT_MINUTES=${STALLED_TIMEOUT_MINUTES:-5}
       - STALLED_CHECK_INTERVAL=${STALLED_CHECK_INTERVAL:-60}

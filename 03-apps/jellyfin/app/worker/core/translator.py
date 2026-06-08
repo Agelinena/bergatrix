@@ -1,5 +1,4 @@
 import os
-import time
 import threading
 import httpx
 import logging
@@ -8,244 +7,105 @@ from .utils import save_subtitle
 
 logger = logging.getLogger(__name__)
 
-OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
-OPENROUTER_MODELS_URL = "https://openrouter.ai/api/v1/models"
-GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
-CHUNK_DURATION = 900  # 15 minutos por chunk
+CHUNK_DURATION = 900  # 15 min por chunk (janela temporal de divisão)
 
-# Famílias gratuitas preferidas (ordem = prioridade), melhores para PT-BR primeiro.
-# Os modelos REAIS são DESCOBERTOS dinamicamente via /api/v1/models, porque os
-# slugs ":free" mudam o tempo todo (e dão 404 se hardcoded). Configurável por env.
-DEFAULT_FREE_FAMILIES = ["deepseek", "qwen", "meta-llama", "mistralai", "google"]
-FREE_DISCOVERY_TTL = 6 * 3600  # re-descobre os modelos gratuitos a cada 6h
+# System prompt do TRADUTOR. A entrada vai numerada ([N] texto) para garantir a
+# correspondência 1:1 com os blocos originais e poder revisar o que faltou.
+TRANSLATOR_SYSTEM_BASE = (
+    "Você é um tradutor profissional de legendas para Português do Brasil (PT-BR).\n"
+    "A entrada são linhas no formato: [N] texto original.\n"
+    "Regras de saída (OBRIGATÓRIAS):\n"
+    "1. Responda APENAS com as linhas traduzidas, no MESMO formato: [N] texto.\n"
+    "2. Use EXATAMENTE os mesmos números [N], na mesma ordem, sem pular nem juntar entradas.\n"
+    "3. Uma entrada por número [N]. Não escreva comentários nem nada fora desse formato.\n"
+    "4. Traduza com fidelidade ao sentido e ao REGISTRO de cada fala; preserve nomes próprios.\n"
+)
 
-SYSTEM_PROMPT = (
-    "Você é um tradutor profissional de legendas (SRT). "
-    "Traduza o conteúdo abaixo para Português do Brasil (pt-br). "
-    "Adapte gírias e expressões para o contexto brasileiro. "
-    "NÃO altere a quantidade de linhas de diálogo. "
-    "Retorne APENAS o texto traduzido no formato SRT, sem explicações."
+# O briefing do diretor entra como guia — com trava explícita contra exagero de gíria.
+DIRECTOR_GUIDE_PREFIX = (
+    "DIREÇÃO DE TRADUÇÃO (guia de tom e de consistência de termos — é orientação, NÃO "
+    "licença para inserir gírias onde o original não tem; respeite o registro de cada fala):\n"
+)
+
+# System prompt do DIRETOR — produz um briefing curto e conservador.
+DIRECTOR_SYSTEM = (
+    "Você é um DIRETOR DE LOCALIZAÇÃO. A partir de uma AMOSTRA de falas de um filme ou série, "
+    "escreva um briefing CURTO (no máximo ~120 palavras) para orientar o tradutor de PT-BR. Inclua:\n"
+    "- gênero e tom geral da obra;\n"
+    "- registro de linguagem (formal ↔ coloquial) e o nível de gíria adequado (baixo, médio ou alto);\n"
+    "- nomes próprios ou termos que devem ser MANTIDOS sem tradução;\n"
+    "- um glossário de no MÁXIMO 6 termos/expressões recorrentes com a tradução PT-BR recomendada.\n"
+    "Seja CONSERVADOR: priorize fidelidade e naturalidade; não exagere em gírias. "
+    "Responda em português, em tópicos curtos."
 )
 
 
 class Translator:
+    """
+    Tradução de legendas 100% LOCAL via Ollama, com dois papéis:
+
+      • DIRETOR (DIRECTOR_MODEL): lê uma AMOSTRA do filme e gera um briefing de
+        tom/registro/termos. Roda 1x por legenda. Pode ser desligado.
+      • TRADUTOR (TRANSLATOR_MODEL): traduz os blocos em PT-BR seguindo o briefing.
+
+    A tradução é feita em formato numerado ([N] texto) para garantir correspondência
+    1:1 com os blocos originais. Cada chunk é revisado: os blocos que não vieram
+    traduzidos são reenviados (até BLOCK_RETRANSLATE_ROUNDS vezes) antes da montagem
+    final, que reaproveita os timestamps originais (formato e sincronia garantidos).
+    """
+
     def __init__(self):
-        self.api_key = os.environ.get("OPENROUTER_API_KEY", "")
-        # Modelo pago padrão (preferencial)
-        self.model = os.environ.get("OPENROUTER_MODEL", "deepseek/deepseek-chat-v3-0324")
+        self.base_url = os.environ.get("LOCAL_AI_URL", "http://ollama:11434").rstrip("/")
+        self.translator_model = os.environ.get("TRANSLATOR_MODEL", "translategemma:4b")
+        self.director_model = os.environ.get("DIRECTOR_MODEL", "qwen2.5:7b")
+        self.director_enabled = os.environ.get("DIRECTOR_ENABLED", "true").lower() == "true"
+        self.director_sample_lines = int(os.environ.get("DIRECTOR_SAMPLE_LINES", "180"))
+        self.num_ctx = int(os.environ.get("OLLAMA_NUM_CTX", "8192"))
+        self.timeout = float(os.environ.get("OLLAMA_TIMEOUT", "600"))
+        self.translator_temp = float(os.environ.get("TRANSLATOR_TEMPERATURE", "0.2"))
+        self.director_temp = float(os.environ.get("DIRECTOR_TEMPERATURE", "0.5"))
+        self.block_rounds = int(os.environ.get("BLOCK_RETRANSLATE_ROUNDS", "3"))
+        self.block_batch = int(os.environ.get("TRANSLATE_BATCH_BLOCKS", "60"))
+        self.min_block_coverage = float(os.environ.get("TRANSLATION_MIN_BLOCK_COVERAGE", "0.90"))
+        self._lock = threading.Lock()  # serializa traduções (scanner + jobs) — 1 modelo por vez na GPU
 
-        # Cadeia de fallback de IA: Gemini chave 1 → Gemini chave 2 → OpenRouter pago → OpenRouter grátis.
-        self.gemini_keys = [k.strip() for k in (os.environ.get("GEMINI_API_1", ""),
-                                                os.environ.get("GEMINI_API_2", "")) if k.strip()]
-        self.gemini_model = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
-        self._gemini_dead = set()   # chaves inválidas/sem acesso nesta sessão
-
-        # Override fixo (CSV) tem prioridade; senão descobre por família dinamicamente.
-        free_env = os.environ.get("OPENROUTER_FREE_MODELS", "").strip()
-        self._free_override = [m.strip() for m in free_env.split(",") if m.strip()] if free_env else None
-        fam_env = os.environ.get("OPENROUTER_FREE_FAMILIES", "").strip()
-        self.free_families = [f.strip().lower() for f in fam_env.split(",") if f.strip()] or DEFAULT_FREE_FAMILIES
-
-        self.max_free = int(os.environ.get("MAX_FREE_FALLBACKS", "4"))
-        self.paid_available = True          # 402 no pago → desliga pelo resto da sessão
-        self.dead_models = set()            # slugs que retornaram 404 nesta sessão
-        self._free_cache = None
-        self._free_cache_at = 0.0
-        self._lock = threading.Lock()       # serializa traduções concorrentes (scanner + jobs)
-
-        if not self.api_key and not self.gemini_keys:
-            raise ValueError("Nenhuma API de IA configurada (OPENROUTER_API_KEY ou GEMINI_API_1/GEMINI_API_2).")
-
-        modo = f"override fixo: {self._free_override}" if self._free_override else f"descoberta por família {self.free_families}"
         logger.info(
-            f"Translator inicializado. Cadeia: Gemini x{len(self.gemini_keys)} ({self.gemini_model}) "
-            f"→ OpenRouter pago ({self.model}) → OpenRouter grátis ({modo}; máx {self.max_free})"
+            f"Translator (local/Ollama @ {self.base_url}) — "
+            f"diretor: {self.director_model if self.director_enabled else 'OFF'} | "
+            f"tradutor: {self.translator_model} | ctx={self.num_ctx}"
         )
 
     # ------------------------------------------------------------------ #
-    # Descoberta dinâmica dos modelos gratuitos                            #
+    # Cliente Ollama                                                       #
     # ------------------------------------------------------------------ #
-
-    def _discover_free_models(self) -> list:
-        """Consulta /api/v1/models e retorna os modelos ':free' das famílias preferidas, ordenados."""
-        try:
-            with httpx.Client(timeout=30) as c:
-                r = c.get(OPENROUTER_MODELS_URL, headers={"Authorization": f"Bearer {self.api_key}"})
-                r.raise_for_status()
-                data = r.json().get("data", [])
-        except Exception as e:
-            logger.warning(f"Falha ao descobrir modelos gratuitos no OpenRouter: {e}")
-            return []
-
-        free_ids = []
-        for m in data:
-            mid = m.get("id", "")
-            pricing = m.get("pricing", {}) or {}
-            is_free = mid.endswith(":free") or (
-                str(pricing.get("prompt", "1")) in ("0", "0.0")
-                and str(pricing.get("completion", "1")) in ("0", "0.0")
-            )
-            if is_free and mid:
-                free_ids.append(mid)
-
-        # Ordena por prioridade de família; ignora famílias fora da lista preferida
-        ordered = []
-        for fam in self.free_families:
-            for mid in free_ids:
-                if mid.split("/")[0].lower() == fam or mid.lower().startswith(fam):
-                    if mid not in ordered:
-                        ordered.append(mid)
-        logger.info(f"Modelos gratuitos ATIVOS descobertos ({len(ordered)}): {ordered[:8]}")
-        return ordered
-
-    def _get_free_models(self) -> list:
-        """Retorna a lista de modelos gratuitos (override fixo, ou descoberta com cache de 6h)."""
-        if self._free_override is not None:
-            return self._free_override
-        now = time.time()
-        if self._free_cache is None or (now - self._free_cache_at) > FREE_DISCOVERY_TTL:
-            discovered = self._discover_free_models()
-            if discovered:
-                self._free_cache = discovered
-                self._free_cache_at = now
-            elif self._free_cache is None:
-                self._free_cache = []
-        return self._free_cache
-
-    def _request_gemini(self, api_key: str, text_content: str) -> tuple[str | None, str]:
-        """Traduz um chunk via Gemini (Google). Retorna (conteudo, motivo)."""
-        url = GEMINI_API_URL.format(model=self.gemini_model)
-        payload = {
-            "systemInstruction": {"parts": [{"text": SYSTEM_PROMPT}]},
-            "contents": [{"role": "user", "parts": [{"text": text_content}]}],
-        }
-        try:
-            with httpx.Client(timeout=180.0) as client:
-                r = client.post(url, params={"key": api_key}, json=payload)
-            if r.status_code == 200:
-                cands = r.json().get("candidates") or []
-                if not cands:
-                    return None, "error"
-                parts = (cands[0].get("content") or {}).get("parts") or []
-                text = "".join(p.get("text", "") for p in parts)
-                return (text, "ok") if text and text.strip() else (None, "error")
-            if r.status_code == 429:
-                return None, "rate_limited"           # cota/RPM esgotada
-            if r.status_code in (400, 401, 403):
-                return None, "no_credit"              # chave inválida / sem acesso
-            logger.error(f"[gemini] HTTP {r.status_code}: {r.text[:160]}")
-            return None, "error"
-        except httpx.TimeoutException:
-            return None, "timeout"
-        except Exception as e:
-            logger.error(f"[gemini] erro inesperado: {e}")
-            return None, "error"
-
-    def _request_model(self, model: str, text_content: str) -> tuple[str | None, str]:
-        """
-        Tenta UM modelo, UMA única vez. Retorna (conteudo, motivo).
-        motivo ∈ {"ok", "no_credit", "not_found", "rate_limited", "timeout", "error"}.
-        Sem retry longo aqui — quem chama passa ao PRÓXIMO modelo (há vários gratuitos).
-        """
-        headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json",
-            "HTTP-Referer": "https://github.com/legendarr",
-            "X-Title": "Legendarr",
-        }
+    def _ollama_chat(self, model: str, system: str, user: str, temperature: float) -> str | None:
         payload = {
             "model": model,
             "messages": [
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": text_content},
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
             ],
+            "stream": False,
+            "options": {"temperature": temperature, "num_ctx": self.num_ctx},
         }
         try:
-            with httpx.Client(timeout=180.0) as client:
-                response = client.post(OPENROUTER_API_URL, headers=headers, json=payload)
-
-            if response.status_code == 200:
-                choices = response.json().get("choices") or []
-                if not choices:
-                    return None, "error"
-                content = choices[0].get("message", {}).get("content", "")
-                return (content, "ok") if content and content.strip() else (None, "error")
-            if response.status_code in (401, 402):
-                return None, "no_credit"
-            if response.status_code == 404:
-                return None, "not_found"
-            if response.status_code == 429:
-                return None, "rate_limited"
-            logger.error(f"[{model}] HTTP {response.status_code}: {response.text[:160]}")
-            return None, "error"
+            with httpx.Client(timeout=self.timeout) as c:
+                r = c.post(f"{self.base_url}/api/chat", json=payload)
+            if r.status_code == 200:
+                content = (r.json().get("message") or {}).get("content", "")
+                return content.strip() or None
+            logger.error(f"[ollama:{model}] HTTP {r.status_code}: {r.text[:200]}")
+            return None
         except httpx.TimeoutException:
-            return None, "timeout"
+            logger.error(f"[ollama:{model}] timeout após {self.timeout:.0f}s (modelo carregando/sobrecarregado?).")
+            return None
         except Exception as e:
-            logger.error(f"[{model}] erro inesperado: {e}")
-            return None, "error"
-
-    def _call_api(self, text_content: str) -> str | None:
-        """
-        Traduz um chunk seguindo a cadeia de fallback:
-          1) Gemini (chave 1) → 2) Gemini (chave 2) → 3) OpenRouter pago → 4) OpenRouter grátis.
-        Pula rápido em rate limit/erro; sinaliza se TODA a cadeia ficou rate-limited.
-        """
-        total = 0
-        rate_limited = 0
-
-        # 1 e 2 — Gemini (chaves de projetos diferentes = cotas independentes)
-        for i, key in enumerate(self.gemini_keys, 1):
-            if key in self._gemini_dead:
-                continue
-            total += 1
-            content, reason = self._request_gemini(key, text_content)
-            if content is not None:
-                logger.info(f"Chunk traduzido via: Gemini #{i} ({self.gemini_model})")
-                return content
-            if reason == "no_credit":
-                logger.warning(f"Gemini #{i}: chave inválida/sem acesso — desativando nesta sessão.")
-                self._gemini_dead.add(key)
-            elif reason in ("rate_limited", "timeout"):
-                rate_limited += 1
-                logger.warning(f"Gemini #{i}: {reason} — tentando o próximo provedor.")
-
-        # 3 — OpenRouter pago (DeepSeek)
-        if self.api_key and self.paid_available:
-            total += 1
-            content, reason = self._request_model(self.model, text_content)
-            if content is not None:
-                logger.info(f"Chunk traduzido via: {self.model} (OpenRouter pago)")
-                return content
-            if reason == "no_credit":
-                logger.warning("OpenRouter pago sem créditos (402) — usando apenas gratuitos nesta sessão.")
-                self.paid_available = False
-            elif reason in ("rate_limited", "timeout"):
-                rate_limited += 1
-
-        # 4 — OpenRouter grátis (descoberta dinâmica)
-        if self.api_key:
-            free = [m for m in self._get_free_models() if m not in self.dead_models][:self.max_free]
-            for model in free:
-                total += 1
-                content, reason = self._request_model(model, text_content)
-                if content is not None:
-                    logger.info(f"Chunk traduzido via: {model} (OpenRouter grátis)")
-                    return content
-                if reason == "not_found":
-                    logger.warning(f"[{model}] indisponível (404) — removido desta sessão.")
-                    self.dead_models.add(model)
-                elif reason in ("rate_limited", "timeout"):
-                    rate_limited += 1
-                    logger.warning(f"[{model}] {reason} — tentando o próximo modelo.")
-
-        self._last_all_rate_limited = (total > 0 and rate_limited == total)
-        logger.error("Nenhum provedor de IA traduziu este chunk.")
-        return None
+            logger.error(f"[ollama:{model}] erro de conexão: {e}")
+            return None
 
     # ------------------------------------------------------------------ #
-    # Helpers de parsing SRT                                               #
+    # Parsing / divisão de SRT                                             #
     # ------------------------------------------------------------------ #
-
     def parse_timestamp(self, ts: str) -> float:
         h, m, s_ms = ts.split(":")
         s, ms = s_ms.split(",")
@@ -253,106 +113,109 @@ class Translator:
 
     def extract_timestamps(self, srt_content: str):
         pattern = re.compile(r"(\d+)\s*\n(\d{2}:\d{2}:\d{2},\d{3}) --> (\d{2}:\d{2}:\d{2},\d{3})")
-        timestamps = []
-        for index, start_str, end_str in pattern.findall(srt_content):
-            timestamps.append({
-                "index": index,
-                "timestamp_line": f"{start_str} --> {end_str}",
-                "start": self.parse_timestamp(start_str),
-                "end": self.parse_timestamp(end_str),
-            })
-        return timestamps
+        out = []
+        for index, start_str, _end in pattern.findall(srt_content):
+            out.append({"index": index, "start": self.parse_timestamp(start_str)})
+        return out
 
     def split_content_by_time(self, content: str, chunk_duration: int = CHUNK_DURATION):
         timestamps = self.extract_timestamps(content)
         if not timestamps:
             return []
-
         blocks = re.split(r"\n\s*\n", content.strip())
         text_map = {}
         for block in blocks:
             parts = block.strip().split("\n")
             if len(parts) >= 3:
                 text_map[parts[0].strip()] = block
-
-        chunks, current_chunk = [], []
-        chunk_start_time = timestamps[0]["start"]
-
+        chunks, current = [], []
+        start0 = timestamps[0]["start"]
         for ts in timestamps:
-            if ts["start"] - chunk_start_time > chunk_duration:
-                if current_chunk:
-                    chunks.append(current_chunk)
-                current_chunk = []
-                chunk_start_time = ts["start"]
+            if ts["start"] - start0 > chunk_duration:
+                if current:
+                    chunks.append(current)
+                current = []
+                start0 = ts["start"]
             if ts["index"] in text_map:
-                current_chunk.append(text_map[ts["index"]])
-
-        if current_chunk:
-            chunks.append(current_chunk)
-
+                current.append(text_map[ts["index"]])
+        if current:
+            chunks.append(current)
         return ["\n\n".join(c) for c in chunks]
 
-    def parse_translation(self, raw: str) -> dict:
-        """
-        Parseia o SRT traduzido retornado pela IA.
-        Usa split por linha em branco para ser robusto contra variações de formato.
-        Retorna { "1": "texto traduzido", "2": "texto traduzido", ... }
-        """
-        result = {}
-        # Remove possíveis marcadores de código (```srt ... ```)
-        clean = re.sub(r"```[a-zA-Z]*\n?", "", raw).strip()
-        blocks = re.split(r"\n\s*\n", clean)
-
-        for block in blocks:
+    @staticmethod
+    def _blocks_of_chunk(srt_text: str):
+        """Extrai [(index, texto)] de um trecho SRT, juntando as linhas de texto do bloco."""
+        items = []
+        for block in re.split(r"\n\s*\n", srt_text.strip()):
             lines = block.strip().splitlines()
-            if not lines:
-                continue
-            # Primeira linha deve ser o índice numérico
-            idx_line = lines[0].strip()
-            if not idx_line.isdigit():
-                continue
-            # Segunda linha deve ser o timestamp (opcional, mas pulamos)
             if len(lines) < 3:
                 continue
-            # O texto começa na linha 3 em diante (após index + timestamp)
-            text_lines = lines[2:]
-            result[idx_line] = "\n".join(text_lines).strip()
+            idx = lines[0].strip()
+            if not idx.isdigit():
+                continue
+            text = " ".join(l.strip() for l in lines[2:] if l.strip())
+            if text:
+                items.append((idx, text))
+        return items
 
+    def _parse_numbered(self, raw: str, batch_items: list) -> dict:
+        """
+        Parseia a resposta no formato '[N] texto'. Se o modelo ignorar os marcadores
+        mas devolver uma linha por bloco (na ordem), faz um fallback POSICIONAL.
+        """
+        clean = re.sub(r"```[a-zA-Z]*\n?", "", raw).strip()
+        result = {}
+        for m in re.finditer(r"\[(\d+)\]\s*(.*?)(?=\n\s*\[\d+\]|\Z)", clean, re.S):
+            txt = re.sub(r"\s*\n\s*", " ", m.group(2)).strip()
+            if txt:
+                result[m.group(1)] = txt
+        # Fallback posicional: modelo respondeu sem [N], mas com 1 linha por bloco.
+        if len(result) < len(batch_items) * 0.5:
+            lines = [re.sub(r"^\s*\[?\d+\]?[\.\):\-]?\s*", "", l).strip()
+                     for l in clean.splitlines() if l.strip()]
+            if len(lines) == len(batch_items):
+                result = {idx: lines[i] for i, (idx, _) in enumerate(batch_items)}
+                logger.info("  (parse posicional: resposta sem [N], mapeada por ordem)")
         return result
 
-    def merge_and_save(self, original_srt_path: str, translated_map: dict, output_path: str) -> bool:
-        try:
-            with open(original_srt_path, "r", encoding="utf-8") as f:
-                original_content = f.read()
-
-            pattern = re.compile(r"(\d+)\s*\n(\d{2}:\d{2}:\d{2},\d{3} --> \d{2}:\d{2}:\d{2},\d{3})")
-            matches = pattern.findall(original_content)
-
-            if len(matches) != len(translated_map):
-                logger.warning(
-                    f"Discrepância de linhas: original={len(matches)}, traduzido={len(translated_map)}"
-                )
-
-            final_srt = [f"{idx}\n{tc}\n{translated_map.get(idx, '')}\n" for idx, tc in matches]
-            return save_subtitle("\n".join(final_srt), output_path)
-
-        except Exception as e:
-            logger.error(f"Erro ao fazer merge das legendas: {e}")
-            return False
-
     # ------------------------------------------------------------------ #
-    # Ponto de entrada principal                                           #
+    # Diretor (contexto) + Tradutor                                        #
     # ------------------------------------------------------------------ #
+    def _sample_for_director(self, content: str) -> str:
+        texts = [t for _, t in self._blocks_of_chunk(content)]
+        n = self.director_sample_lines
+        if n > 0 and len(texts) > n:
+            step = len(texts) / n
+            texts = [texts[int(i * step)] for i in range(n)]
+        return "\n".join(texts)
+
+    def _build_brief(self, content: str) -> str:
+        if not self.director_enabled:
+            return ""
+        sample = self._sample_for_director(content)
+        if not sample.strip():
+            return ""
+        logger.info(f"Diretor ({self.director_model}): analisando contexto/tom do filme...")
+        brief = self._ollama_chat(self.director_model, DIRECTOR_SYSTEM, sample, self.director_temp)
+        if brief:
+            logger.info("Briefing de tradução gerado pelo diretor.")
+            return brief[:1500]
+        logger.warning("Diretor indisponível — seguindo a tradução SEM briefing de contexto.")
+        return ""
+
+    def _translate_blocks(self, items: list, system: str) -> dict:
+        """Traduz uma lista [(idx, texto)] em lotes de block_batch; retorna {idx: traducao}."""
+        result = {}
+        for i in range(0, len(items), self.block_batch):
+            batch = items[i:i + self.block_batch]
+            user = "\n".join(f"[{idx}] {text}" for idx, text in batch)
+            raw = self._ollama_chat(self.translator_model, system, user, self.translator_temp)
+            if raw:
+                result.update(self._parse_numbered(raw, batch))
+        return result
 
     def process(self, source_srt_path: str, output_path: str, guard_path: str | None = None) -> bool:
-        """Chunk → Traduz via OpenRouter → Merge → Salva.
-
-        Serializado por lock: evita que o scanner e o JobProcessor traduzam ao mesmo
-        tempo e dobrem o consumo do rate limit gratuito.
-        guard_path: se informado e o arquivo sumir durante a tradução (ex.: rejeitado/
-        deletado pelo Arr), aborta — evita gastar cota traduzindo um arquivo morto.
-        """
-        logger.info(f"Iniciando tradução: {source_srt_path}")
+        logger.info(f"Iniciando tradução (local): {source_srt_path}")
         with self._lock:
             return self._process_locked(source_srt_path, output_path, guard_path)
 
@@ -362,45 +225,89 @@ class Translator:
                 content = f.read()
 
             chunks = self.split_content_by_time(content)
+            if not chunks:
+                logger.error("Sem blocos de legenda para traduzir.")
+                return False
             logger.info(f"Conteúdo dividido em {len(chunks)} chunk(s) de ~15min.")
 
-            full_map: dict = {}
-            ok_chunks = 0
-            self._last_all_rate_limited = False
+            # Fase 1 — Diretor: briefing de contexto (1x por legenda)
+            brief = self._build_brief(content)
+            system = TRANSLATOR_SYSTEM_BASE
+            if brief:
+                system = TRANSLATOR_SYSTEM_BASE + "\n" + DIRECTOR_GUIDE_PREFIX + brief
 
+            # Fase 2 — Tradutor: chunk a chunk, com revisão por bloco
+            full_map: dict = {}
+            total_blocks = translated_blocks = 0
             for i, chunk in enumerate(chunks, 1):
                 if guard_path and not os.path.exists(guard_path):
-                    logger.warning(f"Mídia removida durante a tradução ({os.path.basename(guard_path)}) — abortando.")
+                    logger.warning("Mídia removida durante a tradução — abortando.")
                     return False
-                logger.info(f"Traduzindo chunk {i}/{len(chunks)}...")
-                raw = self._call_api(chunk)
-                if raw:
-                    full_map.update(self.parse_translation(raw))
-                    ok_chunks += 1
-                else:
-                    logger.error(f"Chunk {i} falhou.")
-                    # Se a cadeia inteira está rate-limited (conta gratuita esgotada),
-                    # não adianta insistir nos demais chunks — aborta e tenta depois.
-                    if getattr(self, "_last_all_rate_limited", False):
-                        logger.error("Conta gratuita esgotada (rate limit) — abortando os chunks restantes.")
-                        break
+                items = self._blocks_of_chunk(chunk)
+                if not items:
+                    continue
+                total_blocks += len(items)
+                logger.info(f"Traduzindo chunk {i}/{len(chunks)} ({len(items)} blocos)...")
 
-            # Verifica se a tradução por IA realmente produziu conteúdo.
-            # Sem isto, uma falha total (ex.: sem créditos) salvaria um SRT só com
-            # linhas em branco e seria contabilizada como "sucesso".
+                trad: dict = {}
+                pending = items
+                for rnd in range(1, self.block_rounds + 1):
+                    got = self._translate_blocks(pending, system)
+                    for k, v in got.items():
+                        if v.strip():
+                            trad[k] = v
+                    pending = [(idx, t) for idx, t in items if not trad.get(idx, "").strip()]
+                    if not pending:
+                        break
+                    if guard_path and not os.path.exists(guard_path):
+                        return False
+                    logger.info(
+                        f"  Revisão: {len(pending)} bloco(s) sem tradução — "
+                        f"retraduzindo (rodada {rnd}/{self.block_rounds})..."
+                    )
+
+                translated_blocks += len(items) - len(pending)
+                # Resíduo irrecuperável: mantém o texto original p/ não dessincronizar a legenda.
+                if pending:
+                    logger.warning(
+                        f"  {len(pending)} bloco(s) sem tradução após {self.block_rounds} rodadas "
+                        f"— mantendo o texto original nesses blocos."
+                    )
+                    for idx, t in pending:
+                        trad.setdefault(idx, t)
+                full_map.update(trad)
+
             if not full_map:
-                logger.error(
-                    "Tradução por IA NÃO foi realizada: nenhum chunk traduzido "
-                    "(verifique créditos do OpenRouter e disponibilidade dos modelos gratuitos)."
+                logger.error("Tradução local não produziu conteúdo (Ollama fora do ar?).")
+                return False
+
+            coverage = (translated_blocks / total_blocks) if total_blocks else 0.0
+            if coverage < self.min_block_coverage:
+                logger.warning(
+                    f"Tradução incompleta: só {translated_blocks}/{total_blocks} blocos "
+                    f"({coverage * 100:.0f}%) — DESCARTADA, será refeita na próxima revisita."
                 )
                 return False
-            if ok_chunks < len(chunks):
-                logger.warning(f"Tradução parcial: {ok_chunks}/{len(chunks)} chunks traduzidos.")
-            else:
-                logger.info(f"Tradução completa: {ok_chunks}/{len(chunks)} chunks.")
 
+            logger.info(
+                f"Tradução completa: {translated_blocks}/{total_blocks} blocos "
+                f"({coverage * 100:.0f}%)."
+            )
             return self.merge_and_save(source_srt_path, full_map, output_path)
 
         except Exception as e:
             logger.error(f"Processo de tradução falhou: {e}")
+            return False
+
+    def merge_and_save(self, original_srt_path: str, translated_map: dict, output_path: str) -> bool:
+        """Remonta o SRT final usando os timestamps ORIGINAIS, casando por índice."""
+        try:
+            with open(original_srt_path, "r", encoding="utf-8") as f:
+                original_content = f.read()
+            pattern = re.compile(r"(\d+)\s*\n(\d{2}:\d{2}:\d{2},\d{3} --> \d{2}:\d{2}:\d{2},\d{3})")
+            matches = pattern.findall(original_content)
+            final_srt = [f"{idx}\n{tc}\n{translated_map.get(idx, '')}\n" for idx, tc in matches]
+            return save_subtitle("\n".join(final_srt), output_path)
+        except Exception as e:
+            logger.error(f"Erro ao fazer merge das legendas: {e}")
             return False

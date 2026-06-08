@@ -3,7 +3,7 @@ import logging
 import os
 import json
 from datetime import datetime
-from .utils import has_pt_subtitle
+from .utils import has_pt_subtitle, find_pt_subtitle, subtitle_last_timestamp, media_duration
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +19,11 @@ STATS_FILE = "/app/stats/translation_stats.json"
 # Cache {filepath: mtime} dos arquivos cujo áudio já foi verificado e está OK —
 # evita re-checar (ffprobe) a cada boot. Re-verifica só quando o arquivo muda.
 AUDIO_VERIFIED_FILE = "/app/stats/audio_verified.json"
+# Auditoria de legendas: uma legenda PT-BR cuja cobertura temporal (último
+# timestamp ÷ duração do vídeo) for menor que isto é tratada como INCOMPLETA
+# (ex.: tradução por IA interrompida por cota) → apagada e refeita do zero.
+SUBTITLE_VERIFIED_FILE = "/app/stats/subtitle_verified.json"
+SUBTITLE_MIN_COVERAGE = float(os.environ.get("SUBTITLE_MIN_COVERAGE", "0.85"))
 
 
 def _has_subtitle(filepath: str) -> bool:
@@ -117,6 +122,25 @@ def _save_audio_verified(cache: dict):
             json.dump(cache, f)
     except Exception as e:
         logger.warning(f"Não foi possível salvar cache de áudio verificado: {e}")
+
+
+def _load_json_file(path: str) -> dict:
+    if not os.path.exists(path):
+        return {}
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def _save_json_file(path: str, data: dict):
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f)
+    except Exception as e:
+        logger.warning(f"Não foi possível salvar {os.path.basename(path)}: {e}")
 
 # ------------------------------------------------------------------ #
 # Scanner principal                                                    #
@@ -254,10 +278,74 @@ class Scanner:
             f"{skipped} já OK (pulados pelo cache) ━━"
         )
 
+    def _run_subtitle_audit(self):
+        """
+        Auditoria das legendas PT-BR já existentes no acervo.
+
+        Mede a COBERTURA de cada legenda (último timestamp ÷ duração do vídeo). Se
+        a legenda cobre menos que SUBTITLE_MIN_COVERAGE do filme, ela foi truncada
+        (ex.: tradução por IA interrompida por cota) — apaga a legenda e remove o
+        registro das stats, para que a varredura seguinte a refaça do zero. Roda
+        uma vez no boot, com cache por mtime para não reavaliar o que já está OK.
+        """
+        logger.info("━━ Auditoria de legendas (cobertura) ━━")
+        verified = _load_json_file(SUBTITLE_VERIFIED_FILE)  # {sub_path: mtime}
+        checked = requeued = skipped = 0
+
+        for watch_dir in self.watch_dirs:
+            if not os.path.exists(watch_dir):
+                continue
+            for root, _, files in os.walk(watch_dir):
+                for fname in files:
+                    if not fname.lower().endswith(MEDIA_EXTENSIONS) or ".temp." in fname:
+                        continue
+                    filepath = os.path.join(root, fname)
+                    sub = find_pt_subtitle(filepath)
+                    # Legendas FORCED são curtas de propósito — não auditar.
+                    if not sub or "forced" in os.path.basename(sub).lower():
+                        continue
+                    try:
+                        mtime = os.path.getmtime(sub)
+                    except OSError:
+                        continue
+                    if verified.get(sub) == mtime:
+                        skipped += 1
+                        continue
+
+                    last = subtitle_last_timestamp(sub)
+                    dur = media_duration(filepath)
+                    if not last or not dur or dur <= 0:
+                        continue  # sem dados confiáveis — não mexe
+                    checked += 1
+                    coverage = last / dur
+                    if coverage < SUBTITLE_MIN_COVERAGE:
+                        logger.warning(
+                            f"  Legenda incompleta ({coverage * 100:.0f}% do filme) — "
+                            f"apagando e refazendo: {fname}"
+                        )
+                        try:
+                            os.remove(sub)
+                        except OSError as e:
+                            logger.error(f"  Falha ao remover legenda incompleta: {e}")
+                            continue
+                        self.pipeline.stats.clear(filepath)   # sai de resolved/cooldown
+                        verified.pop(sub, None)
+                        requeued += 1
+                    else:
+                        verified[sub] = mtime   # OK — não re-audita até a legenda mudar
+
+        _save_json_file(SUBTITLE_VERIFIED_FILE, verified)
+        logger.info(
+            f"━━ Auditoria de legendas concluída: {checked} avaliadas, {requeued} incompletas "
+            f"(serão refeitas), {skipped} já OK (cache) ━━"
+        )
+
     def _periodic_scan(self):
         """Roda o scan imediatamente e depois repete a cada SCAN_INTERVAL segundos."""
         # Validação proativa de áudio (uma vez, no boot) antes da varredura de legendas
         self._run_audio_check()
+        # Auditoria das legendas existentes: refaz as incompletas (truncadas por cota)
+        self._run_subtitle_audit()
 
         # Scan inicial (logo após o watchdog iniciar)
         logger.info(f"Executando scan inicial...")
