@@ -4,6 +4,7 @@ import logging
 from .utils import get_media_info, extract_subtitle, find_pt_subtitle
 from .translator import Translator
 from .translation_stats import TranslationStats
+from .translation_queue import TranslationQueue
 from . import bazarr
 from . import arr
 
@@ -51,6 +52,10 @@ class Pipeline:
     def __init__(self):
         self.translator = Translator()
         self.stats = TranslationStats()
+        # Fila serializada de tradução por IA (1 modelo por vez na GPU). As buscas
+        # Bazarr seguem livres no fluxo; só a etapa de IA passa pela fila.
+        self.translation_queue = TranslationQueue(self)
+        self.translation_queue.start()
 
     # ------------------------------------------------------------------ #
     # Listagem de streams (para a UI)                                      #
@@ -400,8 +405,34 @@ class Pipeline:
                 self.stats.record(filepath, "success", model="bazarr_raw")
                 return
 
-        # --- Etapa 2: Tradução via IA ---
-        logger.info(f"Etapa 2/2: Bazarr não encontrou — iniciando tradução via IA...")
+        # --- Etapa 2: Tradução via IA (ENFILEIRADA, não inline) ---
+        # Em vez de traduzir aqui (o que travaria o Bazarr dos próximos itens),
+        # enfileira na fila serializada e retorna. A IA roda 1 por vez na GPU; o
+        # Bazarr continua correndo livremente para os demais arquivos.
+        logger.info("Etapa 2/2: Bazarr não encontrou — enfileirando tradução via IA...")
+        self.translation_queue.enqueue(filepath, stream_index=stream_index, force=force)
+
+    def _do_ai_translation(self, filepath: str, stream_index: int | None = None, force: bool = False):
+        """
+        Tradução via IA de UM arquivo — executada pelo worker da fila (1 por vez na GPU).
+        Re-obtém o estado atual do arquivo (ele pode ter sido substituído/movido pelo
+        Arr enquanto aguardava na fila).
+        """
+        fname = os.path.basename(filepath)
+        model_used = self.translator.translator_model
+        output_srt = os.path.splitext(filepath)[0] + ".por.srt"
+
+        if not os.path.exists(filepath):
+            logger.info(f"IA: arquivo não existe mais — pulando tradução: {fname}")
+            return
+
+        media_info = get_media_info(filepath)
+        if not media_info:
+            logger.error(f"IA: não foi possível obter informações de {fname}.")
+            return
+        streams = [s for s in media_info.get('streams', []) if s.get('codec_type') == 'subtitle']
+
+        logger.info(f"IA: iniciando tradução de {fname}...")
 
         # Seleciona stream
         if stream_index is not None:
