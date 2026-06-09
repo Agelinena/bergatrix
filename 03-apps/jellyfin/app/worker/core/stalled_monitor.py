@@ -57,16 +57,28 @@ class StalledMonitor:
         tds = (item.get("trackedDownloadStatus") or "").lower()
         state = (item.get("trackedDownloadState") or "").lower()
 
-        # Falha definitiva → remover/blocklistar imediatamente (não adianta esperar).
-        if status == "failed" or tds == "error" or state in ("failedpending", "failed"):
-            return "failed"
-
-        # Travado (sem conexões/seeds, firewall, etc.) → só remove se persistir.
+        # Mensagens (errorMessage + statusMessages) consolidadas p/ busca textual.
         blob = (item.get("errorMessage") or "").lower()
         for sm in item.get("statusMessages") or []:
             blob += " " + (sm.get("title") or "").lower()
             blob += " " + " ".join(sm.get("messages") or []).lower()
-        if tds == "warning" and "stalled" in blob:
+
+        # 1) Falha definitiva → remover/blocklistar imediatamente (não adianta esperar).
+        if status == "failed" or tds == "error" or state in ("failedpending", "failed"):
+            return "failed"
+
+        # 2) Download concluído, preso/aguardando no IMPORT (não é problema do release):
+        #    NÃO rebaixar — evita apagar um download bom por erro de importação.
+        if state in ("importpending", "importblocked", "importing", "imported"):
+            return None
+
+        # 3) Travado (sem conexões/seeds, firewall, etc.) → só remove se persistir.
+        #    A versão do Arr pode pôr o aviso em 'status' OU em 'trackedDownloadStatus',
+        #    e às vezes o texto "stalled" nem vem na API (é a UI que monta a frase).
+        #    Por isso cobrimos os dois caminhos: sinal textual OU warning enquanto baixa.
+        if any(w in blob for w in ("stalled", "no connections", "no peers")):
+            return "stalled"
+        if status == "warning" or tds == "warning":
             return "stalled"
         return None
 
