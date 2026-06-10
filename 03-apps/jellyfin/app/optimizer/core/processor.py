@@ -120,7 +120,6 @@ class Processor:
             '-tune', HEVC_TUNE,
             '-cq', NVENC_QUALITY,
             '-spatial_aq', '1',
-            '-temporal_aq', '1',
         ]
 
         # Add B-frame and b_ref_mode only if device supports B-frames
@@ -132,6 +131,8 @@ class Processor:
         if supports_10bit:
             primary_cmd += ['-profile:v', HEVC_PROFILE, '-pix_fmt', PIX_FMT]
 
+        # Prefer explicit GPU selection
+        primary_cmd += ['-gpu', '0']
         # Add audio/subtitle copy and output
         primary_cmd += ['-c:a', 'copy', '-c:s', 'copy', output_file]
 
@@ -156,76 +157,90 @@ class Processor:
             output_file
         ]
 
-        # Try commands in order
-        for label, cmd in (('primary NVENC (10-bit)', primary_cmd), ('fallback NVENC (8-bit)', fallback_nvenc_cmd), ('software x265', software_cmd)):
+        # Try commands in order with conservative NVENC retry logic
+        attempts = [('primary NVENC (10-bit)', primary_cmd), ('fallback NVENC (8-bit)', fallback_nvenc_cmd), ('software x265', software_cmd)]
+        for label, cmd in attempts:
             logger.info(f"🚀 Running {label} conversion for {filename}...")
             logger.debug("Command: %s", " ".join(cmd))
 
-            stderr_lines = []
+            # Debug: log device nodes and environment briefly
             try:
-                process = subprocess.Popen(
-                    cmd,
-                    stderr=subprocess.PIPE,
-                    universal_newlines=True,
-                    encoding='utf-8'
-                )
+                logger.debug("NVIDIA_VISIBLE_DEVICES=%s", os.environ.get('NVIDIA_VISIBLE_DEVICES'))
+                if os.path.exists('/dev'):
+                    devs = [d for d in os.listdir('/dev') if d.startswith('nvidia')]
+                    logger.debug("/dev contains: %s", devs)
+            except Exception:
+                pass
 
-                last_percentage = 0
-                if process.stderr:
-                    for line in process.stderr:
-                        stderr_lines.append(line)
-                        if "time=" in line:
-                            try:
-                                time_str = line.split("time=")[1].split()[0]
-                                h, m, s = time_str.split(':')
-                                current_seconds = float(h) * 3600 + float(m) * 60 + float(s)
-                                if original_duration > 0:
-                                    percentage = int((current_seconds / original_duration) * 100)
-                                    if percentage >= last_percentage + 10:
-                                        blocks = int(percentage / 10)
-                                        bar = "█" * blocks + "░" * (10 - blocks)
-                                        logger.info(f"⏳ Progress: [{bar}] {percentage}%")
-                                        last_percentage = percentage
-                            except Exception:
-                                pass
-
-                process.wait()
-                return_code = process.returncode
-            except Exception as e:
-                logger.error(f"❌ FFmpeg execution failed for {filename} ({label}): {e}")
-                return_code = -1
-
-            if return_code != 0:
-                # Write stderr log for debugging
+            stderr_lines = []
+            return_code = -1
+            max_attempts = 2 if 'NVENC' in label.upper() else 1
+            for attempt in range(1, max_attempts + 1):
                 try:
-                    err_log = os.path.join(TEMP_DIR, f"{filename}.ffmpeg.err.log")
-                    # Try to capture ffmpeg version for context
-                    try:
-                        ffv = subprocess.run(['ffmpeg','-version'], capture_output=True, text=True, timeout=5)
-                        ffv_text = ffv.stdout.splitlines()[0] if ffv and ffv.stdout else ''
-                    except Exception:
-                        ffv_text = ''
+                    process = subprocess.Popen(cmd, stderr=subprocess.PIPE, universal_newlines=True, encoding='utf-8')
+                    last_percentage = 0
+                    if process.stderr:
+                        for line in process.stderr:
+                            stderr_lines.append(line)
+                            if "time=" in line:
+                                try:
+                                    time_str = line.split("time=")[1].split()[0]
+                                    h, m, s = time_str.split(':')
+                                    current_seconds = float(h) * 3600 + float(m) * 60 + float(s)
+                                    if original_duration > 0:
+                                        percentage = int((current_seconds / original_duration) * 100)
+                                        if percentage >= last_percentage + 10:
+                                            blocks = int(percentage / 10)
+                                            bar = "█" * blocks + "░" * (10 - blocks)
+                                            logger.info(f"⏳ Progress: [{bar}] {percentage}%")
+                                            last_percentage = percentage
+                                except Exception:
+                                    pass
 
-                    with open(err_log, 'w', encoding='utf-8', errors='ignore') as f:
-                        if ffv_text:
-                            f.write(f"# ffmpeg: {ffv_text}\n")
-                        f.write(f"# command: {' '.join(cmd)}\n")
-                        f.write("# stderr:\n")
-                        f.writelines(stderr_lines)
+                    process.wait()
+                    return_code = process.returncode
+                except Exception as e:
+                    logger.error(f"❌ FFmpeg execution failed for {filename} ({label}) attempt {attempt}: {e}")
+                    return_code = -1
 
-                    # Log a short excerpt of stderr to the main log for quick inspection
-                    excerpt = ''.join(stderr_lines[-80:]) if stderr_lines else ''
-                    logger.error(f"❌ FFmpeg returned exit code {return_code} for {filename} ({label}). Stderr saved to: {err_log}")
-                    if excerpt:
-                        logger.error(f"❌ Stderr excerpt:\n{excerpt}")
+                if return_code == 0:
+                    logger.info(f"✅ FFmpeg succeeded for {filename} ({label})")
+                    return True
+
+                excerpt = ''.join(stderr_lines[-80:]) if stderr_lines else ''
+                # Retry NVENC once for device-related transient failures
+                if ('NVENC' in label.upper()) and ('No capable devices found' in excerpt or 'Could not open encoder' in excerpt):
+                    logger.warning(f"🔁 NVENC device error on attempt {attempt} for {filename}; retrying after 1s...")
+                    import time
+                    time.sleep(1)
+                    continue
+
+                # otherwise, break attempts for this command
+                break
+
+            # save stderr after attempts
+            try:
+                err_log = os.path.join(TEMP_DIR, f"{filename}.ffmpeg.err.log")
+                try:
+                    ffv = subprocess.run(['ffmpeg','-version'], capture_output=True, text=True, timeout=5)
+                    ffv_text = ffv.stdout.splitlines()[0] if ffv and ffv.stdout else ''
                 except Exception:
-                    logger.error(f"❌ FFmpeg returned exit code {return_code} for {filename} ({label}). (stderr not saved)")
-                # try next fallback
-                continue
+                    ffv_text = ''
+                with open(err_log, 'w', encoding='utf-8', errors='ignore') as f:
+                    if ffv_text:
+                        f.write(f"# ffmpeg: {ffv_text}\n")
+                    f.write(f"# command: {' '.join(cmd)}\n")
+                    f.write("# stderr:\n")
+                    f.writelines(stderr_lines)
+                excerpt = ''.join(stderr_lines[-80:]) if stderr_lines else ''
+                logger.error(f"❌ FFmpeg returned exit code {return_code} for {filename} ({label}). Stderr saved to: {err_log}")
+                if excerpt:
+                    logger.error(f"❌ Stderr excerpt:\n{excerpt}")
+            except Exception:
+                logger.error(f"❌ FFmpeg returned exit code {return_code} for {filename} ({label}). (stderr not saved)")
 
-            # success
-            logger.info(f"✅ FFmpeg succeeded for {filename} ({label})")
-            return True
+            # try next fallback
+            continue
 
         # all attempts failed
         logger.error(f"❌ All encoding attempts failed for {filename}")
