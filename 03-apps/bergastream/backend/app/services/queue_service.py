@@ -5,17 +5,18 @@ Stream workers  (QUEUE_STREAM): yt-dlp only, no inter-job sleep.
   — Serve on-demand streaming as fast as possible.
   — Never touch deemix; yt-dlp gives results in 30–60 s.
 
-Deemix worker   (QUEUE_BG): exactly ONE worker, sequential, no lock needed.
-  — Single consumer means deemix's internal queue never accumulates stale entries.
+Deemix workers  (QUEUE_BG): a few workers; submissions serialised by a lock,
+  polling/move overlaps in parallel.
   — Tries Deezer via deemix for quality (FLAC / MP3-320).
   — On any failure: forwards the job to QUEUE_YTDLP for yt-dlp fallback.
-  — 3-second sleep between jobs.
+  — No inter-job throttle (_BG_SLEEP=0).
 
-yt-dlp workers  (QUEUE_YTDLP): concurrent, global asyncio.Semaphore.
+yt-dlp workers  (QUEUE_YTDLP): concurrent, background asyncio.Semaphore.
   — Handle YouTube-sourced tracks and deemix failures.
-  — Semaphore shared with stream workers caps total yt-dlp processes.
-  — Exponential backoff retry (30 s / 60 s) up to _MAX_RETRIES times.
-  — 3-second sleep between jobs.
+  — Background pool is SEPARATE from the on-demand stream pool, so bulk
+    downloads never starve a user's click.
+  — Short exponential backoff retry (3 s / 6 s) up to _MAX_RETRIES times.
+  — No inter-job throttle (_BG_SLEEP=0).
 
 Concurrency invariants
 ----------------------
@@ -59,12 +60,49 @@ STREAM_PROMOTED = "bergastream:promoted"   # tracks elevated from BG to STREAM
 TRACK_READY_CHANNEL = "bergastream:track_ready"
 
 _MAX_RETRIES = 2
-# Inter-job sleep — used to keep deemix from drowning when we used to
-# run a single sequential worker.  Now that we have a submission lock
-# (see download_deezer) and the workers can overlap on polling, the
-# big sleep is pure waste.  0.5 s gives the sidecar's REST endpoints
-# a moment to settle between calls.
-_BG_SLEEP    = 0.5
+# Inter-job throttle between background downloads.  This used to be 0.5 s
+# "to let the sidecar settle", but with the submission lock (see
+# download_deezer) and atomic file-claims it's pure waste: on a 100-track
+# playlist it added ~50 s of dead time.  Set to 0 — blpop(timeout=5)
+# already prevents any hot-loop when the queue is empty.  Kept as a tunable
+# constant in case a flaky sidecar ever needs a small spacer.
+_BG_SLEEP    = 0.0
+
+# Cap for the yt-dlp requeue backoff.  Kept short on purpose: a failed
+# yt-dlp attempt is usually a bad candidate or a transient hiccup, and the
+# track may already be forwarded to deemix — so sleeping 30–60 s (the old
+# value) only kept the user staring at a spinner.  A few seconds is enough
+# to dodge a momentary rate-limit without stalling playback.
+_RETRY_BACKOFF_CAP = 8
+
+
+def _retry_backoff(retries: int) -> int:
+    """Seconds to wait before requeueing a failed yt-dlp job.
+
+    Exponential (3·2ⁿ) capped at _RETRY_BACKOFF_CAP, and never negative.
+    retries=0 → 3 s, retries=1 → 6 s, retries≥2 → 8 s."""
+    n = max(0, retries)
+    return min(_RETRY_BACKOFF_CAP, 3 * (2 ** n))
+
+
+async def _safe_prewarm_deezer(
+    title: str, artist: str, duration_ms: int | None, deezer_known: str | None,
+) -> None:
+    """Fire-and-forget Deezer candidate lookup to warm the Redis cache.
+
+    Runs concurrently with an on-demand yt-dlp stream download so that, if
+    yt-dlp fails and the job is forwarded to the deemix queue, the deemix
+    worker's find_deezer_candidate() hits the warm cache instead of paying
+    the ~1–1.5 s search again.  Swallows every error (never affects the
+    stream path); CancelledError propagates normally so the caller can
+    cancel it cleanly once the download finishes."""
+    try:
+        from app.services.downloader_service import find_deezer_candidate
+        await find_deezer_candidate(title, artist, duration_ms, deezer_known)
+    except asyncio.CancelledError:
+        raise
+    except Exception as e:
+        logger.debug(f"[prewarm] Deezer prewarm skipped: {e}")
 
 
 class DownloadQueueService:
@@ -266,7 +304,9 @@ class DownloadQueueService:
 
     @classmethod
     async def _stream_worker(cls, worker_id: int) -> None:
-        from app.services.downloader_service import _resolve_existing, download_youtube
+        from app.services.downloader_service import (
+            _resolve_existing, download_youtube, find_deezer_candidate,
+        )
         from app.database import AsyncSessionLocal
         from sqlalchemy import select
         from app.models.track import Track
@@ -320,13 +360,33 @@ class DownloadQueueService:
                         f"duration_ms={track.duration_ms} | "
                         f"yt_source_id={yt_source_id!r}"
                     )
+
+                    # Pre-warm the Deezer candidate cache CONCURRENTLY with the
+                    # yt-dlp download.  find_deezer_candidate is a cheap HTTP
+                    # lookup that caches its result in Redis.  If yt-dlp fails
+                    # and this job is forwarded to the deemix queue, that
+                    # worker's find_deezer_candidate() hits the warm cache and
+                    # skips the ~1–1.5 s search — making the fallback near-instant.
+                    # Fire-and-forget: never blocks or fails the stream path.
+                    deezer_known = track.source_id if track.source == "deezer" else None
+                    prewarm = asyncio.create_task(
+                        _safe_prewarm_deezer(
+                            track.title or "", track.artist or "",
+                            track.duration_ms, deezer_known,
+                        )
+                    )
+
+                    # priority=True → dedicated stream yt-dlp semaphore so a
+                    # user's click is never blocked behind background downloads.
                     path, quality = await download_youtube(
                         track_id,
                         yt_source_id,
                         track.title or "",
                         track.artist or "",
                         track.duration_ms,
+                        priority=True,
                     )
+                    prewarm.cancel()  # done with it; cache is already populated if it finished
                     download_ms = int((time.time() - t0) * 1000)
                     if path:
                         await cls._save_result(
@@ -554,7 +614,7 @@ class DownloadQueueService:
                             wait_ms=wait_ms, download_ms=download_ms,
                         )
                     elif retries < _MAX_RETRIES:
-                        wait = 30 * (retries + 1)  # 30 s, 60 s
+                        wait = _retry_backoff(retries)  # 3 s, 6 s (was 30 s, 60 s)
                         logger.warning(
                             f"[{label}] yt-dlp FAILED for {track_id} "
                             f"('{track.title}' by '{track.artist}') | "

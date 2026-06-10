@@ -46,8 +46,11 @@ logger = logging.getLogger(__name__)
 _DUR_REL = 0.05       # 5% relative tolerance
 _DUR_ABS_MS = 10_000  # 10-second absolute floor
 
-# Candidate cache TTL — 24 h
-_CANDIDATE_TTL = 24 * 3600
+# Candidate cache TTL — 7 days.  Resolved Deezer/YouTube IDs for a given
+# (title, artist, duration) are extremely stable, so a long TTL keeps the
+# hit-rate high and lets repeated/re-imported tracks skip the search phase
+# entirely (the single biggest avoidable latency on a cache miss).
+_CANDIDATE_TTL = 7 * 24 * 3600
 
 # ---------------------------------------------------------------------------
 # YouTube concurrency limiters
@@ -56,10 +59,15 @@ _CANDIDATE_TTL = 24 * 3600
 # heavy downloads (~20–60 s).  Sharing a single semaphore caused the
 # scenario where a third stream request had to wait for two parallel
 # downloads to finish before its search could even start.
-#   * _yt_semaphore:        downloads (max_yt_concurrent slots)
+#   * _yt_semaphore:        background downloads (max_yt_concurrent slots)
+#   * _yt_stream_semaphore: on-demand stream downloads (max_yt_stream_concurrent)
 #   * _yt_search_semaphore: searches  (max_yt_search_concurrent slots)
+#
+# Stream downloads use a DEDICATED pool so a bulk playlist/prefetch download
+# can never hold every slot and make a user's click wait ~60 s behind it.
 
 _yt_semaphore: asyncio.Semaphore | None = None
+_yt_stream_semaphore: asyncio.Semaphore | None = None
 _yt_search_semaphore: asyncio.Semaphore | None = None
 
 # Serialises cancel + emit calls so concurrent deemix workers don't
@@ -110,11 +118,22 @@ async def _release_deemix_file(path: Path) -> None:
 
 
 def _get_yt_semaphore() -> asyncio.Semaphore:
-    """Semaphore for yt-dlp DOWNLOADS (heavy, long-running)."""
+    """Semaphore for BACKGROUND yt-dlp downloads (heavy, long-running)."""
     global _yt_semaphore
     if _yt_semaphore is None:
         _yt_semaphore = asyncio.Semaphore(settings.max_yt_concurrent)
     return _yt_semaphore
+
+
+def _get_yt_stream_semaphore() -> asyncio.Semaphore:
+    """Dedicated semaphore for ON-DEMAND stream yt-dlp downloads (priority).
+
+    Kept separate from the background pool so a user's play click never
+    queues behind a bulk playlist download."""
+    global _yt_stream_semaphore
+    if _yt_stream_semaphore is None:
+        _yt_stream_semaphore = asyncio.Semaphore(settings.max_yt_stream_concurrent)
+    return _yt_stream_semaphore
 
 
 def _get_yt_search_semaphore() -> asyncio.Semaphore:
@@ -923,12 +942,15 @@ async def download_youtube_by_id(
     track_id: str,
     video_id: str,
     expected_duration_ms: int | None = None,
+    priority: bool = False,
 ) -> tuple[Path | None, str]:
     """
     Downloads a YouTube video by ID via yt-dlp (best audio → MP3 320).
 
-    Concurrency-limited by _get_yt_semaphore() (max_yt_concurrent slots) so
-    background bulk-downloads cannot exhaust the YouTube rate limit for all workers.
+    Concurrency-limited by a semaphore so background bulk-downloads cannot
+    exhaust the YouTube rate limit for all workers.  When `priority` is True
+    (on-demand stream), uses the dedicated stream pool so the user's click is
+    never blocked behind background downloads.
 
     Creates a .lock file while downloading so stream_service can tail-follow.
     Retries up to 2 times on HTTP 429, with 30 s / 60 s backoff.
@@ -961,8 +983,9 @@ async def download_youtube_by_id(
         "-o", str(dest.with_suffix("")),   # yt-dlp appends .mp3
         url,
     ]
+    semaphore = _get_yt_stream_semaphore() if priority else _get_yt_semaphore()
     try:
-        async with _get_yt_semaphore():
+        async with semaphore:
             try:
                 proc = await asyncio.create_subprocess_exec(
                     *cmd,
@@ -1033,16 +1056,20 @@ async def download_youtube(
     title: str = "",
     artist: str = "",
     expected_duration_ms: int | None = None,
+    priority: bool = False,
 ) -> tuple[Path | None, str]:
     """
     Downloads via yt-dlp using a known video ID (source == 'youtube') or by
     searching. Kept for backward compatibility with queue_service worker.
+
+    `priority=True` routes the actual download through the dedicated stream
+    semaphore (on-demand playback) instead of the background pool.
     """
     if source_id and not source_id.startswith("search:"):
         logger.info(
             f"[yt-dlp] download_youtube: by ID={source_id!r} for {track_id}"
         )
-        return await download_youtube_by_id(track_id, source_id, expected_duration_ms)
+        return await download_youtube_by_id(track_id, source_id, expected_duration_ms, priority=priority)
 
     logger.info(
         f"[yt-dlp] download_youtube: search mode for {track_id} "
@@ -1052,7 +1079,7 @@ async def download_youtube(
     video_id = await find_youtube_candidate(title, artist, expected_duration_ms)
     if video_id:
         logger.info(f"[yt-dlp] Using candidate {video_id} for {track_id}")
-        return await download_youtube_by_id(track_id, video_id, expected_duration_ms)
+        return await download_youtube_by_id(track_id, video_id, expected_duration_ms, priority=priority)
 
     # Last resort: first result, no duration check
     if title or artist:
@@ -1067,7 +1094,7 @@ async def download_youtube(
                 f"[yt-dlp] Last-resort unverified first result {video_id} for "
                 f"'{title}' by '{artist}'"
             )
-            return await download_youtube_by_id(track_id, video_id, None)
+            return await download_youtube_by_id(track_id, video_id, None, priority=priority)
 
     logger.error(
         f"[yt-dlp] download_youtube: no candidate found at all for {track_id} "

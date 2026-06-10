@@ -48,12 +48,22 @@ class Settings(BaseSettings):
     # arquivo recebido é claimado via Redis SADD — então é seguro
     # paralelizar.  2 é um bom default; 3+ pode forçar o sidecar a ter
     # vários downloads simultâneos e degradar a velocidade individual.
-    deemix_bg_workers: int = 2
+    # Subimos para 3 (com o submit-lock serializando submissões, os workers
+    # extras paralelizam a fase de polling/move, acelerando playlists grandes).
+    deemix_bg_workers: int = 3
     # Workers dedicados a downloads via yt-dlp em background (QUEUE_YTDLP)
     ytdlp_bg_workers: int = 2
-    # Máximo de processos yt-dlp simultâneos em modo DOWNLOAD (20–60 s cada).
-    # Compartilhado entre stream workers e ytdlp bg workers.
+    # Máximo de processos yt-dlp simultâneos em modo DOWNLOAD de BACKGROUND
+    # (prefetch/playlist, 20–60 s cada).  Pool SEPARADO do streaming on-demand
+    # (max_yt_stream_concurrent) — antes ambos dividiam este semáforo, então um
+    # download de playlist em massa podia segurar todos os slots e fazer o
+    # clique do usuário esperar 60 s.  Agora o stream tem pool dedicado.
     max_yt_concurrent: int = 2
+    # Máximo de processos yt-dlp simultâneos em modo DOWNLOAD de STREAMING
+    # on-demand (clique do usuário).  Pool com prioridade — nunca é disputado
+    # por downloads de background.  Total de processos yt-dlp simultâneos =
+    # max_yt_concurrent + max_yt_stream_concurrent (ajuste conforme a máquina).
+    max_yt_stream_concurrent: int = 2
     # Máximo de processos yt-dlp simultâneos em modo BUSCA (`ytsearch5 --dump-json`).
     # Buscas duram ~1–2 s; separar o semáforo evita que streams travem
     # esperando uma busca passar atrás de downloads ativos.
