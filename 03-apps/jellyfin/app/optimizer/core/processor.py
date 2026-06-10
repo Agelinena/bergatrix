@@ -100,7 +100,8 @@ class Processor:
 
     def _run_conversion(self, input_file, output_file, original_duration):
         filename = os.path.basename(input_file)
-        cmd = [
+        # Build primary NVENC 10-bit command
+        primary_cmd = [
             'ffmpeg',
             '-y',
             '-err_detect', 'ignore_err',
@@ -126,46 +127,101 @@ class Processor:
             output_file
         ]
 
-        logger.info(f"🚀 Running NVENC conversion for {filename}...")
-        logger.debug("Command: %s", " ".join(cmd))
+        # Fallback 1: NVENC without 10-bit/profile/pix_fmt (more widely supported)
+        fallback_nvenc_cmd = [c for c in primary_cmd if c not in ('-profile:v', HEVC_PROFILE, '-pix_fmt', PIX_FMT)]
 
-        try:
-            process = subprocess.Popen(
-                cmd,
-                stderr=subprocess.PIPE,
-                universal_newlines=True,
-                encoding='utf-8'
-            )
+        # Fallback 2: software x265 (slower but more compatible)
+        software_cmd = [
+            'ffmpeg',
+            '-y',
+            '-err_detect', 'ignore_err',
+            '-vsync', '0',
+            '-i', input_file,
+            '-map', '0:V:0',
+            '-map', '0:a',
+            '-map', '0:s?',
+            '-c:v', 'libx265',
+            '-preset', 'slow',
+            '-crf', NVENC_QUALITY,
+            '-c:a', 'copy',
+            '-c:s', 'copy',
+            output_file
+        ]
 
-            last_percentage = 0
-            if process.stderr:
-                for line in process.stderr:
-                    if "time=" in line:
-                        try:
-                            time_str = line.split("time=")[1].split()[0]
-                            h, m, s = time_str.split(':')
-                            current_seconds = float(h) * 3600 + float(m) * 60 + float(s)
-                            if original_duration > 0:
-                                percentage = int((current_seconds / original_duration) * 100)
-                                if percentage >= last_percentage + 10:
-                                    blocks = int(percentage / 10)
-                                    bar = "█" * blocks + "░" * (10 - blocks)
-                                    logger.info(f"⏳ Progress: [{bar}] {percentage}%")
-                                    last_percentage = percentage
-                        except Exception:
-                            pass
+        # Try commands in order
+        for label, cmd in (('primary NVENC (10-bit)', primary_cmd), ('fallback NVENC (8-bit)', fallback_nvenc_cmd), ('software x265', software_cmd)):
+            logger.info(f"🚀 Running {label} conversion for {filename}...")
+            logger.debug("Command: %s", " ".join(cmd))
 
-            process.wait()
-            return_code = process.returncode
-        except Exception as e:
-            logger.error(f"❌ FFmpeg execution failed for {filename}: {e}")
-            return_code = -1
+            stderr_lines = []
+            try:
+                process = subprocess.Popen(
+                    cmd,
+                    stderr=subprocess.PIPE,
+                    universal_newlines=True,
+                    encoding='utf-8'
+                )
 
-        if return_code != 0:
-            logger.error(f"❌ FFmpeg returned exit code {return_code} for {filename}")
-            return False
+                last_percentage = 0
+                if process.stderr:
+                    for line in process.stderr:
+                        stderr_lines.append(line)
+                        if "time=" in line:
+                            try:
+                                time_str = line.split("time=")[1].split()[0]
+                                h, m, s = time_str.split(':')
+                                current_seconds = float(h) * 3600 + float(m) * 60 + float(s)
+                                if original_duration > 0:
+                                    percentage = int((current_seconds / original_duration) * 100)
+                                    if percentage >= last_percentage + 10:
+                                        blocks = int(percentage / 10)
+                                        bar = "█" * blocks + "░" * (10 - blocks)
+                                        logger.info(f"⏳ Progress: [{bar}] {percentage}%")
+                                        last_percentage = percentage
+                            except Exception:
+                                pass
 
-        return True
+                process.wait()
+                return_code = process.returncode
+            except Exception as e:
+                logger.error(f"❌ FFmpeg execution failed for {filename} ({label}): {e}")
+                return_code = -1
+
+            if return_code != 0:
+                # Write stderr log for debugging
+                try:
+                    err_log = os.path.join(TEMP_DIR, f"{filename}.ffmpeg.err.log")
+                    # Try to capture ffmpeg version for context
+                    try:
+                        ffv = subprocess.run(['ffmpeg','-version'], capture_output=True, text=True, timeout=5)
+                        ffv_text = ffv.stdout.splitlines()[0] if ffv and ffv.stdout else ''
+                    except Exception:
+                        ffv_text = ''
+
+                    with open(err_log, 'w', encoding='utf-8', errors='ignore') as f:
+                        if ffv_text:
+                            f.write(f"# ffmpeg: {ffv_text}\n")
+                        f.write(f"# command: {' '.join(cmd)}\n")
+                        f.write("# stderr:\n")
+                        f.writelines(stderr_lines)
+
+                    # Log a short excerpt of stderr to the main log for quick inspection
+                    excerpt = ''.join(stderr_lines[-80:]) if stderr_lines else ''
+                    logger.error(f"❌ FFmpeg returned exit code {return_code} for {filename} ({label}). Stderr saved to: {err_log}")
+                    if excerpt:
+                        logger.error(f"❌ Stderr excerpt:\n{excerpt}")
+                except Exception:
+                    logger.error(f"❌ FFmpeg returned exit code {return_code} for {filename} ({label}). (stderr not saved)")
+                # try next fallback
+                continue
+
+            # success
+            logger.info(f"✅ FFmpeg succeeded for {filename} ({label})")
+            return True
+
+        # all attempts failed
+        logger.error(f"❌ All encoding attempts failed for {filename}")
+        return False
 
     def _heal_file(self, input_file, output_file):
         filename = os.path.basename(input_file)
@@ -183,10 +239,22 @@ class Processor:
         logger.debug("Heal command: %s", " ".join(cmd))
 
         try:
-            completed = subprocess.run(cmd, stderr=subprocess.PIPE, stdout=subprocess.DEVNULL, text=True)
+            completed = subprocess.run(cmd, stderr=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
             if completed.returncode != 0:
-                logger.error(f"❌ Heal failed for {filename} with exit code {completed.returncode}")
+                # save heal stderr
+                try:
+                    heal_log = os.path.join(TEMP_DIR, f"{filename}.heal.err.log")
+                    with open(heal_log, 'w', encoding='utf-8', errors='ignore') as f:
+                        f.write(completed.stderr or '')
+                    logger.error(f"❌ Heal failed for {filename} with exit code {completed.returncode}. Stderr saved to: {heal_log}")
+                    if completed.stderr:
+                        logger.error(f"❌ Heal stderr excerpt:\n{(completed.stderr.splitlines()[-40:])}")
+                except Exception:
+                    logger.error(f"❌ Heal failed for {filename} with exit code {completed.returncode}. (stderr not saved)")
                 return False
+            # optionally log a small stdout/stderr snippet for successful heal
+            if completed.stderr:
+                logger.debug(f"Heal stderr (truncated): {''.join(completed.stderr.splitlines()[-10:])}")
             return True
         except Exception as e:
             logger.error(f"❌ Heal execution failed for {filename}: {e}")
