@@ -20,6 +20,8 @@ class Processor:
     def __init__(self):
         self.stats = StatsManager()
         os.makedirs(TEMP_DIR, exist_ok=True)
+        # Probe NVENC capabilities once per process
+        self._nvenc_caps = self._probe_nvenc_capabilities()
 
     def get_codec(self, filepath):
         """Usa ffprobe para descobrir se o vídeo já é HEVC."""
@@ -100,14 +102,15 @@ class Processor:
 
     def _run_conversion(self, input_file, output_file, original_duration):
         filename = os.path.basename(input_file)
-        # Build primary NVENC 10-bit command
+        # Build primary NVENC 10-bit command (adapt flags based on probed capabilities)
+        caps = self._nvenc_caps or {}
+        supports_10bit = caps.get('supports_10bit', False)
+        max_bframes = caps.get('max_bframes', 0)
         primary_cmd = [
             'ffmpeg',
             '-y',
             '-err_detect', 'ignore_err',
             '-vsync', '0',
-            '-hwaccel', 'cuda',
-            '-hwaccel_output_format', 'cuda',
             '-i', input_file,
             '-map', '0:V:0',
             '-map', '0:a',
@@ -118,14 +121,19 @@ class Processor:
             '-cq', NVENC_QUALITY,
             '-spatial_aq', '1',
             '-temporal_aq', '1',
-            '-bf', '3',
-            '-b_ref_mode', 'middle',
-            '-profile:v', HEVC_PROFILE,
-            '-pix_fmt', PIX_FMT,
-            '-c:a', 'copy',
-            '-c:s', 'copy',
-            output_file
         ]
+
+        # Add B-frame and b_ref_mode only if device supports B-frames
+        bf_value = min(3, max_bframes) if max_bframes >= 0 else 0
+        if bf_value > 0:
+            primary_cmd += ['-bf', str(bf_value), '-b_ref_mode', 'middle']
+
+        # Add 10-bit profile/pix_fmt only if supported
+        if supports_10bit:
+            primary_cmd += ['-profile:v', HEVC_PROFILE, '-pix_fmt', PIX_FMT]
+
+        # Add audio/subtitle copy and output
+        primary_cmd += ['-c:a', 'copy', '-c:s', 'copy', output_file]
 
         # Fallback 1: NVENC without 10-bit/profile/pix_fmt (more widely supported)
         fallback_nvenc_cmd = [c for c in primary_cmd if c not in ('-profile:v', HEVC_PROFILE, '-pix_fmt', PIX_FMT)]
@@ -259,6 +267,34 @@ class Processor:
         except Exception as e:
             logger.error(f"❌ Heal execution failed for {filename}: {e}")
             return False
+
+    def _probe_nvenc_capabilities(self):
+        """Probe local ffmpeg hevc_nvenc encoder capabilities.
+
+        Returns a dict with keys like 'supports_10bit' and 'max_bframes'.
+        If ffmpeg or encoder info cannot be retrieved, returns empty dict.
+        """
+        caps = {}
+        try:
+            p = subprocess.run(['ffmpeg', '-hide_banner', '-h', 'encoder=hevc_nvenc'], capture_output=True, text=True, timeout=5)
+            out = p.stdout or p.stderr or ''
+            # Detect 10-bit support
+            caps['supports_10bit'] = 'p010le' in out or 'main10' in out
+            # Try to find a line mentioning "Max B-frames" or similar
+            max_b = 0
+            for line in out.splitlines():
+                l = line.lower()
+                if 'max b-frames' in l or 'max b_frames' in l or 'max_b_frames' in l:
+                    # extract number
+                    import re
+                    m = re.search(r"(\d+)", l)
+                    if m:
+                        max_b = int(m.group(1))
+                        break
+            caps['max_bframes'] = max_b
+        except Exception:
+            return {}
+        return caps
 
     def _finalize_conversion(self, original_file, temp_file, original_duration):
         filename = os.path.basename(original_file)
