@@ -8,6 +8,7 @@ import 'package:just_audio_background/just_audio_background.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import '../models/track.dart';
 import '../core/api_client.dart';
+import 'offline_service.dart';
 import '../providers/player_provider.dart' show PlayerStatus;
 
 part 'audio_player_service.g.dart';
@@ -146,11 +147,17 @@ class AudioPlayerService {
     );
   }
 
-  /// Builds a single [AudioSource] for [track] using the current JWT.
-  /// Used both for initial queue load and for incremental mutations
-  /// (insert / append / replace).
-  AudioSource _sourceFor(Track track, String? token) {
-    final url = _client.streamUrl(track.id, token: token);
+  /// Builds a single [AudioSource] for [track].
+  ///
+  /// If the track is downloaded offline, the source points at the LOCAL FILE
+  /// (`file://…`) so playback works with no network and skips the server
+  /// entirely.  Otherwise it streams from the server using the current JWT.
+  /// Async because the offline check hits the filesystem.
+  Future<AudioSource> _sourceFor(Track track, String? token) async {
+    final localPath = kIsWeb ? null : await OfflineService.localPath(track.id);
+    final Uri uri = localPath != null
+        ? Uri.file(localPath)
+        : Uri.parse(_client.streamUrl(track.id, token: token));
     final Object tag = (_useBackgroundMediaItem && !kIsWeb)
         ? MediaItem(
             id: track.id,
@@ -163,7 +170,7 @@ class AudioPlayerService {
                 : null,
           )
         : _legacyTag(track);
-    return AudioSource.uri(Uri.parse(url), tag: tag);
+    return AudioSource.uri(uri, tag: tag);
   }
 
   /// Convenience: replaces the queue with a single track.
@@ -190,7 +197,7 @@ class AudioPlayerService {
       final token = await _step('getToken', const Duration(seconds: 3),
           () => _client.getToken());
 
-      final sources = queue.map((t) => _sourceFor(t, token)).toList();
+      final sources = await Future.wait(queue.map((t) => _sourceFor(t, token)));
 
       if (!_concatInstalled) {
         // First-ever play: install the concat as the player's source.
@@ -297,14 +304,14 @@ class AudioPlayerService {
   Future<void> insertInQueue(int index, Track track) async {
     if (!_concatInstalled) return;
     final token = await _client.getToken();
-    await _concat.insert(index, _sourceFor(track, token));
+    await _concat.insert(index, await _sourceFor(track, token));
   }
 
   /// Append [track] to the end of the queue.
   Future<void> appendToQueue(Track track) async {
     if (!_concatInstalled) return;
     final token = await _client.getToken();
-    await _concat.add(_sourceFor(track, token));
+    await _concat.add(await _sourceFor(track, token));
   }
 
   /// Remove the item at [index] from the queue.
@@ -331,7 +338,7 @@ class AudioPlayerService {
     }
     if (newTail.isEmpty) return;
     final token = await _client.getToken();
-    final sources = newTail.map((t) => _sourceFor(t, token)).toList();
+    final sources = await Future.wait(newTail.map((t) => _sourceFor(t, token)));
     await _concat.addAll(sources);
   }
 
@@ -341,7 +348,7 @@ class AudioPlayerService {
     if (!_concatInstalled) return;
     if (index < 0 || index >= _concat.length) return;
     final token = await _client.getToken();
-    final src = _sourceFor(track, token);
+    final src = await _sourceFor(track, token);
     // Concat doesn't expose replaceAt; remove + insert + adjust playback.
     final wasPlaying = _player.playing;
     await _concat.removeAt(index);

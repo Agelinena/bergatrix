@@ -75,10 +75,119 @@ class OfflineService {
     await client.dio.delete('/api/offline/$trackId');
   }
 
+  /// Absolute path to the downloaded MP3 for [trackId], or null if it's not
+  /// on disk.  Source of truth is the FILE ITSELF (not the SharedPreferences
+  /// index) — this is what the player must trust to play offline, and it
+  /// keeps the "downloaded" indicator honest even if the index drifts.
   static Future<String?> localPath(String trackId) async {
-    if (kIsWeb || !await isDownloaded(trackId)) return null;
+    if (kIsWeb) return null;
     final dir = await getApplicationDocumentsDirectory();
-    return '${dir.path}/bergastream/$trackId.mp3';
+    final path = '${dir.path}/bergastream/$trackId.mp3';
+    return await File(path).exists() ? path : null;
+  }
+
+  /// Set of track IDs whose MP3 is actually present on disk.  This is the
+  /// authoritative "available offline" set — used by the downloaded-tracks
+  /// provider so the UI indicator can never disagree with what will really
+  /// play offline.  On web (no local files) falls back to the prefs index.
+  static Future<Set<String>> downloadedIdsOnDisk() async {
+    if (kIsWeb) {
+      final tracks = await getDownloadedTracks();
+      return tracks.map((t) => t.id).toSet();
+    }
+    final path = await downloadsDirectory();
+    if (path == null) return {};
+    final dir = Directory(path);
+    if (!await dir.exists()) return {};
+    final ids = <String>{};
+    try {
+      await for (final entity in dir.list(followLinks: false)) {
+        if (entity is File && entity.path.endsWith('.mp3')) {
+          final name = entity.uri.pathSegments.last;        // "<id>.mp3"
+          ids.add(name.substring(0, name.length - 4));      // strip ".mp3"
+        }
+      }
+    } catch (e) {
+      debugPrint('[OfflineService] downloadedIdsOnDisk error: $e');
+    }
+    return ids;
+  }
+
+  /// Reconciles the SharedPreferences index with what's actually on disk:
+  /// drops index entries whose file is missing (interrupted download, manual
+  /// delete) and corrupt entries.  Returns how many stale entries were
+  /// removed.  Non-destructive to real files; safe to run at startup.
+  static Future<int> validateAndRepair() async {
+    if (kIsWeb) return 0;
+    final prefs = await SharedPreferences.getInstance();
+    final jsonList = prefs.getStringList(_prefKey) ?? [];
+    if (jsonList.isEmpty) return 0;
+    final onDisk = await downloadedIdsOnDisk();
+    final kept = <String>[];
+    var removed = 0;
+    for (final s in jsonList) {
+      try {
+        final m = jsonDecode(s) as Map<String, dynamic>;
+        final id = m['id'] as String?;
+        if (id != null && onDisk.contains(id)) {
+          kept.add(s);
+        } else {
+          removed++;
+        }
+      } catch (_) {
+        removed++; // drop corrupt entry
+      }
+    }
+    if (removed > 0) {
+      await prefs.setStringList(_prefKey, kept);
+      debugPrint('[OfflineService] validateAndRepair removed $removed stale index entries');
+    }
+    return removed;
+  }
+
+  // ── Resumable batch persistence ────────────────────────────────────────────
+  // Lets a "download playlist offline" batch survive the app being killed
+  // mid-download: the remaining tracks are persisted and auto-resumed on the
+  // next launch (Spotify-style).
+
+  static const _pendingBatchKey = 'offline_pending_batch_v1';
+
+  /// Persist the still-pending tracks of a batch (or clear it when empty).
+  static Future<void> savePendingBatch(String label, List<Track> remaining) async {
+    final prefs = await SharedPreferences.getInstance();
+    if (remaining.isEmpty) {
+      await prefs.remove(_pendingBatchKey);
+      return;
+    }
+    final payload = jsonEncode({
+      'label': label,
+      'tracks': remaining.map((t) => t.toJson()).toList(),
+    });
+    await prefs.setString(_pendingBatchKey, payload);
+  }
+
+  /// Load a persisted unfinished batch, or null if there isn't one.
+  static Future<({String label, List<Track> tracks})?> loadPendingBatch() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_pendingBatchKey);
+    if (raw == null) return null;
+    try {
+      final m = jsonDecode(raw) as Map<String, dynamic>;
+      final label = (m['label'] as String?) ?? '';
+      final tracks = ((m['tracks'] as List<dynamic>?) ?? [])
+          .map((e) => Track.fromJson(e as Map<String, dynamic>))
+          .toList();
+      if (tracks.isEmpty) return null;
+      return (label: label, tracks: tracks);
+    } catch (_) {
+      await prefs.remove(_pendingBatchKey);
+      return null;
+    }
+  }
+
+  static Future<void> clearPendingBatch() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_pendingBatchKey);
   }
 
   /// Where the downloaded MP3s live on the device.  Returns null on web.

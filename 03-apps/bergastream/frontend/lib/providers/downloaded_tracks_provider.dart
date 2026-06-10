@@ -1,9 +1,11 @@
-/// Cached set of track IDs that have been downloaded offline.
+/// Cached set of track IDs that are available offline.
 ///
-/// Reads [OfflineService.getDownloadedTracks] once and exposes a
-/// `Set<String>` so the playlist rows can do O(1) `contains` lookups.
-/// Auto-refreshes whenever a download finishes (the
-/// OfflineDownload provider transitions from active=true to false).
+/// The set is built from FILES ACTUALLY ON DISK
+/// ([OfflineService.downloadedIdsOnDisk]), not the SharedPreferences index —
+/// so the "downloaded" indicator can never disagree with what will really
+/// play offline.  On first build it also runs [OfflineService.validateAndRepair]
+/// once to prune stale index entries.  Auto-refreshes whenever a download
+/// batch finishes (OfflineDownload transitions active=true → false).
 library;
 
 import 'package:flutter/foundation.dart';
@@ -18,28 +20,35 @@ part 'downloaded_tracks_provider.g.dart';
 @Riverpod(keepAlive: true)
 class DownloadedTracks extends _$DownloadedTracks {
   bool _lastBatchActive = false;
+  bool _validated = false;
 
   @override
   Set<String> build() {
     // Watch the OfflineDownload provider: every time a batch finishes
-    // we re-scan the offline-tracks list so newly downloaded tracks
-    // light up in the playlist UI immediately.
+    // we re-scan the on-disk set so newly downloaded tracks light up
+    // in the UI immediately.
     final dl = ref.watch(offlineDownloadProvider);
     if (_lastBatchActive && !dl.active) {
-      // Batch just finished — refresh.
       Future.microtask(refresh);
     }
     _lastBatchActive = dl.active;
 
-    // Kick off the initial load (microtask so we don't fight the build).
-    Future.microtask(refresh);
+    // First build: self-heal the index (drop entries whose file vanished)
+    // before the initial scan, so a stale index never shows a track as
+    // downloaded when it isn't.
+    Future.microtask(() async {
+      if (!_validated) {
+        _validated = true;
+        await OfflineService.validateAndRepair();
+      }
+      await refresh();
+    });
     return const <String>{};
   }
 
   Future<void> refresh() async {
     try {
-      final tracks = await OfflineService.getDownloadedTracks();
-      state = tracks.map((t) => t.id).toSet();
+      state = await OfflineService.downloadedIdsOnDisk();
     } catch (e) {
       debugPrint('[DownloadedTracks] refresh error: $e');
     }

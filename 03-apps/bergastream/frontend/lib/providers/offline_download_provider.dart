@@ -81,7 +81,22 @@ class OfflineDownloadState {
 @Riverpod(keepAlive: true)
 class OfflineDownload extends _$OfflineDownload {
   @override
-  OfflineDownloadState build() => const OfflineDownloadState();
+  OfflineDownloadState build() {
+    // Resume a batch that was interrupted by the app being killed last time.
+    // (When _run finishes or is cancelled it clears the persisted batch, so
+    // this only fires for a hard kill mid-download — Spotify-style resume.)
+    Future.microtask(_maybeResume);
+    return const OfflineDownloadState();
+  }
+
+  Future<void> _maybeResume() async {
+    if (state.active) return;
+    final pending = await OfflineService.loadPendingBatch();
+    if (pending == null) return;
+    debugPrint('[OfflineDownload] resuming persisted batch "${pending.label}" '
+        '(${pending.tracks.length} remaining)');
+    await start(label: pending.label, tracks: pending.tracks);
+  }
 
   /// Begins a batch download.  Idempotent if already running for the
   /// same playlist label — second calls are dropped silently.
@@ -96,6 +111,9 @@ class OfflineDownload extends _$OfflineDownload {
     }
     if (tracks.isEmpty) return;
 
+    // Persist the batch so it survives an app kill and auto-resumes.
+    await OfflineService.savePendingBatch(label, tracks);
+
     state = OfflineDownloadState(
       label: label,
       total: tracks.length,
@@ -108,15 +126,16 @@ class OfflineDownload extends _$OfflineDownload {
 
     final client = ref.read(apiClientProvider);
     // Fire-and-forget the work; the provider's state is what the UI watches.
-    unawaited(_run(client, tracks));
+    unawaited(_run(client, label, tracks));
   }
 
-  Future<void> _run(ApiClient client, List<Track> tracks) async {
+  Future<void> _run(ApiClient client, String label, List<Track> tracks) async {
     try {
       final already = await OfflineService.getDownloadedTracks();
       final alreadyIds = already.map((t) => t.id).toSet();
 
-      for (final track in tracks) {
+      for (var i = 0; i < tracks.length; i++) {
+        final track = tracks[i];
         if (state.cancelled) {
           debugPrint('[OfflineDownload] cancelled at ${state.done}/${state.total}');
           break;
@@ -132,18 +151,25 @@ class OfflineDownload extends _$OfflineDownload {
 
         if (alreadyIds.contains(track.id)) {
           state = state.copyWith(done: state.done + 1);
-          continue;
+        } else {
+          final ok = await _downloadWithRetry(client, track);
+          if (ok) {
+            alreadyIds.add(track.id);
+            state = state.copyWith(done: state.done + 1);
+          } else {
+            state = state.copyWith(failed: state.failed + 1);
+          }
         }
 
-        final ok = await _downloadWithRetry(client, track);
-        if (ok) {
-          alreadyIds.add(track.id);
-          state = state.copyWith(done: state.done + 1);
-        } else {
-          state = state.copyWith(failed: state.failed + 1);
-        }
+        // Shrink the persisted batch to what's still pending so a kill
+        // here resumes from the next track, not the start.
+        await OfflineService.savePendingBatch(label, tracks.sublist(i + 1));
       }
     } finally {
+      // Normal completion or cancel: the in-memory run is over, so forget the
+      // persisted batch.  (A hard app-kill skips this finally entirely, which
+      // is exactly when we WANT the persisted tail to survive and resume.)
+      await OfflineService.clearPendingBatch();
       state = state.copyWith(
         active: false,
         current: null,
