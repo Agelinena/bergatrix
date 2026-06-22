@@ -15,6 +15,11 @@
 ssh_keys/
 secrets/
 **/acme.json
+**/acme.json.*
+
+# Backups locais nunca vão pro git (ex.: acme.json.bak, *.bak.<timestamp>)
+*.bak
+*.bak.*
 
 
 # === Infraestrutura e Volumes ===
@@ -25,6 +30,16 @@ secrets/
 **/backups/
 **/downloads/
 **/storage/
+**/temp/
+
+# Binários pesados / mídia (não versionar — ex.: jellyfin/temp/*.mkv, speedtest *.tgz)
+*.mkv
+*.mp4
+*.avi
+*.mov
+*.tgz
+*.tar.gz
+*.iso
 
 # === Logs e Runtime ===
 *.log
