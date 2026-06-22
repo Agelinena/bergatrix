@@ -16,9 +16,9 @@ entryPoints:
       tls:
         certResolver: "letsencrypt"
         domains:
-          - main: "bergaestudio.xyz"
+          - main: "daberga.com"
             sans:
-              - "*.bergaestudio.xyz"
+              - "*.daberga.com"
     # Configuração refinada: o Traefik agora confia apenas no seu gateway
     forwardedHeaders:
       trustedIPs:
@@ -40,5 +40,5 @@ certificatesResolvers:
         propagation:
           delayBeforeChecks: "30s"
         resolvers:
-          - "1.1.1.1:53"
-          - "8.8.8.8:53"
+          - "ns1.desec.io:53"
+          - "ns2.desec.org:53"

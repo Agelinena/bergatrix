@@ -11,8 +11,8 @@ services:
       - 80:80
       - 443:443
     dns:
-      - 1.1.1.1
-      - 8.8.8.8
+      - 9.9.9.9
+      - 149.112.112.112
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./config/traefik.yml:/traefik.yml:ro
