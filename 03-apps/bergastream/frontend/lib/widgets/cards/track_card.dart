@@ -371,7 +371,7 @@ class _ShareSheet extends StatelessWidget {
 
   String _bergaUrl() {
     final q = Uri.encodeQueryComponent('${track.title} ${track.artist}');
-    return 'https://stream.bergaestudio.xyz/search?q=$q';
+    return 'https://stream.daberga.com/search?q=$q';
   }
 
   void _copy(BuildContext context, String url, String platform) {
