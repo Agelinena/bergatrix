@@ -34,7 +34,12 @@ providers:
 certificatesResolvers:
   letsencrypt:
     acme:
+      caServer: https://acme-staging-v02.api.letsencrypt.org/directory
       storage: "/acme.json"
       dnsChallenge:
         provider: desec
-        delayBeforeCheck: 60
+        resolvers:
+          - "ns1.desec.io:53"
+          - "ns2.desec.org:53"
+        propagation:
+          delayBeforeChecks: 60s
