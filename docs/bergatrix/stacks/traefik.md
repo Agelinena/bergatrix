@@ -45,6 +45,7 @@ Observacao: `acme.json` e referenciado como volume mas e **criado em runtime** (
 - Todo trafego HTTP (:80) e redirecionado para HTTPS (:443).
 - Certificado **wildcard unico** compartilhado por todos os subdominios do homelab.
 - Emissao de certificado **exclusivamente via DNS-01** (deSEC), `delayBeforeChecks: 30s`, resolvers apontando para o **autoritativo do deSEC** (`ns1.desec.io:53` e `ns2.desec.org:53`). Os resolvers publicos (`1.1.1.1`/`8.8.8.8`) foram abandonados porque a rede (OPNsense/AdGuard) sequestra DNS publico: as queries nunca chegam ao Cloudflare/Google reais, entao o Traefik consultava registros TXT inconsistentes e a verificacao do challenge quebrava. Consultar o autoritativo direto garante a propagacao correta do `_acme-challenge`.
+- **CA staging/producao (toggle):** usa a CA de **producao** do Let's Encrypt por padrao. Ha uma linha `caServer` de **staging comentada** em `traefik.yml` — descomente no servidor para testar a emissao sem gastar o rate limit de producao (certs de staging nao sao confiaveis no browser). Ao voltar para producao, **apague o `acme.json`** para reemitir certificados validos.
 - **Opt-in de exposicao**: `exposedByDefault=false` — container so e roteado com `traefik.enable=true`.
 - Confianca em headers `X-Forwarded-*` restrita aos `trustedIPs` (gateway e redes internas).
 - Endurecimento do container: `no-new-privileges:true`, socket Docker **read-only** (`:ro`), DNS fixado em **Quad9** (`9.9.9.9`/`149.112.112.112`) — upstream que a rede ja utiliza e nao sequestra, evitando o problema dos resolvers publicos.

@@ -35,6 +35,11 @@ certificatesResolvers:
   letsencrypt:
     acme:
       storage: "/acme.json"
+      # CA de produção por padrão (sem a linha caServer = produção).
+      # Para TESTAR a emissão sem gastar o rate limit de produção, descomente o staging.
+      # Certificados de staging NÃO são confiáveis no browser; ao voltar para produção,
+      # apague o acme.json para reemitir certificados válidos.
+      # caServer: https://acme-staging-v02.api.letsencrypt.org/directory
       dnsChallenge:
         provider: desec
         propagation:
