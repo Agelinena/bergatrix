@@ -5,6 +5,8 @@ services:
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
+    command:
+      - "--configFile=/traefik.yml"
     networks:
       - bergatrix-proxy
     ports:
@@ -20,6 +22,7 @@ services:
     environment:
       - DESEC_TOKEN=${DESEC_TOKEN}
       - DESEC_DOMAIN=${DOMAIN}
+      - LEGO_DISABLE_CNAME_SUPPORT=true
     labels:
       - "traefik.enable=true"
       - "traefik.http.middlewares.internal-only.ipallowlist.sourcerange=127.0.0.1/32, 192.168.10.0/24"
