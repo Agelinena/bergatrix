@@ -25,7 +25,7 @@ services:
       - "traefik.enable=true"
       - "traefik.http.routers.n8n-service.rule=Host(`${N8N_DOMAIN}`)"
       - "traefik.http.routers.n8n-service.entrypoints=websecure"
-      - "traefik.http.routers.n8n-service.tls.certresolver=production"
+      - "traefik.http.routers.n8n-service.tls=true"
       - "traefik.http.services.n8n-service.loadbalancer.server.port=5678"
     dns:
       - 8.8.8.8

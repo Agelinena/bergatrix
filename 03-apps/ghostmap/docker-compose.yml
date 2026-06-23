@@ -32,7 +32,6 @@ services:
       - "traefik.http.routers.ghostmap-router.entrypoints=websecure"
       - "traefik.http.routers.ghostmap-router.service=ghostmap-service"
       - "traefik.http.routers.ghostmap-router.tls=true"
-      - "traefik.http.routers.ghostmap-router.tls.certresolver=letsencrypt"
       - "traefik.http.services.ghostmap-service.loadbalancer.server.port=5000"
 
 networks:

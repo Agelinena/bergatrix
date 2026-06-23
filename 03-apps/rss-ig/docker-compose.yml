@@ -46,7 +46,6 @@ services:
       - "traefik.http.routers.instaloader-api.rule=Host(`rssig.${DOMAIN}`)"
       - "traefik.http.routers.instaloader-api.entrypoints=websecure"
       - "traefik.http.routers.instaloader-api.tls=true"
-      - "traefik.http.routers.instaloader-api.tls.certresolver=letsencrypt"
       - "traefik.http.services.instaloader-api.loadbalancer.server.port=8000"
       - "traefik.http.routers.instaloader-api.middlewares=internal-only@docker"
       - "traefik.docker.network=bergatrix-proxy"

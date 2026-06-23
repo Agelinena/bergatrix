@@ -14,7 +14,6 @@ services:
       - "traefik.http.routers.cloudbeaver.rule=Host(`db.${DOMAIN}`)"
       - "traefik.http.routers.cloudbeaver.entrypoints=websecure"
       - "traefik.http.routers.cloudbeaver.tls=true"
-      - "traefik.http.routers.cloudbeaver.tls.certresolver=letsencrypt"
       # CAMADA DE SEGURANÇA:
       # 1. internal-only: Só abre se você estiver no Tailscale
       # 2. authentik: Só abre se você estiver logado no seu SSO

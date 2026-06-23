@@ -26,13 +26,13 @@ Leitor/digest de notícias pessoal e multiusuário. Um **worker** coleta periodi
 | depends_on | `berganews-db` (service_healthy) | `berganews-db` (service_healthy) | — |
 | restart | unless-stopped | unless-stopped | unless-stopped |
 | Healthcheck | `urlopen /health` (30s/5s/3, start 15s) | existência de `/tmp/.worker_alive` (60s/5s/3, start 30s) | `pg_isready -U berganews` (10s/5s/5, start 30s) |
-| Traefik | `Host(news.${DOMAIN})`, websecure, TLS letsencrypt, lb `:8000`, mw `internal-only@docker` | — | — |
+| Traefik | `Host(news.${DOMAIN})`, websecure, `tls=true` (wildcard compartilhado), lb `:8000`, mw `internal-only@docker` | — | — |
 
 Notas: a **API** é um web app FastAPI/Jinja servindo UI/PWA (`docs_url`/`redoc_url` desabilitados). O **worker** é um processo de scheduler sem servidor HTTP nem labels Traefik; está na `bergatrix-proxy` presumivelmente apenas para *egress* às APIs de IA externas. O `berganews-db` fica só na rede interna (sem portas publicadas).
 
 ## 🌐 Dominios / Roteamento
 - `news.${DOMAIN}` (`news.daberga.com`) → `berganews-api:8000`
-- Entrypoint `websecure`, `tls=true`, `certresolver=letsencrypt`
+- Entrypoint `websecure`, `tls=true` (sem `certresolver`) — consome o wildcard `*.daberga.com` compartilhado do Traefik; não emite certificado individual
 - Middleware: `internal-only@docker` (definido na stack do Traefik) — restringe à rede interna/Tailscale
 - O cookie de sessão usa `secure=True`, exigindo HTTPS
 
@@ -86,7 +86,7 @@ PostgreSQL 16 via SQLAlchemy `DeclarativeBase` (síncrono). Schema criado por `B
 - **Tailwind CSS via CDN** (`cdn.tailwindcss.com`) no `base.html`
 
 ## 🧩 Dependencias internas (Bergatrix)
-- **Traefik** (`01-network/traefik`): TLS Let's Encrypt (`certresolver=letsencrypt`), rede externa `bergatrix-proxy`
+- **Traefik** (`01-network/traefik`): serve o wildcard `*.daberga.com` compartilhado via `tls=true` (CA Let's Encrypt; o cert é emitido uma única vez pela stack do Traefik, este app apenas o consome), rede externa `bergatrix-proxy`
 - **Middleware `internal-only@docker`** (definido na stack do Traefik) — restringe acesso à `berganews-api`
 - **Rede `bergatrix-proxy`** (`external: true`)
 - **Postgres próprio** (`berganews-db`) na rede interna `berganews-internal` (`internal: true`) — **não** usa banco compartilhado

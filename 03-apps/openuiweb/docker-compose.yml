@@ -34,7 +34,7 @@ services:
       - "traefik.enable=true"
       - "traefik.http.routers.openwebui.rule=Host(`chat.${DOMAIN}`)"
       - "traefik.http.routers.openwebui.entrypoints=websecure"
-      - "traefik.http.routers.openwebui.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.openwebui.tls=true"
       - "traefik.http.routers.openwebui.middlewares=internal-only@docker"
       - "traefik.http.services.openwebui.loadbalancer.server.port=8080"
 

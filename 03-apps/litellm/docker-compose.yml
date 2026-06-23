@@ -45,7 +45,7 @@ services:
       - "traefik.enable=true"
       - "traefik.http.routers.litellm.rule=Host(`llm.${DOMAIN}`)"
       - "traefik.http.routers.litellm.entrypoints=websecure"
-      - "traefik.http.routers.litellm.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.litellm.tls=true"
       - "traefik.http.routers.litellm.middlewares=internal-only@docker"
       - "traefik.http.services.litellm.loadbalancer.server.port=4000"
 

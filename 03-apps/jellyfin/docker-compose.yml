@@ -33,7 +33,6 @@ services:
       - "traefik.http.routers.jellyfin-router.rule=Host(`jellyflix.${DOMAIN}`)"
       - "traefik.http.routers.jellyfin-router.entrypoints=websecure"
       - "traefik.http.routers.jellyfin-router.tls=true"
-      - "traefik.http.routers.jellyfin-router.tls.certresolver=letsencrypt"
       - "traefik.http.services.jellyfin-service.loadbalancer.server.port=8096"
 
   catalogo:
@@ -59,7 +58,6 @@ services:
       - "traefik.http.routers.catalogo-router.rule=Host(`catalogo.${DOMAIN}`)"
       - "traefik.http.routers.catalogo-router.entrypoints=websecure"
       - "traefik.http.routers.catalogo-router.tls=true"
-      - "traefik.http.routers.catalogo-router.tls.certresolver=letsencrypt"
       - "traefik.http.services.catalogo-service.loadbalancer.server.port=5055"
 
   # --- LOCAL: Apenas via Tailscale/Rede Local (Middleware internal-only) ---

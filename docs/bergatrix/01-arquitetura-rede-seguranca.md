@@ -24,9 +24,11 @@ Cada stack adiciona sua própria rede, muitas com **`internal: true`** (sem saí
 
 ## 2. Traefik (ingress / TLS)
 - **Entrypoints:** `web` (:80, redirect) e `websecure` (:443, TLS).
-- **TLS:** certificado **wildcard `*.daberga.com`** via **Let's Encrypt** com **DNS-01 challenge** no provider **deSEC**. Resolvers nomeados: `letsencrypt` (maioria) e `production` (usado por `transcriptor` e `n8n` — confirmar se é o mesmo resolver com outro nome).
+- **TLS:** certificado **wildcard `*.daberga.com`** via **Let's Encrypt** com **DNS-01 challenge** no provider **deSEC** (resolvers ACME → autoritativo `ns1.desec.io:53`/`ns2.desec.org:53`; `LEGO_DISABLE_CNAME_SUPPORT=true`; `dns: 9.9.9.9/149.112.112.112` no container). **Estratégia wildcard:** o resolver `letsencrypt` emite o wildcard uma única vez no entrypoint `websecure`; **as apps usam só `tls=true` (sem `certresolver`)** e herdam o wildcard — não emitem certificado individual. _(Antes da migração, apps usavam `tls.certresolver=letsencrypt`/`production`; removido em jun/2026.)_
 - **forwardedHeaders:** confia em `192.168.10.0/24` e `192.168.3.0/24` (LAN principal e backup).
 - **Descoberta:** por labels Docker; cada serviço exposto declara `traefik.enable=true`, `traefik.docker.network=bergatrix-proxy`, um router `Host(...)` e um service `loadbalancer.server.port`.
+
+> 🚨 **Causa-raiz da quebra de emissão de certificado (resolvida — infra crítica).** O OPNsense fazia **hijacking transparente do DNS na porta 53** (split-horizon): toda query da LAN era capturada pelo resolver interno, impedindo o lego/Traefik de descobrir a zona `daberga.com` via consulta **SOA** ao autoritativo do deSEC → falha de emissão com erro `domainName=com`. **Solução:** regra **NAT → Port Forward "No RDR (NOT)"** no OPNsense para origem `192.168.10.10` (o servidor), porta `53`, deixando o DNS do servidor sair **direto** aos autoritativos sem sequestro. **Se a regra for removida, a renovação automática do wildcard falha em ~60 dias** e o ingress HTTPS para. Detalhes em [stacks/networks.md](stacks/networks.md) e [stacks/traefik.md](stacks/traefik.md).
 
 ### Middlewares de segurança (definidos na stack do Traefik)
 | Middleware | O que faz | Quem usa |
@@ -80,7 +82,7 @@ Cada stack adiciona sua própria rede, muitas com **`internal: true`** (sem saí
 | 🟠 Média | Padronizar autenticação: avaliar pôr atrás do Authentik as apps hoje só com `internal-only` (rss-ig sem auth de app) |
 | 🟠 Média | Adicionar `.env.example` às 4 stacks que faltam |
 | 🟡 Baixa | Definir healthchecks no Wazuh (`depends_on` hoje só `service_started`) |
-| 🟡 Baixa | Confirmar/unificar o nome do certresolver (`letsencrypt` vs `production`) |
+| ✅ Feito | Certresolver unificado: apps migradas para o **wildcard** (`tls=true` sem `certresolver`); resolvers individuais `letsencrypt`/`production` removidos das apps (jun/2026) |
 
 ---
 _Documento gerado por análise automatizada da Bergatrix e revisado. Atualize conforme a estrutura evoluir._

@@ -65,7 +65,6 @@ services:
       - "traefik.http.routers.authentik.rule=Host(`authentik.${DOMAIN}`)"
       - "traefik.http.routers.authentik.entrypoints=websecure"
       - "traefik.http.routers.authentik.tls=true"
-      - "traefik.http.routers.authentik.tls.certresolver=letsencrypt"
       - "traefik.http.routers.authentik.middlewares=internal-only@docker"
       - "traefik.http.services.authentik-service.loadbalancer.server.port=9000"
       - "traefik.http.middlewares.authentik.forwardauth.address=http://authentik-server:9000/outpost.goauthentik.io/auth/traefik"

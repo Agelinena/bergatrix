@@ -23,7 +23,7 @@ services:
       - "traefik.enable=true"
       - "traefik.docker.network=bergatrix-proxy"
       - "traefik.http.routers.bergastream-deemix.rule=Host(`${DEEMIX_DOMAIN}`)"
-      - "traefik.http.routers.bergastream-deemix.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.bergastream-deemix.tls=true"
       - "traefik.http.routers.bergastream-deemix.entrypoints=websecure"
       - "traefik.http.services.bergastream-deemix.loadbalancer.server.port=6595"
 
@@ -48,7 +48,7 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.bergastream-api.rule=Host(`${API_DOMAIN}`)"
-      - "traefik.http.routers.bergastream-api.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.bergastream-api.tls=true"
       - "traefik.http.routers.bergastream-api.entrypoints=websecure"
       - "traefik.http.services.bergastream-api.loadbalancer.server.port=8000"
     depends_on:
@@ -70,7 +70,7 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.bergastream-web.rule=Host(`${WEB_DOMAIN}`)"
-      - "traefik.http.routers.bergastream-web.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.bergastream-web.tls=true"
       - "traefik.http.routers.bergastream-web.entrypoints=websecure"
       - "traefik.http.services.bergastream-web.loadbalancer.server.port=80"
     depends_on:

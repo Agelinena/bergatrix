@@ -11,7 +11,7 @@ E o ponto unico de entrada HTTP/HTTPS de todo o homelab Bergatrix. Escuta nas po
 - **Let's Encrypt (ACME)** para emissao de certificados
 - **DNS-01 challenge via deSEC** (provider `desec`)
 - **TLS wildcard** (`*.daberga.com`)
-- Configuracao **YAML estatica** (`config/traefik.yml`) + **dinamica via labels Docker** (e um `config/config.yml` orfao — ver pendencias)
+- Configuracao **YAML estatica** (`config/traefik.yml`, carregada via flag `--configFile=/traefik.yml` no compose) + **dinamica via labels Docker** (e um `config/config.yml` orfao — ver pendencias)
 
 Nao ha codigo de aplicacao: o stack e puramente declarativo.
 
@@ -43,8 +43,9 @@ Observacao: `acme.json` e referenciado como volume mas e **criado em runtime** (
 
 ## 📐 Regras de negocio
 - Todo trafego HTTP (:80) e redirecionado para HTTPS (:443).
-- Certificado **wildcard unico** compartilhado por todos os subdominios do homelab.
-- Emissao de certificado **exclusivamente via DNS-01** (deSEC), `delayBeforeChecks: 30s`, resolvers apontando para o **autoritativo do deSEC** (`ns1.desec.io:53` e `ns2.desec.org:53`). Os resolvers publicos (`1.1.1.1`/`8.8.8.8`) foram abandonados porque a rede (OPNsense/AdGuard) sequestra DNS publico: as queries nunca chegam ao Cloudflare/Google reais, entao o Traefik consultava registros TXT inconsistentes e a verificacao do challenge quebrava. Consultar o autoritativo direto garante a propagacao correta do `_acme-challenge`.
+- Certificado **wildcard unico** (`*.daberga.com`, dominio `daberga.com`) compartilhado por todos os subdominios do homelab.
+- **Estrategia de certificado = wildcard:** os apps downstream **nao emitem certificado individual**. Cada router usa apenas `tls=true` (**sem** `tls.certresolver`), herdando o wildcard `*.daberga.com` ja emitido aqui. Isso elimina uma emissao ACME por subdominio e o risco de rate limit do Let's Encrypt.
+- Emissao do wildcard **exclusivamente via DNS-01** (deSEC), `delayBeforeChecks: 60s`, com `LEGO_DISABLE_CNAME_SUPPORT=true` no environment e resolvers apontando para o **autoritativo do deSEC** (`ns1.desec.io:53` e `ns2.desec.org:53`). Os resolvers publicos (`1.1.1.1`/`8.8.8.8`) foram abandonados porque a rede sequestrava DNS publico na porta 53 — a correcao definitiva foi uma regra NAT **No RDR (NOT)** no OPNsense liberando o DNS do servidor (`192.168.10.10`); ver causa-raiz em [networks.md](networks.md) e [01-arquitetura-rede-seguranca.md](../01-arquitetura-rede-seguranca.md). **Sem essa regra, a renovacao automatica do certificado volta a falhar (~60 dias).**
 - **CA staging/producao (toggle):** usa a CA de **producao** do Let's Encrypt por padrao. Ha uma linha `caServer` de **staging comentada** em `traefik.yml` — descomente no servidor para testar a emissao sem gastar o rate limit de producao (certs de staging nao sao confiaveis no browser). Ao voltar para producao, **apague o `acme.json`** para reemitir certificados validos.
 - **Opt-in de exposicao**: `exposedByDefault=false` — container so e roteado com `traefik.enable=true`.
 - Confianca em headers `X-Forwarded-*` restrita aos `trustedIPs` (gateway e redes internas).
@@ -68,18 +69,18 @@ n/a — nao ha banco nem modelo de negocio. O unico estado persistido e `acme.js
 ## 🧩 Dependencias internas (Bergatrix)
 - **Rede externa `bergatrix-proxy`** (`external: true`) — backbone de ingress consumido por **15 stacks downstream** alem do proprio traefik: `03-apps/jellyfin`, `03-apps/bergastream`, `03-apps/openuiweb`, `03-apps/berga-news`, `03-apps/drop`, `03-apps/ghostmap`, `03-apps/litellm`, `03-apps/n8n`, `03-apps/rss-ig`, `03-apps/rss`, `03-apps/transcriptor`, `02-security/authentik`, `02-security/bitwarden`, `00-infrastructure/cloudbeaver`, `04-monitoring/wazuh`.
 - **Docker daemon** (socket `/var/run/docker.sock`, `:ro`) — provider de service discovery.
-- Stacks downstream declaram routers referenciando o certresolver `letsencrypt` e o entrypoint `websecure` definidos aqui (confirmado em `03-apps/bergastream/docker-compose.yml`: `tls.certresolver=letsencrypt`, `entrypoints=websecure`, `traefik.docker.network=bergatrix-proxy`).
+- Stacks downstream declaram routers com apenas `tls=true` (entrypoint `websecure`, `traefik.docker.network=bergatrix-proxy`) e **sem `certresolver`** — assim usam o wildcard `*.daberga.com` emitido por esta stack, em vez de pedir um certificado individual. (Antes da migracao usavam `tls.certresolver=letsencrypt`/`production`, removido em jun/2026.)
 
 ## 🔑 Variaveis de ambiente necessarias
 Definidas em `.env` (nao versionado; ha `.env.example` com placeholders):
-- **deSEC / ACME:** `DESEC_TOKEN`, `DOMAIN` (mapeado para `DESEC_DOMAIN` no container)
+- **deSEC / ACME:** `DESEC_TOKEN`, `DOMAIN` (mapeado para `DESEC_DOMAIN` no container). O compose tambem define `LEGO_DISABLE_CNAME_SUPPORT=true` (impede o lego de seguir CNAME ao resolver `_acme-challenge` — valor fixo, nao e segredo).
 - **Dashboard (em `config/config.yml`, atualmente nao carregado):** `SUBDOMAIN_TRAEFIK_DASHBOARD`, `TRAEFIK_USER`, `TRAEFIK_PASSWORD`
 
 (Apenas nomes — nunca valores.)
 
 ## 🗂️ Estrutura de codigo
-- `docker-compose.yml` — define o servico `traefik`, montagens, `dns`, `security_opt`, labels e a rede externa `bergatrix-proxy`. Passa `DESEC_TOKEN` e `DESEC_DOMAIN` ao container.
-- `config/traefik.yml` — **config estatica** (montada `/traefik.yml:ro`): `log.level: DEBUG`; entrypoints `web`/`websecure` com redirect 80->443; dominio wildcard TLS; `forwardedHeaders.trustedIPs`; provider `docker` (`exposedByDefault=false`); `certificatesResolvers.letsencrypt` com `dnsChallenge` deSEC.
+- `docker-compose.yml` — define o servico `traefik`: `command: --configFile=/traefik.yml` (carrega a config estatica), montagens, `dns: 9.9.9.9/149.112.112.112` (Quad9), `security_opt`, labels e a rede externa `bergatrix-proxy`. Passa `DESEC_TOKEN`, `DESEC_DOMAIN` e `LEGO_DISABLE_CNAME_SUPPORT=true` ao container.
+- `config/traefik.yml` — **config estatica** (montada `/traefik.yml:ro`, carregada via `--configFile=/traefik.yml`): `log.level: DEBUG`; entrypoints `web`/`websecure` com redirect 80->443; wildcard TLS `main: daberga.com` + `*.daberga.com`; `forwardedHeaders.trustedIPs`; provider `docker` (`exposedByDefault=false`); `certificatesResolvers.letsencrypt` com `dnsChallenge` deSEC (resolvers `ns1.desec.io:53`/`ns2.desec.org:53`, `delayBeforeChecks: 60s`, linha `caServer` de staging comentada).
 - `config/config.yml` — **config dinamica pretendida**: router `dashboard` -> `api@internal` e middleware basicAuth `auth`. **Orfa**: nao e montada no container e nao ha provider `file`.
 - `.env.example` — template de variaveis com placeholders comentados.
 - `config/acme.json` — storage de certificados, **criado em runtime** (nao versionado).

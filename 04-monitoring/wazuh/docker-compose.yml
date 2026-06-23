@@ -106,7 +106,6 @@ services:
       - "traefik.http.routers.wazuh.rule=Host(`wazuh.${DOMAIN}`)"
       - "traefik.http.routers.wazuh.entrypoints=websecure"
       - "traefik.http.routers.wazuh.tls=true"
-      - "traefik.http.routers.wazuh.tls.certresolver=letsencrypt"
       - "traefik.http.routers.wazuh.middlewares=internal-only@docker,authentik@docker"
       - "traefik.http.services.wazuh.loadbalancer.server.port=5601"
       - "traefik.http.services.wazuh.loadbalancer.server.scheme=https"

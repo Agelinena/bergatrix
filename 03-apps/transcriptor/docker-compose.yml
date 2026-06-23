@@ -47,7 +47,7 @@ services:
       - "traefik.docker.network=bergatrix-proxy"
       - "traefik.http.routers.transcriptor.rule=Host(`transcriptor.${DOMAIN}`)"
       - "traefik.http.routers.transcriptor.entrypoints=websecure"
-      - "traefik.http.routers.transcriptor.tls.certresolver=production"
+      - "traefik.http.routers.transcriptor.tls=true"
       - "traefik.http.routers.transcriptor.middlewares=transcriptor-buffering"
       - "traefik.http.middlewares.transcriptor-buffering.buffering.maxRequestBodyBytes=200000000"
       - "traefik.http.middlewares.transcriptor-buffering.buffering.memRequestBodyBytes=200000000"
