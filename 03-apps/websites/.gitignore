@@ -1,0 +1,19 @@
+# === Segredos ===
+.env
+.env.*
+!.env.example
+
+# === Dados persistentes ===
+# Caso VOLUMES_BASE seja apontado para dentro do repo em testes locais,
+# não versione os dados gerados pelo Silex/nginx.
+storage/
+published/
+volumes/
+data/
+
+# Observação: os placeholders versionados ficam em ./seed/ (não em ./published/).
+
+# === OS / Editores ===
+.DS_Store
+Thumbs.db
+*.swp
