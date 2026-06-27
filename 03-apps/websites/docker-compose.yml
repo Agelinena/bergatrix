@@ -1,62 +1,14 @@
 services:
   # =========================================================================
-  # EDITOR (admin) — construtor visual Silex.
-  # Acesso restrito à rede interna/LAN/VPN via middleware internal-only@docker.
-  # Escreve os projetos em /silex/storage e o build estático em /silex/hosting.
-  # =========================================================================
-  silex-editor:
-    # Tag fixada (NUNCA :latest em produção). Última estável em 2026-06: 1.5.0.
-    image: silexlabs/silex-platform:1.5.0
-    container_name: silex-editor
-    restart: unless-stopped
-    environment:
-      # URL pública do editor (atrás do Traefik).
-      - SILEX_URL=https://studio.${DOMAIN}
-      # Conector de armazenamento de projetos: filesystem.
-      - STORAGE_CONNECTORS=fs
-      # Conectores de publicação: filesystem + download (zip).
-      - HOSTING_CONNECTORS=fs,download
-      # Caminhos do conector fs — explícitos p/ casar com os volumes montados
-      # (o default é relativo ao WORKDIR=/silex e não bateria com os mounts).
-      - SILEX_FS_ROOT=/silex/storage
-      - SILEX_FS_HOSTING_ROOT=/silex/hosting
-    volumes:
-      # Rascunhos / projetos do editor.
-      - ${VOLUMES_BASE}/websites/storage:/silex/storage
-      # Saída estática publicada (RW — o Silex escreve aqui no publish).
-      - ${VOLUMES_BASE}/websites/published:/silex/hosting
-    networks:
-      - bergatrix-proxy
-    healthcheck:
-      # A imagem é Node — usamos o próprio node (sempre presente) p/ checar a 6805.
-      test: ["CMD-SHELL", "node -e 'require(\"http\").get(\"http://127.0.0.1:6805/\",r=>process.exit(r.statusCode<500?0:1)).on(\"error\",()=>process.exit(1))'"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 30s
-    labels:
-      - "traefik.enable=true"
-      - "traefik.docker.network=bergatrix-proxy"
-      - "traefik.http.routers.silex-router.rule=Host(`studio.${DOMAIN}`)"
-      - "traefik.http.routers.silex-router.entrypoints=websecure"
-      # tls=true herda o wildcard *.daberga.com do Traefik — NÃO declarar
-      # certresolver (convenção da casa; evita emissão individual / rate-limit).
-      - "traefik.http.routers.silex-router.tls=true"
-      # Para exigir login SSO depois, troque a linha de middleware abaixo por esta:
-      # - "traefik.http.routers.silex-router.middlewares=authentik@docker,internal-only@docker"
-      - "traefik.http.routers.silex-router.middlewares=internal-only@docker"
-      - "traefik.http.services.silex-service.loadbalancer.server.port=6805"
-
-  # =========================================================================
-  # SITES ESTÁTICOS (públicos) — um nginx por domínio, servindo a pasta
-  # publicada correspondente em READ-ONLY. Sem middleware (acesso público).
+  # SITES ESTÁTICOS (públicos) — um nginx por domínio, servindo a pasta do
+  # site correspondente (./sites/<dominio>) em READ-ONLY. Sem middleware.
   # =========================================================================
   web-daberga:
     image: nginx:alpine
     container_name: web-daberga
     restart: unless-stopped
     volumes:
-      - ${VOLUMES_BASE}/websites/published/daberga:/usr/share/nginx/html:ro
+      - ./sites/daberga:/usr/share/nginx/html:ro
       - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
     networks:
       - bergatrix-proxy
@@ -79,7 +31,7 @@ services:
     container_name: web-lucas
     restart: unless-stopped
     volumes:
-      - ${VOLUMES_BASE}/websites/published/lucas:/usr/share/nginx/html:ro
+      - ./sites/lucas:/usr/share/nginx/html:ro
       - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
     networks:
       - bergatrix-proxy
@@ -102,7 +54,7 @@ services:
     container_name: web-marina
     restart: unless-stopped
     volumes:
-      - ${VOLUMES_BASE}/websites/published/marina:/usr/share/nginx/html:ro
+      - ./sites/marina:/usr/share/nginx/html:ro
       - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
     networks:
       - bergatrix-proxy
