@@ -1,8 +1,8 @@
 # 🌐 websites — sites estáticos (nginx)
 
 Stack que sobe **três servidores estáticos** (`nginx:alpine`), um por domínio. O
-conteúdo de cada site vive **versionado no repo** em `sites/<dominio>/` e é servido
-em **read-only**. Sem banco, sem build, sem volumes externos — `git pull` + `up`.
+conteúdo de cada site fica no **volume do host** (`${VOLUMES_BASE}/websites/published/<dominio>`,
+definido no `.env`) e é servido em **read-only**. Sem banco, sem build, sem editor.
 
 ## Arquitetura
 
@@ -19,12 +19,14 @@ em **read-only**. Sem banco, sem build, sem volumes externos — `git pull` + `u
               └─────┬─────┘          └────┬─────┘          └─────┬─────┘
               :ro   │                :ro  │                :ro   │
                     ▼                     ▼                      ▼
-              ./sites/daberga       ./sites/lucas         ./sites/marina
+        ${VOLUMES_BASE}/websites/published/{daberga, lucas, marina}
 ```
 
-Cada nginx monta a pasta do seu site (`./sites/<dominio>`) como **read-only** e a
-config `./nginx/default.conf` (também `:ro`). Todos são **públicos** (só TLS, sem
-middleware).
+Cada nginx monta a pasta do seu site no volume (`:ro`) e a config
+`./nginx/default.conf` (também `:ro`). Todos são **públicos** (só TLS, sem middleware).
+
+> O `:ro` restringe apenas o **container** (nginx nunca escreve) — você continua
+> editando os arquivos normalmente no host.
 
 ### Hosts e exposição
 
@@ -44,41 +46,55 @@ middleware).
 ```
 03-apps/websites/
 ├── docker-compose.yml      # 3 nginx na rede bergatrix-proxy
-├── .env.example            # apenas DOMAIN
-├── .gitignore              # ignora .env (o conteúdo de sites/ é versionado)
+├── .env.example            # DOMAIN, VOLUMES_BASE
+├── .gitignore              # ignora .env e dados persistentes
 ├── nginx/
 │   └── default.conf        # try_files (URLs limpas) + 404 amigável (montado :ro)
-├── sites/                  # conteúdo de cada site (VERSIONADO)
+├── seed/                   # placeholders "em construção" (VERSIONADOS)
 │   ├── daberga/{index,404}.html
 │   ├── lucas/{index,404}.html
 │   └── marina/{index,404}.html
 └── README.md
 ```
 
+> O conteúdo servido fica em **`${VOLUMES_BASE}/websites/published/`** (no host, fora
+> do repo). A pasta `seed/` guarda só os placeholders iniciais.
+
 ## Como subir
 
 > Execute no **servidor** (Linux), dentro de `03-apps/websites/`.
 
 ```bash
-cp .env.example .env          # ajustar DOMAIN se necessário
-# Garantir a rede externa do Traefik (idempotente)
+# 1. Configurar variáveis
+cp .env.example .env
+nano .env                      # ajustar DOMAIN e VOLUMES_BASE
+
+# 2. Garantir a rede externa do Traefik (idempotente)
 docker network inspect bergatrix-proxy >/dev/null 2>&1 || docker network create bergatrix-proxy
-docker compose config         # validar (não sobe nada)
+
+# 3. Criar as pastas dos sites no volume
+export $(grep -E '^(VOLUMES_BASE|DOMAIN)=' .env | xargs)
+mkdir -p "$VOLUMES_BASE/websites/published/"{daberga,lucas,marina}
+
+# 4. (Opcional, só no 1º deploy) semear os placeholders "em construção"
+#    Pula este passo se você já tem o conteúdo dos sites na pasta.
+cp -rn seed/daberga/. "$VOLUMES_BASE/websites/published/daberga/"
+cp -rn seed/lucas/.   "$VOLUMES_BASE/websites/published/lucas/"
+cp -rn seed/marina/.  "$VOLUMES_BASE/websites/published/marina/"
+
+# 5. Validar e subir
+docker compose config
 docker compose up -d
 ```
 
-Pronto: `https://${DOMAIN}`, `https://lucas.${DOMAIN}` e `https://marina.${DOMAIN}`
-mostram a página "em construção".
+> `cp -rn` é "no-clobber": **não sobrescreve** arquivos já existentes na pasta.
 
-## Editar / publicar conteúdo
+## Editar conteúdo
 
-1. Edite os arquivos em `sites/<dominio>/` (HTML/CSS/JS estáticos).
-2. `git commit` + `git push`.
-3. No servidor: `git pull`.
-
-O mount é `:ro` direto da pasta do host, então **alterações de conteúdo aparecem na
-hora** — não precisa reiniciar o container. Só rode `docker compose up -d` de novo se
-mudar o `docker-compose.yml` ou o `nginx/default.conf`.
+Edite os arquivos diretamente em `${VOLUMES_BASE}/websites/published/<dominio>/` no
+host. Como o mount é `:ro` direto dessa pasta, **as alterações aparecem na hora** —
+não precisa reiniciar o container. Só rode `docker compose up -d` de novo se mudar o
+`docker-compose.yml` ou o `nginx/default.conf`.
 
 > **URLs limpas:** o `nginx/default.conf` usa `try_files $uri $uri/ $uri.html =404`,
 > então `/sobre` serve `sobre.html` automaticamente; rotas inexistentes caem na
@@ -114,7 +130,7 @@ domains:
 
 - **Sem `ports:`** publicadas no host — só o Traefik expõe 80/443; os containers só
   se alcançam pela rede `bergatrix-proxy`.
-- **Conteúdo read-only:** cada nginx monta o site com `:ro` — o processo não consegue
-  alterar os arquivos servidos.
+- **Conteúdo read-only no container:** cada nginx monta o site com `:ro` — o processo
+  não consegue alterar os arquivos servidos.
 - **Superfície mínima:** apenas conteúdo estático. Sem editor/admin, sem banco, sem
-  segredos no compose — só `DOMAIN` via `.env`.
+  segredos no compose — só `DOMAIN` e `VOLUMES_BASE` via `.env`.

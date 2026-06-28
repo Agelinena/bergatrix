@@ -1,14 +1,15 @@
 services:
   # =========================================================================
   # SITES ESTÁTICOS (públicos) — um nginx por domínio, servindo a pasta do
-  # site correspondente (./sites/<dominio>) em READ-ONLY. Sem middleware.
+  # site correspondente no volume (${VOLUMES_BASE}/websites/published/<dominio>)
+  # em READ-ONLY. Sem middleware (acesso público).
   # =========================================================================
   web-daberga:
     image: nginx:alpine
     container_name: web-daberga
     restart: unless-stopped
     volumes:
-      - ./sites/daberga:/usr/share/nginx/html:ro
+      - ${VOLUMES_BASE}/websites/published/daberga:/usr/share/nginx/html:ro
       - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
     networks:
       - bergatrix-proxy
@@ -31,7 +32,7 @@ services:
     container_name: web-lucas
     restart: unless-stopped
     volumes:
-      - ./sites/lucas:/usr/share/nginx/html:ro
+      - ${VOLUMES_BASE}/websites/published/lucas:/usr/share/nginx/html:ro
       - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
     networks:
       - bergatrix-proxy
@@ -54,7 +55,7 @@ services:
     container_name: web-marina
     restart: unless-stopped
     volumes:
-      - ./sites/marina:/usr/share/nginx/html:ro
+      - ${VOLUMES_BASE}/websites/published/marina:/usr/share/nginx/html:ro
       - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
     networks:
       - bergatrix-proxy

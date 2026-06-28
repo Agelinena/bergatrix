@@ -3,7 +3,12 @@
 .env.*
 !.env.example
 
-# Observação: o conteúdo dos sites (./sites/) é VERSIONADO de propósito.
+# === Dados persistentes ===
+# Caso VOLUMES_BASE aponte para dentro do repo em testes locais, não versione
+# o conteúdo servido. Os placeholders versionados ficam em ./seed/.
+published/
+volumes/
+data/
 
 # === OS / Editores ===
 .DS_Store
