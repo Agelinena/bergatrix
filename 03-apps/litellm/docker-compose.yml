@@ -63,6 +63,8 @@ services:
       LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
       SYNC_INTERVAL: ${LITELLM_SYNC_INTERVAL:-3600}
+      OLLAMA_URL: http://ollama:11434
+
     networks:
       - litellm-internal  # acessa http://litellm:4000
       - litellm-egress    # acessa https://openrouter.ai (requer saída à internet)
