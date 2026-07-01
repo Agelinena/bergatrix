@@ -1,15 +1,6 @@
 """
 LiteLLM Model Sync — Sidecar
-Sincroniza dinamicamente modelos da OpenRouter com o LiteLLM Proxy via API REST.
-
-Lógica por ciclo:
-  1. Fetch OpenRouter /models  → separa modelos :free e pagos
-  2. Fetch LiteLLM /model/info → lê modelos gerenciados (prefixos or-free/ e or-paid/)
-  3. Diff add/remove para cada grupo
-  4. POST /model/new  (novos)
-  5. POST /model/delete (removidos)
-  6. Atualiza virtual keys: "free-models-key" e "paid-models-key"
-  7. Sleep SYNC_INTERVAL segundos
+Sincroniza dinamicamente modelos da OpenRouter e Ollama com o LiteLLM Proxy via API REST.
 """
 
 import os
@@ -21,12 +12,15 @@ import requests
 LITELLM_URL    = os.environ.get("LITELLM_URL", "http://litellm:4000")
 MASTER_KEY     = os.environ["LITELLM_MASTER_KEY"]
 OPENROUTER_KEY = os.environ["OPENROUTER_API_KEY"]
+OLLAMA_URL     = os.environ.get("OLLAMA_URL", "http://ollama:11434")
 SYNC_INTERVAL  = int(os.environ.get("SYNC_INTERVAL", "3600"))
 
 OR_MODELS_URL  = "https://openrouter.ai/api/v1/models"
 
 FREE_PREFIX    = "or-free/"
 PAID_PREFIX    = "or-paid/"
+OLLAMA_PREFIX  = "ollama/"
+
 FREE_KEY_ALIAS = "free-models-key"
 PAID_KEY_ALIAS = "paid-models-key"
 
@@ -52,13 +46,7 @@ def litellm_headers() -> dict:
         "Content-Type": "application/json",
     }
 
-
 def is_free(model: dict) -> bool:
-    """
-    Detecção dupla:
-      (a) id termina com ':free'  — convenção explícita da OpenRouter
-      (b) pricing.prompt == "0" E pricing.completion == "0"  — safety net
-    """
     model_id = model.get("id", "")
     if model_id.endswith(":free"):
         return True
@@ -72,17 +60,35 @@ def is_free(model: dict) -> bool:
         return False
 
 
+# ─── Ollama ───────────────────────────────────────────────────────────────────
+
+def fetch_ollama_models() -> dict[str, str] | None:
+    """
+    Retorna { proxy_name → upstream_name }
+    Exemplo: { "ollama/llama3" → "llama3" }
+    Retorna None em caso de falha de conexão (para não deletar modelos por acidente).
+    """
+    try:
+        resp = requests.get(f"{OLLAMA_URL}/api/tags", timeout=10)
+        resp.raise_for_status()
+        data = resp.json().get("models", [])
+        
+        ollama: dict[str, str] = {}
+        for m in data:
+            name = m.get("name")
+            if name:
+                ollama[f"{OLLAMA_PREFIX}{name}"] = name
+                
+        log.info(f"Ollama: {len(ollama)} modelos locais encontrados.")
+        return ollama
+    except requests.RequestException as e:
+        log.warning(f"Ollama offline ou inacessível: {e}")
+        return None
+
+
 # ─── OpenRouter ───────────────────────────────────────────────────────────────
 
 def fetch_openrouter_models() -> tuple[dict[str, str], dict[str, str]]:
-    """
-    Retorna dois dicts: (free_models, paid_models)
-    Cada dict: { proxy_name → openrouter_model_id }
-
-    Exemplos:
-      free: { "or-free/google/gemini-2.0-flash-exp" → "google/gemini-2.0-flash-exp:free" }
-      paid: { "or-paid/anthropic/claude-3.5-sonnet" → "anthropic/claude-3.5-sonnet"      }
-    """
     resp = requests.get(
         OR_MODELS_URL,
         headers={"Authorization": f"Bearer {OPENROUTER_KEY}"},
@@ -100,7 +106,6 @@ def fetch_openrouter_models() -> tuple[dict[str, str], dict[str, str]]:
             continue
 
         if is_free(m):
-            # Remove ":free" do nome do proxy para evitar ":" no model_name
             clean = model_id.replace(":free", "").strip("/")
             free[f"{FREE_PREFIX}{clean}"] = model_id
         else:
@@ -114,10 +119,6 @@ def fetch_openrouter_models() -> tuple[dict[str, str], dict[str, str]]:
 # ─── LiteLLM — modelos ────────────────────────────────────────────────────────
 
 def fetch_litellm_managed(prefix: str) -> dict[str, str]:
-    """
-    Retorna { model_name → db_id } para modelos com o prefixo especificado.
-    db_id é necessário para deletar via /model/delete.
-    """
     resp = requests.get(
         f"{LITELLM_URL}/model/info",
         headers=litellm_headers(),
@@ -141,19 +142,30 @@ def fetch_litellm_managed(prefix: str) -> dict[str, str]:
     return result
 
 
-def add_model(proxy_name: str, openrouter_id: str) -> bool:
-    payload = {
-        "model_name": proxy_name,
-        "litellm_params": {
-            "model": f"openrouter/{openrouter_id}",
+def add_model(proxy_name: str, upstream_id: str, provider: str) -> bool:
+    if provider == "openrouter":
+        litellm_params = {
+            "model": f"openrouter/{upstream_id}",
             "api_key": OPENROUTER_KEY,
             "api_base": "https://openrouter.ai/api/v1",
-        },
+        }
+    elif provider == "ollama":
+        litellm_params = {
+            "model": f"ollama/{upstream_id}",
+            "api_base": OLLAMA_URL,
+        }
+    else:
+        return False
+
+    payload = {
+        "model_name": proxy_name,
+        "litellm_params": litellm_params,
         "model_info": {
             "mode": "chat",
-            "source": "openrouter-sync",
+            "source": f"{provider}-sync",
         },
     }
+    
     try:
         resp = requests.post(
             f"{LITELLM_URL}/model/new",
@@ -162,7 +174,7 @@ def add_model(proxy_name: str, openrouter_id: str) -> bool:
             timeout=15,
         )
         resp.raise_for_status()
-        log.info(f"  [+] {proxy_name} → openrouter/{openrouter_id}")
+        log.info(f"  [+] {proxy_name} → {litellm_params['model']}")
         return True
     except requests.HTTPError as e:
         log.warning(f"  [!] Falha ao adicionar {proxy_name}: {e.response.status_code} {e.response.text[:200]}")
@@ -185,35 +197,9 @@ def delete_model(proxy_name: str, db_id: str) -> bool:
         return False
 
 
-def sync_models(
-    or_models: dict[str, str],
-    ll_managed: dict[str, str],
-    label: str,
-) -> int:
-    """
-    Executa o diff e aplica add/delete. Retorna o total de modelos ativos após sync.
-    """
-    or_names  = set(or_models.keys())
-    ll_names  = set(ll_managed.keys())
-    to_add    = or_names - ll_names
-    to_remove = ll_names - or_names
-
-    log.info(f"[{label}] +{len(to_add)} / -{len(to_remove)} / ={len(or_names & ll_names)}")
-
-    for name in sorted(to_add):
-        add_model(name, or_models[name])
-
-    for name in sorted(to_remove):
-        delete_model(name, ll_managed[name])
-
-    # Retorna o conjunto atualizado de nomes
-    return list((or_names - to_add) | (or_names & ll_names) | to_add - to_remove)
-
-
 # ─── LiteLLM — virtual keys ───────────────────────────────────────────────────
 
 def fetch_existing_key(alias: str) -> dict | None:
-    """Busca uma virtual key pelo alias. Retorna o objeto completo ou None."""
     try:
         resp = requests.get(
             f"{LITELLM_URL}/key/list",
@@ -228,12 +214,7 @@ def fetch_existing_key(alias: str) -> dict | None:
         log.warning(f"Falha ao buscar key '{alias}': {e}")
         return None
 
-
 def upsert_virtual_key(alias: str, model_names: list[str], description: str) -> str | None:
-    """
-    Cria ou atualiza uma virtual key com a lista de modelos fornecida.
-    Retorna o token da key (apenas no momento da criação).
-    """
     if not model_names:
         log.warning(f"Nenhum modelo para a key '{alias}', pulando.")
         return None
@@ -243,7 +224,7 @@ def upsert_virtual_key(alias: str, model_names: list[str], description: str) -> 
     if existing:
         token = existing.get("token") or existing.get("key")
         if not token:
-            log.warning(f"Key '{alias}' encontrada mas sem token identificável, recriando...")
+            log.warning(f"Key '{alias}' encontrada mas sem token, recriando...")
             existing = None
 
     if existing:
@@ -251,7 +232,7 @@ def upsert_virtual_key(alias: str, model_names: list[str], description: str) -> 
         payload = {
             "key": token,
             "models": model_names,
-            "metadata": {"description": description, "managed_by": "openrouter-sync"},
+            "metadata": {"description": description, "managed_by": "sidecar-sync"},
         }
         try:
             resp = requests.post(
@@ -264,13 +245,13 @@ def upsert_virtual_key(alias: str, model_names: list[str], description: str) -> 
             log.info(f"Virtual key '{alias}' atualizada → {len(model_names)} modelos.")
             return token
         except requests.HTTPError as e:
-            log.warning(f"Falha ao atualizar key '{alias}': {e.response.status_code} {e.response.text[:300]}")
+            log.warning(f"Falha ao atualizar key '{alias}': {e.response.status_code}")
             return None
     else:
         payload = {
             "key_alias": alias,
             "models": model_names,
-            "metadata": {"description": description, "managed_by": "openrouter-sync"},
+            "metadata": {"description": description, "managed_by": "sidecar-sync"},
         }
         try:
             resp = requests.post(
@@ -282,11 +263,9 @@ def upsert_virtual_key(alias: str, model_names: list[str], description: str) -> 
             resp.raise_for_status()
             token = resp.json().get("key")
             log.info(f"Virtual key '{alias}' CRIADA → {len(model_names)} modelos.")
-            log.info(f"  Token: {token}")
-            log.info(f"  *** Salve este token, ele não será exibido novamente! ***")
             return token
         except requests.HTTPError as e:
-            log.warning(f"Falha ao criar key '{alias}': {e.response.status_code} {e.response.text[:300]}")
+            log.warning(f"Falha ao criar key '{alias}': {e.response.status_code}")
             return None
 
 
@@ -296,55 +275,71 @@ def sync_once():
     log.info("═" * 60)
     log.info("Iniciando ciclo de sincronização...")
 
-    # 1. Busca modelos da OpenRouter
+    # 1. Busca modelos da OpenRouter e Ollama
     try:
         or_free, or_paid = fetch_openrouter_models()
     except Exception as e:
         log.error(f"Falha ao buscar modelos da OpenRouter: {e}")
         return
 
+    ollama_models = fetch_ollama_models() # Retorna None se falhar
+    ollama_names = set(ollama_models.keys()) if ollama_models else set()
+
     # 2. Busca modelos gerenciados no LiteLLM
     try:
-        ll_free = fetch_litellm_managed(FREE_PREFIX)
-        ll_paid = fetch_litellm_managed(PAID_PREFIX)
+        ll_free   = fetch_litellm_managed(FREE_PREFIX)
+        ll_paid   = fetch_litellm_managed(PAID_PREFIX)
+        ll_ollama = fetch_litellm_managed(OLLAMA_PREFIX) if ollama_models is not None else None
     except Exception as e:
         log.error(f"Falha ao buscar modelos do LiteLLM: {e}")
         return
 
-    # 3. Sync modelos free
-    log.info("── Modelos FREE ──")
+    # 3. Sync modelos FREE (OpenRouter)
+    log.info("── Modelos FREE (OpenRouter) ──")
     free_names = set(or_free.keys())
     free_ll    = set(ll_free.keys())
     for name in sorted(free_names - free_ll):
-        add_model(name, or_free[name])
+        add_model(name, or_free[name], "openrouter")
     for name in sorted(free_ll - free_names):
         delete_model(name, ll_free[name])
 
-    # 4. Sync modelos pagos
-    log.info("── Modelos PAGOS ──")
+    # 4. Sync modelos PAGOS (OpenRouter)
+    log.info("── Modelos PAGOS (OpenRouter) ──")
     paid_names = set(or_paid.keys())
     paid_ll    = set(ll_paid.keys())
     for name in sorted(paid_names - paid_ll):
-        add_model(name, or_paid[name])
+        add_model(name, or_paid[name], "openrouter")
     for name in sorted(paid_ll - paid_names):
         delete_model(name, ll_paid[name])
 
-    # 5. Atualiza virtual keys
+    # 5. Sync modelos OLLAMA (Locais)
+    if ollama_models is not None and ll_ollama is not None:
+        log.info("── Modelos LOCAIS (Ollama) ──")
+        ollama_ll_set = set(ll_ollama.keys())
+        for name in sorted(ollama_names - ollama_ll_set):
+            add_model(name, ollama_models[name], "ollama")
+        for name in sorted(ollama_ll_set - ollama_names):
+            delete_model(name, ll_ollama[name])
+    else:
+        log.warning("Pulando sincronização do Ollama neste ciclo devido a falha de conexão.")
+
+    # 6. Atualiza virtual keys
     log.info("── Virtual Keys ──")
 
-    # Free key: apenas modelos or-free/
+    # Free key: modelos or-free/ + ollama/
+    free_model_list = sorted(free_names) + sorted(ollama_names)
     upsert_virtual_key(
         alias=FREE_KEY_ALIAS,
-        model_names=sorted(free_names),
-        description="Modelos gratuitos da OpenRouter — gerenciado pelo sidecar",
+        model_names=free_model_list,
+        description="Modelos gratuitos da OpenRouter e Locais do Ollama",
     )
 
-    # Paid key: modelos or-paid/ + modelos estáticos do config.yaml
-    paid_model_list = sorted(paid_names) + sorted(STATIC_MODELS)
+    # Paid key: modelos or-paid/ + ollama/ + aliases estáticos
+    paid_model_list = sorted(paid_names) + sorted(ollama_names) + sorted(STATIC_MODELS)
     upsert_virtual_key(
         alias=PAID_KEY_ALIAS,
         model_names=paid_model_list,
-        description="Modelos pagos da OpenRouter + aliases estáticos — gerenciado pelo sidecar",
+        description="Modelos pagos, locais e estáticos",
     )
 
     log.info("Ciclo concluído.")
@@ -353,7 +348,6 @@ def sync_once():
 # ─── Startup ──────────────────────────────────────────────────────────────────
 
 def wait_for_litellm(max_wait: int = 120, interval: int = 5):
-    """Aguarda o LiteLLM ficar disponível antes de iniciar o loop."""
     log.info(f"Aguardando LiteLLM em {LITELLM_URL} ...")
     elapsed = 0
     while elapsed < max_wait:
@@ -367,7 +361,6 @@ def wait_for_litellm(max_wait: int = 120, interval: int = 5):
         time.sleep(interval)
         elapsed += interval
     log.warning("LiteLLM não respondeu a tempo. Iniciando de qualquer forma...")
-
 
 if __name__ == "__main__":
     log.info(f"LiteLLM Model Sync iniciado. Intervalo: {SYNC_INTERVAL}s")
