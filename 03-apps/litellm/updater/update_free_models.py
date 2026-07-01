@@ -199,20 +199,95 @@ def delete_model(proxy_name: str, db_id: str) -> bool:
 
 # ─── LiteLLM — virtual keys ───────────────────────────────────────────────────
 
+# ─── LiteLLM — virtual keys ───────────────────────────────────────────────────
+
 def fetch_existing_key(alias: str) -> dict | None:
     try:
         resp = requests.get(
             f"{LITELLM_URL}/key/list",
             headers=litellm_headers(),
-            params={"key_alias": alias},
             timeout=15,
         )
         resp.raise_for_status()
-        keys = resp.json().get("keys", [])
-        return next((k for k in keys if k.get("key_alias") == alias), None)
+        data = resp.json()
+        
+        # Navegação super segura no JSON (protege contra mudanças na API do LiteLLM)
+        keys = data.get("keys", []) if isinstance(data, dict) else []
+        
+        # Em algumas versões, o LiteLLM coloca tudo dentro de "data"
+        if not keys and isinstance(data, dict) and "data" in data:
+            if isinstance(data["data"], list):
+                keys = data["data"]
+                
+        if not isinstance(keys, list):
+            log.warning(f"Formato inesperado em /key/list: {type(keys)}")
+            return None
+
+        # Busca segura pela chave
+        for k in keys:
+            if isinstance(k, dict) and k.get("key_alias") == alias:
+                return k
+                
+        return None
     except Exception as e:
         log.warning(f"Falha ao buscar key '{alias}': {e}")
         return None
+
+def upsert_virtual_key(alias: str, model_names: list[str], description: str) -> str | None:
+    if not model_names:
+        log.warning(f"Nenhum modelo para a key '{alias}', pulando.")
+        return None
+
+    existing = fetch_existing_key(alias)
+
+    if existing:
+        token = existing.get("token") or existing.get("key")
+        if not token:
+            log.warning(f"Key '{alias}' encontrada mas sem token, recriando...")
+            existing = None
+
+    if existing:
+        token = existing.get("token") or existing.get("key")
+        payload = {
+            "key": token,
+            "models": model_names,
+            "metadata": {"description": description, "managed_by": "sidecar-sync"},
+        }
+        try:
+            resp = requests.post(
+                f"{LITELLM_URL}/key/update",
+                headers=litellm_headers(),
+                json=payload,
+                timeout=15,
+            )
+            resp.raise_for_status()
+            log.info(f"Virtual key '{alias}' atualizada → {len(model_names)} modelos.")
+            return token
+        except requests.HTTPError as e:
+            # Agora imprimimos o motivo real do erro!
+            log.warning(f"Falha ao atualizar key '{alias}': HTTP {e.response.status_code} - {e.response.text[:200]}")
+            return None
+    else:
+        payload = {
+            "key_alias": alias,
+            "models": model_names,
+            "metadata": {"description": description, "managed_by": "sidecar-sync"},
+        }
+        try:
+            resp = requests.post(
+                f"{LITELLM_URL}/key/generate",
+                headers=litellm_headers(),
+                json=payload,
+                timeout=15,
+            )
+            resp.raise_for_status()
+            token = resp.json().get("key")
+            log.info(f"Virtual key '{alias}' CRIADA → {len(model_names)} modelos.")
+            return token
+        except requests.HTTPError as e:
+            # Imprimimos o motivo do 400
+            log.warning(f"Falha ao criar key '{alias}': HTTP {e.response.status_code} - {e.response.text[:200]}")
+            return None
 
 def upsert_virtual_key(alias: str, model_names: list[str], description: str) -> str | None:
     if not model_names:

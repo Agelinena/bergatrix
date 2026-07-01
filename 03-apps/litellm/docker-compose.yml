@@ -68,6 +68,7 @@ services:
     networks:
       - litellm-internal  # acessa http://litellm:4000
       - litellm-egress    # acessa https://openrouter.ai (requer saída à internet)
+      - bergatrix-proxy
 
 networks:
   litellm-internal:
