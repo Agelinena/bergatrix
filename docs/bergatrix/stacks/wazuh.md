@@ -23,16 +23,16 @@ Recebe eventos de agentes via **TCP 1514** e registra novos agentes via `wazuh-a
 |---|---|---|---|
 | Imagem | `wazuh/wazuh-indexer:4.7.2` | `wazuh/wazuh-manager:4.7.2` | `wazuh/wazuh-dashboard:4.7.2` |
 | Portas | nenhuma no host (9200/9300 internos) | **1514/tcp** (eventos), **1515/tcp** (authd) | 5601 (só interno, via Traefik) |
-| Redes | `wazuh-internal` (alias `wazuh.indexer`) | `wazuh-internal` (alias `wazuh.manager`) | `bergatrix-proxy` + `wazuh-internal` |
-| depends_on | — | indexer (service_started) | indexer + manager (service_started) |
+| Redes | `wazuh-internal` (alias `wazuh.indexer`) [internal: true] | `wazuh-internal` (alias `wazuh.manager`) [internal: true], `wazuh-egress` [bridge] | `bergatrix-proxy` + `wazuh-internal` [internal: true] |
+| depends_on | — | indexer (service_healthy) | indexer + manager (service_healthy) |
 | restart | unless-stopped | unless-stopped | unless-stopped |
-| Healthcheck | **nenhum** | **nenhum** | **nenhum** |
+| Healthcheck | **Sim** (curl em `_cat/health` para `green\|yellow`) | **Sim** (`wazuh-control status`) | **Sim** (curl HTTP em `:5601`) |
 | Traefik | — | — | `Host(wazuh.${DOMAIN})`, websecure, `tls=true` (wildcard `*.daberga.com`); mw `internal-only@docker` + `authentik@docker`; backend HTTPS `:5601` via serversTransport `wazuh-transport` (`insecureSkipVerify=true`) |
 
 Notas:
-- **Indexer:** OpenSearch single-node, JVM heap fixo `1g`, `ulimits memlock unlimited`/`nofile 65536`, SSL HTTP/transport habilitado, `admin_dn=CN=admin`.
-- **Manager:** DNS 8.8.8.8/1.1.1.1 (para feeds NVD/MSU); Filebeat envia ao indexer com verificação SSL `full`; `ossec.conf` monta config de cluster (`name=wazuh`, `node01/master`, `disabled=yes`); `authd` **sem senha** (`use_password=no`) e `ssl_verify_host=no`; API (`wazuh-wui`) em `:55000` interno.
-- **Dashboard:** `defaultRoute /app/wazuh`, multitenancy desabilitado; conecta no indexer com `verificationMode=certificate` e na API do manager (`https://wazuh.manager:55000`) como `wazuh-wui`; HTTPS próprio com cert autoassinado (daí o `insecureSkipVerify` no Traefik).
+- **Indexer:** OpenSearch single-node, JVM heap fixo `1g`, `ulimits memlock unlimited`/`nofile 65536`, SSL HTTP/transport habilitado, `admin_dn=CN=admin`. Possui custom `entrypoint` no compose que gera dinamicamente os hashes de senha das variáveis de ambiente (`INDEXER_PASSWORD` e `DASHBOARD_PASSWORD`) e os insere no `internal_users.yml` no boot.
+- **Manager:** DNS 8.8.8.8/1.1.1.1 (para feeds NVD/MSU); Filebeat envia ao indexer com verificação SSL `full`; `ossec.conf` monta config de cluster (`name=wazuh`, `node01/master`, `disabled=yes`); `authd` **sem senha** (`use_password=no`) e `ssl_verify_host=no`; API (`wazuh-wui`) em `:55000` interno. Possui acesso à internet via rede `wazuh-egress`.
+- **Dashboard:** `defaultRoute /app/wazuh`, multitenancy desabilitado; conecta no indexer com `verificationMode=certificate` e na API do manager (`https://wazuh.manager:55000`) como `wazuh-wui`; HTTPS próprio com cert autoassinado (daí o `insecureSkipVerify` no Traefik). Possui custom `entrypoint` que copia a configuração e substitui a senha da API com o valor de `API_PASSWORD` do `.env` no boot.
 
 ## 🌐 Dominios / Roteamento
 - `wazuh.${DOMAIN}` → `wazuh-dashboard:5601` (HTTPS interno)
@@ -92,21 +92,15 @@ Stack puramente declarativa/de configuração (sem código de aplicação própr
 
 ## 🛡️ Gestao de segredos
 - Senhas e domínio injetados via `.env` (`env_file` + `${VAR}`); `.env.example` versionado com placeholders. Certificados TLS gerados localmente por `cert.sh` (CA raiz autoassinada + certs por nó com SAN) e montados como volumes; `fix-permissions.sh` ajusta permissões (chmod 400/500, chown 1000:1000).
-- ⚠️ **Exposições encontradas (rotacionar):**
-  - `04-monitoring/wazuh/config/wazuh_dashboard/wazuh.yml` — senha **em texto plano** do usuário de API `wazuh-wui` (valor demo padrão do Wazuh) versionada.
-  - `04-monitoring/wazuh/config/wazuh_indexer/internal_users.yml` — **hashes bcrypt** de usuários internos padrão/demo (admin, kibanaserver, kibanaro, logstash, readall, snapshotrestore) versionados.
+- Os arquivos versionados `wazuh.yml` e `internal_users.yml` contêm apenas placeholders ou hashes padrão (de desenvolvimento). A stack injeta os valores reais do `.env` na memória do container no boot através de custom entrypoints, resolvendo a vulnerabilidade de exposição de credenciais em produção no repositório Git.
+- ⚠️ **Exposições conhecidas (rotacionar):**
   - `04-monitoring/wazuh/config/wazuh_cluster/wazuh_manager.conf` — **chave de cluster** `<key>` hardcoded (cluster está `disabled`, mas rotacionar se for habilitado).
-  - *(Apenas localizações — nenhum valor é reproduzido aqui. São credenciais demo padrão do Wazuh; trocar por valores próprios antes de qualquer exposição.)*
 
 ## 🚧 Notas de evolucao / pendencias
 - **Inconsistência:** `vulnerability-detector` com `enabled=no` no nível raiz mesmo com providers `nvd`/`msu` enabled — a detecção efetivamente **não roda**.
 - **Active-response** totalmente comentado — respostas automáticas (ex: firewall-drop) não são acionadas apesar dos comandos definidos.
 - **Email** desabilitado e com valores de exemplo — não configurado de fato.
-- **Credenciais/hashes demo** ainda presentes em arquivos versionados (`wazuh.yml`, `internal_users.yml`) — pendente troca.
-- **`depends_on` só `service_started`** e nenhum healthcheck — ordem de inicialização não garante prontidão real do indexer/manager.
 - **Cluster `disabled=yes`** (single-node) — escalável a multi-node no futuro.
-- `.env.example` com `WAZUH_KIBANA_PASSWORD` sem placeholder (linha vazia).
-- **Risco de divergência:** `WAZUH_API_PASSWORD` (env) vs senha de API hardcoded em `wazuh.yml`.
 
 ## ❓ Perguntas em aberto
 - Os certs TLS (gerados por `cert.sh`) são versionados ou gerados no deploy? Só `root-ca.srl` está no repo; os `.pem`/`.key` referenciados não aparecem na árvore (provavelmente gerados em runtime).
