@@ -1,7 +1,7 @@
 hosts:
   - 1513629884013:
-      url: "https://wazuh.daberga.com"
+      url: "https://wazuh.manager"
       port: 55000
-      username: ${API_USERNAME}
-      password: ${API_PASSWORD}
+      username: wazuh-wui
+      password: "${API_PASSWORD}"
       run_as: true
