@@ -18,13 +18,13 @@ services:
         if [ ! -z "$${INDEXER_PASSWORD}" ]; then
           ADMIN_HASH=$$(bash /usr/share/wazuh-indexer/plugins/opensearch-security/tools/hash.sh -p "$${INDEXER_PASSWORD}" | grep -o '\$$2[ayb]\$$.*')
           if [ ! -z "$${ADMIN_HASH}" ]; then
-            sed -i 's#\$2y\$12\$K/SpwjtB\.wOHJ/Nc6GVRDuc1h0rM1DfvziFRNPtk27P\.c4yDr9njO#'"$${ADMIN_HASH}"'#g' /usr/share/wazuh-indexer/opensearch-security/internal_users.yml
+            sed -i 's#\$$2y\$$12\$$K/SpwjtB\.wOHJ/Nc6GVRDuc1h0rM1DfvziFRNPtk27P\.c4yDr9njO#'"$${ADMIN_HASH}"'#g' /usr/share/wazuh-indexer/opensearch-security/internal_users.yml
           fi
         fi
         if [ ! -z "$${DASHBOARD_PASSWORD}" ]; then
           KIBANA_HASH=$$(bash /usr/share/wazuh-indexer/plugins/opensearch-security/tools/hash.sh -p "$${DASHBOARD_PASSWORD}" | grep -o '\$$2[ayb]\$$.*')
           if [ ! -z "$${KIBANA_HASH}" ]; then
-            sed -i 's#\$2b\$12\$2i3t9eP4qeD34aj/oHIbgeI1CYYWkKUHU9Yl2tfDIYaRDqnXufgMa#'"$${KIBANA_HASH}"'#g' /usr/share/wazuh-indexer/opensearch-security/internal_users.yml
+            sed -i 's#\$$2b\$$12\$$2i3t9eP4qeD34aj/oHIbgeI1CYYWkKUHU9Yl2tfDIYaRDqnXufgMa#'"$${KIBANA_HASH}"'#g' /usr/share/wazuh-indexer/opensearch-security/internal_users.yml
           fi
         fi
         exec /entrypoint.sh
