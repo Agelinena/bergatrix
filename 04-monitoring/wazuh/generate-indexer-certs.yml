@@ -6,5 +6,5 @@ services:
     environment:
       - CERT_TOOL_VERSION=4.14
     volumes:
-      - {$VOLUME_WAZUH}./config/wazuh_indexer_ssl_certs/:/certificates/
-      - {$VOLUME_WAZUH}./config/certs.yml:/config/certs.yml
+      - ${VOLUME_WAZUH}./config/wazuh_indexer_ssl_certs/:/certificates/
+      - ${VOLUME_WAZUH}./config/certs.yml:/config/certs.yml
