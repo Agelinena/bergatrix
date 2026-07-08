@@ -3,7 +3,7 @@ services:
   wazuh.manager:
     image: wazuh/wazuh-manager:4.14.6
     hostname: wazuh.manager
-    restart: until-stopped
+    restart: unless-stopped
     ulimits:
       memlock:
         soft: -1
@@ -48,7 +48,7 @@ services:
   wazuh.indexer:
     image: wazuh/wazuh-indexer:4.14.6
     hostname: wazuh.indexer
-    restart: until-stopped
+    restart: unless-stopped
     ports:
       - "9200:9200"
     environment:
@@ -75,7 +75,7 @@ services:
   wazuh.dashboard:
     image: wazuh/wazuh-dashboard:4.14.6
     hostname: wazuh.dashboard
-    restart: until-stopped
+    restart: unless-stopped
     environment:
       - INDEXER_USERNAME=${INDEXER_USERNAME}
       - INDEXER_PASSWORD=${INDEXER_PASSWORD}
