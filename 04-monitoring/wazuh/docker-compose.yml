@@ -53,6 +53,10 @@ services:
       - "9200:9200"
     environment:
       - "OPENSEARCH_JAVA_OPTS=-Xms1g -Xmx1g"
+      - INDEXER_USERNAME=${INDEXER_USERNAME}
+      - HASH_INDEXER_PASSWORD=${HASHED_INDEXER_PASSWORD}
+      - KIBANA_USERNAME=${KIBANA_USERNAME}
+      - HASH_KIBANA_PASSWORD=${HASHED_KIBANA_PASSWORD}
     ulimits:
       memlock:
         soft: -1
