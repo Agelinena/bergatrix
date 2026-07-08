@@ -15,6 +15,7 @@ services:
       - -c
       - |
         set -x
+        export PATH=$$PATH:/usr/share/wazuh-indexer/jdk/bin
         cp /tmp/internal_users.yml /usr/share/wazuh-indexer/opensearch-security/internal_users.yml
         if [ ! -z "$${INDEXER_PASSWORD}" ]; then
           ADMIN_HASH=$$(bash /usr/share/wazuh-indexer/plugins/opensearch-security/tools/hash.sh -p "$${INDEXER_PASSWORD}" | grep -o '\$$2[ayb]\$$.*')
