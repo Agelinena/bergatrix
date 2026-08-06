@@ -8,7 +8,7 @@ services:
       PGID: 1000 # optional, your group id
     volumes:
       - ${HOMEPAGE_PATH}/path/to/config:/app/config # Make sure your local config directory exists
-      - ${HOMEPAGE_PATH}/var/run/docker.sock:/var/run/docker.sock:ro # optional, for docker integrations
+      - /var/run/docker.sock:/var/run/docker.sock:ro # optional, for docker integrations
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=bergatrix-proxy"
