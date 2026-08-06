@@ -6,5 +6,6 @@ services:
     environment:
       - CERT_TOOL_VERSION=4.14
     volumes:
-      - ${VOLUME_WAZUH}/config/wazuh_indexer_ssl_certs/:/certificates/
-      - ./config/certs.yml:/config/certs.yml
+      # Agora os certificados serão salvos direto no seu HD de storage
+      - ${WAZUH_DATA_DIR}/config/wazuh_indexer_ssl_certs/:/certificates/
+      - ${WAZUH_DATA_DIR}/config/certs.yml:/config/certs.yml
