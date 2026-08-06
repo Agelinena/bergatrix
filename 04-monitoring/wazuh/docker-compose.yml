@@ -21,13 +21,13 @@ services:
     environment:
       - INDEXER_URL="https://wazuh.indexer:9200"
       - INDEXER_USERNAME=admin
-      - INDEXER_PASSWORD=SecretPassword
+      - INDEXER_PASSWORD=${WAZUH_INDEXER_PASSWORD}
       - FILEBEAT_SSL_VERIFICATION_MODE=full
       - SSL_CERTIFICATE_AUTHORITIES=/etc/ssl/root-ca.pem
       - SSL_CERTIFICATE=/etc/ssl/filebeat.pem
       - SSL_KEY=/etc/ssl/filebeat.key
       - API_USERNAME=wazuh-wui
-      - API_PASSWORD=MyS3cr37P450r.*-
+      - API_PASSWORD=${WAZUH_API_PASSWORD}
     volumes:
       - ${WAZUH_DATA_DIR}/wazuh_manager/api_configuration:/var/ossec/api/configuration
       - ${WAZUH_DATA_DIR}/wazuh_manager/etc:/var/ossec/etc
@@ -73,7 +73,6 @@ services:
     image: wazuh/wazuh-dashboard:4.14.7
     hostname: wazuh.dashboard
     restart: unless-stopped
-    # Removido bloco ports. Traefik gerenciará o tráfego 443
     networks:
       - default
       - bergatrix-proxy
@@ -81,18 +80,18 @@ services:
       - "traefik.enable=true"
       - "traefik.docker.network=bergatrix-proxy"
       - "traefik.http.routers.wazuh-router.rule=Host(`wazuh.${DOMAIN}`)"
-      - "traefik.http.routers.wazuh-router.middlewares=internal-only@docker"
+      - "traefik.http.routers.wazuh-router.entrypoints=websecure"
+      - "traefik.http.routers.wazuh-router.tls=true"
+      - "traefik.http.routers.wazuh-router.tls.certresolver=letsencrypt"
       - "traefik.http.services.wazuh-service.loadbalancer.server.port=5601"
-      # Essencial: o Dashboard por padrão roda em HTTPS interno. Precisamos avisar o Traefik.
-      - "traefik.http.services.wazuh-service.loadbalancer.server.scheme=https"
     environment:
       - INDEXER_USERNAME=admin
-      - INDEXER_PASSWORD=SecretPassword
+      - INDEXER_PASSWORD=${WAZUH_INDEXER_PASSWORD}
       - WAZUH_API_URL=https://wazuh.manager
       - DASHBOARD_USERNAME=kibanaserver
-      - DASHBOARD_PASSWORD=kibanaserver
+      - DASHBOARD_PASSWORD=${KIBANASERVER_PASSWORD}
       - API_USERNAME=wazuh-wui
-      - API_PASSWORD=MyS3cr37P450r.*-
+      - API_PASSWORD=${WAZUH_API_PASSWORD}
     volumes:
       - ${WAZUH_DATA_DIR}/config/wazuh_indexer_ssl_certs/wazuh.dashboard.pem:/usr/share/wazuh-dashboard/certs/wazuh-dashboard.pem
       - ${WAZUH_DATA_DIR}/config/wazuh_indexer_ssl_certs/wazuh.dashboard-key.pem:/usr/share/wazuh-dashboard/certs/wazuh-dashboard-key.pem
