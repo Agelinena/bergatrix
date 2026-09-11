@@ -17,15 +17,14 @@ services:
       - "traefik.enable=true"
       - "traefik.docker.network=bergatrix-proxy"
       
-      # --- Roteador Principal ---
-      - "traefik.http.routers.vaultwarden-router.rule=Host(`bitwarden.${DOMAIN}`) && !PathPrefix(`/api-access-bypass`) && !ClientIP(`192.168.10.140/32`, `192.168.10.121/32`, `192.168.10.1/32`)"
+      - "traefik.http.routers.vaultwarden-router.rule=Host(`bitwarden.${DOMAIN}`) && !PathPrefix(`/api-access-bypass`) && !(ClientIP(`192.168.10.140/32`) || ClientIP(`192.168.10.121/32`) || ClientIP(`192.168.10.1/32`))"
       - "traefik.http.routers.vaultwarden-router.entrypoints=websecure"
       - "traefik.http.routers.vaultwarden-router.tls=true"
       - "traefik.http.routers.vaultwarden-router.service=vaultwarden-service"
       - "traefik.http.routers.vaultwarden-router.middlewares=public-auth@file"
       - "traefik.http.routers.vaultwarden-router.priority=100"
 
-      - "traefik.http.routers.vaultwarden-direct.rule=Host(`bitwarden.${DOMAIN}`) && ClientIP(`192.168.10.140/32`, `192.168.10.121/32`, `192.168.10.1/32`)"
+      - "traefik.http.routers.vaultwarden-direct.rule=Host(`bitwarden.${DOMAIN}`) && (ClientIP(`192.168.10.140/32`) || ClientIP(`192.168.10.121/32`) || ClientIP(`192.168.10.1/32`))"
       - "traefik.http.routers.vaultwarden-direct.entrypoints=websecure"
       - "traefik.http.routers.vaultwarden-direct.tls=true"
       - "traefik.http.routers.vaultwarden-direct.service=vaultwarden-service"
@@ -37,16 +36,15 @@ services:
       - "traefik.http.routers.vaultwarden-bypass.service=vaultwarden-service"
       - "traefik.http.routers.vaultwarden-bypass.middlewares=api-access-bypass@file"
       - "traefik.http.routers.vaultwarden-bypass.priority=120"
-      
-      # --- Roteador WebSocket ---
-      - "traefik.http.routers.vaultwarden-ws-router.rule=Host(`bitwarden.${DOMAIN}`) && PathPrefix(`/notifications/hub`) && !ClientIP(`192.168.10.140/32`, `192.168.10.121/32`, `192.168.10.1/32`)"
+
+      - "traefik.http.routers.vaultwarden-ws-router.rule=Host(`bitwarden.${DOMAIN}`) && PathPrefix(`/notifications/hub`) && !(ClientIP(`192.168.10.140/32`) || ClientIP(`192.168.10.121/32`) || ClientIP(`192.168.10.1/32`))"
       - "traefik.http.routers.vaultwarden-ws-router.entrypoints=websecure"
       - "traefik.http.routers.vaultwarden-ws-router.tls=true"
       - "traefik.http.routers.vaultwarden-ws-router.service=vaultwarden-ws-service"
       - "traefik.http.routers.vaultwarden-ws-router.middlewares=public-auth@file"
       - "traefik.http.routers.vaultwarden-ws-router.priority=105"
 
-      - "traefik.http.routers.vaultwarden-ws-direct.rule=Host(`bitwarden.${DOMAIN}`) && PathPrefix(`/notifications/hub`) && ClientIP(`192.168.10.140/32`, `192.168.10.121/32`, `192.168.10.1/32`)"
+      - "traefik.http.routers.vaultwarden-ws-direct.rule=Host(`bitwarden.${DOMAIN}`) && PathPrefix(`/notifications/hub`) && (ClientIP(`192.168.10.140/32`) || ClientIP(`192.168.10.121/32`) || ClientIP(`192.168.10.1/32`))"
       - "traefik.http.routers.vaultwarden-ws-direct.entrypoints=websecure"
       - "traefik.http.routers.vaultwarden-ws-direct.tls=true"
       - "traefik.http.routers.vaultwarden-ws-direct.service=vaultwarden-ws-service"
