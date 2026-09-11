@@ -21,7 +21,7 @@ services:
       - "traefik.http.routers.vaultwarden-router.entrypoints=websecure"
       - "traefik.http.routers.vaultwarden-router.tls=true"
       - "traefik.http.routers.vaultwarden-router.service=vaultwarden-service"
-      - "traefik.http.routers.vaultwarden-router.middlewares=public-auth@file"
+      - "traefik.http.routers.vaultwarden-router.middlewares=crowdsec-bouncer@file,public-auth@file"
       - "traefik.http.routers.vaultwarden-router.priority=100"
 
       - "traefik.http.routers.vaultwarden-direct.rule=Host(`bitwarden.${DOMAIN}`) && (ClientIP(`192.168.10.140/32`) || ClientIP(`192.168.10.121/32`) || ClientIP(`192.168.10.1/32`))"
@@ -34,14 +34,14 @@ services:
       - "traefik.http.routers.vaultwarden-bypass.entrypoints=websecure"
       - "traefik.http.routers.vaultwarden-bypass.tls=true"
       - "traefik.http.routers.vaultwarden-bypass.service=vaultwarden-service"
-      - "traefik.http.routers.vaultwarden-bypass.middlewares=api-access-bypass@file"
+      - "traefik.http.routers.vaultwarden-bypass.middlewares=crowdsec-bouncer@file,api-access-bypass@file"
       - "traefik.http.routers.vaultwarden-bypass.priority=120"
 
       - "traefik.http.routers.vaultwarden-ws-router.rule=Host(`bitwarden.${DOMAIN}`) && PathPrefix(`/notifications/hub`) && !(ClientIP(`192.168.10.140/32`) || ClientIP(`192.168.10.121/32`) || ClientIP(`192.168.10.1/32`))"
       - "traefik.http.routers.vaultwarden-ws-router.entrypoints=websecure"
       - "traefik.http.routers.vaultwarden-ws-router.tls=true"
       - "traefik.http.routers.vaultwarden-ws-router.service=vaultwarden-ws-service"
-      - "traefik.http.routers.vaultwarden-ws-router.middlewares=public-auth@file"
+      - "traefik.http.routers.vaultwarden-ws-router.middlewares=crowdsec-bouncer@file,public-auth@file"
       - "traefik.http.routers.vaultwarden-ws-router.priority=105"
 
       - "traefik.http.routers.vaultwarden-ws-direct.rule=Host(`bitwarden.${DOMAIN}`) && PathPrefix(`/notifications/hub`) && (ClientIP(`192.168.10.140/32`) || ClientIP(`192.168.10.121/32`) || ClientIP(`192.168.10.1/32`))"
@@ -54,7 +54,7 @@ services:
       - "traefik.http.routers.vaultwarden-ws-bypass.entrypoints=websecure"
       - "traefik.http.routers.vaultwarden-ws-bypass.tls=true"
       - "traefik.http.routers.vaultwarden-ws-bypass.service=vaultwarden-ws-service"
-      - "traefik.http.routers.vaultwarden-ws-bypass.middlewares=api-access-bypass@file"
+      - "traefik.http.routers.vaultwarden-ws-bypass.middlewares=crowdsec-bouncer@file,api-access-bypass@file"
       - "traefik.http.routers.vaultwarden-ws-bypass.priority=125"
 
       # --- Definição de Serviços ---

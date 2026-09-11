@@ -6,7 +6,8 @@ services:
     security_opt:
       - no-new-privileges:true
     command:
-      - "--configFile=/traefik.yml"
+      - "/bin/sh"
+      - "/start-traefik.sh"
     networks:
       - bergatrix-proxy
     ports:
@@ -18,11 +19,18 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./config/traefik.yml:/traefik.yml:ro
-      - ./config/dynamic.yml:/dynamic.yml:ro
+      - ./config/dynamic.yml:/config-source/dynamic.yml:ro
+      - ./config/config.yml:/config-source/config.yml:ro
       - ./config/acme.json:/acme.json
+      - ./config/start-traefik.sh:/start-traefik.sh:ro
+      - ${STORAGE_PATH}/traefik/logs:/var/log/traefik
     environment:
       - DESEC_TOKEN=${DESEC_TOKEN}
       - DESEC_DOMAIN=${DOMAIN}
+      - SUBDOMAIN_TRAEFIK_DASHBOARD=${SUBDOMAIN_TRAEFIK_DASHBOARD}
+      - TRAEFIK_USER=${TRAEFIK_USER}
+      - TRAEFIK_PASSWORD=${TRAEFIK_PASSWORD}
+      - CROWDSEC_BOUNCER_KEY=${CROWDSEC_BOUNCER_KEY}
       - LEGO_DISABLE_CNAME_SUPPORT=true
     labels:
       - "traefik.enable=true"

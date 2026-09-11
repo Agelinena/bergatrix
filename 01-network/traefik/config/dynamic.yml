@@ -33,3 +33,11 @@ http:
       stripPrefix:
         prefixes:
           - "/api-access-bypass"
+
+    crowdsec-bouncer:
+      plugin:
+        crowdsec-bouncer:
+          enabled: true
+          crowdsecMode: "live"
+          crowdsecLapiKey: "${CROWDSEC_BOUNCER_KEY}"
+          crowdsecLapiHost: "crowdsec:8080"

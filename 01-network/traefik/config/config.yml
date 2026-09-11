@@ -1,13 +1,14 @@
 http:
   routers:
     dashboard:
-      rule: "Host(`{SUBDOMAIN_TRAEFIK_DASHBOARD}`)"
+      rule: "Host(`${SUBDOMAIN_TRAEFIK_DASHBOARD}`)"
       service: api@internal
       entryPoints:
         - websecure
       tls: {}
       middlewares:
         - "internal-only@file"
+        - "auth@file"
       priority: 100
 
   middlewares:

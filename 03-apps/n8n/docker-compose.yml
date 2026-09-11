@@ -28,7 +28,7 @@ services:
       - "traefik.http.routers.n8n-service.entrypoints=websecure"
       - "traefik.http.routers.n8n-service.tls=true"
       - "traefik.http.routers.n8n-service.service=n8n-service"
-      - "traefik.http.routers.n8n-service.middlewares=public-auth@file"
+      - "traefik.http.routers.n8n-service.middlewares=crowdsec-bouncer@file,public-auth@file"
       - "traefik.http.routers.n8n-service.priority=100"
       - "traefik.http.routers.n8n-direct.rule=Host(`${N8N_DOMAIN}`) && (ClientIP(`192.168.10.140/32`) || ClientIP(`192.168.10.121/32`) || ClientIP(`192.168.10.1/32`))"
       - "traefik.http.routers.n8n-direct.entrypoints=websecure"

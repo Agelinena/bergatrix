@@ -1,0 +1,20 @@
+services:
+  crowdsec:
+    image: crowdsecurity/crowdsec:latest
+    container_name: crowdsec
+    restart: unless-stopped
+    environment:
+      GID: "1000"
+      COLLECTIONS: "crowdsecurity/traefik crowdsecurity/http-cve crowdsecurity/base-http-scenarios"
+    volumes:
+      - ${STORAGE_PATH}/crowdsec/config:/etc/crowdsec
+      - ${STORAGE_PATH}/crowdsec/data:/var/lib/crowdsec/data
+      - ${STORAGE_PATH}/traefik/logs:/var/log/traefik:ro
+      - ./acquis.yaml:/etc/crowdsec/acquis.yaml:ro
+    networks:
+      - bergatrix-proxy
+
+networks:
+  bergatrix-proxy:
+    name: bergatrix-proxy
+    external: true

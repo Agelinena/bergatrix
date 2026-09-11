@@ -1,10 +1,16 @@
 api:
   dashboard: true
+experimental:
+  plugins:
+    crowdsec-bouncer:
+      moduleName: "github.com/maxlerebourg/crowdsec-bouncer-traefik-plugin"
+      version: "v1.7.1"
 log:
   level: INFO
   format: common
 
 accessLog:
+  filePath: "/var/log/traefik/access.log"
   format: json
 
 entryPoints:
@@ -40,7 +46,7 @@ providers:
     exposedByDefault: false
     network: "bergatrix-proxy"
   file:
-    filename: "/dynamic.yml"
+    directory: "/tmp/traefik-dynamic"
     watch: true
 
 certificatesResolvers:

@@ -48,7 +48,7 @@ services:
       - "traefik.http.routers.transcriptor.rule=Host(`transcriptor.${DOMAIN}`)"
       - "traefik.http.routers.transcriptor.entrypoints=websecure"
       - "traefik.http.routers.transcriptor.tls=true"
-      - "traefik.http.routers.transcriptor.middlewares=public-auth@file,transcriptor-buffering"
+      - "traefik.http.routers.transcriptor.middlewares=crowdsec-bouncer@file,public-auth@file,transcriptor-buffering"
       - "traefik.http.routers.transcriptor.priority=100"
       - "traefik.http.routers.transcriptor-direct.rule=Host(`transcriptor.${DOMAIN}`) && (ClientIP(`192.168.10.140/32`) || ClientIP(`192.168.10.121/32`) || ClientIP(`192.168.10.1/32`))"
       - "traefik.http.routers.transcriptor-direct.entrypoints=websecure"
