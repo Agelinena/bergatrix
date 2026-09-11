@@ -18,6 +18,7 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./config/traefik.yml:/traefik.yml:ro
+      - ./config/dynamic.yml:/dynamic.yml:ro
       - ./config/acme.json:/acme.json
     environment:
       - DESEC_TOKEN=${DESEC_TOKEN}
@@ -25,7 +26,6 @@ services:
       - LEGO_DISABLE_CNAME_SUPPORT=true
     labels:
       - "traefik.enable=true"
-      - "traefik.http.middlewares.internal-only.ipallowlist.sourcerange=127.0.0.1/32, 192.168.10.0/24"
 
 networks:
   bergatrix-proxy:
