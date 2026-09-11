@@ -1,11 +1,13 @@
 http:
   routers:
     dashboard:
-      rule: "Host(`{SUBDOMAIN_TRAEFIK_DASHBOARD}`) || Host(`auth.daberga.com`)"
+      rule: "Host(`{SUBDOMAIN_TRAEFIK_DASHBOARD}`)"
       service: api@internal
       entryPoints:
         - websecure
       tls: {}
+      middlewares:
+        - "internal-only@file"
       priority: 100
 
   middlewares:

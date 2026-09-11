@@ -11,14 +11,24 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=bergatrix-proxy"
-      - "traefik.http.routers.cloudbeaver.rule=Host(`db.${DOMAIN}`)"
+      - "traefik.http.routers.cloudbeaver.rule=Host(`db.${DOMAIN}`) && !PathPrefix(`/api-access-bypass`) && !(ClientIP(`192.168.10.140/32`) || ClientIP(`192.168.10.121/32`) || ClientIP(`192.168.10.1/32`))"
       - "traefik.http.routers.cloudbeaver.entrypoints=websecure"
       - "traefik.http.routers.cloudbeaver.tls=true"
-      # CAMADA DE SEGURANÇA:
-      # 1. internal-only: Só abre se você estiver no Tailscale
-      # 2. authentik: Só abre se você estiver logado no seu SSO
-      - "traefik.http.routers.cloudbeaver.middlewares=internal-only@docker,authentik@docker"
-      - "traefik.http.services.cloudbeaver.loadbalancer.server.port=8978"
+      - "traefik.http.routers.cloudbeaver.service=cloudbeaver-service"
+      - "traefik.http.routers.cloudbeaver.middlewares=public-auth@file"
+      - "traefik.http.routers.cloudbeaver.priority=100"
+      - "traefik.http.routers.cloudbeaver-direct.rule=Host(`db.${DOMAIN}`) && (ClientIP(`192.168.10.140/32`) || ClientIP(`192.168.10.121/32`) || ClientIP(`192.168.10.1/32`))"
+      - "traefik.http.routers.cloudbeaver-direct.entrypoints=websecure"
+      - "traefik.http.routers.cloudbeaver-direct.tls=true"
+      - "traefik.http.routers.cloudbeaver-direct.service=cloudbeaver-service"
+      - "traefik.http.routers.cloudbeaver-direct.priority=110"
+      - "traefik.http.routers.cloudbeaver-bypass.rule=Host(`db.${DOMAIN}`) && PathPrefix(`/api-access-bypass`)"
+      - "traefik.http.routers.cloudbeaver-bypass.entrypoints=websecure"
+      - "traefik.http.routers.cloudbeaver-bypass.tls=true"
+      - "traefik.http.routers.cloudbeaver-bypass.service=cloudbeaver-service"
+      - "traefik.http.routers.cloudbeaver-bypass.middlewares=api-access-bypass@file"
+      - "traefik.http.routers.cloudbeaver-bypass.priority=120"
+      - "traefik.http.services.cloudbeaver-service.loadbalancer.server.port=8978"
 
 networks:
   bergatrix-proxy:

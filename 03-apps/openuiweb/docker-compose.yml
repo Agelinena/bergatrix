@@ -32,11 +32,19 @@ services:
       - bergatrix-proxy
     labels:
       - "traefik.enable=true"
+      - "traefik.docker.network=bergatrix-proxy"
       - "traefik.http.routers.openwebui.rule=Host(`chat.${DOMAIN}`)"
       - "traefik.http.routers.openwebui.entrypoints=websecure"
       - "traefik.http.routers.openwebui.tls=true"
-      - "traefik.http.routers.openwebui.middlewares=internal-only@docker"
-      - "traefik.http.services.openwebui.loadbalancer.server.port=8080"
+      - "traefik.http.routers.openwebui.service=openwebui-service"
+      - "traefik.http.routers.openwebui.middlewares=public-auth@file"
+      - "traefik.http.routers.openwebui.priority=100"
+      - "traefik.http.routers.openwebui-direct.rule=Host(`chat.${DOMAIN}`) && (ClientIP(`192.168.10.140/32`) || ClientIP(`192.168.10.121/32`) || ClientIP(`192.168.10.1/32`))"
+      - "traefik.http.routers.openwebui-direct.entrypoints=websecure"
+      - "traefik.http.routers.openwebui-direct.tls=true"
+      - "traefik.http.routers.openwebui-direct.service=openwebui-service"
+      - "traefik.http.routers.openwebui-direct.priority=110"
+      - "traefik.http.services.openwebui-service.loadbalancer.server.port=8080"
 
   # ─── 🟢 OLLAMA COM SUPORTE A GPU NVIDIA ─────────────────────────────────────
   ollama:

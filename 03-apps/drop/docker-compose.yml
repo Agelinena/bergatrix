@@ -11,6 +11,7 @@ services:
       - bergatrix-proxy
     labels:
       - "traefik.enable=true"
+      - "traefik.docker.network=bergatrix-proxy"
       - "traefik.http.routers.drop-router.rule=Host(`drop.${DOMAIN}`)"
       - "traefik.http.routers.drop-router.entrypoints=websecure"
       - "traefik.http.routers.drop-router.tls=true"

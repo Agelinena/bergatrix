@@ -30,9 +30,23 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=bergatrix-proxy"
-      - "traefik.http.routers.jellyfin-router.rule=Host(`jellyflix.${DOMAIN}`)"
+      - "traefik.http.routers.jellyfin-router.rule=Host(`jellyflix.${DOMAIN}`) && !PathPrefix(`/api-access-bypass`) && !(ClientIP(`192.168.10.140/32`) || ClientIP(`192.168.10.121/32`) || ClientIP(`192.168.10.1/32`))"
       - "traefik.http.routers.jellyfin-router.entrypoints=websecure"
       - "traefik.http.routers.jellyfin-router.tls=true"
+      - "traefik.http.routers.jellyfin-router.service=jellyfin-service"
+      - "traefik.http.routers.jellyfin-router.middlewares=public-auth@file"
+      - "traefik.http.routers.jellyfin-router.priority=100"
+      - "traefik.http.routers.jellyfin-direct.rule=Host(`jellyflix.${DOMAIN}`) && (ClientIP(`192.168.10.140/32`) || ClientIP(`192.168.10.121/32`) || ClientIP(`192.168.10.1/32`))"
+      - "traefik.http.routers.jellyfin-direct.entrypoints=websecure"
+      - "traefik.http.routers.jellyfin-direct.tls=true"
+      - "traefik.http.routers.jellyfin-direct.service=jellyfin-service"
+      - "traefik.http.routers.jellyfin-direct.priority=110"
+      - "traefik.http.routers.jellyfin-bypass.rule=Host(`jellyflix.${DOMAIN}`) && PathPrefix(`/api-access-bypass`)"
+      - "traefik.http.routers.jellyfin-bypass.entrypoints=websecure"
+      - "traefik.http.routers.jellyfin-bypass.tls=true"
+      - "traefik.http.routers.jellyfin-bypass.service=jellyfin-service"
+      - "traefik.http.routers.jellyfin-bypass.middlewares=api-access-bypass@file"
+      - "traefik.http.routers.jellyfin-bypass.priority=120"
       - "traefik.http.services.jellyfin-service.loadbalancer.server.port=8096"
 
   catalogo:
@@ -58,6 +72,14 @@ services:
       - "traefik.http.routers.catalogo-router.rule=Host(`catalogo.${DOMAIN}`)"
       - "traefik.http.routers.catalogo-router.entrypoints=websecure"
       - "traefik.http.routers.catalogo-router.tls=true"
+      - "traefik.http.routers.catalogo-router.service=catalogo-service"
+      - "traefik.http.routers.catalogo-router.middlewares=public-auth@file"
+      - "traefik.http.routers.catalogo-router.priority=100"
+      - "traefik.http.routers.catalogo-direct.rule=Host(`catalogo.${DOMAIN}`) && (ClientIP(`192.168.10.140/32`) || ClientIP(`192.168.10.121/32`) || ClientIP(`192.168.10.1/32`))"
+      - "traefik.http.routers.catalogo-direct.entrypoints=websecure"
+      - "traefik.http.routers.catalogo-direct.tls=true"
+      - "traefik.http.routers.catalogo-direct.service=catalogo-service"
+      - "traefik.http.routers.catalogo-direct.priority=110"
       - "traefik.http.services.catalogo-service.loadbalancer.server.port=5055"
 
   # --- LOCAL: Apenas via Tailscale/Rede Local (Middleware internal-only) ---
@@ -82,7 +104,10 @@ services:
       - "traefik.enable=true"
       - "traefik.docker.network=bergatrix-proxy"
       - "traefik.http.routers.qbittorrent-router.rule=Host(`qbittorrent.${DOMAIN}`)"
-      - "traefik.http.routers.qbittorrent-router.middlewares=internal-only@docker"
+      - "traefik.http.routers.qbittorrent-router.entrypoints=websecure"
+      - "traefik.http.routers.qbittorrent-router.tls=true"
+      - "traefik.http.routers.qbittorrent-router.service=qbittorrent-service"
+      - "traefik.http.routers.qbittorrent-router.middlewares=internal-only@file"
       - "traefik.http.services.qbittorrent-service.loadbalancer.server.port=8080"
 
   sonarr:
@@ -104,8 +129,12 @@ services:
       - media-network
     labels:
       - "traefik.enable=true"
+      - "traefik.docker.network=bergatrix-proxy"
       - "traefik.http.routers.sonarr-router.rule=Host(`sonarr.${DOMAIN}`)"
-      - "traefik.http.routers.sonarr-router.middlewares=internal-only@docker"
+      - "traefik.http.routers.sonarr-router.entrypoints=websecure"
+      - "traefik.http.routers.sonarr-router.tls=true"
+      - "traefik.http.routers.sonarr-router.service=sonarr-service"
+      - "traefik.http.routers.sonarr-router.middlewares=internal-only@file"
       - "traefik.http.services.sonarr-service.loadbalancer.server.port=8989"
 
   radarr:
@@ -127,8 +156,9 @@ services:
       - media-network
     labels:
       - "traefik.enable=true"
+      - "traefik.docker.network=bergatrix-proxy"
       - "traefik.http.routers.radarr-router.rule=Host(`radarr.${DOMAIN}`)"
-      - "traefik.http.routers.radarr-router.middlewares=internal-only@docker"
+      - "traefik.http.routers.radarr-router.middlewares=internal-only@file"
       - "traefik.http.services.radarr-service.loadbalancer.server.port=7878"
 
   prowlarr:
@@ -148,8 +178,12 @@ services:
       - media-network
     labels:
       - "traefik.enable=true"
+      - "traefik.docker.network=bergatrix-proxy"
       - "traefik.http.routers.prowlarr-router.rule=Host(`prowlarr.${DOMAIN}`)"
-      - "traefik.http.routers.prowlarr-router.middlewares=internal-only@docker"
+      - "traefik.http.routers.prowlarr-router.entrypoints=websecure"
+      - "traefik.http.routers.prowlarr-router.tls=true"
+      - "traefik.http.routers.prowlarr-router.service=prowlarr-service"
+      - "traefik.http.routers.prowlarr-router.middlewares=internal-only@file"
       - "traefik.http.services.prowlarr-service.loadbalancer.server.port=9696"
 
   bazarr:
@@ -171,8 +205,12 @@ services:
       - media-network
     labels:
       - "traefik.enable=true"
+      - "traefik.docker.network=bergatrix-proxy"
       - "traefik.http.routers.bazarr-router.rule=Host(`bazarr.${DOMAIN}`)"
-      - "traefik.http.routers.bazarr-router.middlewares=internal-only@docker"
+      - "traefik.http.routers.bazarr-router.entrypoints=websecure"
+      - "traefik.http.routers.bazarr-router.tls=true"
+      - "traefik.http.routers.bazarr-router.service=bazarr-service"
+      - "traefik.http.routers.bazarr-router.middlewares=internal-only@file"
       - "traefik.http.services.bazarr-service.loadbalancer.server.port=6767"
 
   flaresolverr:
@@ -189,8 +227,12 @@ services:
       - media-network
     labels:
       - "traefik.enable=true"
+      - "traefik.docker.network=bergatrix-proxy"
       - "traefik.http.routers.flaresolverr-router.rule=Host(`flaresolverr.${DOMAIN}`)"
-      - "traefik.http.routers.flaresolverr-router.middlewares=internal-only@docker"
+      - "traefik.http.routers.flaresolverr-router.entrypoints=websecure"
+      - "traefik.http.routers.flaresolverr-router.tls=true"
+      - "traefik.http.routers.flaresolverr-router.service=flaresolverr-service"
+      - "traefik.http.routers.flaresolverr-router.middlewares=internal-only@file"
       - "traefik.http.services.flaresolverr-service.loadbalancer.server.port=8191"
 
   legendarr-web:
@@ -215,8 +257,12 @@ services:
       - media-network
     labels:
       - "traefik.enable=true"
+      - "traefik.docker.network=bergatrix-proxy"
       - "traefik.http.routers.legendarr-router.rule=Host(`legendarr.${DOMAIN}`)"
-      - "traefik.http.routers.legendarr-router.middlewares=internal-only@docker"
+      - "traefik.http.routers.legendarr-router.entrypoints=websecure"
+      - "traefik.http.routers.legendarr-router.tls=true"
+      - "traefik.http.routers.legendarr-router.service=legendarr-service"
+      - "traefik.http.routers.legendarr-router.middlewares=internal-only@file"
       - "traefik.http.services.legendarr-service.loadbalancer.server.port=8000"
 
   # --- SERVIÇOS DE BACKGROUND (Sem labels de Traefik) ---
@@ -344,8 +390,12 @@ services:
       - media-network
     labels:
       - "traefik.enable=true"
+      - "traefik.docker.network=bergatrix-proxy"
       - "traefik.http.routers.torrent-indexer-br-router.rule=Host(`torrent-indexer-br.${DOMAIN}`)"
-      - "traefik.http.routers.torrent-indexer-br-router.middlewares=internal-only@docker"
+      - "traefik.http.routers.torrent-indexer-br-router.entrypoints=websecure"
+      - "traefik.http.routers.torrent-indexer-br-router.tls=true"
+      - "traefik.http.routers.torrent-indexer-br-router.service=torrent-indexer-br-service"
+      - "traefik.http.routers.torrent-indexer-br-router.middlewares=internal-only@file"
       - "traefik.http.services.torrent-indexer-br-service.loadbalancer.server.port=7006"
   
   sabnzbd:
@@ -368,8 +418,12 @@ services:
       - media-network
     labels:
       - "traefik.enable=true"
+      - "traefik.docker.network=bergatrix-proxy"
       - "traefik.http.routers.sabnzbd-router.rule=Host(`sabnzbd.${DOMAIN}`)"
-      - "traefik.http.routers.sabnzbd-router.middlewares=internal-only@docker"
+      - "traefik.http.routers.sabnzbd-router.entrypoints=websecure"
+      - "traefik.http.routers.sabnzbd-router.tls=true"
+      - "traefik.http.routers.sabnzbd-router.service=sabnzbd-service"
+      - "traefik.http.routers.sabnzbd-router.middlewares=internal-only@file"
       - "traefik.http.services.sabnzbd-service.loadbalancer.server.port=8080"
 
 networks:

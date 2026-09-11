@@ -62,10 +62,24 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=bergatrix-proxy"
+      - "traefik.http.services.authentik-service.loadbalancer.server.port=9000"
+
+      # --- Painel admin: SÓ rede local ---
+      - "traefik.http.routers.authentik-admin.rule=Host(`authentik.${DOMAIN}`) && PathPrefix(`/if/admin`)"
+      - "traefik.http.routers.authentik-admin.entrypoints=websecure"
+      - "traefik.http.routers.authentik-admin.tls=true"
+      - "traefik.http.routers.authentik-admin.service=authentik-service"
+      - "traefik.http.routers.authentik-admin.middlewares=internal-only@file"
+      - "traefik.http.routers.authentik-admin.priority=110"
+
+      # --- Login / fluxo normal: público ---
       - "traefik.http.routers.authentik.rule=Host(`authentik.${DOMAIN}`)"
       - "traefik.http.routers.authentik.entrypoints=websecure"
       - "traefik.http.routers.authentik.tls=true"
-      - "traefik.http.services.authentik-service.loadbalancer.server.port=9000"
+      - "traefik.http.routers.authentik.service=authentik-service"
+      - "traefik.http.routers.authentik.priority=100"
+
+      # --- Callback OAuth: público ---
       - "traefik.http.routers.authentik-callback.rule=Host(`auth.daberga.com`)"
       - "traefik.http.routers.authentik-callback.entrypoints=websecure"
       - "traefik.http.routers.authentik-callback.tls=true"
