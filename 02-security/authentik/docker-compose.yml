@@ -66,6 +66,10 @@ services:
       - "traefik.http.routers.authentik.entrypoints=websecure"
       - "traefik.http.routers.authentik.tls=true"
       - "traefik.http.services.authentik-service.loadbalancer.server.port=9000"
+      - "traefik.http.routers.authentik-callback.rule=Host(`auth.daberga.com`)"
+      - "traefik.http.routers.authentik-callback.entrypoints=websecure"
+      - "traefik.http.routers.authentik-callback.tls=true"
+      - "traefik.http.routers.authentik-callback.service=authentik-service"
 
   worker:
     image: ghcr.io/goauthentik/server:2025.10.2
