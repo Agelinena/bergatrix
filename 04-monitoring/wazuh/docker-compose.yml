@@ -83,6 +83,8 @@ services:
       - "traefik.http.routers.wazuh-router.entrypoints=websecure"
       - "traefik.http.routers.wazuh-router.tls=true"
       - "traefik.http.routers.wazuh-router.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.wazuh-router.service=wazuh-service"
+      - "traefik.http.routers.wazuh-router.middlewares=internal-only@file"
       - "traefik.http.services.wazuh-service.loadbalancer.server.port=5601"
     environment:
       - INDEXER_USERNAME=admin
