@@ -2,7 +2,7 @@ api:
   dashboard: true
 experimental:
   plugins:
-    crowdsec-bouncer:
+    bouncer:
       moduleName: "github.com/maxlerebourg/crowdsec-bouncer-traefik-plugin"
       version: "v1.7.1"
 log:

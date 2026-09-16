@@ -13,7 +13,7 @@ services:
       - "traefik.enable=true"
       - "traefik.docker.network=bergatrix-proxy"
       - "traefik.http.routers.homepage-router.rule=Host(`homepage.${DOMAIN}`)"
-      - "traefik.http.routers.homepage-router.middlewares=internal-only@docker"
+      - "traefik.http.routers.homepage-router.middlewares=internal-only@file"
       - "traefik.http.services.homepage-service.loadbalancer.server.port=3000"
     restart: unless-stopped
     networks:

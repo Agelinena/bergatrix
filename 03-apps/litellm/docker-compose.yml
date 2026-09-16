@@ -49,7 +49,7 @@ services:
       - "traefik.http.routers.litellm.tls=true"
       - "traefik.http.routers.litellm.service=litellm-service"
       - "traefik.http.routers.litellm.middlewares=internal-only@file"
-      - "traefik.http.services.litellm.loadbalancer.server.port=4000"
+      - "traefik.http.services.litellm-service.loadbalancer.server.port=4000"
 
   litellm-updater:
     build: ./updater

@@ -36,7 +36,7 @@ http:
 
     crowdsec-bouncer:
       plugin:
-        crowdsec-bouncer:
+        bouncer:
           enabled: true
           crowdsecMode: "live"
           crowdsecLapiKey: "${CROWDSEC_BOUNCER_KEY}"
