@@ -30,13 +30,13 @@
     <div x-data="subtitleModal()"
          x-show="open"
          x-cloak
-         @open-subtitle-modal.window="openFor($event.detail.filepath, $event.detail.filename)"
+         @open-subtitle-modal.window="openFor($event.detail.filepath, $event.detail.filename, $event.detail.mode || 'translate')"
          class="fixed inset-0 z-50 flex items-center justify-center modal-overlay"
          @keydown.escape.window="close()">
         <div class="bg-gray-800 rounded-2xl border border-gray-600 shadow-2xl w-full max-w-lg mx-4" @click.stop>
             <div class="p-6 border-b border-gray-700 flex justify-between items-start">
                 <div class="min-w-0 pr-4">
-                    <h2 class="text-lg font-bold text-white">Selecionar Legenda</h2>
+                    <h2 class="text-lg font-bold text-white" x-text="mode === 'translate' ? 'Selecionar Legenda' : 'Selecionar Base do ALASS'"></h2>
                     <p class="text-sm text-gray-400 truncate" x-text="filename"></p>
                 </div>
                 <button @click="close()" class="text-gray-400 hover:text-white transition flex-shrink-0">
@@ -120,7 +120,7 @@
                     <button @click="close()" class="px-4 py-2 rounded-lg bg-gray-700 hover:bg-gray-600 text-sm transition">
                         Cancelar
                     </button>
-                    <button @click="submitTranslation()" :disabled="submitting"
+                    <button @click="submitAction()" :disabled="submitting"
                             class="px-5 py-2 rounded-lg bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-sm font-medium transition flex items-center space-x-2">
                         <svg x-show="!submitting" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
@@ -130,7 +130,7 @@
                             <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
                             <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
                         </svg>
-                        <span x-text="submitting ? 'Enviando...' : 'Traduzir com IA'"></span>
+                        <span x-text="submitting ? 'Enviando...' : (mode === 'translate' ? 'Traduzir com IA' : 'Alinhar com ALASS')"></span>
                     </button>
                 </div>
             </div>
@@ -289,17 +289,29 @@
                         </div>
                         <p class="text-gray-400 text-xs truncate mb-3">{{ movie.filename }}</p>
 
-                        <!-- Botão usa data-attributes para evitar escape de paths especiais -->
-                        <button type="button"
-                                class="translate-btn w-full bg-purple-600 hover:bg-purple-700 text-white py-2 rounded-lg text-sm font-medium transition flex items-center justify-center space-x-1"
-                                data-filepath="{{ movie.path }}"
-                                data-filename="{{ movie.name }}">
-                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                      d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129"/>
-                            </svg>
-                            <span>Traduzir</span>
-                        </button>
+                        <div class="flex gap-2">
+                            <button type="button"
+                                    class="action-btn translate-btn flex-1 bg-purple-600 hover:bg-purple-700 text-white py-2 rounded-lg text-sm font-medium transition flex items-center justify-center space-x-1"
+                                    data-filepath="{{ movie.path }}"
+                                    data-filename="{{ movie.name }}"
+                                    data-action="translate">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                          d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129"/>
+                                </svg>
+                                <span>Traduzir</span>
+                            </button>
+                            <button type="button"
+                                    class="action-btn alass-btn flex-1 bg-amber-600 hover:bg-amber-500 text-white py-2 rounded-lg text-sm font-medium transition flex items-center justify-center space-x-1"
+                                    data-filepath="{{ movie.path }}"
+                                    data-filename="{{ movie.name }}"
+                                    data-action="alass">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 12h16M12 4v16"/>
+                                </svg>
+                                <span>ALASS</span>
+                            </button>
+                        </div>
                     </div>
                 </div>
                 {% endfor %}
@@ -361,17 +373,29 @@
                                             </div>
                                         </div>
                                     </div>
-                                    <!-- Botão episódio: data-attributes para paths seguros -->
-                                    <button type="button"
-                                            class="translate-btn bg-gray-700 hover:bg-purple-600 text-white p-2 rounded-md transition opacity-0 group-hover:opacity-100 focus:opacity-100 flex-shrink-0"
-                                            data-filepath="{{ ep.path }}"
-                                            data-filename="{{ ep.name }}"
-                                            title="Traduzir legenda">
-                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                                  d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129"/>
-                                        </svg>
-                                    </button>
+                                    <div class="flex gap-2 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition">
+                                        <button type="button"
+                                                class="action-btn translate-btn bg-gray-700 hover:bg-purple-600 text-white p-2 rounded-md transition flex-shrink-0"
+                                                data-filepath="{{ ep.path }}"
+                                                data-filename="{{ ep.name }}"
+                                                data-action="translate"
+                                                title="Traduzir legenda">
+                                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                                      d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129"/>
+                                            </svg>
+                                        </button>
+                                        <button type="button"
+                                                class="action-btn alass-btn bg-amber-600 hover:bg-amber-500 text-white p-2 rounded-md transition flex-shrink-0"
+                                                data-filepath="{{ ep.path }}"
+                                                data-filename="{{ ep.name }}"
+                                                data-action="alass"
+                                                title="Alinhar com ALASS">
+                                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 12h16M12 4v16"/>
+                                            </svg>
+                                        </button>
+                                    </div>
                                 </div>
                                 {% endfor %}
                             </div>
@@ -414,10 +438,12 @@
                 filename: '',
                 subtitles: [],
                 selectedIndex: null,
+                mode: 'translate',
 
-                openFor(filepath, filename) {
+                openFor(filepath, filename, mode = 'translate') {
                     this.filepath = filepath;
                     this.filename = filename;
+                    this.mode = mode;
                     this.subtitles = [];
                     this.selectedIndex = null;
                     this.bazarResult = null;
@@ -465,29 +491,46 @@
                     this.subtitles = [];
                     this.selectedIndex = null;
                     this.bazarResult = null;
+                    this.mode = 'translate';
                     this.submitting = false;
                 },
 
-                async submitTranslation() {
+                async submitAction() {
                     if (!this.filepath || this.submitting) return;
                     this.submitting = true;
 
                     const formData = new FormData();
                     formData.append('filepath', this.filepath);
-                    formData.append('force', 'true');
-                    if (this.selectedIndex !== null) {
-                        formData.append('stream_index', String(this.selectedIndex));
+                    if (this.mode === 'translate') {
+                        formData.append('force', 'true');
+                        if (this.selectedIndex !== null) {
+                            formData.append('stream_index', String(this.selectedIndex));
+                        }
+                        try {
+                            const resp = await fetch('/api/translate', { method: 'POST', body: formData });
+                            const html = await resp.text();
+                            document.getElementById('toast-container').insertAdjacentHTML('beforeend', html);
+                        } catch (e) {
+                            console.error('Erro ao iniciar tradução:', e);
+                        }
+                    } else {
+                        if (this.selectedIndex !== null) {
+                            formData.append('stream_index', String(this.selectedIndex));
+                        }
+                        try {
+                            const resp = await fetch('/api/alass-align', { method: 'POST', body: formData });
+                            const data = await resp.json();
+                            const toast = document.createElement('div');
+                            toast.className = 'bg-amber-600 text-white p-4 rounded shadow-lg mb-4';
+                            toast.textContent = data.message || 'ALASS agendado com sucesso.';
+                            document.getElementById('toast-container').appendChild(toast);
+                            setTimeout(() => toast.remove(), 5000);
+                        } catch (e) {
+                            console.error('Erro ao agendar ALASS:', e);
+                        }
                     }
 
-                    try {
-                        const resp = await fetch('/api/translate', { method: 'POST', body: formData });
-                        const html = await resp.text();
-                        document.getElementById('toast-container').insertAdjacentHTML('beforeend', html);
-                    } catch (e) {
-                        console.error('Erro ao iniciar tradução:', e);
-                    } finally {
-                        this.close();
-                    }
+                    this.close();
                 }
             }));
 
@@ -520,16 +563,16 @@
         });
 
 
-        // Delegação de evento: todos os botões .translate-btn usam data-attributes
-        // Isso evita problemas com paths especiais (parênteses, espaços, aspas)
+        // Delegação de evento: botões de ação usam data-attributes para paths seguros.
         document.addEventListener('click', function(e) {
-            const btn = e.target.closest('.translate-btn');
+            const btn = e.target.closest('.action-btn');
             if (!btn) return;
             const filepath = btn.dataset.filepath;
             const filename = btn.dataset.filename;
+            const mode = btn.dataset.action || 'translate';
             if (filepath) {
                 window.dispatchEvent(new CustomEvent('open-subtitle-modal', {
-                    detail: { filepath, filename }
+                    detail: { filepath, filename, mode }
                 }));
             }
         });

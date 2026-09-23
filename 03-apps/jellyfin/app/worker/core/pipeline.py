@@ -490,11 +490,37 @@ class Pipeline:
             except Exception as e:
                 logger.error(f"Falha ao normalizar nome da legenda: {e}")
 
+    def align_with_alass(self, filepath: str, stream_index: int | None = None, source_path: str | None = None) -> bool:
+        """Execução explícita de alinhamento via ALASS para um arquivo."""
+        if not os.path.exists(filepath):
+            logger.warning(f"ALASS: arquivo não existe mais — ignorando: {filepath}")
+            return False
+
+        media_info = get_media_info(filepath)
+        streams = [] if not media_info else [s for s in media_info.get('streams', []) if s.get('codec_type') == 'subtitle']
+        target_subtitle = source_path or find_pt_subtitle(filepath) or f"{os.path.splitext(filepath)[0]}.por.srt"
+
+        if stream_index is not None:
+            chosen = next((s for s in streams if s.get('index') == stream_index), None)
+            if chosen and chosen.get('codec_name') in TEXT_CODECS:
+                logger.info(f"ALASS: usando stream {stream_index} como referência para {os.path.basename(filepath)}")
+                if not os.path.exists(target_subtitle):
+                    target_subtitle = f"{os.path.splitext(filepath)[0]}.por.srt"
+
+        return self._sync_with_alass(filepath, target_subtitle, streams)
+
     def _sync_with_alass(self, filepath: str, downloaded_srt: str, streams: list) -> bool:
         """Extrai legenda embutida original e sincroniza a legenda do Bazarr via alass."""
         import subprocess
+
+        # Pega a legenda alvo real; se for passado um arquivo externo, usa ele; senão tenta localizar a PT externa
+        actual_dl = downloaded_srt or find_pt_subtitle(filepath)
+        if not actual_dl or not os.path.exists(actual_dl):
+            logger.warning(f"ALASS: nenhuma legenda alvo encontrada para {os.path.basename(filepath)}")
+            return False
+
         base_stream = next((s for s in streams if s.get('tags', {}).get('language', '').lower() in SOURCE_LANGUAGES and s.get('codec_name') in TEXT_CODECS), None)
-                
+
         if not base_stream:
             logger.info("ALASS: sem legenda de texto embutida como base — mantendo a legenda sem realinhar.")
             return False
@@ -505,10 +531,6 @@ class Pipeline:
         tmp_out = f"{base_path}.synced.temp.srt"
 
         try:
-            actual_dl = find_pt_subtitle(filepath)
-            if not actual_dl:
-                return False
-
             if not extract_subtitle(filepath, base_stream['index'], ref_srt):
                 return False
 

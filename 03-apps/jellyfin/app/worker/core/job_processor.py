@@ -70,6 +70,13 @@ class JobProcessor:
                     self.pipeline.process_file(target_file, force=False)
                 else:
                     logger.warning(f"Arquivo rejeitado por falha na validação de áudio: {target_file}")
+            elif job_type == "alass_align":
+                logger.info(f"Executando ALASS em {target_file}")
+                self.pipeline.align_with_alass(
+                    target_file,
+                    stream_index=job.get("stream_index"),
+                    source_path=job.get("source_path"),
+                )
             elif job_type == "scan":
                 logger.info("Executando varredura manual da biblioteca...")
                 from core.scanner import _has_subtitle, MEDIA_EXTENSIONS

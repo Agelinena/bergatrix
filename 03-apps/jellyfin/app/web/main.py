@@ -58,6 +58,59 @@ def has_pt_subtitle_file(filepath: str) -> bool:
     return False
 
 
+def has_any_subtitle_file(filepath: str) -> bool:
+    """Detecta qualquer legenda externa associada ao vídeo, não apenas PT-BR."""
+    base_name = os.path.basename(os.path.splitext(filepath)[0])
+    base_dir = os.path.dirname(filepath)
+    if not os.path.isdir(base_dir):
+        return False
+    try:
+        for f in os.listdir(base_dir):
+            if not f.lower().startswith(base_name.lower()):
+                continue
+            lower = f.lower()
+            if lower.endswith((".srt", ".ass", ".ssa", ".vtt", ".sub")):
+                return True
+    except OSError:
+        pass
+    return False
+
+
+def has_embedded_subtitle_stream(filepath: str) -> bool:
+    """Detecta stream de legenda embutida no vídeo."""
+    try:
+        cmd = [
+            "ffprobe", "-v", "quiet",
+            "-print_format", "json",
+            "-show_streams",
+            filepath,
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        if result.returncode != 0:
+            return False
+        media_data = json.loads(result.stdout)
+        for stream in media_data.get("streams", []):
+            if stream.get("codec_type") == "subtitle":
+                return True
+    except Exception:
+        return False
+    return False
+
+
+def get_subtitle_status(filepath: str, translated_paths: dict | None = None) -> str:
+    """Status visual do arquivo: verde se existe legenda externa/embutida ou tradução registrada."""
+    translated_paths = translated_paths or {}
+    if has_pt_subtitle_file(filepath):
+        return "🟢"
+    if has_any_subtitle_file(filepath):
+        return "🟢"
+    if has_embedded_subtitle_stream(filepath):
+        return "🟢"
+    if str(filepath) in translated_paths:
+        return "🟢"
+    return "🔴"
+
+
 # ------------------------------------------------------------------ #
 # Helpers — carregamento de dados                                      #
 # ------------------------------------------------------------------ #
@@ -142,12 +195,8 @@ def scan_media(force: bool = False) -> dict:
         return None
 
     def get_subtitle_status(filepath):
-        """Verifica legenda PT-BR externa (inclui .hi/.sdh/.forced) ou registrada nas stats."""
-        if has_pt_subtitle_file(filepath):
-            return "🟢"
-        if str(filepath) in translated_paths:
-            return "🟢"
-        return "🔴"
+        """Verifica legenda externa/embutida ou registrada nas stats."""
+        return get_subtitle_status(filepath, translated_paths)
 
     # --- Filmes ---
     movies_path = Path(MEDIA_ROOT) / "filmes"
@@ -369,6 +418,36 @@ async def trigger_scan():
         return JSONResponse(content={"status": "ok", "message": "Varredura agendada."})
     except Exception as e:
         logger.error(f"Erro ao criar job de scan: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/alass-align")
+async def trigger_alass_align(
+    filepath: str = Form(...),
+    stream_index: str = Form(None),
+    source_path: str = Form(None),
+):
+    """Agenda alinhamento via ALASS para um arquivo."""
+    if not filepath.startswith(MEDIA_ROOT):
+        raise HTTPException(status_code=403, detail="Acesso negado")
+    if not os.path.exists(filepath):
+        raise HTTPException(status_code=404, detail="Arquivo não encontrado")
+
+    job_id = str(uuid.uuid4())
+    job: dict = {
+        "id": job_id,
+        "type": "alass_align",
+        "filepath": filepath,
+        "source_path": source_path,
+        "stream_index": int(stream_index) if stream_index is not None and stream_index != "" else None,
+        "status": "pending",
+    }
+    try:
+        with open(os.path.join(JOBS_DIR, f"{job_id}.json"), "w") as f:
+            json.dump(job, f)
+        return JSONResponse(content={"status": "ok", "message": "ALASS agendado."})
+    except Exception as e:
+        logger.error(f"Erro ao criar job de ALASS: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
