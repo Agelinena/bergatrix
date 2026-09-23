@@ -194,7 +194,7 @@ def scan_media(force: bool = False) -> dict:
             }
         return None
 
-    def get_subtitle_status(filepath):
+    def get_subtitle_status_for_file(filepath):
         """Verifica legenda externa/embutida ou registrada nas stats."""
         return get_subtitle_status(filepath, translated_paths)
 
@@ -203,7 +203,7 @@ def scan_media(force: bool = False) -> dict:
     if movies_path.exists():
         for file in movies_path.rglob("*"):
             if file.is_file() and file.suffix.lower() in [".mkv", ".mp4", ".avi", ".mov"]:
-                status = get_subtitle_status(str(file))
+                status = get_subtitle_status_for_file(str(file))
                 poster = find_poster(file.parent)
                 opt_info = get_optimization_info(file)
                 trans_info = translated_paths.get(str(file))
@@ -245,7 +245,7 @@ def scan_media(force: bool = False) -> dict:
                 if season_name not in data["series"][series_name]["seasons"]:
                     data["series"][series_name]["seasons"][season_name] = []
 
-                status = get_subtitle_status(str(item))
+                status = get_subtitle_status_for_file(str(item))
                 opt_info = get_optimization_info(item)
                 trans_info = translated_paths.get(str(item))
 
