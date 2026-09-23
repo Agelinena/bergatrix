@@ -421,6 +421,49 @@ async def trigger_scan():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.post("/api/alass-batch")
+async def trigger_alass_batch(request: Request):
+    """Agenda ALASS para vários arquivos ou para toda a biblioteca."""
+    try:
+        payload = await request.json()
+    except Exception:
+        payload = {}
+
+    filepaths = payload.get("filepaths") or []
+    if payload.get("all") or not filepaths:
+        filepaths = []
+        for root in ["/media/filmes", "/media/series"]:
+            if not os.path.isdir(root):
+                continue
+            for path in Path(root).rglob("*"):
+                if path.is_file() and path.suffix.lower() in [".mkv", ".mp4", ".avi", ".mov"]:
+                    filepaths.append(str(path))
+
+    seen = set()
+    valid = []
+    for fp in filepaths:
+        if not fp or not str(fp).startswith(MEDIA_ROOT):
+            continue
+        if fp in seen or not os.path.exists(fp):
+            continue
+        seen.add(fp)
+        valid.append(fp)
+
+    created = []
+    for filepath in valid:
+        job_id = str(uuid.uuid4())
+        job = {"id": job_id, "type": "alass_batch", "filepath": filepath, "status": "pending"}
+        with open(os.path.join(JOBS_DIR, f"{job_id}.json"), "w") as f:
+            json.dump(job, f)
+        created.append(filepath)
+
+    return JSONResponse(content={
+        "status": "ok",
+        "count": len(created),
+        "message": f"ALASS agendado para {len(created)} item(s).",
+    })
+
+
 @app.post("/api/alass-align")
 async def trigger_alass_align(
     filepath: str = Form(...),

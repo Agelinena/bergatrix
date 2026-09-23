@@ -366,6 +366,12 @@ class Pipeline:
                 f"lang={tags.get('language', '?')} title={tags.get('title', '')}"
             )
 
+        # --- Tradução forçada pela web: ignora legenda existente e Bazarr ---
+        if force:
+            logger.info(f"Modo forçado solicitado para {fname}: ignorando legenda existente e Bazarr, abrindo fila de IA.")
+            self.translation_queue.enqueue(filepath, stream_index=stream_index, force=True)
+            return
+
         # --- Verificação de legenda existente ---
         if not force:
             if self._has_portuguese_subtitle(filepath, media_info):
@@ -537,15 +543,26 @@ class Pipeline:
             # Escreve em temp para não ler/escrever o mesmo .por.srt in-place
             subprocess.run(['alass', ref_srt, actual_dl, tmp_out], check=True, capture_output=True)
             if not os.path.exists(tmp_out) or os.path.getsize(tmp_out) == 0:
+                logger.warning(f"ALASS gerou saída vazia para {os.path.basename(filepath)}; tentando fallback por escala temporal.")
+                if self._fallback_time_ratio_sync(filepath, actual_dl, ref_srt):
+                    logger.warning(f"Fallback por escala temporal resgatou a sincronização para {os.path.basename(filepath)}")
+                    return True
                 return False
 
             os.replace(tmp_out, synced_srt)  # substitui atomicamente
             # Remove a legenda original se tiver nome diferente do destino (.por.srt)
             if os.path.normpath(actual_dl) != os.path.normpath(synced_srt) and os.path.exists(actual_dl):
                 os.remove(actual_dl)
+            logger.info(f"ALASS concluído com sucesso para {os.path.basename(filepath)}: legenda sincronizada em {synced_srt}")
             return True
         except Exception as e:
-            logger.error(f"Erro no alass sync: {e}")
+            logger.error(f"ALASS falhou para {os.path.basename(filepath)}: {e}")
+            try:
+                if self._fallback_time_ratio_sync(filepath, actual_dl, ref_srt):
+                    logger.warning(f"ALASS falhou, mas fallback por escala temporal resgatou a sincronização para {os.path.basename(filepath)}")
+                    return True
+            except Exception:
+                pass
             return False
         finally:
             for tmp in (ref_srt, tmp_out):
@@ -554,6 +571,79 @@ class Pipeline:
                         os.remove(tmp)
                     except OSError:
                         pass
+
+    def _fallback_time_ratio_sync(self, filepath: str, subtitle_path: str, reference_path: str) -> bool:
+        """
+        Fallback heurístico para casos em que o ALASS falha porque a legenda em PT
+        tem estrutura temporal muito diferente da original (ex.: 715 x 915 blocos).
+
+        Em vez de tentar alinhar por blocos semânticos, usa uma escala temporal
+        proporcional sobre todos os timestamps da legenda alvo, preservando o texto.
+        """
+        if not os.path.exists(subtitle_path) or not os.path.exists(reference_path):
+            return False
+
+        pattern = re.compile(r"(\d{2}:\d{2}:\d{2},\d{3})\s*-->\s*(\d{2}:\d{2}:\d{2},\d{3})")
+        try:
+            with open(reference_path, "r", encoding="utf-8", errors="ignore") as f:
+                ref_text = f.read()
+            with open(subtitle_path, "r", encoding="utf-8", errors="ignore") as f:
+                sub_text = f.read()
+
+            ref_times = [m.group(0) for m in pattern.finditer(ref_text)]
+            sub_times = [m.group(0) for m in pattern.finditer(sub_text)]
+            if not ref_times or not sub_times:
+                return False
+
+            def parse_ts(raw: str):
+                m = re.search(r"(\d{2}:\d{2}:\d{2}),(\d{3})", raw)
+                if not m:
+                    return 0.0
+                hh, mm, ss = map(int, m.group(1).split(':'))
+                ms = int(m.group(2))
+                return hh * 3600 + mm * 60 + ss + ms / 1000.0
+
+            ref_end = max(parse_ts(ts) for ts in ref_times)
+            sub_end = max(parse_ts(ts) for ts in sub_times)
+            if ref_end <= 0 or sub_end <= 0:
+                return False
+
+            ratio = ref_end / sub_end
+            if abs(ratio - 1.0) < 0.05:
+                return False
+
+            def shift_ts(raw: str, factor: float):
+                match = pattern.search(raw)
+                if not match:
+                    return raw
+                start = parse_ts(match.group(1))
+                end = parse_ts(match.group(2))
+                def fmt(ts):
+                    total_ms = int(round(ts * 1000))
+                    hh = total_ms // 3600000
+                    rem = total_ms % 3600000
+                    mm = rem // 60000
+                    rem %= 60000
+                    ss = rem // 1000
+                    ms = rem % 1000
+                    return f"{hh:02d}:{mm:02d}:{ss:02d},{ms:03d}"
+                return f"{fmt(start * factor)} --> {fmt(end * factor)}"
+
+            new_text = sub_text
+            for x in pattern.finditer(sub_text):
+                raw = x.group(0)
+                repl = shift_ts(raw, ratio)
+                new_text = new_text.replace(raw, repl, 1)
+
+            out_path = f"{os.path.splitext(filepath)[0]}.fallback-alass.srt"
+            with open(out_path, "w", encoding="utf-8") as f:
+                f.write(new_text)
+
+            logger.warning(f"Fallback por escala temporal aplicado para {os.path.basename(filepath)} (ratio={ratio:.3f})")
+            return True
+        except Exception as e:
+            logger.error(f"Fallback de sincronização por escala temporal falhou para {os.path.basename(filepath)}: {e}")
+            return False
 
     def _auto_select_stream(self, streams: list) -> dict | None:
         """Seleciona automaticamente o melhor stream de texto para tradução."""

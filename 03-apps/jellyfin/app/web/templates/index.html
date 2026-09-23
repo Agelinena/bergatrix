@@ -148,6 +148,14 @@
                 <h1 class="text-2xl font-bold tracking-tight text-white">Legendarr <span class="text-xs text-purple-400 font-mono ml-1">v2.0</span></h1>
             </div>
             <div class="flex items-center space-x-3">
+                <button id="alass-batch-btn"
+                        class="bg-amber-600 hover:bg-amber-500 text-white px-4 py-2 rounded-lg text-sm font-medium transition flex items-center space-x-2"
+                        onclick="triggerBatchAlass(this)">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 12h16M12 4v16"/>
+                    </svg>
+                    <span>ALASS Geral</span>
+                </button>
                 <!-- Forçar Scan -->
                 <button id="scan-btn"
                         class="bg-indigo-700 hover:bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition flex items-center space-x-2"
@@ -345,10 +353,19 @@
                             <h3 class="text-xl font-bold text-white">{{ series_name }}</h3>
                             <p class="text-sm text-gray-400">{{ series_data.seasons|length }} temporada(s)</p>
                         </div>
-                        <div class="transform transition-transform duration-200" :class="{ 'rotate-180': expanded }">
-                            <svg class="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
-                            </svg>
+                        <div class="flex items-center gap-2">
+                            <button type="button"
+                                    class="series-alass-btn bg-amber-600 hover:bg-amber-500 text-white px-3 py-2 rounded-lg text-xs font-medium transition"
+                                    data-series-name="{{ series_name }}"
+                                    data-filepaths='{{ [] }}'
+                                    title="ALASS em lote para esta série">
+                                ALASS em lote
+                            </button>
+                            <div class="transform transition-transform duration-200" :class="{ 'rotate-180': expanded }">
+                                <svg class="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                                </svg>
+                            </div>
                         </div>
                     </div>
 
@@ -565,15 +582,46 @@
 
         // Delegação de evento: botões de ação usam data-attributes para paths seguros.
         document.addEventListener('click', function(e) {
-            const btn = e.target.closest('.action-btn');
-            if (!btn) return;
-            const filepath = btn.dataset.filepath;
-            const filename = btn.dataset.filename;
-            const mode = btn.dataset.action || 'translate';
-            if (filepath) {
-                window.dispatchEvent(new CustomEvent('open-subtitle-modal', {
-                    detail: { filepath, filename, mode }
-                }));
+            const actionBtn = e.target.closest('.action-btn');
+            if (actionBtn) {
+                const filepath = actionBtn.dataset.filepath;
+                const filename = actionBtn.dataset.filename;
+                const mode = actionBtn.dataset.action || 'translate';
+                if (filepath) {
+                    window.dispatchEvent(new CustomEvent('open-subtitle-modal', {
+                        detail: { filepath, filename, mode }
+                    }));
+                }
+                return;
+            }
+
+            const seriesBtn = e.target.closest('.series-alass-btn');
+            if (seriesBtn) {
+                e.stopPropagation();
+                const filepaths = [];
+                const seriesRoot = seriesBtn.closest('[x-data]');
+                if (seriesRoot) {
+                    const matches = seriesRoot.querySelectorAll('[data-filepath]');
+                    matches.forEach(element => {
+                        const path = element.dataset.filepath;
+                        if (path) filepaths.push(path);
+                    });
+                }
+
+                fetch('/api/alass-batch', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ filepaths, series_name: seriesBtn.dataset.seriesName || '' })
+                }).then(async response => {
+                    const data = await response.json();
+                    const toast = document.createElement('div');
+                    toast.className = 'bg-amber-600 text-white p-4 rounded shadow-lg mb-4';
+                    toast.textContent = data.message || 'ALASS em lote agendado.';
+                    document.getElementById('toast-container').appendChild(toast);
+                    setTimeout(() => toast.remove(), 5000);
+                }).catch(error => {
+                    console.error('Erro ao agendar ALASS em lote:', error);
+                });
             }
         });
 
@@ -595,6 +643,29 @@
             } finally {
                 btn.disabled = false;
                 btn.querySelector('span').textContent = 'Forçar Scan';
+            }
+        }
+
+        async function triggerBatchAlass(btn) {
+            btn.disabled = true;
+            btn.querySelector('span').textContent = 'Agendando...';
+            try {
+                const resp = await fetch('/api/alass-batch', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ all: true })
+                });
+                const data = await resp.json();
+                const toast = document.createElement('div');
+                toast.className = 'bg-amber-600 text-white p-4 rounded shadow-lg mb-4';
+                toast.textContent = data.message || 'ALASS geral agendado.';
+                document.getElementById('toast-container').appendChild(toast);
+                setTimeout(() => toast.remove(), 5000);
+            } catch (e) {
+                console.error('Erro ao agendar ALASS geral:', e);
+            } finally {
+                btn.disabled = false;
+                btn.querySelector('span').textContent = 'ALASS Geral';
             }
         }
     </script>
