@@ -79,9 +79,6 @@ class _SubtitleEventHandler(FileSystemEventHandler):
     def on_moved(self, event):
         self._schedule(event)
 
-    def on_modified(self, event):
-        self._schedule(event)
-
     def _schedule(self, event):
         if event.is_directory or not _is_pt_subtitle_path(event.src_path):
             return
@@ -224,10 +221,14 @@ class Scanner:
         self.subtitle_handler = _SubtitleEventHandler(self)
         self._ignored_subtitles = {}
         self._ignored_subtitles_lock = threading.Lock()
+        self._active_subtitles = set()
 
     def _handle_external_subtitle(self, subtitle_path: str):
         now = time.time()
         with self._ignored_subtitles_lock:
+            if subtitle_path in self._active_subtitles:
+                logger.info(f"Legenda já está em sincronização — ignorando evento duplicado: {os.path.basename(subtitle_path)}")
+                return
             ignored_until = self._ignored_subtitles.get(subtitle_path, 0)
             if ignored_until > now:
                 return
@@ -240,11 +241,16 @@ class Scanner:
         with self._ignored_subtitles_lock:
             self._ignored_subtitles[subtitle_path] = now + 15
             self._ignored_subtitles[output_path] = now + 15
+            self._active_subtitles.add(subtitle_path)
         logger.info(
             f"Legenda portuguesa detectada: {os.path.basename(subtitle_path)}; "
             f"agendando sync Bazarr-first para {os.path.basename(media_path)}"
         )
-        self.pipeline.sync_subtitle(media_path, source_path=subtitle_path)
+        try:
+            self.pipeline.sync_subtitle(media_path, source_path=subtitle_path)
+        finally:
+            with self._ignored_subtitles_lock:
+                self._active_subtitles.discard(subtitle_path)
 
     def _run_scan(self):
         """

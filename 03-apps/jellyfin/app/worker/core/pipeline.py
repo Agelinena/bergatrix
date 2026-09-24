@@ -2,6 +2,7 @@ import os
 import json
 import re
 import logging
+import threading
 from .utils import get_media_info, extract_subtitle, find_pt_subtitle
 from .translator import Translator
 from .translation_stats import TranslationStats
@@ -70,6 +71,8 @@ class Pipeline:
     def __init__(self):
         self.translator = Translator()
         self.stats = TranslationStats()
+        self._active_syncs = set()
+        self._active_syncs_lock = threading.Lock()
         # Fila serializada de tradução por IA (1 modelo por vez na GPU). As buscas
         # Bazarr seguem livres no fluxo; só a etapa de IA passa pela fila.
         self.translation_queue = TranslationQueue(self)
@@ -401,8 +404,8 @@ class Pipeline:
                     # Sincroniza com ALASS
                     synced = self.sync_subtitle(filepath, source_path=existing_srt)
                     if synced:
-                        logger.info(f"✅ Legenda existente refinada perfeitamente via ALASS: {fname}")
-                        self.stats.record(filepath, "success_alass_refine", model="alass")
+                        logger.info(f"✅ Legenda existente sincronizada: {fname}")
+                        self.stats.record(filepath, "aligned", model="bazarr_subsync")
                     else:
                         logger.warning("ALASS não conseguiu refinar a legenda existente.")
                         self.stats.record(filepath, "skipped_external", model=model_used)
@@ -535,6 +538,20 @@ class Pipeline:
 
     def sync_subtitle(self, filepath: str, source_path: str | None = None) -> bool:
         """Sincroniza via Bazarr primeiro; usa ALASS somente como fallback."""
+        with self._active_syncs_lock:
+            if filepath in self._active_syncs:
+                logger.info(f"Sync já em andamento para {os.path.basename(filepath)} — ignorando duplicado.")
+                return True
+            self._active_syncs.add(filepath)
+
+        try:
+            return self._sync_subtitle_once(filepath, source_path)
+        finally:
+            with self._active_syncs_lock:
+                self._active_syncs.discard(filepath)
+
+    def _sync_subtitle_once(self, filepath: str, source_path: str | None = None) -> bool:
+        """Executa uma única sincronização, protegida contra chamadas duplicadas."""
         if not os.path.exists(filepath):
             logger.warning(f"Sync: arquivo de mídia não existe mais: {filepath}")
             return False
@@ -570,6 +587,7 @@ class Pipeline:
                 f"MÉTODO=bazarr_subsync concluído=True alvo={target_subtitle} "
                 f"referencia={reference or 'audio'}"
             )
+            self.stats.record(filepath, "aligned", model="bazarr_subsync")
             return True
 
         logger.warning(
