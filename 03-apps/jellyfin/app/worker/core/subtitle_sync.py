@@ -111,3 +111,23 @@ def align_by_ordinal_map(reference: list[Cue], target: list[Cue]) -> list[Cue]:
             end = start + min(1.0, max(0.2, cue.end - cue.start))
         aligned.append(Cue(start, end, cue.text))
     return aligned
+
+
+def alignment_metrics(original: list[Cue], aligned: list[Cue]) -> dict:
+    """Summarize timing changes for logs and operational diagnostics."""
+    pairs = list(zip(original, aligned))
+    start_deltas = [abs(new.start - old.start) for old, new in pairs]
+    end_deltas = [abs(new.end - old.end) for old, new in pairs]
+    changed = sum(
+        1 for old, new in pairs
+        if abs(new.start - old.start) >= 0.001 or abs(new.end - old.end) >= 0.001
+    )
+    return {
+        "original_cues": len(original),
+        "aligned_cues": len(aligned),
+        "changed_cues": changed,
+        "average_start_delta": sum(start_deltas) / len(start_deltas) if start_deltas else 0.0,
+        "maximum_start_delta": max(start_deltas, default=0.0),
+        "average_end_delta": sum(end_deltas) / len(end_deltas) if end_deltas else 0.0,
+        "maximum_end_delta": max(end_deltas, default=0.0),
+    }

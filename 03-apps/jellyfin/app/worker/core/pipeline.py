@@ -6,7 +6,7 @@ from .utils import get_media_info, extract_subtitle, find_pt_subtitle
 from .translator import Translator
 from .translation_stats import TranslationStats
 from .translation_queue import TranslationQueue
-from .subtitle_sync import align_by_ordinal_map, parse_srt, render_srt
+from .subtitle_sync import alignment_metrics, align_by_ordinal_map, parse_srt, render_srt
 from . import bazarr
 from . import arr
 
@@ -578,19 +578,37 @@ class Pipeline:
             # incorretamente. O mapa ordinal preserva o texto da tradução e
             # corrige o relógio por trechos, sem exigir correspondência textual.
             count_ratio = max(len(reference_cues), len(target_cues)) / max(1, min(len(reference_cues), len(target_cues)))
+            reference_end = max((cue.end for cue in reference_cues), default=0.0)
+            target_end = max((cue.end for cue in target_cues), default=0.0)
+            logger.info(
+                f"Sincronização preparada para {os.path.basename(filepath)}: "
+                f"referência={len(reference_cues)} blocos/{reference_end:.3f}s, "
+                f"alvo={len(target_cues)} blocos/{target_end:.3f}s, "
+                f"divergência={count_ratio:.3f}x"
+            )
             if reference_cues and target_cues and count_ratio >= 1.20:
                 mapped_cues = align_by_ordinal_map(reference_cues, target_cues)
                 if mapped_cues:
                     with open(synced_srt, "w", encoding="utf-8") as output_file:
                         output_file.write(render_srt(mapped_cues))
+                    metrics = alignment_metrics(target_cues, mapped_cues)
                     logger.info(
-                        f"Mapa temporal por blocos concluído para {os.path.basename(filepath)}: "
-                        f"{len(target_cues)} -> {len(reference_cues)} blocos de referência"
+                        f"MÉTODO=mapa_temporal_blocos arquivo={os.path.basename(filepath)} "
+                        f"blocos={metrics['original_cues']} alterados={metrics['changed_cues']} "
+                        f"delta_inicio_medio={metrics['average_start_delta']:.3f}s "
+                        f"delta_inicio_max={metrics['maximum_start_delta']:.3f}s "
+                        f"delta_fim_medio={metrics['average_end_delta']:.3f}s "
+                        f"delta_fim_max={metrics['maximum_end_delta']:.3f}s"
                     )
                     return True
 
             # Escreve em temp para não ler/escrever o mesmo .por.srt in-place
-            subprocess.run(['alass', ref_srt, actual_dl, tmp_out], check=True, capture_output=True)
+            alass_result = subprocess.run(
+                ['alass', ref_srt, actual_dl, tmp_out],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
             if not os.path.exists(tmp_out) or os.path.getsize(tmp_out) == 0:
                 logger.warning(f"ALASS gerou saída vazia para {os.path.basename(filepath)}; tentando fallback por escala temporal.")
                 if self._fallback_time_ratio_sync(filepath, actual_dl, ref_srt):
@@ -599,11 +617,32 @@ class Pipeline:
                 return False
 
             os.replace(tmp_out, synced_srt)  # substitui atomicamente
+            with open(synced_srt, "r", encoding="utf-8", errors="ignore") as aligned_file:
+                aligned_cues = parse_srt(aligned_file.read())
             # Remove a legenda original se tiver nome diferente do destino (.por.srt)
             if os.path.normpath(actual_dl) != os.path.normpath(synced_srt) and os.path.exists(actual_dl):
                 os.remove(actual_dl)
-            logger.info(f"ALASS concluído com sucesso para {os.path.basename(filepath)}: legenda sincronizada em {synced_srt}")
+            metrics = alignment_metrics(target_cues, aligned_cues)
+            logger.info(
+                f"MÉTODO=alass arquivo={os.path.basename(filepath)} concluído=True "
+                f"blocos={metrics['original_cues']} alterados={metrics['changed_cues']} "
+                f"delta_inicio_medio={metrics['average_start_delta']:.3f}s "
+                f"delta_inicio_max={metrics['maximum_start_delta']:.3f}s "
+                f"delta_fim_medio={metrics['average_end_delta']:.3f}s "
+                f"delta_fim_max={metrics['maximum_end_delta']:.3f}s"
+            )
             return True
+        except subprocess.CalledProcessError as e:
+            details = (e.stderr or e.stdout or "").strip().splitlines()
+            detail = details[-1] if details else "sem saída do alass"
+            logger.error(f"ALASS falhou para {os.path.basename(filepath)}: {detail}")
+            try:
+                if self._fallback_time_ratio_sync(filepath, actual_dl, ref_srt):
+                    logger.warning(f"ALASS falhou, mas fallback por escala temporal resgatou a sincronização para {os.path.basename(filepath)}")
+                    return True
+            except Exception:
+                pass
+            return False
         except Exception as e:
             logger.error(f"ALASS falhou para {os.path.basename(filepath)}: {e}")
             try:
@@ -688,7 +727,18 @@ class Pipeline:
             with open(out_path, "w", encoding="utf-8") as f:
                 f.write(new_text)
 
-            logger.warning(f"Fallback por escala temporal aplicado para {os.path.basename(filepath)} (ratio={ratio:.3f})")
+            fallback_cues = parse_srt(new_text)
+            metrics = alignment_metrics(parse_srt(sub_text), fallback_cues)
+            logger.warning(
+                f"MÉTODO=fallback_escala_temporal arquivo={os.path.basename(filepath)} "
+                f"ratio={ratio:.3f} blocos={metrics['original_cues']} "
+                f"alterados={metrics['changed_cues']} "
+                f"delta_inicio_medio={metrics['average_start_delta']:.3f}s "
+                f"delta_inicio_max={metrics['maximum_start_delta']:.3f}s "
+                f"delta_fim_medio={metrics['average_end_delta']:.3f}s "
+                f"delta_fim_max={metrics['maximum_end_delta']:.3f}s "
+                f"saida={out_path}"
+            )
             return True
         except Exception as e:
             logger.error(f"Fallback de sincronização por escala temporal falhou para {os.path.basename(filepath)}: {e}")
