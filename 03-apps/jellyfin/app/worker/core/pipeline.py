@@ -573,7 +573,7 @@ class Pipeline:
             return True
 
         logger.warning(
-            f"MÉTODO=bazarr_subsync falhou para {os.path.basename(filepath)}; "
+            f"MÉTODO=bazarr_subsync não concluído para {os.path.basename(filepath)}; "
             "acionando ALASS como fallback"
         )
         return self.align_with_alass(filepath, source_path=target_subtitle)

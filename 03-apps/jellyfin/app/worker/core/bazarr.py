@@ -31,10 +31,94 @@ BAZARR_API_KEY = os.environ.get("BAZARR_API_KEY", "")
 LANGUAGE = os.environ.get("BAZARR_LANGUAGE", "pb")
 # Tempo máximo (segundos) para aguardar o download após acionar o Bazarr
 BAZARR_WAIT_SECONDS = int(os.environ.get("BAZARR_WAIT_SECONDS", "120"))
+BAZARR_SYNC_TIMEOUT = int(os.environ.get("BAZARR_SYNC_TIMEOUT", "900"))
+BAZARR_SYNC_POLL_SECONDS = float(os.environ.get("BAZARR_SYNC_POLL_SECONDS", "3"))
+BAZARR_SYNC_DISCOVERY_SECONDS = int(os.environ.get("BAZARR_SYNC_DISCOVERY_SECONDS", "20"))
 
 
 def _headers() -> dict:
     return {"X-Api-Key": BAZARR_API_KEY, "Accept": "application/json"}
+
+
+def _list_jobs(job_id: int | None = None, status: str | None = None) -> list[dict]:
+    """Lista jobs do Bazarr, com filtro opcional por ID/status."""
+    params = {}
+    if job_id is not None:
+        params["id"] = job_id
+    if status:
+        params["status"] = status
+    try:
+        with httpx.Client(timeout=15) as client:
+            response = client.get(
+                f"{BAZARR_URL}/api/system/jobs",
+                headers=_headers(),
+                params=params,
+            )
+        if response.status_code != 200:
+            logger.warning(f"Bazarr: consulta de jobs retornou HTTP {response.status_code}")
+            return []
+        payload = response.json()
+        return payload.get("data", payload if isinstance(payload, list) else [])
+    except Exception as e:
+        logger.warning(f"Bazarr: erro ao consultar jobs: {e}")
+        return []
+
+
+def _job_matches_subtitle(job: dict, subtitle_path: str) -> bool:
+    name = str(job.get("job_name", ""))
+    return os.path.normpath(subtitle_path) in os.path.normpath(name)
+
+
+def _wait_for_sync_job(subtitle_path: str, previous_job_ids: set[int]) -> bool:
+    """Descobre e acompanha o job assíncrono criado pelo sync do Bazarr."""
+    deadline = time.monotonic() + BAZARR_SYNC_TIMEOUT
+    discovery_deadline = min(
+        deadline,
+        time.monotonic() + BAZARR_SYNC_DISCOVERY_SECONDS,
+    )
+    job_id = None
+
+    while time.monotonic() < discovery_deadline:
+        active_jobs = _list_jobs(status="pending") + _list_jobs(status="running")
+        candidates = [
+            job for job in active_jobs
+            if _job_matches_subtitle(job, subtitle_path)
+            and int(job.get("job_id", -1)) not in previous_job_ids
+        ]
+        if candidates:
+            job_id = int(candidates[-1]["job_id"])
+            logger.info(f"Bazarr: job de sync encontrado id={job_id} alvo={subtitle_path}")
+            break
+        time.sleep(BAZARR_SYNC_POLL_SECONDS)
+
+    if job_id is None:
+        logger.error(
+            f"Bazarr: sync aceito, mas job não localizado para {subtitle_path} "
+            f"em {BAZARR_SYNC_DISCOVERY_SECONDS}s"
+        )
+        return False
+
+    while time.monotonic() < deadline:
+        jobs = _list_jobs(job_id=job_id)
+        job = jobs[0] if jobs else None
+        status = (job or {}).get("status", "unknown")
+        progress = (job or {}).get("progress_value")
+        progress_max = (job or {}).get("progress_max")
+        message = (job or {}).get("progress_message", "")
+        logger.info(
+            f"Bazarr: sync job={job_id} status={status} "
+            f"progresso={progress}/{progress_max} mensagem={message}"
+        )
+        if status == "completed":
+            logger.info(f"Bazarr: sync concluído para {subtitle_path} job={job_id}")
+            return True
+        if status == "failed":
+            logger.error(f"Bazarr: sync falhou para {subtitle_path} job={job_id}")
+            return False
+        time.sleep(BAZARR_SYNC_POLL_SECONDS)
+
+    logger.error(f"Bazarr: timeout aguardando sync job={job_id} para {subtitle_path}")
+    return False
 
 
 def _subtitle_exists(filepath: str) -> bool:
@@ -229,6 +313,12 @@ def sync_subtitle(
         logger.warning(f"Bazarr: mídia não encontrada para sincronização: {media_path}")
         return False
 
+    previous_jobs = _list_jobs()
+    previous_job_ids = {
+        int(job["job_id"])
+        for job in previous_jobs
+        if str(job.get("job_id", "")).isdigit()
+    }
     form = {
         "id": str(context["id"]),
         "type": context["type"],
@@ -256,7 +346,7 @@ def sync_subtitle(
                 f"(type={context['type']} id={context['id']} "
                 f"referência={reference or 'áudio'})"
             )
-            return True
+            return _wait_for_sync_job(subtitle_path, previous_job_ids)
         logger.warning(
             f"Bazarr: sync retornou HTTP {response.status_code}: {response.text[:300]}"
         )
