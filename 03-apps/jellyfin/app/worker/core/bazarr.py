@@ -194,6 +194,44 @@ def search_and_download(filepath: str) -> bool:
     return False
 
 
+def sync_subtitle(subtitle_path: str, reference_path: str | None = None) -> bool:
+    """Solicita ao Bazarr a sincronização da legenda externa selecionada.
+
+    Quando reference_path existe, o Bazarr deve usar essa legenda como referência
+    e não a trilha de áudio. Sem referência, o Bazarr pode usar sincronização por
+    áudio conforme a configuração dele.
+    """
+    if not BAZARR_API_KEY:
+        logger.warning("Bazarr: API key ausente — não foi possível solicitar sync.")
+        return False
+    params = {
+        "action": "sync",
+        "language": LANGUAGE,
+        "path": subtitle_path,
+    }
+    if reference_path:
+        params["reference"] = reference_path
+    try:
+        with httpx.Client(timeout=BAZARR_WAIT_SECONDS + 30) as client:
+            response = client.patch(
+                f"{BAZARR_URL}/api/subtitles",
+                headers=_headers(),
+                params=params,
+            )
+        if response.status_code in (200, 201, 202, 204):
+            logger.info(
+                f"Bazarr: sync solicitado para {subtitle_path} "
+                f"(referência={'SRT embutida' if reference_path else 'áudio'})"
+            )
+            return True
+        logger.warning(
+            f"Bazarr: sync retornou HTTP {response.status_code}: {response.text[:300]}"
+        )
+    except Exception as e:
+        logger.warning(f"Bazarr: falha ao solicitar sync de {subtitle_path}: {e}")
+    return False
+
+
 def _wait_for_subtitle(filepath: str) -> bool:
     """Aguarda até BAZARR_WAIT_SECONDS para a legenda aparecer no disco."""
     logger.info(f"Bazarr: aguardando download (máx {BAZARR_WAIT_SECONDS}s)...")

@@ -399,7 +399,7 @@ class Pipeline:
 
                 if existing_srt:
                     # Sincroniza com ALASS
-                    synced = self._sync_with_alass(filepath, existing_srt, streams)
+                    synced = self.sync_subtitle(filepath, source_path=existing_srt)
                     if synced:
                         logger.info(f"✅ Legenda existente refinada perfeitamente via ALASS: {fname}")
                         self.stats.record(filepath, "success_alass_refine", model="alass")
@@ -416,7 +416,7 @@ class Pipeline:
             logger.info(f"Legenda bruta obtida via Bazarr para: {fname}")
             
             # Sincronização ALASS (Sub-to-Sub)
-            synced = self._sync_with_alass(filepath, output_srt, streams)
+            synced = self.sync_subtitle(filepath, source_path=output_srt)
             if synced:
                 logger.info(f"✅ Legenda sincronizada perfeitamente via alass: {fname}")
                 self.stats.record(filepath, "success", model="bazarr_alass")
@@ -532,6 +532,62 @@ class Pipeline:
             streams,
             reference_stream_index=stream_index,
         )
+
+    def sync_subtitle(self, filepath: str, source_path: str | None = None) -> bool:
+        """Sincroniza via Bazarr primeiro; usa ALASS somente como fallback."""
+        if not os.path.exists(filepath):
+            logger.warning(f"Sync: arquivo de mídia não existe mais: {filepath}")
+            return False
+
+        media_info = get_media_info(filepath)
+        streams = [] if not media_info else [
+            s for s in media_info.get('streams', []) if s.get('codec_type') == 'subtitle'
+        ]
+        target_subtitle = (
+            source_path if source_path and os.path.exists(source_path)
+            else find_pt_subtitle(filepath)
+        )
+        if not target_subtitle or not os.path.exists(target_subtitle):
+            logger.warning(f"Sync: legenda externa alvo não encontrada para {os.path.basename(filepath)}")
+            return False
+
+        base_stream = next(
+            (
+                s for s in streams
+                if s.get('tags', {}).get('language', '').lower() in SOURCE_LANGUAGES
+                and s.get('codec_name') in TEXT_CODECS
+            ),
+            None,
+        )
+        reference_path = None
+        if base_stream:
+            reference_path = f"{os.path.splitext(filepath)[0]}.bazarr-ref.temp.srt"
+            if not extract_subtitle(filepath, base_stream['index'], reference_path):
+                reference_path = None
+
+        logger.info(
+            f"Sync: tentando Bazarr para {os.path.basename(target_subtitle)}; "
+            f"referência={'stream embutido ' + str(base_stream.get('index')) if base_stream and reference_path else 'áudio'}"
+        )
+        try:
+            if bazarr.sync_subtitle(target_subtitle, reference_path=reference_path):
+                logger.info(
+                    f"MÉTODO=bazarr_subsync concluído=True alvo={target_subtitle} "
+                    f"referencia={reference_path or 'audio'}"
+                )
+                return True
+        finally:
+            if reference_path and os.path.exists(reference_path):
+                try:
+                    os.remove(reference_path)
+                except OSError:
+                    pass
+
+        logger.warning(
+            f"MÉTODO=bazarr_subsync falhou para {os.path.basename(filepath)}; "
+            "acionando ALASS como fallback"
+        )
+        return self.align_with_alass(filepath, source_path=target_subtitle)
 
     def _sync_with_alass(
         self,

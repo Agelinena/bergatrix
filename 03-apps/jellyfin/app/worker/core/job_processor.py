@@ -71,15 +71,14 @@ class JobProcessor:
                 else:
                     logger.warning(f"Arquivo rejeitado por falha na validação de áudio: {target_file}")
             elif job_type == "alass_align":
-                logger.info(f"Executando ALASS em {target_file}")
-                self.pipeline.align_with_alass(
+                logger.info(f"Executando sync Bazarr-first em {target_file}")
+                self.pipeline.sync_subtitle(
                     target_file,
-                    stream_index=job.get("stream_index"),
                     source_path=job.get("source_path"),
                 )
             elif job_type == "alass_batch":
-                logger.info(f"Executando ALASS em lote em {target_file}")
-                self.pipeline.align_with_alass(
+                logger.info(f"Executando sync Bazarr-first em lote em {target_file}")
+                self.pipeline.sync_subtitle(
                     target_file,
                     source_path=job.get("source_path"),
                 )

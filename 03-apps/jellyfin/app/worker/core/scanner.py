@@ -242,9 +242,9 @@ class Scanner:
             self._ignored_subtitles[output_path] = now + 15
         logger.info(
             f"Legenda portuguesa detectada: {os.path.basename(subtitle_path)}; "
-            f"agendando ALASS para {os.path.basename(media_path)}"
+            f"agendando sync Bazarr-first para {os.path.basename(media_path)}"
         )
-        self.pipeline.align_with_alass(media_path, source_path=subtitle_path)
+        self.pipeline.sync_subtitle(media_path, source_path=subtitle_path)
 
     def _run_scan(self):
         """
