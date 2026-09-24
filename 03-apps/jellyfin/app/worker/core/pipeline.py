@@ -559,29 +559,18 @@ class Pipeline:
             ),
             None,
         )
-        reference_path = None
-        if base_stream:
-            reference_path = f"{os.path.splitext(filepath)[0]}.bazarr-ref.temp.srt"
-            if not extract_subtitle(filepath, base_stream['index'], reference_path):
-                reference_path = None
+        reference = f"s:{base_stream['index']}" if base_stream else None
 
         logger.info(
             f"Sync: tentando Bazarr para {os.path.basename(target_subtitle)}; "
-            f"referência={'stream embutido ' + str(base_stream.get('index')) if base_stream and reference_path else 'áudio'}"
+            f"referência={reference or 'áudio'}"
         )
-        try:
-            if bazarr.sync_subtitle(target_subtitle, reference_path=reference_path):
-                logger.info(
-                    f"MÉTODO=bazarr_subsync concluído=True alvo={target_subtitle} "
-                    f"referencia={reference_path or 'audio'}"
-                )
-                return True
-        finally:
-            if reference_path and os.path.exists(reference_path):
-                try:
-                    os.remove(reference_path)
-                except OSError:
-                    pass
+        if bazarr.sync_subtitle(filepath, target_subtitle, reference=reference):
+            logger.info(
+                f"MÉTODO=bazarr_subsync concluído=True alvo={target_subtitle} "
+                f"referencia={reference or 'audio'}"
+            )
+            return True
 
         logger.warning(
             f"MÉTODO=bazarr_subsync falhou para {os.path.basename(filepath)}; "

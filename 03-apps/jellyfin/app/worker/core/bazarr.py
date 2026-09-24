@@ -100,6 +100,22 @@ def _find_episode(filepath: str) -> dict | None:
     return None
 
 
+def find_media_context(filepath: str) -> dict | None:
+    """Retorna tipo e ID interno necessários para a API de sincronização."""
+    movie = _find_movie(filepath)
+    if movie:
+        media_id = movie.get("radarrId") or movie.get("radarrid") or movie.get("id")
+        if media_id:
+            return {"type": "movie", "id": int(media_id), "language": LANGUAGE}
+
+    episode = _find_episode(filepath)
+    if episode:
+        media_id = episode.get("sonarrEpisodeId") or episode.get("id")
+        if media_id:
+            return {"type": "episode", "id": int(media_id), "language": LANGUAGE}
+    return None
+
+
 # ------------------------------------------------------------------ #
 # Trigger: aciona o download automático (PATCH .../subtitles)        #
 # ------------------------------------------------------------------ #
@@ -194,34 +210,51 @@ def search_and_download(filepath: str) -> bool:
     return False
 
 
-def sync_subtitle(subtitle_path: str, reference_path: str | None = None) -> bool:
+def sync_subtitle(
+    media_path: str,
+    subtitle_path: str,
+    reference: str | None = None,
+) -> bool:
     """Solicita ao Bazarr a sincronização da legenda externa selecionada.
 
-    Quando reference_path existe, o Bazarr deve usar essa legenda como referência
-    e não a trilha de áudio. Sem referência, o Bazarr pode usar sincronização por
-    áudio conforme a configuração dele.
+    Quando reference é ``s:<index>``, o Bazarr usa uma legenda embutida como
+    referência e não a trilha de áudio. Sem referência, o Bazarr pode usar
+    sincronização por áudio conforme a configuração dele.
     """
     if not BAZARR_API_KEY:
         logger.warning("Bazarr: API key ausente — não foi possível solicitar sync.")
         return False
-    params = {
-        "action": "sync",
-        "language": LANGUAGE,
+    context = find_media_context(media_path)
+    if not context:
+        logger.warning(f"Bazarr: mídia não encontrada para sincronização: {media_path}")
+        return False
+
+    form = {
+        "id": str(context["id"]),
+        "type": context["type"],
+        "language": context["language"],
         "path": subtitle_path,
+        "hi": "False",
+        "forced": "False",
+        "max_offset_seconds": "60",
+        "no_fix_framerate": "False",
+        "gss": "False",
     }
-    if reference_path:
-        params["reference"] = reference_path
+    if reference:
+        form["reference"] = reference
     try:
         with httpx.Client(timeout=BAZARR_WAIT_SECONDS + 30) as client:
             response = client.patch(
                 f"{BAZARR_URL}/api/subtitles",
                 headers=_headers(),
-                params=params,
+                params={"action": "sync"},
+                data=form,
             )
         if response.status_code in (200, 201, 202, 204):
             logger.info(
                 f"Bazarr: sync solicitado para {subtitle_path} "
-                f"(referência={'SRT embutida' if reference_path else 'áudio'})"
+                f"(type={context['type']} id={context['id']} "
+                f"referência={reference or 'áudio'})"
             )
             return True
         logger.warning(
