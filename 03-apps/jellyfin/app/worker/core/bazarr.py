@@ -32,7 +32,7 @@ LANGUAGE = os.environ.get("BAZARR_LANGUAGE", "pb")
 # Tempo máximo (segundos) para aguardar o download após acionar o Bazarr
 BAZARR_WAIT_SECONDS = int(os.environ.get("BAZARR_WAIT_SECONDS", "120"))
 BAZARR_SYNC_TIMEOUT = int(os.environ.get("BAZARR_SYNC_TIMEOUT", "900"))
-BAZARR_SYNC_POLL_SECONDS = float(os.environ.get("BAZARR_SYNC_POLL_SECONDS", "3"))
+BAZARR_SYNC_POLL_SECONDS = float(os.environ.get("BAZARR_SYNC_POLL_SECONDS", "10"))
 BAZARR_SYNC_DISCOVERY_SECONDS = int(os.environ.get("BAZARR_SYNC_DISCOVERY_SECONDS", "20"))
 
 
