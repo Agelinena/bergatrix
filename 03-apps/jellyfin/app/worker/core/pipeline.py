@@ -1,10 +1,12 @@
 import os
 import json
+import re
 import logging
 from .utils import get_media_info, extract_subtitle, find_pt_subtitle
 from .translator import Translator
 from .translation_stats import TranslationStats
 from .translation_queue import TranslationQueue
+from .subtitle_sync import align_by_ordinal_map, parse_srt, render_srt
 from . import bazarr
 from . import arr
 
@@ -513,9 +515,20 @@ class Pipeline:
                 if not os.path.exists(target_subtitle):
                     target_subtitle = f"{os.path.splitext(filepath)[0]}.por.srt"
 
-        return self._sync_with_alass(filepath, target_subtitle, streams)
+        return self._sync_with_alass(
+            filepath,
+            target_subtitle,
+            streams,
+            reference_stream_index=stream_index,
+        )
 
-    def _sync_with_alass(self, filepath: str, downloaded_srt: str, streams: list) -> bool:
+    def _sync_with_alass(
+        self,
+        filepath: str,
+        downloaded_srt: str,
+        streams: list,
+        reference_stream_index: int | None = None,
+    ) -> bool:
         """Extrai legenda embutida original e sincroniza a legenda do Bazarr via alass."""
         import subprocess
 
@@ -525,7 +538,23 @@ class Pipeline:
             logger.warning(f"ALASS: nenhuma legenda alvo encontrada para {os.path.basename(filepath)}")
             return False
 
-        base_stream = next((s for s in streams if s.get('tags', {}).get('language', '').lower() in SOURCE_LANGUAGES and s.get('codec_name') in TEXT_CODECS), None)
+        base_stream = None
+        if reference_stream_index is not None:
+            base_stream = next(
+                (s for s in streams if s.get('index') == reference_stream_index),
+                None,
+            )
+            if base_stream and base_stream.get('codec_name') not in TEXT_CODECS:
+                base_stream = None
+        if base_stream is None:
+            base_stream = next(
+                (
+                    s for s in streams
+                    if s.get('tags', {}).get('language', '').lower() in SOURCE_LANGUAGES
+                    and s.get('codec_name') in TEXT_CODECS
+                ),
+                None,
+            )
 
         if not base_stream:
             logger.info("ALASS: sem legenda de texto embutida como base — mantendo a legenda sem realinhar.")
@@ -539,6 +568,26 @@ class Pipeline:
         try:
             if not extract_subtitle(filepath, base_stream['index'], ref_srt):
                 return False
+
+            with open(ref_srt, "r", encoding="utf-8", errors="ignore") as reference_file:
+                reference_cues = parse_srt(reference_file.read())
+            with open(actual_dl, "r", encoding="utf-8", errors="ignore") as target_file:
+                target_cues = parse_srt(target_file.read())
+
+            # Quando as contagens divergem muito, o ALASS pode casar falas
+            # incorretamente. O mapa ordinal preserva o texto da tradução e
+            # corrige o relógio por trechos, sem exigir correspondência textual.
+            count_ratio = max(len(reference_cues), len(target_cues)) / max(1, min(len(reference_cues), len(target_cues)))
+            if reference_cues and target_cues and count_ratio >= 1.20:
+                mapped_cues = align_by_ordinal_map(reference_cues, target_cues)
+                if mapped_cues:
+                    with open(synced_srt, "w", encoding="utf-8") as output_file:
+                        output_file.write(render_srt(mapped_cues))
+                    logger.info(
+                        f"Mapa temporal por blocos concluído para {os.path.basename(filepath)}: "
+                        f"{len(target_cues)} -> {len(reference_cues)} blocos de referência"
+                    )
+                    return True
 
             # Escreve em temp para não ler/escrever o mesmo .por.srt in-place
             subprocess.run(['alass', ref_srt, actual_dl, tmp_out], check=True, capture_output=True)
