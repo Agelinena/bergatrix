@@ -63,8 +63,25 @@
                     <p class="text-xs mt-1 text-gray-500">Você pode traduzir mesmo assim (auto-detect).</p>
                 </div>
 
+                <div x-show="!loading && mode === 'alass'" class="space-y-2">
+                    <p class="text-xs text-gray-400 mb-3">Escolha a legenda portuguesa externa que será sincronizada:</p>
+                    <div x-show="externalSubtitles.length === 0" class="text-sm text-amber-300 py-4">
+                        Nenhuma legenda externa PT/PT-BR/PB encontrada.
+                    </div>
+                    <template x-for="sub in externalSubtitles" :key="sub.path">
+                        <label class="flex items-center space-x-3 p-3 rounded-lg border cursor-pointer transition"
+                               :class="selectedPath === sub.path ? 'border-amber-500 bg-amber-900/20' : 'border-gray-700 hover:border-amber-500'">
+                            <input type="radio" name="external-subtitle" :checked="selectedPath === sub.path" @change="selectedPath = sub.path" class="accent-amber-500">
+                            <div class="min-w-0">
+                                <p class="text-sm font-medium text-white truncate" x-text="sub.filename"></p>
+                                <p class="text-xs text-gray-500" x-text="sub.label"></p>
+                            </div>
+                        </label>
+                    </template>
+                </div>
+
                 <!-- Lista de streams -->
-                <div x-show="!loading" class="space-y-2">
+                <div x-show="!loading && mode === 'translate'" class="space-y-2">
                     <!-- Opção Auto -->
                     <label class="flex items-center space-x-3 p-3 rounded-lg border cursor-pointer transition"
                            :class="selectedIndex === null ? 'border-purple-500 bg-purple-900/20' : 'border-gray-700 hover:border-purple-500'">
@@ -96,7 +113,7 @@
             <!-- Rodapé -->
             <div class="p-6 border-t border-gray-700 flex flex-col space-y-3">
                 <!-- Linha Bazarr -->
-                <div class="flex items-center justify-between">
+                <div x-show="mode === 'translate'" class="flex items-center justify-between">
                     <span class="text-xs text-gray-500">Tentar primeiro o Bazarr (legendas prontas):</span>
                     <button @click="bazarSearch()" :disabled="bazarLoading || submitting"
                             class="px-4 py-1.5 rounded-lg bg-blue-700 hover:bg-blue-600 disabled:opacity-50 text-sm font-medium transition flex items-center space-x-2">
@@ -120,7 +137,7 @@
                     <button @click="close()" class="px-4 py-2 rounded-lg bg-gray-700 hover:bg-gray-600 text-sm transition">
                         Cancelar
                     </button>
-                    <button @click="submitAction()" :disabled="submitting"
+                    <button @click="submitAction()" :disabled="submitting || (mode === 'alass' && !selectedPath)"
                             class="px-5 py-2 rounded-lg bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-sm font-medium transition flex items-center space-x-2">
                         <svg x-show="!submitting" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
@@ -454,7 +471,9 @@
                 filepath: '',
                 filename: '',
                 subtitles: [],
+                externalSubtitles: [],
                 selectedIndex: null,
+                selectedPath: null,
                 mode: 'translate',
 
                 openFor(filepath, filename, mode = 'translate') {
@@ -462,10 +481,13 @@
                     this.filename = filename;
                     this.mode = mode;
                     this.subtitles = [];
+                    this.externalSubtitles = [];
                     this.selectedIndex = null;
+                    this.selectedPath = null;
                     this.bazarResult = null;
                     this.open = true;
                     this.fetchSubtitles(filepath);
+                    if (mode === 'alass') this.fetchExternalSubtitles(filepath);
                 },
 
                 async fetchSubtitles(filepath) {
@@ -480,6 +502,24 @@
                         }
                     } catch (e) {
                         console.error('Erro de rede ao buscar legendas:', e);
+                    } finally {
+                        this.loading = false;
+                    }
+                },
+
+                async fetchExternalSubtitles(filepath) {
+                    this.loading = true;
+                    try {
+                        const resp = await fetch('/api/external-subtitles?filepath=' + encodeURIComponent(filepath));
+                        if (resp.ok) {
+                            const data = await resp.json();
+                            this.externalSubtitles = data.subtitles || [];
+                            if (this.externalSubtitles.length === 1) {
+                                this.selectedPath = this.externalSubtitles[0].path;
+                            }
+                        }
+                    } catch (e) {
+                        console.error('Erro ao buscar legendas externas:', e);
                     } finally {
                         this.loading = false;
                     }
@@ -506,7 +546,9 @@
                     this.filepath = '';
                     this.filename = '';
                     this.subtitles = [];
+                    this.externalSubtitles = [];
                     this.selectedIndex = null;
+                    this.selectedPath = null;
                     this.bazarResult = null;
                     this.mode = 'translate';
                     this.submitting = false;
@@ -531,9 +573,11 @@
                             console.error('Erro ao iniciar tradução:', e);
                         }
                     } else {
-                        if (this.selectedIndex !== null) {
-                            formData.append('stream_index', String(this.selectedIndex));
+                        if (!this.selectedPath) {
+                            this.submitting = false;
+                            return;
                         }
+                        formData.append('source_path', this.selectedPath);
                         try {
                             const resp = await fetch('/api/alass-align', { method: 'POST', body: formData });
                             const data = await resp.json();

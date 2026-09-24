@@ -70,7 +70,7 @@ def _interpolate(value: float, points: list[tuple[float, float]]) -> float:
 
 
 def build_ordinal_time_map(reference: list[Cue], target: list[Cue]) -> list[tuple[float, float]]:
-    """Build a monotonic piecewise map using cue order and timeline endpoints."""
+    """Build a monotonic map using several robust cue-density anchors."""
     if not reference or not target:
         return []
     reference_end = max(cue.end for cue in reference)
@@ -79,11 +79,14 @@ def build_ordinal_time_map(reference: list[Cue], target: list[Cue]) -> list[tupl
         return []
 
     points = [(0.0, 0.0)]
-    for index, cue in enumerate(target):
-        position = index / max(1, len(target) - 1)
+    anchor_count = min(25, max(7, min(len(reference), len(target)) // 40))
+    for anchor in range(1, anchor_count):
+        position = anchor / anchor_count
+        target_index = round(position * (len(target) - 1))
         reference_index = round(position * (len(reference) - 1))
+        target_cue = target[target_index]
         reference_cue = reference[reference_index]
-        target_center = (cue.start + cue.end) / 2
+        target_center = (target_cue.start + target_cue.end) / 2
         reference_center = (reference_cue.start + reference_cue.end) / 2
         points.append((target_center, reference_center))
     points.append((target_end, reference_end))
@@ -131,3 +134,23 @@ def alignment_metrics(original: list[Cue], aligned: list[Cue]) -> dict:
         "average_end_delta": sum(end_deltas) / len(end_deltas) if end_deltas else 0.0,
         "maximum_end_delta": max(end_deltas, default=0.0),
     }
+
+
+def alignment_confidence(reference: list[Cue], target: list[Cue], aligned: list[Cue]) -> float:
+    """Estimate confidence without pretending to understand translated text."""
+    if not reference or not target or len(target) != len(aligned):
+        return 0.0
+    count_ratio = max(len(reference), len(target)) / max(1, min(len(reference), len(target)))
+    reference_end = max(cue.end for cue in reference)
+    target_end = max(cue.end for cue in target)
+    if reference_end <= 0 or target_end <= 0:
+        return 0.0
+    duration_ratio = max(reference_end, target_end) / min(reference_end, target_end)
+    count_score = max(0.0, 1.0 - abs(count_ratio - 1.0) / 2.0)
+    duration_score = max(0.0, 1.0 - abs(duration_ratio - 1.0) / 0.25)
+    monotonic_score = 1.0
+    for previous, current in zip(aligned, aligned[1:]):
+        if current.start < previous.start or current.end < previous.end:
+            monotonic_score = 0.0
+            break
+    return round((count_score * 0.35) + (duration_score * 0.35) + (monotonic_score * 0.30), 3)

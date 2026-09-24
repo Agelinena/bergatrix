@@ -76,6 +76,31 @@ def has_any_subtitle_file(filepath: str) -> bool:
     return False
 
 
+def list_external_pt_subtitles(filepath: str) -> list[dict]:
+    """Lista legendas externas portuguesas associadas à mídia."""
+    base_name = os.path.basename(os.path.splitext(filepath)[0]).lower()
+    directory = os.path.dirname(filepath)
+    result = []
+    if not os.path.isdir(directory):
+        return result
+    try:
+        for filename in sorted(os.listdir(directory)):
+            lower = filename.lower()
+            if not lower.startswith(base_name + ".") or not lower.endswith((".srt", ".ass", ".ssa", ".vtt")):
+                continue
+            if ".ai." in lower or ".fallback-alass." in lower or ".pre-sync" in lower:
+                continue
+            suffix = lower[len(base_name):]
+            tokens = suffix.rsplit(".", 1)[0].strip(".").split(".")
+            if not any(token in PT_LANG_TOKENS for token in tokens):
+                continue
+            path = os.path.join(directory, filename)
+            result.append({"path": path, "filename": filename, "label": suffix.strip(".")})
+    except OSError:
+        pass
+    return result
+
+
 def has_embedded_subtitle_stream(filepath: str) -> bool:
     """Detecta stream de legenda embutida no vídeo."""
     try:
@@ -340,6 +365,16 @@ async def get_subtitles(filepath: str = Query(...)):
     return JSONResponse(content={"subtitles": subtitles})
 
 
+@app.get("/api/external-subtitles")
+async def get_external_subtitles(filepath: str = Query(...)):
+    """Retorna apenas legendas externas PT/PT-BR/PB para alinhamento manual."""
+    if not filepath.startswith(MEDIA_ROOT):
+        raise HTTPException(status_code=403, detail="Acesso negado")
+    if not os.path.exists(filepath):
+        raise HTTPException(status_code=404, detail="Arquivo não encontrado")
+    return JSONResponse(content={"subtitles": list_external_pt_subtitles(filepath)})
+
+
 @app.get("/api/translation-stats")
 async def translation_stats():
     """Retorna histórico e resumo de traduções."""
@@ -451,11 +486,20 @@ async def trigger_alass_batch(request: Request):
 
     created = []
     for filepath in valid:
+        candidates = list_external_pt_subtitles(filepath)
+        if not candidates:
+            continue
         job_id = str(uuid.uuid4())
-        job = {"id": job_id, "type": "alass_batch", "filepath": filepath, "status": "pending"}
+        job = {
+            "id": job_id,
+            "type": "alass_batch",
+            "filepath": filepath,
+            "source_path": candidates[0]["path"],
+            "status": "pending",
+        }
         with open(os.path.join(JOBS_DIR, f"{job_id}.json"), "w") as f:
             json.dump(job, f)
-        created.append(filepath)
+        created.append(candidates[0]["path"])
 
     return JSONResponse(content={
         "status": "ok",
@@ -475,6 +519,11 @@ async def trigger_alass_align(
         raise HTTPException(status_code=403, detail="Acesso negado")
     if not os.path.exists(filepath):
         raise HTTPException(status_code=404, detail="Arquivo não encontrado")
+    if source_path:
+        if not source_path.startswith(MEDIA_ROOT) or not os.path.exists(source_path):
+            raise HTTPException(status_code=404, detail="Legenda externa não encontrada")
+        if source_path not in {item["path"] for item in list_external_pt_subtitles(filepath)}:
+            raise HTTPException(status_code=400, detail="Legenda não é PT/PT-BR/PB associada ao arquivo")
 
     job_id = str(uuid.uuid4())
     job: dict = {

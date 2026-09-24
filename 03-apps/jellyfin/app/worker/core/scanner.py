@@ -2,7 +2,10 @@ import time
 import logging
 import os
 import json
+import threading
 from datetime import datetime
+from watchdog.observers import Observer
+from watchdog.events import FileSystemEventHandler
 from .utils import has_pt_subtitle, find_pt_subtitle, subtitle_last_timestamp, media_duration
 
 logger = logging.getLogger(__name__)
@@ -24,11 +27,76 @@ AUDIO_VERIFIED_FILE = "/app/stats/audio_verified.json"
 # (ex.: tradução por IA interrompida por cota) → apagada e refeita do zero.
 SUBTITLE_VERIFIED_FILE = "/app/stats/subtitle_verified.json"
 SUBTITLE_MIN_COVERAGE = float(os.environ.get("SUBTITLE_MIN_COVERAGE", "0.85"))
+SUBTITLE_WATCH_DEBOUNCE = float(os.environ.get("SUBTITLE_WATCH_DEBOUNCE", "3"))
+PT_SUBTITLE_TOKENS = {"pt", "pt-br", "pt_br", "ptbr", "por", "pb", "pob", "bra", "portuguese"}
 
 
 def _has_subtitle(filepath: str) -> bool:
     """Verifica se o arquivo já tem legenda PT-BR externa (case-insensitive, inclui .hi/.sdh/.forced)."""
     return has_pt_subtitle(filepath)
+
+
+def _is_generated_subtitle(filename: str) -> bool:
+    lower = filename.lower()
+    return any(token in lower for token in (".ai.", ".fallback-alass.", ".ref.temp.", ".synced.temp.", ".src.temp.", ".pre-sync"))
+
+
+def _is_pt_subtitle_path(path: str) -> bool:
+    filename = os.path.basename(path)
+    if _is_generated_subtitle(filename) or not filename.lower().endswith((".srt", ".ass", ".ssa", ".vtt")):
+        return False
+    stem = os.path.splitext(filename)[0].lower()
+    tokens = stem.split(".")
+    return any(token in PT_SUBTITLE_TOKENS for token in tokens)
+
+
+def _subtitle_media_path(subtitle_path: str) -> str | None:
+    """Find the media file associated with an external subtitle in the same directory."""
+    if not _is_pt_subtitle_path(subtitle_path):
+        return None
+    directory = os.path.dirname(subtitle_path)
+    subtitle_stem = os.path.splitext(os.path.basename(subtitle_path))[0].lower()
+    for filename in os.listdir(directory):
+        if not filename.lower().endswith(MEDIA_EXTENSIONS):
+            continue
+        media_stem = os.path.splitext(filename)[0]
+        if subtitle_stem.startswith(media_stem.lower() + "."):
+            return os.path.join(directory, filename)
+    return None
+
+
+class _SubtitleEventHandler(FileSystemEventHandler):
+    def __init__(self, scanner):
+        self.scanner = scanner
+        self._timers = {}
+        self._lock = threading.Lock()
+
+    def on_created(self, event):
+        self._schedule(event)
+
+    def on_moved(self, event):
+        self._schedule(event)
+
+    def on_modified(self, event):
+        self._schedule(event)
+
+    def _schedule(self, event):
+        if event.is_directory or not _is_pt_subtitle_path(event.src_path):
+            return
+        with self._lock:
+            previous = self._timers.pop(event.src_path, None)
+            if previous:
+                previous.cancel()
+            timer = threading.Timer(SUBTITLE_WATCH_DEBOUNCE, self._process, args=(event.src_path,))
+            timer.daemon = True
+            self._timers[event.src_path] = timer
+            timer.start()
+
+    def _process(self, subtitle_path):
+        with self._lock:
+            self._timers.pop(subtitle_path, None)
+        if os.path.exists(subtitle_path):
+            self.scanner._handle_external_subtitle(subtitle_path)
 
 
 def _parse_timestamp(value) -> float:
@@ -150,6 +218,31 @@ class Scanner:
     def __init__(self, pipeline, watch_dirs: list[str]):
         self.pipeline = pipeline
         self.watch_dirs = watch_dirs
+        self.subtitle_observer = Observer()
+        self.subtitle_handler = _SubtitleEventHandler(self)
+        self._ignored_subtitles = {}
+        self._ignored_subtitles_lock = threading.Lock()
+
+    def _handle_external_subtitle(self, subtitle_path: str):
+        now = time.time()
+        with self._ignored_subtitles_lock:
+            ignored_until = self._ignored_subtitles.get(subtitle_path, 0)
+            if ignored_until > now:
+                return
+            self._ignored_subtitles.pop(subtitle_path, None)
+        media_path = _subtitle_media_path(subtitle_path)
+        if not media_path or not os.path.exists(media_path):
+            logger.debug(f"Legenda ignorada: mídia associada não encontrada para {subtitle_path}")
+            return
+        output_path = f"{os.path.splitext(media_path)[0]}.por.srt"
+        with self._ignored_subtitles_lock:
+            self._ignored_subtitles[subtitle_path] = now + 15
+            self._ignored_subtitles[output_path] = now + 15
+        logger.info(
+            f"Legenda portuguesa detectada: {os.path.basename(subtitle_path)}; "
+            f"agendando ALASS para {os.path.basename(media_path)}"
+        )
+        self.pipeline.align_with_alass(media_path, source_path=subtitle_path)
 
     def _run_scan(self):
         """
@@ -357,9 +450,12 @@ class Scanner:
             self._run_scan()
 
     def start(self):
-        # Sem watchdog de tempo real: arquivos novos são tratados pelo WEBHOOK do Arr
-        # (que valida áudio/duração/tag ANTES de mexer na legenda) e a varredura periódica
-        # cobre o restante. Isso elimina a corrida em que o watchdog traduzia, em paralelo,
-        # um arquivo que o webhook estava validando/rejeitando.
+        for watch_dir in self.watch_dirs:
+            if os.path.isdir(watch_dir):
+                self.subtitle_observer.schedule(self.subtitle_handler, watch_dir, recursive=True)
+        self.subtitle_observer.start()
+        logger.info(
+            f"Watchdog de legendas ativo para PT/PT-BR/PB; debounce={SUBTITLE_WATCH_DEBOUNCE}s."
+        )
         logger.info(f"Varredura periódica a cada {PERIODIC_SCAN_INTERVAL}s ({PERIODIC_SCAN_INTERVAL // 60} min).")
         self._periodic_scan()  # bloqueia (loop infinito)

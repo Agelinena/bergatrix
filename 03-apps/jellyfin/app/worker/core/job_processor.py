@@ -79,7 +79,10 @@ class JobProcessor:
                 )
             elif job_type == "alass_batch":
                 logger.info(f"Executando ALASS em lote em {target_file}")
-                self.pipeline.align_with_alass(target_file)
+                self.pipeline.align_with_alass(
+                    target_file,
+                    source_path=job.get("source_path"),
+                )
             elif job_type == "scan":
                 logger.info("Executando varredura manual da biblioteca...")
                 from core.scanner import _has_subtitle, MEDIA_EXTENSIONS

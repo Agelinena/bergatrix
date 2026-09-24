@@ -6,7 +6,13 @@ from .utils import get_media_info, extract_subtitle, find_pt_subtitle
 from .translator import Translator
 from .translation_stats import TranslationStats
 from .translation_queue import TranslationQueue
-from .subtitle_sync import alignment_metrics, align_by_ordinal_map, parse_srt, render_srt
+from .subtitle_sync import (
+    alignment_confidence,
+    alignment_metrics,
+    align_by_ordinal_map,
+    parse_srt,
+    render_srt,
+)
 from . import bazarr
 from . import arr
 
@@ -560,6 +566,12 @@ class Pipeline:
             logger.info("ALASS: sem legenda de texto embutida como base — mantendo a legenda sem realinhar.")
             return False
 
+        logger.info(
+            f"ALASS: alvo externo={actual_dl}; referência stream={base_stream.get('index')} "
+            f"lang={base_stream.get('tags', {}).get('language', 'unknown')} "
+            f"titulo={base_stream.get('tags', {}).get('title', '')}"
+        )
+
         base_path = os.path.splitext(filepath)[0]
         ref_srt = f"{base_path}.ref.temp.srt"
         synced_srt = f"{base_path}.por.srt"
@@ -589,18 +601,33 @@ class Pipeline:
             if reference_cues and target_cues and count_ratio >= 1.20:
                 mapped_cues = align_by_ordinal_map(reference_cues, target_cues)
                 if mapped_cues:
-                    with open(synced_srt, "w", encoding="utf-8") as output_file:
-                        output_file.write(render_srt(mapped_cues))
-                    metrics = alignment_metrics(target_cues, mapped_cues)
-                    logger.info(
-                        f"MÉTODO=mapa_temporal_blocos arquivo={os.path.basename(filepath)} "
-                        f"blocos={metrics['original_cues']} alterados={metrics['changed_cues']} "
-                        f"delta_inicio_medio={metrics['average_start_delta']:.3f}s "
-                        f"delta_inicio_max={metrics['maximum_start_delta']:.3f}s "
-                        f"delta_fim_medio={metrics['average_end_delta']:.3f}s "
-                        f"delta_fim_max={metrics['maximum_end_delta']:.3f}s"
-                    )
-                    return True
+                    confidence = alignment_confidence(reference_cues, target_cues, mapped_cues)
+                    if confidence < 0.45:
+                        logger.warning(
+                            f"MÉTODO=mapa_temporal_blocos rejeitado para {os.path.basename(filepath)}: "
+                            f"confianca={confidence:.3f} (<0.45); legenda original preservada"
+                        )
+                    else:
+                        backup_path = "nenhum"
+                        if os.path.exists(synced_srt):
+                            backup_path = f"{synced_srt}.pre-sync"
+                            with open(actual_dl, "r", encoding="utf-8", errors="ignore") as source_file:
+                                with open(backup_path, "w", encoding="utf-8") as backup_file:
+                                    backup_file.write(source_file.read())
+                        with open(synced_srt, "w", encoding="utf-8") as output_file:
+                            output_file.write(render_srt(mapped_cues))
+                        metrics = alignment_metrics(target_cues, mapped_cues)
+                        logger.info(
+                            f"MÉTODO=mapa_temporal_blocos arquivo={os.path.basename(filepath)} "
+                            f"confianca={confidence:.3f} blocos={metrics['original_cues']} "
+                            f"alterados={metrics['changed_cues']} "
+                            f"delta_inicio_medio={metrics['average_start_delta']:.3f}s "
+                            f"delta_inicio_max={metrics['maximum_start_delta']:.3f}s "
+                            f"delta_fim_medio={metrics['average_end_delta']:.3f}s "
+                            f"delta_fim_max={metrics['maximum_end_delta']:.3f}s "
+                            f"backup={backup_path}"
+                        )
+                        return True
 
             # Escreve em temp para não ler/escrever o mesmo .por.srt in-place
             alass_result = subprocess.run(
