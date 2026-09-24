@@ -38,7 +38,9 @@ def _has_subtitle(filepath: str) -> bool:
 
 def _is_generated_subtitle(filename: str) -> bool:
     lower = filename.lower()
-    return any(token in lower for token in (".ai.", ".fallback-alass.", ".ref.temp.", ".synced.temp.", ".src.temp.", ".pre-sync"))
+    return (
+        any(token in lower for token in (".ai.", ".fallback-alass.", ".ref.temp.", ".synced.temp.", ".src.temp.", ".pre-sync"))
+    )
 
 
 def _is_pt_subtitle_path(path: str) -> bool:

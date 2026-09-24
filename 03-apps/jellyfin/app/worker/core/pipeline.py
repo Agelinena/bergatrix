@@ -42,6 +42,11 @@ MIN_DURATION_RATIO = int(os.environ.get("MIN_DURATION_PERCENT", "80")) / 100.0
 # do Bazarr NÃO recebem o rótulo. Evite "IA": colide com o idioma Interlingua (código 'ia');
 # "AI" é seguro. Deixe vazio para desativar o rótulo (volta a salvar como .por.srt).
 AI_SUBTITLE_LABEL = os.environ.get("AI_SUBTITLE_LABEL", "AI").strip()
+# Limites de segurança para o mapa temporal. Confiança estrutural sozinha não
+# garante sincronização: uma legenda pode ter blocos na mesma ordem, mas estar
+# deslocada dezenas de segundos.
+ALIGNMENT_MAX_AVERAGE_DELTA = float(os.environ.get("ALIGNMENT_MAX_AVERAGE_DELTA", "8"))
+ALIGNMENT_MAX_DELTA = float(os.environ.get("ALIGNMENT_MAX_DELTA", "60"))
 
 # Nome do idioma (originalLanguage do Radarr/Sonarr) → códigos aceitos nas tags de áudio (ffprobe).
 # Cobre variantes ISO-639-2 B/T e alpha-2. Idiomas fora do mapa → validação é pulada (seguro).
@@ -539,7 +544,7 @@ class Pipeline:
         import subprocess
 
         # Pega a legenda alvo real; se for passado um arquivo externo, usa ele; senão tenta localizar a PT externa
-        actual_dl = downloaded_srt or find_pt_subtitle(filepath)
+        actual_dl = downloaded_srt if downloaded_srt and os.path.exists(downloaded_srt) else find_pt_subtitle(filepath)
         if not actual_dl or not os.path.exists(actual_dl):
             logger.warning(f"ALASS: nenhuma legenda alvo encontrada para {os.path.basename(filepath)}")
             return False
@@ -574,7 +579,7 @@ class Pipeline:
 
         base_path = os.path.splitext(filepath)[0]
         ref_srt = f"{base_path}.ref.temp.srt"
-        synced_srt = f"{base_path}.por.srt"
+        synced_srt = actual_dl
         tmp_out = f"{base_path}.synced.temp.srt"
 
         try:
@@ -602,21 +607,30 @@ class Pipeline:
                 mapped_cues = align_by_ordinal_map(reference_cues, target_cues)
                 if mapped_cues:
                     confidence = alignment_confidence(reference_cues, target_cues, mapped_cues)
-                    if confidence < 0.45:
+                    metrics = alignment_metrics(target_cues, mapped_cues)
+                    unsafe_delta = (
+                        metrics["average_start_delta"] > ALIGNMENT_MAX_AVERAGE_DELTA
+                        or metrics["average_end_delta"] > ALIGNMENT_MAX_AVERAGE_DELTA
+                        or metrics["maximum_start_delta"] > ALIGNMENT_MAX_DELTA
+                        or metrics["maximum_end_delta"] > ALIGNMENT_MAX_DELTA
+                    )
+                    if confidence < 0.45 or unsafe_delta:
                         logger.warning(
                             f"MÉTODO=mapa_temporal_blocos rejeitado para {os.path.basename(filepath)}: "
-                            f"confianca={confidence:.3f} (<0.45); legenda original preservada"
+                            f"confianca={confidence:.3f} "
+                            f"delta_medio={max(metrics['average_start_delta'], metrics['average_end_delta']):.3f}s "
+                            f"delta_max={max(metrics['maximum_start_delta'], metrics['maximum_end_delta']):.3f}s; "
+                            f"legenda original preservada"
                         )
                     else:
                         backup_path = "nenhum"
                         if os.path.exists(synced_srt):
                             backup_path = f"{synced_srt}.pre-sync"
-                            with open(actual_dl, "r", encoding="utf-8", errors="ignore") as source_file:
+                            with open(synced_srt, "r", encoding="utf-8", errors="ignore") as source_file:
                                 with open(backup_path, "w", encoding="utf-8") as backup_file:
                                     backup_file.write(source_file.read())
                         with open(synced_srt, "w", encoding="utf-8") as output_file:
                             output_file.write(render_srt(mapped_cues))
-                        metrics = alignment_metrics(target_cues, mapped_cues)
                         logger.info(
                             f"MÉTODO=mapa_temporal_blocos arquivo={os.path.basename(filepath)} "
                             f"confianca={confidence:.3f} blocos={metrics['original_cues']} "
@@ -646,9 +660,6 @@ class Pipeline:
             os.replace(tmp_out, synced_srt)  # substitui atomicamente
             with open(synced_srt, "r", encoding="utf-8", errors="ignore") as aligned_file:
                 aligned_cues = parse_srt(aligned_file.read())
-            # Remove a legenda original se tiver nome diferente do destino (.por.srt)
-            if os.path.normpath(actual_dl) != os.path.normpath(synced_srt) and os.path.exists(actual_dl):
-                os.remove(actual_dl)
             metrics = alignment_metrics(target_cues, aligned_cues)
             logger.info(
                 f"MÉTODO=alass arquivo={os.path.basename(filepath)} concluído=True "
@@ -750,7 +761,11 @@ class Pipeline:
                 repl = shift_ts(raw, ratio)
                 new_text = new_text.replace(raw, repl, 1)
 
-            out_path = f"{os.path.splitext(filepath)[0]}.fallback-alass.srt"
+            backup_path = f"{subtitle_path}.pre-sync"
+            with open(subtitle_path, "r", encoding="utf-8", errors="ignore") as source_file:
+                with open(backup_path, "w", encoding="utf-8") as backup_file:
+                    backup_file.write(source_file.read())
+            out_path = subtitle_path
             with open(out_path, "w", encoding="utf-8") as f:
                 f.write(new_text)
 
@@ -764,7 +779,7 @@ class Pipeline:
                 f"delta_inicio_max={metrics['maximum_start_delta']:.3f}s "
                 f"delta_fim_medio={metrics['average_end_delta']:.3f}s "
                 f"delta_fim_max={metrics['maximum_end_delta']:.3f}s "
-                f"saida={out_path}"
+                f"saida={out_path} backup={backup_path}"
             )
             return True
         except Exception as e:
