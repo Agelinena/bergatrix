@@ -18,7 +18,7 @@ A Bergatrix é um **monorepo de homelab self-hosted** organizado por **camadas n
 | **00** | `infrastructure` | Base de dados/admin | `networks` (runbook de redes), `cloudbeaver` (console DB) |
 | **01** | `network` | Ingress e TLS | `traefik` (reverse proxy central) |
 | **02** | `security` | Identidade e segredos | `authentik` (SSO/IdP), `bitwarden` (Vaultwarden) |
-| **03** | `apps` | Aplicações | 11 stacks (mídia, IA, automação, RSS, streaming, utilidades) |
+| **03** | `apps` | Aplicações | 12 stacks (mídia, IA, automação, casa inteligente, RSS, streaming, utilidades) |
 | **04** | `monitoring` | Observabilidade de segurança | `wazuh` (SIEM/XDR) |
 
 A numeração reflete a dependência real: **as redes e o Traefik (01) precisam existir antes** das apps (03); o **Authentik (02)** expõe o middleware `authentik@docker` consumido por serviços de outras camadas (cloudbeaver em 00, wazuh em 04).
@@ -37,6 +37,7 @@ A numeração reflete a dependência real: **as redes e o Traefik (01) precisam 
 | **berga-news** | 03 | Agregador RSS com digest por IA (PWA) | 🔒 `news.` | [stacks/berga-news.md](stacks/berga-news.md) |
 | **bergastream** | 03 | Streaming de música (substituto do Spotify) | 🌐 `WEB/API/DEEMIX_DOMAIN` | [stacks/bergastream.md](stacks/bergastream.md) |
 | **drop** | 03 | Transferência efêmera E2EE de segredos | 🌐 `drop.` | [stacks/drop.md](stacks/drop.md) |
+| **homeassistant** | 03 | Automação residencial (Home Assistant Core) | 🛡️ `ha.` (Modelo B: Authentik + direto LAN + bypass Companion) | [stacks/homeassistant.md](stacks/homeassistant.md) |
 | **ghostmap** | 03 | Geocodificador privacy-first (Whoogle + Nominatim) | 🌐 `ghostmap.` | [stacks/ghostmap.md](stacks/ghostmap.md) |
 | **jellyfin** | 03 | Centro de mídia + automação própria de legendas/encode | 🌐 `jellyflix.`,`catalogo.` + 🔒 9 painéis | [stacks/jellyfin.md](stacks/jellyfin.md) |
 | **litellm** | 03 | Gateway de LLMs compatível com OpenAI | 🔒 `llm.` | [stacks/litellm.md](stacks/litellm.md) |
@@ -139,7 +140,7 @@ flowchart TB
 - [04-roadmap-e-backlog.md](04-roadmap-e-backlog.md) — pendências, riscos e ideias
 - [05-instrucoes-projeto-claude.md](05-instrucoes-projeto-claude.md) — instruções para o Projeto no Claude
 - [06-guia-env.md](06-guia-env.md) — como construir/manter o `.env` (variáveis comuns, segredos, armadilhas)
-- [stacks/](stacks/) — um documento detalhado por stack (17)
+- [stacks/](stacks/) — um documento detalhado por stack (18)
 
 ---
 _Documento gerado por análise automatizada da Bergatrix e revisado. Atualize conforme a estrutura evoluir._

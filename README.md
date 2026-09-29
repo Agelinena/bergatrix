@@ -25,6 +25,7 @@ A estrutura segue uma lógica de dependência numérica, garantindo que os servi
 | :--- | :--- |
 | **Drop** | Serviço de transferência de arquivos self-hosted. |
 | **GhostMap** | Aplicação web customizada (PWA). |
+| **Home Assistant** | Automação residencial self-hosted (dispositivos, automações e app Companion). |
 | **Jellyfin** | Servidor de mídia com stack customizada de legendas: pipeline de OCR, tradução automática e otimização via Bazarr. |
 | **LiteLLM** | Proxy unificado de LLMs com updater automático de modelos gratuitos. |
 | **n8n** | Plataforma de automação de workflows. |

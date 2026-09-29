@@ -1,0 +1,58 @@
+services:
+  # --- Modelo B: Authentik de fora, direto p/ dispositivos de confiança,
+  # bypass /api-access-bypass p/ o app Companion. Ver docs/stacks/homeassistant.md
+  homeassistant:
+    image: ghcr.io/home-assistant/home-assistant:stable
+    container_name: homeassistant
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      - ${VOLUMES_BASE}/homeassistant/config:/config
+      - /etc/localtime:/etc/localtime:ro
+      # Bluetooth (opcional): descomente se usar integrações BLE
+      # - /run/dbus:/run/dbus:ro
+    environment:
+      - TZ=${TZ}
+    # Dongle Zigbee/Z-Wave (opcional): mapeie o device em vez de usar privileged
+    # devices:
+    #   - /dev/serial/by-id/usb-XXXX:/dev/ttyUSB0
+    networks:
+      - bergatrix-proxy
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "-o", "/dev/null", "http://127.0.0.1:8123/manifest.json"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=bergatrix-proxy"
+
+      - "traefik.http.routers.homeassistant-router.rule=Host(`ha.${DOMAIN}`) && !PathPrefix(`/api-access-bypass`) && !(ClientIP(`192.168.10.140/32`) || ClientIP(`192.168.10.121/32`) || ClientIP(`192.168.10.1/32`))"
+      - "traefik.http.routers.homeassistant-router.entrypoints=websecure"
+      - "traefik.http.routers.homeassistant-router.tls=true"
+      - "traefik.http.routers.homeassistant-router.service=homeassistant-service"
+      - "traefik.http.routers.homeassistant-router.middlewares=crowdsec-bouncer@file,public-auth@file"
+      - "traefik.http.routers.homeassistant-router.priority=100"
+
+      - "traefik.http.routers.homeassistant-direct.rule=Host(`ha.${DOMAIN}`) && (ClientIP(`192.168.10.140/32`) || ClientIP(`192.168.10.121/32`) || ClientIP(`192.168.10.1/32`))"
+      - "traefik.http.routers.homeassistant-direct.entrypoints=websecure"
+      - "traefik.http.routers.homeassistant-direct.tls=true"
+      - "traefik.http.routers.homeassistant-direct.service=homeassistant-service"
+      - "traefik.http.routers.homeassistant-direct.priority=110"
+
+      - "traefik.http.routers.homeassistant-bypass.rule=Host(`ha.${DOMAIN}`) && PathPrefix(`/api-access-bypass`)"
+      - "traefik.http.routers.homeassistant-bypass.entrypoints=websecure"
+      - "traefik.http.routers.homeassistant-bypass.tls=true"
+      - "traefik.http.routers.homeassistant-bypass.service=homeassistant-service"
+      - "traefik.http.routers.homeassistant-bypass.middlewares=crowdsec-bouncer@file,api-access-bypass@file"
+      - "traefik.http.routers.homeassistant-bypass.priority=120"
+
+      # --- Definição de Serviços ---
+      # WebSocket (/api/websocket) usa a mesma porta: não precisa de -ws-* separado
+      - "traefik.http.services.homeassistant-service.loadbalancer.server.port=8123"
+
+networks:
+  bergatrix-proxy:
+    external: true
