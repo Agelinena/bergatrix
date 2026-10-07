@@ -6,3 +6,13 @@ dist/
 .venv/
 # Dados do ambiente local (STORAGE_PATH=./.data)
 .data/
+
+# O .gitignore da raiz ignora pastas chamadas data/, downloads/ e storage/
+# (dados dos containers). Aqui elas são código-fonte:
+!backend/app/downloads/
+!backend/app/storage/
+!frontend/lib/data/
+!frontend/lib/core/storage/
+!frontend/lib/features/downloads/
+!frontend/test/data/
+!frontend/test/features/downloads/
