@@ -18,6 +18,7 @@ from app.auth.routes import router as auth_router
 from app.playlists.routes import router as playlists_router
 from app.history.routes import router as history_router
 from app.images.routes import router as images_router
+from app.server.routes import router as server_router
 
 logging.basicConfig(
     level=getattr(logging, settings.log_level.upper(), logging.INFO),
@@ -66,6 +67,7 @@ app.include_router(auth_router)
 app.include_router(playlists_router)
 app.include_router(history_router)
 app.include_router(images_router)
+app.include_router(server_router)
 app.include_router(api_router)
 
 _st = Path(__file__).parent.parent / "static"

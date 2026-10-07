@@ -80,6 +80,7 @@ class _PlaylistScreenState extends ConsumerState<PlaylistScreen> {
       [for (final t in shown) t.asResult],
       index,
       context: p.name,
+      playlistId: p.id,
     );
   }
 

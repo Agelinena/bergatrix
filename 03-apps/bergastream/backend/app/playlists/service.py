@@ -32,6 +32,8 @@ class PlaylistSummary(BaseModel):
     people_count: int
     cover_url: str | None = None
     updated_at: str
+    # Última reprodução desta pessoa a partir da playlist (ordem da Biblioteca).
+    last_played_at: str | None = None
 
 
 class PlaylistTrack(BaseModel):
@@ -95,7 +97,9 @@ SELECT p.id, p.name, p.description, p.cover_path, p.updated_at,
        (SELECT count(*) FROM playlist_tracks pt WHERE pt.playlist_id = p.id) AS track_count,
        (SELECT coalesce(sum(t.duration_seconds), 0) FROM playlist_tracks pt
           JOIN tracks t ON t.id = pt.track_id WHERE pt.playlist_id = p.id) AS duration_seconds,
-       1 + (SELECT count(*) FROM playlist_members pm WHERE pm.playlist_id = p.id) AS people_count
+       1 + (SELECT count(*) FROM playlist_members pm WHERE pm.playlist_id = p.id) AS people_count,
+       (SELECT max(h.played_at) FROM play_history h
+          WHERE h.playlist_id = p.id AND h.user_id = $1) AS last_played_at
 FROM playlists p
 JOIN users o ON o.id = p.user_id
 LEFT JOIN playlist_members m ON m.playlist_id = p.id AND m.user_id = $1
@@ -109,13 +113,16 @@ def _summary(row) -> PlaylistSummary:
         track_count=row["track_count"], duration_seconds=row["duration_seconds"],
         people_count=row["people_count"],
         cover_url=cover_url(row["id"], row["cover_path"], row["updated_at"]),
-        updated_at=row["updated_at"].isoformat())
+        updated_at=row["updated_at"].isoformat(),
+        last_played_at=row["last_played_at"].isoformat() if row["last_played_at"] else None)
 
 
 async def list_for(pool: "asyncpg.Pool", user_id: str) -> list[PlaylistSummary]:
     """Playlists do usuário e as compartilhadas com ele."""
     rows = await pool.fetch(
-        _SUMMARY_SQL + " WHERE p.user_id = $1 OR m.user_id IS NOT NULL ORDER BY p.updated_at DESC",
+        # Última tocada primeiro; as nunca tocadas depois, pela última alteração.
+        _SUMMARY_SQL + """ WHERE p.user_id = $1 OR m.user_id IS NOT NULL
+           ORDER BY last_played_at DESC NULLS LAST, p.updated_at DESC""",
         user_id)
     return [_summary(r) for r in rows]
 

@@ -10,6 +10,7 @@ import '../../data/models/search_result.dart';
 import '../../data/repositories/playback_repository.dart';
 import '../auth/session.dart';
 import '../home/home_providers.dart';
+import '../playlists/last_played.dart';
 import 'audio_engine.dart';
 import 'media_notification.dart';
 import 'play_queue.dart';
@@ -79,11 +80,12 @@ final playerTimingsProvider = Provider<PlayerTimings>(
 
 /// Quem registra as reproduções no histórico (Seção 7.4): servidor, ou o
 /// banco local para enviar depois.
-typedef PlayRecorder = void Function(SearchResult track);
+typedef PlayRecorder = void Function(SearchResult track, {String? playlistId});
 
 final playRecorderProvider = Provider<PlayRecorder>((ref) {
   final send = ref.watch(playRecorderServiceProvider);
-  return (track) => unawaited(send(track));
+  return (track, {playlistId}) =>
+      unawaited(send(track, playlistId: playlistId));
 });
 
 /// Posição atual da faixa (separada do estado para não redesenhar tudo).
@@ -131,13 +133,27 @@ class PlayerController extends Notifier<PlayerState> {
     List<SearchResult> tracks,
     int index, {
     required String context,
+    String? playlistId,
   }) async {
     _queue.playList(tracks, index);
     _context = context;
+    _playlistId = playlistId;
+    _playlistTracks = playlistId == null
+        ? const {}
+        : {for (final t in tracks) t.id};
+    if (playlistId != null) {
+      unawaited(
+        ref.read(playlistLastPlayedProvider.notifier).touch(playlistId),
+      );
+    }
     await _loadCurrent();
   }
 
   String? _context;
+
+  /// Playlist de onde veio a lista atual (faixas de "Sua fila" não contam).
+  String? _playlistId;
+  Set<String> _playlistTracks = const {};
 
   /// "Adicionar à fila". Se nada estiver tocando, começa por ela.
   Future<void> addToQueue(SearchResult track) async {
@@ -348,7 +364,12 @@ class PlayerController extends Notifier<PlayerState> {
     if (position >= const Duration(seconds: 30) ||
         (half != null && half > Duration.zero && position >= half)) {
       _counted = true;
-      ref.read(playRecorderProvider)(item.track);
+      ref.read(playRecorderProvider)(
+        item.track,
+        playlistId: _playlistTracks.contains(item.track.id)
+            ? _playlistId
+            : null,
+      );
     }
     _notification?.showState(
       playing: state.isPlaying,

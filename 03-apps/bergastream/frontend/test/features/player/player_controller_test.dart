@@ -10,6 +10,7 @@ import 'package:bergastream/features/player/audio_engine.dart';
 import 'package:bergastream/features/player/play_queue.dart';
 import 'package:bergastream/features/player/player_controller.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:bergastream/features/playlists/last_played.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../app_harness.dart';
@@ -19,6 +20,7 @@ void main() {
   late FakeAudioEngine engine;
   late FakePlaybackRepository repo;
   late List<String> recorded;
+  late List<String?> recordedPlaylists;
   late ProviderContainer container;
 
   PlayerController controller() => container.read(playerProvider.notifier);
@@ -28,6 +30,7 @@ void main() {
     engine = FakeAudioEngine();
     repo = FakePlaybackRepository();
     recorded = [];
+    recordedPlaylists = [];
     container = ProviderContainer(
       overrides: [
         audioEngineProvider.overrideWithValue(engine),
@@ -35,9 +38,13 @@ void main() {
         playerTimingsProvider.overrideWithValue(
           const PlayerTimings(pollInterval: Duration.zero),
         ),
-        playRecorderProvider.overrideWithValue(
-          (SearchResult t) => recorded.add(t.title),
-        ),
+        playRecorderProvider.overrideWithValue((
+          SearchResult t, {
+          String? playlistId,
+        }) {
+          recorded.add(t.title);
+          recordedPlaylists.add(playlistId);
+        }),
         localDatabaseProvider.overrideWithValue(null),
         appPlatformProvider.overrideWithValue(const AppPlatform.app()),
         keyValueStoreProvider.overrideWithValue(MemoryKeyValueStore()),
@@ -172,6 +179,26 @@ void main() {
     engine.emitPosition(const Duration(seconds: 45));
     await pumpEventQueue();
     expect(recorded, ['A']);
+  });
+
+  test('tocada de uma playlist: a reprodução conta para ela', () async {
+    await controller().playList(abc, 0, context: 'Roadtrip', playlistId: 'p1');
+    engine.emitDuration(const Duration(minutes: 5));
+    engine.emitPosition(const Duration(seconds: 31));
+    await pumpEventQueue();
+    expect(recordedPlaylists, ['p1']);
+    expect(
+      container.read(playlistLastPlayedProvider).containsKey('p1'),
+      isTrue,
+    );
+  });
+
+  test('fora de playlist: sem playlist no histórico', () async {
+    await controller().playList(abc, 0, context: 'Busca');
+    engine.emitDuration(const Duration(minutes: 5));
+    engine.emitPosition(const Duration(seconds: 31));
+    await pumpEventQueue();
+    expect(recordedPlaylists, [null]);
   });
 
   test('faixa curta conta ao passar da metade', () async {

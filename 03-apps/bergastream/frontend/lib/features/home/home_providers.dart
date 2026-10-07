@@ -44,9 +44,16 @@ String formatListening(int seconds) {
 /// Registra a reprodução no servidor. Sem servidor (ou se falhar), guarda
 /// no banco local para enviar ao reconectar (Passo 11).
 final playRecorderServiceProvider =
-    Provider<Future<void> Function(SearchResult)>(
-      (ref) => (track) async {
-        final play = PlayRecord(track: track, playedAt: DateTime.now());
+    Provider<Future<void> Function(SearchResult, {String? playlistId})>(
+      (ref) => (track, {playlistId}) async {
+        final play = PlayRecord(
+          track: track,
+          playedAt: DateTime.now(),
+          // Playlist ainda não enviada ao servidor (id temporário): sem ela.
+          playlistId: playlistId == null || playlistId.startsWith('tmp:')
+              ? null
+              : playlistId,
+        );
         if (ref.read(sessionProvider).canUseServer) {
           try {
             await ref.read(historyRepositoryProvider).record([play]);

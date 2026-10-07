@@ -32,6 +32,7 @@ ServerPlaylist _$ServerPlaylistFromJson(Map<String, dynamic> json) =>
       peopleCount: (json['people_count'] as num?)?.toInt() ?? 1,
       coverUrl: json['cover_url'] as String?,
       updatedAt: json['updated_at'] as String?,
+      lastPlayedAt: json['last_played_at'] as String?,
     );
 
 Map<String, dynamic> _$ServerPlaylistToJson(ServerPlaylist instance) =>
@@ -46,6 +47,7 @@ Map<String, dynamic> _$ServerPlaylistToJson(ServerPlaylist instance) =>
       'people_count': instance.peopleCount,
       'cover_url': instance.coverUrl,
       'updated_at': instance.updatedAt,
+      'last_played_at': instance.lastPlayedAt,
     };
 
 PlaylistTrack _$PlaylistTrackFromJson(Map<String, dynamic> json) =>

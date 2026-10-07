@@ -12,6 +12,7 @@ import '../../data/models/search_result.dart';
 import '../../data/repositories/playlist_repository.dart';
 import '../auth/session.dart';
 import '../downloads/offline_playlists.dart';
+import 'last_played.dart';
 import 'playlist_merge.dart';
 
 // Playlists do servidor com edição offline.
@@ -220,12 +221,17 @@ final serverPlaylistsProvider = FutureProvider<List<ServerPlaylist>>((
 }, retry: _noRetry);
 
 /// Lista da Biblioteca: servidor (ou cópia) com as alterações pendentes.
+/// Ordem: a última tocada primeiro ([sortByLastPlayed]).
 final myPlaylistsProvider = FutureProvider<List<ServerPlaylist>>((ref) async {
   final base = await ref.watch(serverPlaylistsProvider.future);
   final ops = await ref.watch(pendingPlaylistOpsProvider.future);
-  return applyOpsToList(base, [
-    for (final p in ops) p.op,
-  ], me: _me(ref.read(sessionProvider)));
+  final lastPlayed = ref.watch(playlistLastPlayedProvider);
+  return sortByLastPlayed(
+    applyOpsToList(base, [
+      for (final p in ops) p.op,
+    ], me: _me(ref.read(sessionProvider))),
+    lastPlayed,
+  );
 }, retry: _noRetry);
 
 /// Detalhe do servidor; sem servidor, a cópia (ou a playlist baixada).

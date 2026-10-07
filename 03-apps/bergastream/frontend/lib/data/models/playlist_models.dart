@@ -45,6 +45,7 @@ class ServerPlaylist {
     this.peopleCount = 1,
     this.coverUrl,
     this.updatedAt,
+    this.lastPlayedAt,
   });
 
   factory ServerPlaylist.fromJson(Map<String, dynamic> json) =>
@@ -64,6 +65,9 @@ class ServerPlaylist {
   /// Relativa ao servidor (`/api/playlists/<id>/cover?v=...`).
   final String? coverUrl;
   final String? updatedAt;
+
+  /// Última vez que esta pessoa tocou a playlist (ordem da Biblioteca).
+  final String? lastPlayedAt;
 
   PlaylistRole get playlistRole => PlaylistRole.parse(role);
 }

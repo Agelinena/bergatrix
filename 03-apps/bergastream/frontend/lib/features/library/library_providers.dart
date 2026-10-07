@@ -1,6 +1,8 @@
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/platform/app_platform.dart';
+import '../../core/storage/key_value_store.dart';
 import '../../data/models/playlist_models.dart';
 import '../auth/session.dart';
 
@@ -46,7 +48,8 @@ enum PlaylistSort {
   final String short;
 }
 
-/// Ordenação escolhida em cada playlist (vale enquanto o app está aberto).
+/// Ordenação escolhida em cada playlist, guardada no aparelho (continua ao
+/// sair, voltar e reabrir o app).
 final playlistSortProvider =
     NotifierProvider.family<PlaylistSortChoice, PlaylistSort, String>(
       PlaylistSortChoice.new,
@@ -57,10 +60,28 @@ class PlaylistSortChoice extends Notifier<PlaylistSort> {
 
   final String playlistId;
 
-  @override
-  PlaylistSort build() => PlaylistSort.playlist;
+  String get _key =>
+      '${ref.read(appPlatformProvider).simulated ? 'sim_android.' : ''}'
+      'playlist.sort.$playlistId';
 
-  void set(PlaylistSort sort) => state = sort;
+  KeyValueStore get _store => ref.read(keyValueStoreProvider);
+
+  @override
+  PlaylistSort build() {
+    _load();
+    return PlaylistSort.playlist;
+  }
+
+  Future<void> _load() async {
+    final saved = await _store.read(_key);
+    final sort = PlaylistSort.values.where((s) => s.name == saved).firstOrNull;
+    if (sort != null && ref.mounted) state = sort;
+  }
+
+  Future<void> set(PlaylistSort sort) async {
+    state = sort;
+    await _store.write(_key, sort.name);
+  }
 }
 
 /// Filtra (título, artista ou álbum) e ordena as faixas da playlist.

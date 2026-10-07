@@ -11,23 +11,32 @@ import '../models/stats.dart';
 /// Uma reprodução contada (30 s ou metade da faixa). [clientId] é único:
 /// reenviar a mesma não duplica no servidor.
 class PlayRecord {
-  PlayRecord({required this.track, required this.playedAt, String? clientId})
-    : clientId = clientId ?? newClientId();
+  PlayRecord({
+    required this.track,
+    required this.playedAt,
+    String? clientId,
+    this.playlistId,
+  }) : clientId = clientId ?? newClientId();
 
   factory PlayRecord.fromJson(Map<String, dynamic> json) => PlayRecord(
     track: SearchResult.fromJson(json['track'] as Map<String, dynamic>),
     playedAt: DateTime.parse(json['played_at'] as String),
     clientId: json['client_id'] as String,
+    playlistId: json['playlist_id'] as String?,
   );
 
   final SearchResult track;
   final DateTime playedAt;
   final String clientId;
 
+  /// Tocada a partir desta playlist (ordem da Biblioteca).
+  final String? playlistId;
+
   Map<String, dynamic> toJson() => {
     'client_id': clientId,
     'played_at': playedAt.toUtc().toIso8601String(),
     'track': track.toJson(),
+    'playlist_id': ?playlistId,
   };
 
   /// UUID v4 (sem pacote extra).

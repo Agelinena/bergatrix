@@ -24,6 +24,8 @@ class Play(BaseModel):
     client_id: uuid.UUID
     played_at: datetime
     track: PlayRequest
+    # Tocada a partir de uma playlist (ordem da Biblioteca).
+    playlist_id: uuid.UUID | None = None
 
 
 class PlayBatch(BaseModel):
@@ -78,9 +80,11 @@ async def record(body: PlayBatch, user: CurrentUser = Depends(current_user)):
             logger.warning("[history] faixa não registrada %s: %s", play.track.title, exc)
             continue
         status = await pool.execute(
-            """INSERT INTO play_history (user_id, track_id, client_id, played_at)
-               VALUES ($1, $2, $3, $4) ON CONFLICT (client_id) DO NOTHING""",
-            user.id, result.track_id, play.client_id, play.played_at)
+            # Playlist apagada nesse meio-tempo: registra sem ela.
+            """INSERT INTO play_history (user_id, track_id, client_id, played_at, playlist_id)
+               VALUES ($1, $2, $3, $4, (SELECT id FROM playlists WHERE id = $5))
+               ON CONFLICT (client_id) DO NOTHING""",
+            user.id, result.track_id, play.client_id, play.played_at, play.playlist_id)
         if status.endswith(" 1"):
             accepted += 1
         else:

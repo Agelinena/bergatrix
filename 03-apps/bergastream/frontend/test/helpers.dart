@@ -18,6 +18,7 @@ import 'package:bergastream/data/repositories/search_repository.dart';
 import 'package:bergastream/features/player/audio_engine.dart';
 import 'package:bergastream/features/player/player_controller.dart';
 import 'package:bergastream/features/auth/session.dart';
+import 'package:bergastream/data/repositories/server_status_repository.dart';
 import 'package:bergastream/features/update/update_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -53,6 +54,10 @@ Widget wrap(
   final container = ProviderContainer(
     overrides: [
       appPlatformProvider.overrideWithValue(platform),
+      serverStatusRepositoryProvider.overrideWithValue(
+        FakeServerStatusRepository(),
+      ),
+      serverStatusRefreshProvider.overrideWithValue(null),
       updateTargetProvider.overrideWithValue(updateTarget),
       updateRepositoryProvider.overrideWithValue(
         updates ?? FakeUpdateRepository(),

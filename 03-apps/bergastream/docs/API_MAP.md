@@ -141,6 +141,17 @@ Regras:
 
 ---
 
+## 9b. Situação do servidor
+
+| Endpoint | Quem | Resposta |
+|---|---|---|
+| `GET /api/server/status` | logado | `storage` (`tracks`, `permanent`, `cache`, `bytes`, `bytes_permanent`, `bytes_cache`, `disk_total`, `disk_free`), `queue` (`waiting`, `active`), `deemix` (`available`, `downloading`, `waiting`, `failed`, `completed`, `items[]` com `title`, `artist`, `status`, `progress`) |
+
+`POST /api/history` aceita `playlist_id` em cada reprodução; `GET /api/me/playlists` devolve
+`last_played_at` e vem ordenado pela última tocada.
+
+---
+
 ## 10. Administração
 
 | Endpoint | Quem |

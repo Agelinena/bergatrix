@@ -9,6 +9,7 @@ import '../features/sync/local_playlists_offer.dart';
 import '../features/sync/server_monitor.dart';
 import '../features/sync/sync_service.dart';
 import '../features/playlists/sync_notices.dart';
+import '../features/settings/preferences.dart';
 import '../features/update/update_prompt.dart';
 import 'app_frame.dart';
 import 'router.dart';
@@ -43,7 +44,7 @@ class _BergastreamAppState extends ConsumerState<BergastreamApp> {
       debugShowCheckedModeBanner: false,
       theme: BergaTheme.light,
       darkTheme: BergaTheme.dark,
-      themeMode: ThemeMode.system,
+      themeMode: ref.watch(preferencesProvider.select((p) => p.theme.mode)),
       routerConfig: ref.watch(routerProvider),
       builder: (context, child) => AppFrame(
         platform: platform,

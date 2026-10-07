@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -11,7 +13,9 @@ import '../../core/theme/berga_sizes.dart';
 import '../../core/theme/berga_text.dart';
 import '../../core/widgets/widgets.dart';
 import '../../core/utils/format.dart';
+import '../../core/network/api_error.dart';
 import '../../data/local/database.dart';
+import '../../data/repositories/server_status_repository.dart';
 import '../auth/session.dart';
 import '../downloads/download_manager.dart';
 import '../downloads/manage_downloads_screen.dart';
@@ -139,9 +143,188 @@ class SettingsScreen extends ConsumerWidget {
             ],
           ),
         ),
+        const _AppearanceCard(),
+        if (session.canUseServer) const _ServerStatusCard(),
         if (ref.watch(updateTargetProvider) != null) const _AboutCard(),
         if (kDebugMode) _DevCard(session: session),
       ],
+    );
+  }
+}
+
+/// Tema: sistema, claro ou escuro.
+class _AppearanceCard extends ConsumerWidget {
+  const _AppearanceCard();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final c = BergaColors.of(context);
+    final current = ref.watch(preferencesProvider.select((p) => p.theme));
+    return AppCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Aparência', style: BergaText.trackTitle.copyWith(color: c.tx)),
+          Text(
+            current == AppTheme.sistema
+                ? 'Segue o tema do aparelho'
+                : 'Sempre ${current.label.toLowerCase()}',
+            style: BergaText.secondary.copyWith(color: c.mu),
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: BergaSizes.chipGap,
+            runSpacing: 8,
+            children: [
+              for (final theme in AppTheme.values)
+                AppChip(
+                  label: theme.label,
+                  icon: switch (theme) {
+                    AppTheme.sistema => Icons.brightness_auto,
+                    AppTheme.claro => Icons.light_mode,
+                    AppTheme.escuro => Icons.dark_mode,
+                  },
+                  active: theme == current,
+                  onTap: () =>
+                      ref.read(preferencesProvider.notifier).setTheme(theme),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Músicas baixadas no servidor, espaço ocupado, disco e filas (Deemix
+/// incluso). Atualiza sozinho enquanto a tela está aberta.
+class _ServerStatusCard extends ConsumerStatefulWidget {
+  const _ServerStatusCard();
+
+  @override
+  ConsumerState<_ServerStatusCard> createState() => _ServerStatusCardState();
+}
+
+class _ServerStatusCardState extends ConsumerState<_ServerStatusCard> {
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    final every = ref.read(serverStatusRefreshProvider);
+    if (every != null) {
+      _timer = Timer.periodic(
+        every,
+        (_) => ref.invalidate(serverStatusProvider),
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = BergaColors.of(context);
+    final title = BergaText.trackTitle.copyWith(color: c.tx);
+    final mu = BergaText.secondary.copyWith(color: c.mu);
+    final status = ref.watch(serverStatusProvider);
+    Widget line(String label, String value) => Padding(
+      padding: const EdgeInsets.only(top: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(child: Text(label, style: mu)),
+          const SizedBox(width: 12),
+          Flexible(
+            child: Text(
+              value,
+              textAlign: TextAlign.end,
+              style: BergaText.body.copyWith(fontSize: 14, color: c.tx),
+            ),
+          ),
+        ],
+      ),
+    );
+    return AppCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('No servidor', style: title),
+          switch (status) {
+            AsyncData(:final value) => Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                line(
+                  'Músicas baixadas',
+                  '${value.tracks} · ${formatBytes(value.bytes)}',
+                ),
+                line(
+                  'Em playlists (permanentes)',
+                  '${value.permanent} · ${formatBytes(value.bytesPermanent)}',
+                ),
+                line(
+                  'Cache (tocadas fora de playlists)',
+                  '${value.cache} · ${formatBytes(value.bytesCache)}',
+                ),
+                if (value.diskFree != null && value.diskTotal != null)
+                  line(
+                    'Disco livre',
+                    '${formatBytes(value.diskFree!)} de '
+                        '${formatBytes(value.diskTotal!)}',
+                  ),
+                line(
+                  'Downloads do servidor',
+                  '${value.queueActive} baixando · '
+                      '${value.queueWaiting} na fila',
+                ),
+                line(
+                  'Fila do Deemix',
+                  value.deemixAvailable
+                      ? '${value.deemixDownloading} baixando · '
+                            '${value.deemixWaiting} na fila'
+                            '${value.deemixFailed > 0 ? ' · ${value.deemixFailed} com falha' : ''}'
+                      : 'indisponível',
+                ),
+                for (final item in value.deemixItems.take(10))
+                  Padding(
+                    padding: const EdgeInsets.only(top: 6, left: 12),
+                    child: Text(
+                      '${item.title} — ${item.artist} · ${item.statusLabel}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: mu.copyWith(
+                        color: item.status == 'failed' ? c.ac : c.mu,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            AsyncError(:final error) => Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Text(
+                error is ApiException
+                    ? error.message
+                    : 'Não foi possível ler a situação do servidor.',
+                style: mu,
+              ),
+            ),
+            _ => Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Text('Carregando…', style: mu),
+            ),
+          },
+          const SizedBox(height: 12),
+          AppChip(
+            label: 'Atualizar',
+            icon: Icons.refresh,
+            onTap: () => ref.invalidate(serverStatusProvider),
+          ),
+        ],
+      ),
     );
   }
 }

@@ -128,6 +128,7 @@ List<ServerPlaylist> applyOpsToList(
     peopleCount: p.peopleCount,
     coverUrl: coverUrl ?? p.coverUrl,
     updatedAt: p.updatedAt,
+    lastPlayedAt: p.lastPlayedAt,
   );
   for (final op in ops) {
     final i = find(op.playlist);

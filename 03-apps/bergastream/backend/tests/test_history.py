@@ -84,7 +84,37 @@ async def main():
             ok(s["top_tracks"][0]["provider"], "spotify", "faixa com provider para tocar")
             ok([a["title"] for a in s["top_albums"]], ["Disco 1", "Disco 2"], "álbuns mais ouvidos")
             ok(s["month"], now.strftime("%Y-%m"), "mês")
+
+            print("=== Biblioteca: última playlist tocada primeiro ===")
+            first = (await c.post("/api/playlists", json={"name": "Antiga"}, headers=h)).json()["id"]
+            second = (await c.post("/api/playlists", json={"name": "Nova"}, headers=h)).json()["id"]
+            names = [p["name"] for p in (await c.get("/api/me/playlists", headers=h)).json()]
+            ok(names[:2], ["Nova", "Antiga"], "sem reprodução: última alterada primeiro")
+            p_ = play(0, now)
+            p_["playlist_id"] = first
+            ok((await c.post("/api/history", json={"plays": [p_]}, headers=h)).status_code, 200,
+               "reprodução com playlist")
+            mine = (await c.get("/api/me/playlists", headers=h)).json()
+            ok([p["name"] for p in mine][:2], ["Antiga", "Nova"], "tocada vai para o topo")
+            ok(mine[0]["last_played_at"] is not None, True, "last_played_at informado")
+            gone = play(1, now)
+            gone["playlist_id"] = str(uuid.uuid4())
+            r = await c.post("/api/history", json={"plays": [gone]}, headers=h)
+            ok(r.json()["accepted"], 1, "playlist inexistente não perde a reprodução")
+            ok([p["name"] for p in (await c.get("/api/me/playlists", headers=h2)).json()], [],
+               "outra pessoa não vê")
+
+            print("=== situação do servidor (Ajustes) ===")
+            r = await c.get("/api/server/status", headers=h)
+            ok(r.status_code, 200, "status do servidor")
+            st = r.json()
+            ok(set(st), {"storage", "queue", "deemix"}, "seções")
+            ok(st["storage"]["tracks"] >= 0 and st["storage"]["disk_free"] is not None, True,
+               "músicas e disco")
+            ok(isinstance(st["deemix"]["available"], bool), True, "fila do Deemix (ou indisponível)")
+            ok((await c.get("/api/server/status")).status_code, 401, "exige login")
     finally:
+        await pool.execute("DELETE FROM playlists WHERE user_id = ANY($1::uuid[])", [user["id"], other["id"]])
         await pool.execute("DELETE FROM users WHERE id = ANY($1::uuid[])", [user["id"], other["id"]])
         await pool.execute("DELETE FROM tracks WHERE id = ANY($1::uuid[])", tids)
         await close_redis()

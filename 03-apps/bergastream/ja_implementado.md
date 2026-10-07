@@ -381,6 +381,18 @@ Rodado na imagem `ghcr.io/cirruslabs/flutter:stable` (Flutter 3.44.0 / Dart 3.12
 - Deploy de produção: compose com `${STORAGE_PATH}`, `container_name`, redes
   `bergastream-internal` (sem internet) e `bergastream-egress`, labels do modelo B.
 
+### Versão 0.1.4 — Biblioteca pela última tocada, Ajustes do servidor
+- **"Ordenar por" guardado**: a ordenação de cada playlist fica salva no aparelho (sair, voltar e
+  reabrir o app mantém).
+- **Biblioteca pela última tocada**: o app manda, com cada reprodução, de qual playlist ela veio
+  (`play_history.playlist_id`, migração `0010_history_playlist.sql`); `GET /api/me/playlists`
+  ordena por `last_played_at` (de qualquer aparelho) e o app reordena na hora ao tocar, mesmo
+  offline.
+- **Ajustes → Aparência**: Sistema, Claro ou Escuro.
+- **Ajustes → No servidor** (`GET /api/server/status`): músicas baixadas e espaço (total,
+  permanentes, cache), disco livre, downloads do servidor (baixando/na fila) e fila do Deemix com
+  os itens (baixando, na fila, com falha). Atualiza a cada 10 s enquanto aberto.
+
 ### Versão 0.1.3 — importar playlist com todos os dados
 - Botão "Importar" no link de playlist/álbum pergunta: **Importar tudo** (playlist nova com o nome,
   a descrição e a foto de capa da original, e todas as músicas) ou **Só as músicas** (escolhe a
