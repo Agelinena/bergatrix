@@ -289,6 +289,24 @@ class _ServerStatusCardState extends ConsumerState<_ServerStatusCard> {
                             '${value.deemixFailed > 0 ? ' · ${value.deemixFailed} com falha' : ''}'
                       : 'indisponível',
                 ),
+                if (value.deemixFailures.isNotEmpty)
+                  line(
+                    'Falhas recentes do Deemix',
+                    '${value.deemixFailures.length} · '
+                        '${value.deemixFailures.where((f) => f.recovered).length} '
+                        'baixadas pelo YouTube',
+                  ),
+                for (final f in value.deemixFailures.take(5))
+                  Padding(
+                    padding: const EdgeInsets.only(top: 6, left: 12),
+                    child: Text(
+                      '${f.title} — ${f.artist} · '
+                      '${f.recovered ? 'tocando pelo YouTube' : 'não encontrada'}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: mu.copyWith(color: f.recovered ? c.mu : c.ac),
+                    ),
+                  ),
                 for (final item in value.deemixItems.take(10))
                   Padding(
                     padding: const EdgeInsets.only(top: 6, left: 12),

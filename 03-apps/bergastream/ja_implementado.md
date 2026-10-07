@@ -381,6 +381,21 @@ Rodado na imagem `ghcr.io/cirruslabs/flutter:stable` (Flutter 3.44.0 / Dart 3.12
 - Deploy de produção: compose com `${STORAGE_PATH}`, `container_name`, redes
   `bergastream-internal` (sem internet) e `bergastream-egress`, labels do modelo B.
 
+### Versão 0.1.5 — player, aleatório e falhas do Deemix
+- **Arrastar para a fila** menos sensível: precisa puxar a linha 35% da largura (mínimo 110 px) e
+  soltar depois do ponto; "petelecos" na rolagem não contam mais. Vibra ao passar do ponto.
+- **Mini player**: arrastar para a esquerda pula a música; para a direita volta para a anterior.
+- **Busca**: "x" no campo apaga o texto; "x" em cada busca recente apaga o termo.
+- **Continua de onde parou**: fila, música atual, posição, aleatório e repetição são guardados; ao
+  reabrir o app (mesmo fechado de vez) o player aparece pausado e tocar retoma do mesmo ponto.
+- **Aleatório**: tocar de uma playlist sempre usa a playlist inteira (mesmo com a busca filtrando
+  ou começando pela última faixa). No player, desligar segue a ordem depois da atual; religar
+  sorteia de novo todas as faixas que ainda não tocaram nesta sessão ("sessão" = tocar a
+  playlist). O estado do aleatório fica guardado por playlist.
+- **Falhas do Deemix**: o item com falha sai da fila do Deemix (e os antigos são limpos ao subir a
+  API); o servidor guarda as falhas recentes com o motivo e se o YouTube baixou no lugar
+  (Ajustes → No servidor).
+
 ### Versão 0.1.4 — Biblioteca pela última tocada, Ajustes do servidor
 - **"Ordenar por" guardado**: a ordenação de cada playlist fica salva no aparelho (sair, voltar e
   reabrir o app mantém).

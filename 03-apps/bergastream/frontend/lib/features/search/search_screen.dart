@@ -115,6 +115,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
               : 'Buscar nas músicas baixadas',
           controller: _controller,
           onChanged: _onChanged,
+          onClear: () => _onChanged(''),
           onSubmitted: (text) {
             _searchNow(text);
             _remember();
@@ -177,6 +178,18 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: BergaText.body.copyWith(color: c.tx),
+                      ),
+                    ),
+                    GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () =>
+                          ref.read(searchHistoryProvider.notifier).remove(term),
+                      child: Tooltip(
+                        message: 'Apagar "$term" das buscas recentes',
+                        child: Padding(
+                          padding: const EdgeInsets.all(4),
+                          child: Icon(Icons.close, size: 16, color: c.mu),
+                        ),
                       ),
                     ),
                   ],

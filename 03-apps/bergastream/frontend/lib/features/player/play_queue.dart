@@ -47,6 +47,10 @@ class PlayQueue {
   /// Faixas já tocadas nesta sessão (para "anterior").
   final List<QueueItem> _history = [];
 
+  /// Faixas da lista que já tocaram desde "tocar esta lista" (a sessão):
+  /// religar o aleatório sorteia só as que ainda não tocaram.
+  final Set<int> _played = {};
+
   bool _shuffle = false;
   PlayerRepeat repeat = PlayerRepeat.desligado;
 
@@ -62,6 +66,9 @@ class PlayQueue {
     _source = [for (final t in tracks) _item(t)];
     if (_current != null) _history.add(_current!);
     _current = _source[index];
+    _played
+      ..clear()
+      ..add(_current!.uid);
     _fillUpNextAfter(index);
     return _current!;
   }
@@ -96,6 +103,8 @@ class PlayQueue {
     } else if (_upNext.isNotEmpty) {
       candidate = _upNext.removeAt(0);
     } else if (repeat == PlayerRepeat.tudo && _source.isNotEmpty) {
+      // Recomeça a lista: nova volta, tudo pode tocar de novo.
+      _played.clear();
       _upNext.addAll(_source);
       if (_shuffle) _upNext.shuffle(_random);
       candidate = _upNext.removeAt(0);
@@ -103,6 +112,7 @@ class PlayQueue {
     if (candidate == null) return null;
     _history.add(_current!);
     _current = candidate;
+    _played.add(candidate.uid);
     return candidate;
   }
 
@@ -118,12 +128,21 @@ class PlayQueue {
   }
 
   /// Liga/desliga o aleatório. Só "a seguir" muda; a sua fila não.
+  /// Ligar sorteia todas as faixas da lista que ainda não tocaram nesta
+  /// sessão (não só as que estavam depois da atual); desligar segue a ordem
+  /// da lista a partir da atual.
   void setShuffle(bool value) {
     if (value == _shuffle) return;
     _shuffle = value;
     if (_current == null) return;
     if (value) {
-      _upNext.shuffle(_random);
+      _upNext
+        ..clear()
+        ..addAll([
+          for (final i in _source)
+            if (i.uid != _current!.uid && !_played.contains(i.uid)) i,
+        ])
+        ..shuffle(_random);
     } else {
       // Volta à ordem da lista, a partir da faixa atual.
       final index = _source.indexWhere((i) => i.uid == _current!.uid);
@@ -146,6 +165,74 @@ class PlayQueue {
   /// [newIndex] é a posição final do item (padrão do `onReorderItem`).
   static void _reorder(List<QueueItem> list, int oldIndex, int newIndex) {
     list.insert(newIndex, list.removeAt(oldIndex));
+  }
+
+  // ── Guardar e restaurar (o player volta igual ao reabrir o app) ──
+
+  Map<String, dynamic> toJson() {
+    Map<String, dynamic> refOf(QueueItem item) {
+      final index = _source.indexWhere((s) => s.uid == item.uid);
+      return index >= 0 ? {'i': index} : {'t': item.track.toJson()};
+    }
+
+    final history = _history.length > 50
+        ? _history.sublist(_history.length - 50)
+        : _history;
+    return {
+      'source': [for (final s in _source) s.track.toJson()],
+      'current': _current == null ? null : refOf(_current!),
+      'manual': [for (final m in _manual) m.track.toJson()],
+      'up_next': [for (final u in _upNext) refOf(u)],
+      'history': [for (final h in history) refOf(h)],
+      'played': [
+        for (final (i, s) in _source.indexed)
+          if (_played.contains(s.uid)) i,
+      ],
+      'shuffle': _shuffle,
+      'repeat': repeat.name,
+    };
+  }
+
+  /// Restaura o que [toJson] guardou. Ignora dados inválidos.
+  void restore(Map<String, dynamic> json) {
+    SearchResult track(Object? t) =>
+        SearchResult.fromJson(t! as Map<String, dynamic>);
+    final source = [
+      for (final t in json['source'] as List<dynamic>) _item(track(t)),
+    ];
+    QueueItem? resolve(Object? ref) {
+      if (ref is! Map<String, dynamic>) return null;
+      final index = ref['i'];
+      if (index is int) {
+        return index >= 0 && index < source.length ? source[index] : null;
+      }
+      return ref['t'] == null ? null : _item(track(ref['t']));
+    }
+
+    _source = source;
+    _current = resolve(json['current']);
+    _manual
+      ..clear()
+      ..addAll([
+        for (final t in json['manual'] as List<dynamic>) _item(track(t)),
+      ]);
+    _upNext
+      ..clear()
+      ..addAll([for (final r in json['up_next'] as List<dynamic>) ?resolve(r)]);
+    _history
+      ..clear()
+      ..addAll([for (final r in json['history'] as List<dynamic>) ?resolve(r)]);
+    _played
+      ..clear()
+      ..addAll([
+        for (final i in json['played'] as List<dynamic>)
+          if (i is int && i >= 0 && i < source.length) source[i].uid,
+      ]);
+    _shuffle = json['shuffle'] as bool? ?? false;
+    repeat = PlayerRepeat.values.firstWhere(
+      (r) => r.name == json['repeat'],
+      orElse: () => PlayerRepeat.desligado,
+    );
   }
 
   /// Começa a tocar um item da sua fila quando nada estava carregado.

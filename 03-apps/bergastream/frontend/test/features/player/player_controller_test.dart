@@ -11,6 +11,7 @@ import 'package:bergastream/features/player/play_queue.dart';
 import 'package:bergastream/features/player/player_controller.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:bergastream/features/playlists/last_played.dart';
+import 'package:bergastream/features/playlists/playlist_shuffle.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../app_harness.dart';
@@ -232,6 +233,71 @@ void main() {
       expect(engine.urls, hasLength(1), reason: 'A não pode carregar depois');
       expect(state().current!.track.title, 'B');
       expect(state().status, PlaybackStatus.tocando);
+    },
+  );
+
+  test('reabrir o app: continua pausado na mesma música e posição', () async {
+    await controller().playList(abc, 1, context: 'Roadtrip', playlistId: 'p1');
+    engine.emitDuration(const Duration(minutes: 3));
+    await controller().seek(const Duration(seconds: 42));
+    await controller().togglePlay(); // pausa (guarda a posição)
+    await pumpEventQueue();
+
+    // "Fecha" o app: novo container com o mesmo armazenamento.
+    final store = container.read(keyValueStoreProvider);
+    final engine2 = FakeAudioEngine();
+    final reopened = ProviderContainer(
+      overrides: [
+        audioEngineProvider.overrideWithValue(engine2),
+        playbackRepositoryProvider.overrideWithValue(repo),
+        playerTimingsProvider.overrideWithValue(
+          const PlayerTimings(pollInterval: Duration.zero),
+        ),
+        playRecorderProvider.overrideWithValue(
+          (SearchResult t, {String? playlistId}) {},
+        ),
+        localDatabaseProvider.overrideWithValue(null),
+        appPlatformProvider.overrideWithValue(const AppPlatform.app()),
+        keyValueStoreProvider.overrideWithValue(store),
+        initialSessionProvider.overrideWithValue(loggedIn),
+      ],
+    );
+    addTearDown(reopened.dispose);
+    reopened.read(playerProvider);
+    await pumpEventQueue();
+    final restored = reopened.read(playerProvider);
+    expect(restored.current!.track.title, 'B');
+    expect(restored.status, PlaybackStatus.pausado);
+    expect(restored.context, 'Roadtrip');
+    expect(engine2.log, isEmpty); // nada carregado até tocar
+
+    await reopened.read(playerProvider.notifier).togglePlay();
+    await pumpEventQueue();
+    expect(engine2.log, containsAllInOrder(['setUrl', 'seek 42', 'play']));
+    expect(reopened.read(playerProvider).status, PlaybackStatus.tocando);
+  });
+
+  test(
+    'aleatório no player fica guardado na playlist que está tocando',
+    () async {
+      await controller().playList(
+        abc,
+        0,
+        context: 'Roadtrip',
+        playlistId: 'p1',
+      );
+      controller().toggleShuffle();
+      expect(container.read(playlistShuffleProvider('p1')), isTrue);
+      // Tocar outra lista com o aleatório dela não mexe na p1.
+      await controller().playList(
+        abc,
+        0,
+        context: 'Outra',
+        playlistId: 'p2',
+        shuffle: false,
+      );
+      expect(state().shuffle, isFalse);
+      expect(container.read(playlistShuffleProvider('p1')), isTrue);
     },
   );
 }

@@ -113,6 +113,24 @@ async def main():
                "músicas e disco")
             ok(isinstance(st["deemix"]["available"], bool), True, "fila do Deemix (ou indisponível)")
             ok((await c.get("/api/server/status")).status_code, 401, "exige login")
+
+            print("=== falhas do Deemix registradas (e se o YouTube recuperou) ===")
+            from app.downloads import deemix as deemix_mod
+            from app.downloads.service import _note_deemix_failure
+            from app.tracks.models import PlayRequest
+            redis = await get_redis()
+            before = await redis.llen("bergastream:deemix:failures")
+            deemix_mod._errors["999"] = "Cannot read properties of undefined (reading 'HREF')"
+            await _note_deemix_failure(
+                PlayRequest(provider="spotify", external_id="x", title=f"Falhou {tag}", artist="Banda"),
+                "999", recovered=True)
+            st = (await c.get("/api/server/status", headers=h)).json()
+            first = st["deemix"]["recent_failures"][0]
+            ok((first["title"], first["recovered"], "HREF" in first["error"]),
+               (f"Falhou {tag}", True, True), "falha com motivo e recuperada pelo YouTube")
+            ok(deemix_mod.pop_error("999"), None, "motivo consumido")
+            await redis.lpop("bergastream:deemix:failures")
+            ok(await redis.llen("bergastream:deemix:failures"), before, "limpeza do teste")
     finally:
         await pool.execute("DELETE FROM playlists WHERE user_id = ANY($1::uuid[])", [user["id"], other["id"]])
         await pool.execute("DELETE FROM users WHERE id = ANY($1::uuid[])", [user["id"], other["id"]])

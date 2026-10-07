@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../theme/berga_colors.dart';
 import '../theme/berga_sizes.dart';
@@ -121,32 +122,109 @@ class TrackRow extends StatelessWidget {
     );
     if (onQueue == null) return row;
 
-    Widget background(Alignment alignment) => Container(
-      color: c.card,
-      alignment: alignment,
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        spacing: 8,
-        children: [
-          Icon(Icons.queue_music, color: c.gr, size: 20),
-          Text(
-            'Adicionar à fila',
-            style: BergaText.chipActive.copyWith(color: c.gr),
-          ),
-        ],
-      ),
-    );
+    return _SwipeToQueue(onQueue: onQueue!, child: row);
+  }
+}
 
-    return Dismissible(
-      key: ValueKey('fila-$id'),
-      background: background(Alignment.centerLeft),
-      secondaryBackground: background(Alignment.centerRight),
-      confirmDismiss: (_) async {
-        onQueue!();
-        return false;
+/// Arrastar a linha para o lado adiciona à fila. Pede um arraste de
+/// verdade: passar de [threshold] da largura (no mínimo [minDistance]) e
+/// soltar ainda depois do ponto. Um "peteleco" rápido no meio da rolagem
+/// não conta (o `Dismissible` contava). Vibra ao passar do ponto.
+class _SwipeToQueue extends StatefulWidget {
+  const _SwipeToQueue({required this.onQueue, required this.child});
+
+  final VoidCallback onQueue;
+  final Widget child;
+
+  static const threshold = 0.35;
+  static const minDistance = 110.0;
+
+  @override
+  State<_SwipeToQueue> createState() => _SwipeToQueueState();
+}
+
+class _SwipeToQueueState extends State<_SwipeToQueue> {
+  double _dx = 0;
+  bool _dragging = false;
+  bool _armed = false;
+
+  double _limit(double width) =>
+      (width * _SwipeToQueue.threshold).clamp(_SwipeToQueue.minDistance, width);
+
+  @override
+  Widget build(BuildContext context) {
+    final c = BergaColors.of(context);
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = constraints.maxWidth;
+        final limit = _limit(width);
+        return GestureDetector(
+          behavior: HitTestBehavior.translucent,
+          onHorizontalDragStart: (_) => setState(() => _dragging = true),
+          onHorizontalDragUpdate: (d) {
+            final dx = (_dx + d.delta.dx).clamp(-width * 0.6, width * 0.6);
+            final armed = dx.abs() >= limit;
+            if (armed && !_armed) HapticFeedback.selectionClick();
+            setState(() {
+              _dx = dx;
+              _armed = armed;
+            });
+          },
+          onHorizontalDragEnd: (_) {
+            if (_armed) widget.onQueue();
+            setState(() {
+              _dx = 0;
+              _armed = false;
+              _dragging = false;
+            });
+          },
+          onHorizontalDragCancel: () => setState(() {
+            _dx = 0;
+            _armed = false;
+            _dragging = false;
+          }),
+          child: Stack(
+            children: [
+              if (_dx != 0)
+                Positioned.fill(
+                  child: Container(
+                    color: c.card,
+                    alignment: _dx > 0
+                        ? Alignment.centerLeft
+                        : Alignment.centerRight,
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      spacing: 8,
+                      children: [
+                        Icon(
+                          Icons.queue_music,
+                          color: _armed ? c.gr : c.mu,
+                          size: 20,
+                        ),
+                        Text(
+                          _armed ? 'Solte para adicionar' : 'Adicionar à fila',
+                          style: BergaText.chipActive.copyWith(
+                            color: _armed ? c.gr : c.mu,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              AnimatedContainer(
+                duration: _dragging
+                    ? Duration.zero
+                    : const Duration(milliseconds: 180),
+                curve: Curves.easeOut,
+                transform: Matrix4.translationValues(_dx, 0, 0),
+                // Fundo da tela: o aviso de trás só aparece onde a linha saiu.
+                child: ColoredBox(color: c.bg, child: widget.child),
+              ),
+            ],
+          ),
+        );
       },
-      child: row,
     );
   }
 }

@@ -52,6 +52,12 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('Levitating — Dua Lipa · na fila'), findsOneWidget);
+    expect(find.text('2 · 1 baixadas pelo YouTube'), findsOneWidget);
+    expect(
+      find.text('Redbone — Childish Gambino · tocando pelo YouTube'),
+      findsOneWidget,
+    );
+    expect(find.text('Rara — Alguém · não encontrada'), findsOneWidget);
   });
 
   testWidgets('sem servidor o painel não aparece', (tester) async {

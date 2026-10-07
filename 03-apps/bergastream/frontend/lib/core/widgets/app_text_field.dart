@@ -18,6 +18,7 @@ class AppTextField extends StatelessWidget {
     this.textInputAction,
     this.autofocus = false,
     this.autofillHints,
+    this.onClear,
   });
 
   final String hint;
@@ -33,8 +34,34 @@ class AppTextField extends StatelessWidget {
   final bool autofocus;
   final Iterable<String>? autofillHints;
 
+  /// Com [controller]: mostra um "x" que apaga o texto quando há algo
+  /// digitado (e chama esta função depois).
+  final VoidCallback? onClear;
+
   @override
   Widget build(BuildContext context) {
+    final controller = this.controller;
+    if (onClear == null || controller == null) return _field(context, suffix);
+    return ListenableBuilder(
+      listenable: controller,
+      builder: (context, _) => _field(
+        context,
+        controller.text.isEmpty
+            ? suffix
+            : IconButton(
+                tooltip: 'Limpar',
+                icon: const Icon(Icons.close, size: 20),
+                visualDensity: VisualDensity.compact,
+                onPressed: () {
+                  controller.clear();
+                  onClear!();
+                },
+              ),
+      ),
+    );
+  }
+
+  Widget _field(BuildContext context, Widget? suffix) {
     final c = BergaColors.of(context);
     final border = OutlineInputBorder(
       borderRadius: BorderRadius.circular(BergaSizes.fieldRadius),

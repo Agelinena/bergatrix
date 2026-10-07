@@ -45,6 +45,10 @@ async def lifespan(app: FastAPI):
     from app.storage.permanence import reconcile
     await reconcile(pool)
 
+    # Itens com falha antigos na fila do Deemix (o servidor já tratou).
+    from app.downloads.deemix import clear_failed
+    asyncio.create_task(clear_failed())
+
     from app.storage.service import run_forever as cl
     t = asyncio.create_task(cl(pool))
     logger.info("Limpeza agendada (1h)")

@@ -1,16 +1,20 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/network/api_error.dart';
+import '../../core/platform/app_platform.dart';
+import '../../core/storage/key_value_store.dart';
 import '../../data/local/database.dart';
 import '../../data/models/search_result.dart';
 import '../../data/repositories/playback_repository.dart';
 import '../auth/session.dart';
 import '../home/home_providers.dart';
 import '../playlists/last_played.dart';
+import '../playlists/playlist_shuffle.dart';
 import 'audio_engine.dart';
 import 'media_notification.dart';
 import 'play_queue.dart';
@@ -119,6 +123,7 @@ class PlayerController extends Notifier<PlayerState> {
       ..add(engine.durationStream.listen(_onDuration))
       ..add(engine.positionStream.listen(_onPosition));
     _notification?.onCommand = _onNotificationCommand;
+    Future.microtask(_restore);
     ref.onDispose(() {
       for (final s in _subscriptions) {
         s.cancel();
@@ -134,7 +139,10 @@ class PlayerController extends Notifier<PlayerState> {
     int index, {
     required String context,
     String? playlistId,
+    bool? shuffle,
   }) async {
+    // Aleatório da nova lista (sem gravar na playlist que tocava antes).
+    if (shuffle != null) _queue.setShuffle(shuffle);
     _queue.playList(tracks, index);
     _context = context;
     _playlistId = playlistId;
@@ -155,6 +163,83 @@ class PlayerController extends Notifier<PlayerState> {
   String? _playlistId;
   Set<String> _playlistTracks = const {};
 
+  /// Playlist que está tocando (para o botão "Aleatório" da playlist).
+  String? get playlistId => _playlistId;
+
+  // ── Continuar de onde parou depois de fechar o app ──
+
+  static const _sessionKey = 'player.session';
+
+  /// Restaurado e ainda não carregado no motor: tocar retoma em [_resumeAt].
+  bool _needsLoad = false;
+  Duration? _resumeAt;
+  DateTime _lastPositionSave = DateTime.fromMillisecondsSinceEpoch(0);
+  bool _saving = false;
+  bool _saveAgain = false;
+
+  String get _storeKey =>
+      '${ref.read(appPlatformProvider).simulated ? 'sim_android.' : ''}$_sessionKey';
+
+  Future<void> _restore() async {
+    if (_queue.current != null) return;
+    try {
+      final raw = await ref.read(keyValueStoreProvider).read(_storeKey);
+      if (raw == null || _queue.current != null || !ref.mounted) return;
+      final json = jsonDecode(raw) as Map<String, dynamic>;
+      _queue.restore(json['queue'] as Map<String, dynamic>);
+      if (_queue.current == null) return;
+      _context = json['context'] as String?;
+      _playlistId = json['playlist_id'] as String?;
+      _playlistTracks = _playlistId == null
+          ? const {}
+          : {
+              for (final t in json['playlist_tracks'] as List? ?? const [])
+                '$t',
+            };
+      final ms = json['position_ms'] as int? ?? 0;
+      _resumeAt = ms > 0 ? Duration(milliseconds: ms) : null;
+      _needsLoad = true;
+      _publish(status: PlaybackStatus.pausado);
+    } on Object catch (e) {
+      debugPrint('Não restaurou o player: $e');
+    }
+  }
+
+  /// Guarda o que está tocando (fila, posição). Sem timers: uma gravação
+  /// por vez; mudanças no meio entram na próxima.
+  Future<void> _save({Duration? position}) async {
+    if (_saving) {
+      _saveAgain = true;
+      return;
+    }
+    _saving = true;
+    try {
+      do {
+        _saveAgain = false;
+        final store = ref.read(keyValueStoreProvider);
+        if (_queue.current == null) {
+          await store.delete(_storeKey);
+        } else {
+          final at = _needsLoad ? _resumeAt : (position ?? _engine.position);
+          await store.write(
+            _storeKey,
+            jsonEncode({
+              'queue': _queue.toJson(),
+              'context': _context,
+              'playlist_id': _playlistId,
+              'playlist_tracks': _playlistTracks.toList(),
+              'position_ms': at?.inMilliseconds ?? 0,
+            }),
+          );
+        }
+      } while (_saveAgain && ref.mounted);
+    } on Object catch (e) {
+      debugPrint('Não guardou o player: $e');
+    } finally {
+      _saving = false;
+    }
+  }
+
   /// "Adicionar à fila". Se nada estiver tocando, começa por ela.
   Future<void> addToQueue(SearchResult track) async {
     _queue.add(track);
@@ -173,8 +258,14 @@ class PlayerController extends Notifier<PlayerState> {
         await _engine.pause();
         _publish(status: PlaybackStatus.pausado);
       case PlaybackStatus.pausado:
+        if (_needsLoad) {
+          // Restaurado ao abrir o app: carrega e continua de onde parou.
+          await _loadCurrent(startAt: _resumeAt);
+          return;
+        }
         _engine.play();
         _publish(status: PlaybackStatus.tocando);
+        unawaited(_save());
       case PlaybackStatus.parado || PlaybackStatus.erro:
         if (_queue.current != null) await _loadCurrent();
       case PlaybackStatus.preparando:
@@ -184,8 +275,10 @@ class PlayerController extends Notifier<PlayerState> {
 
   Future<void> next() => _advance(ended: false);
 
-  Future<void> previous() async {
-    final action = _queue.previous(_engine.position);
+  /// "Anterior". Com [track] (arrastar o mini player), sempre volta para a
+  /// música anterior, sem só recomeçar a atual.
+  Future<void> previous({bool track = false}) async {
+    final action = _queue.previous(track ? Duration.zero : _engine.position);
     if (action == PreviousAction.reiniciar) {
       await _engine.seek(Duration.zero);
       return;
@@ -193,7 +286,14 @@ class PlayerController extends Notifier<PlayerState> {
     await _loadCurrent();
   }
 
-  Future<void> seek(Duration position) => _engine.seek(position);
+  Future<void> seek(Duration position) async {
+    if (_needsLoad) {
+      _resumeAt = position;
+      unawaited(_save());
+      return;
+    }
+    await _engine.seek(position);
+  }
 
   /// Busca por fração da faixa (barra de progresso arrastável).
   Future<void> seekFraction(double fraction) async {
@@ -202,8 +302,19 @@ class PlayerController extends Notifier<PlayerState> {
     await seek(duration * fraction.clamp(0.0, 1.0));
   }
 
-  void toggleShuffle() {
-    _queue.setShuffle(!_queue.shuffle);
+  /// Botão "Aleatório" do player. Tocando uma playlist, a escolha fica
+  /// guardada nela.
+  void toggleShuffle() => setShuffle(!_queue.shuffle);
+
+  void setShuffle(bool value) {
+    if (value == _queue.shuffle) return;
+    _queue.setShuffle(value);
+    final playlist = _playlistId;
+    if (playlist != null) {
+      unawaited(
+        ref.read(playlistShuffleProvider(playlist).notifier).set(value),
+      );
+    }
     _publish();
   }
 
@@ -267,9 +378,11 @@ class PlayerController extends Notifier<PlayerState> {
 
   /// Prepara no servidor, espera ficar pronta e toca (Seção 7.3, item 2).
   /// Trocar de faixa no meio cancela a anterior ([_generation]).
-  Future<void> _loadCurrent() async {
+  Future<void> _loadCurrent({Duration? startAt}) async {
     final item = _queue.current;
     if (item == null) return;
+    _needsLoad = false;
+    _resumeAt = null;
     final generation = ++_generation;
     _counted = false;
     _duration = null;
@@ -295,6 +408,7 @@ class PlayerController extends Notifier<PlayerState> {
     if (path != null && File(path).existsSync()) {
       await _engine.setFile(path);
       if (generation != _generation) return;
+      if (startAt != null) await _engine.seek(startAt);
       _engine.play();
       _publish(status: PlaybackStatus.tocando);
       return;
@@ -332,6 +446,7 @@ class PlayerController extends Notifier<PlayerState> {
       if (generation != _generation) return;
       await _engine.setUrl(url);
       if (generation != _generation) return;
+      if (startAt != null) await _engine.seek(startAt);
       _engine.play();
       _publish(status: PlaybackStatus.tocando);
     } on Object catch (e) {
@@ -355,6 +470,13 @@ class PlayerController extends Notifier<PlayerState> {
 
   /// Conta a reprodução no histórico ao passar de 30 s ou da metade.
   void _onPosition(Duration position) {
+    // Posição guardada a cada 10 s (para continuar ao reabrir o app).
+    if (state.isPlaying &&
+        DateTime.now().difference(_lastPositionSave) >
+            const Duration(seconds: 10)) {
+      _lastPositionSave = DateTime.now();
+      unawaited(_save(position: position));
+    }
     final item = state.current;
     if (item == null || _counted || state.status != PlaybackStatus.tocando) {
       return;
@@ -395,6 +517,13 @@ class PlayerController extends Notifier<PlayerState> {
   }
 
   void _publish({PlaybackStatus? status, PlayerMessage? message}) {
+    final changed =
+        state.current?.uid != _queue.current?.uid ||
+        state.upNext.length != _queue.upNext.length ||
+        state.manual.length != _queue.manual.length ||
+        state.shuffle != _queue.shuffle ||
+        state.repeat != _queue.repeat ||
+        (status != null && status != state.status);
     state = PlayerState(
       current: _queue.current,
       status: status ?? state.status,
@@ -411,5 +540,6 @@ class PlayerController extends Notifier<PlayerState> {
       loading: state.isPreparing,
       position: _engine.position,
     );
+    if (changed) unawaited(_save());
   }
 }

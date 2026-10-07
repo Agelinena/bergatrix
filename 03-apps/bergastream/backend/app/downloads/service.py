@@ -1,12 +1,15 @@
 """Orquestrador de download."""
 from __future__ import annotations
 import asyncio
+import json
 import logging
 import shutil
+from datetime import datetime, timezone
 from pathlib import Path
 from app.config import settings
 from app.storage.permanence import sync_permanence
 from app.core.db import get_pool
+from app.core.redis import get_redis
 from app.downloads import state as dl_state
 from app.downloads import deemix, youtube as yt_downloader
 from app.downloads.tags import file_matches
@@ -77,6 +80,32 @@ async def _register_in_db(track_id: str, file_path: Path, fmt: str, db_pool=None
     await sync_permanence(pool, track_id)
 
 
+_FAILURES_KEY = "bergastream:deemix:failures"
+_FAILURES_KEEP = 100
+
+
+async def _note_deemix_failure(play_req: PlayRequest, deezer_id: str, recovered: bool) -> None:
+    """Falhas recentes do Deemix (Ajustes → No servidor): motivo e se o
+    YouTube conseguiu baixar a faixa no lugar."""
+    entry = {
+        "title": play_req.title, "artist": play_req.artist,
+        "error": deemix.pop_error(deezer_id) or "não baixou",
+        "recovered": recovered, "at": datetime.now(timezone.utc).isoformat(),
+    }
+    try:
+        r = await get_redis()
+        await r.lpush(_FAILURES_KEY, json.dumps(entry))
+        await r.ltrim(_FAILURES_KEY, 0, _FAILURES_KEEP - 1)
+    except Exception as exc:  # Redis fora não pode atrapalhar o download.
+        logger.warning("[deemix] não registrou a falha: %s", exc)
+
+
+async def _fallback_after_deemix(play_req: PlayRequest, track_id: str, deezer_id: str) -> tuple[bool, str | None]:
+    ok, provider = await _do_download_youtube_fallback(play_req, track_id)
+    await _note_deemix_failure(play_req, deezer_id, recovered=ok)
+    return ok, provider
+
+
 async def _do_download_spotify(play_req: PlayRequest, track_id: str) -> tuple[bool, str | None]:
     if not play_req.isrc:
         return await _do_download_youtube_fallback(play_req, track_id)
@@ -95,6 +124,7 @@ async def _do_download_spotify(play_req: PlayRequest, track_id: str) -> tuple[bo
             if dest:
                 await _register_in_db(track_id, dest, fmt)
                 return True, "deemix"
+        return await _fallback_after_deemix(play_req, track_id, deezer_id)
     return await _do_download_youtube_fallback(play_req, track_id)
 
 
@@ -106,7 +136,7 @@ async def _do_download_deezer(play_req: PlayRequest, track_id: str) -> tuple[boo
         if dest:
             await _register_in_db(track_id, dest, fmt)
             return True, "deemix"
-    return await _do_download_youtube_fallback(play_req, track_id)
+    return await _fallback_after_deemix(play_req, track_id, play_req.external_id)
 
 
 async def _do_download_youtube_fallback(play_req: PlayRequest, track_id: str) -> tuple[bool, str | None]:

@@ -165,4 +165,72 @@ void main() {
     q.removeUpNext(q.upNext.first.uid);
     expect(titles(q.upNext), 'DB');
   });
+
+  group('aleatório por sessão', () {
+    test('começando pela última faixa, o aleatório toca as outras', () {
+      q.setShuffle(true);
+      q.playList(list('ABCDE'), 4);
+      expect(q.current!.track.title, 'E');
+      expect(titles(q.upNext).split('')..sort(), ['A', 'B', 'C', 'D']);
+    });
+
+    test('desligar segue a ordem depois da atual', () {
+      q.setShuffle(true);
+      q.playList(list('ABCDE'), 2);
+      q.setShuffle(false);
+      expect(titles(q.upNext), 'DE');
+    });
+
+    test('religar sorteia tudo o que ainda não tocou nesta sessão', () {
+      q.playList(list('ABCDEF'), 0); // A
+      q.next(); // B
+      q.next(); // C
+      q.setShuffle(true);
+      expect(titles(q.upNext).split('')..sort(), ['D', 'E', 'F']);
+      q.setShuffle(false);
+      expect(titles(q.upNext), 'DEF');
+      q.next(); // D
+      q.setShuffle(true);
+      // A, B, C e D já tocaram; sobra E e F (inclusive as de antes da atual
+      // que não tocaram, se houvesse).
+      expect(titles(q.upNext).split('')..sort(), ['E', 'F']);
+    });
+
+    test('religar inclui faixas antes da atual que não tocaram', () {
+      q.playList(list('ABCDE'), 3); // começa no D: A, B, C não tocaram
+      q.setShuffle(true);
+      expect(titles(q.upNext).split('')..sort(), ['A', 'B', 'C', 'E']);
+    });
+
+    test('nova sessão (tocar a lista de novo) esquece as tocadas', () {
+      q.playList(list('ABC'), 0);
+      q.next();
+      q.playList(list('ABC'), 0);
+      q.setShuffle(true);
+      expect(titles(q.upNext).split('')..sort(), ['B', 'C']);
+    });
+  });
+
+  test('guardar e restaurar a fila (app reaberto)', () {
+    q.playList(list('ABCDE'), 1);
+    q.next(); // C
+    q.add(t('X'));
+    q.setShuffle(true);
+    q.repeat = PlayerRepeat.tudo;
+    final saved = q.toJson();
+
+    final restored = PlayQueue(random: Random(1))..restore(saved);
+    expect(restored.current!.track.title, 'C');
+    expect(titles(restored.upNext), titles(q.upNext));
+    expect(titles(restored.manual), 'X');
+    expect(restored.shuffle, isTrue);
+    expect(restored.repeat, PlayerRepeat.tudo);
+    // As já tocadas continuam valendo para o aleatório.
+    restored.setShuffle(false);
+    restored.setShuffle(true);
+    expect(titles(restored.upNext).split('')..sort(), ['A', 'D', 'E']);
+    // "Anterior" ainda funciona.
+    expect(restored.previous(Duration.zero), PreviousAction.voltar);
+    expect(restored.current!.track.title, 'B');
+  });
 }

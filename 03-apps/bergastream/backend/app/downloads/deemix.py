@@ -142,6 +142,33 @@ async def clear_stale(cli: httpx.AsyncClient, deezer_track_id: str) -> None:
                 pass
 
 
+# Motivo da última falha de cada faixa (lido pelo serviço para registrar).
+_errors: dict[str, str] = {}
+
+
+def pop_error(deezer_track_id: str) -> str | None:
+    return _errors.pop(str(deezer_track_id), None)
+
+
+async def clear_failed() -> int:
+    """Tira da fila do Deemix todos os itens com falha (ficavam lá para
+    sempre: o servidor já baixou a faixa pelo YouTube ou desistiu)."""
+    removed = 0
+    try:
+        async with httpx.AsyncClient(base_url=settings.deemix_url, timeout=10) as cli:
+            await cli.get("/api/connect")
+            for uuid, item in (await _get_queue(cli)).items():
+                if item.get("status") == "failed":
+                    r = await cli.post("/api/removeFromQueue", params={"uuid": uuid})
+                    if (r.json() or {}).get("result"):
+                        removed += 1
+    except (httpx.HTTPError, ValueError):
+        return removed
+    if removed:
+        logger.info("[deemix] %d item(ns) com falha removido(s) da fila", removed)
+    return removed
+
+
 async def _wait_for_file(deezer_track_id: str, timeout: float = _DOWNLOAD_TIMEOUT) -> Path | None:
     """Espera o item DESTA faixa concluir na fila do Deemix e devolve o
     arquivo dele. Desiste na hora se falhar."""
@@ -163,6 +190,9 @@ async def _wait_for_file(deezer_track_id: str, timeout: float = _DOWNLOAD_TIMEOU
                 return None
             if state == "falhou":
                 logger.warning("[deemix] falhou para %s: %s", deezer_track_id, value)
+                _errors[str(deezer_track_id)] = str(value)
+                # Não fica na fila do Deemix: o serviço tenta o YouTube.
+                await clear_stale(cli, deezer_track_id)
                 return None
             if state == "ausente" and time.monotonic() - absent_since > 15:
                 logger.warning("[deemix] %s não apareceu na fila", deezer_track_id)

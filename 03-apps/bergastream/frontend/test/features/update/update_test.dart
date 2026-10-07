@@ -261,6 +261,8 @@ void main() {
         updateTarget: UpdateTarget.android,
         updates: repo,
         launcher: FakeUpdateLauncher(),
+        // Ajustes ficou mais longo (Aparência, No servidor).
+        size: const Size(400, 2400),
       );
       await tester.pump(const Duration(seconds: 3));
       await tester.pumpAndSettle();

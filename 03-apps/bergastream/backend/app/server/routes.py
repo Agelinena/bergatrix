@@ -6,6 +6,7 @@ fila de downloads do Bergastream e a fila do Deemix.
 from __future__ import annotations
 
 import asyncio
+import json
 import shutil
 
 import httpx
@@ -48,6 +49,14 @@ class DeemixItem(BaseModel):
     progress: int = 0
 
 
+class DeemixFailure(BaseModel):
+    title: str
+    artist: str
+    error: str
+    recovered: bool  # baixada pelo YouTube no lugar
+    at: str
+
+
 class DeemixQueue(BaseModel):
     available: bool
     downloading: int = 0
@@ -55,6 +64,8 @@ class DeemixQueue(BaseModel):
     failed: int = 0
     completed: int = 0
     items: list[DeemixItem] = []
+    # Falhas recentes registradas pelo servidor (o item sai da fila do Deemix).
+    recent_failures: list[DeemixFailure] = []
 
 
 class ServerStatus(BaseModel):
@@ -110,7 +121,21 @@ async def _deemix() -> DeemixQueue:
         items=[i for i in items if i.status != "completed"][:_DEEMIX_ITEMS])
 
 
+async def _failures() -> list[DeemixFailure]:
+    redis = await get_redis()
+    raw = await redis.lrange("bergastream:deemix:failures", 0, 49)
+    out = []
+    for item in raw:
+        try:
+            out.append(DeemixFailure(**json.loads(item)))
+        except (ValueError, TypeError):
+            continue
+    return out
+
+
 @router.get("/server/status", response_model=ServerStatus)
 async def server_status(user: CurrentUser = Depends(current_user)):
-    storage, queue, deemix = await asyncio.gather(_storage(), _queue(), _deemix())
+    storage, queue, deemix, failures = await asyncio.gather(
+        _storage(), _queue(), _deemix(), _failures())
+    deemix.recent_failures = failures
     return ServerStatus(storage=storage, queue=queue, deemix=deemix)

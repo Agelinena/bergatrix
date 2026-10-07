@@ -22,6 +22,7 @@ class ServerStatus {
     this.deemixWaiting = 0,
     this.deemixFailed = 0,
     this.deemixItems = const [],
+    this.deemixFailures = const [],
   });
 
   factory ServerStatus.fromJson(Map<String, dynamic> json) {
@@ -46,6 +47,10 @@ class ServerStatus {
       deemixItems: [
         for (final i in d['items'] as List<dynamic>? ?? const [])
           DeemixItem.fromJson(i as Map<String, dynamic>),
+      ],
+      deemixFailures: [
+        for (final f in d['recent_failures'] as List<dynamic>? ?? const [])
+          DeemixFailure.fromJson(f as Map<String, dynamic>),
       ],
     );
   }
@@ -73,6 +78,32 @@ class ServerStatus {
 
   /// Itens da fila do Deemix (baixando, esperando e com falha).
   final List<DeemixItem> deemixItems;
+
+  /// Falhas recentes do Deemix e se o YouTube baixou no lugar.
+  final List<DeemixFailure> deemixFailures;
+}
+
+class DeemixFailure {
+  const DeemixFailure({
+    required this.title,
+    required this.artist,
+    required this.error,
+    required this.recovered,
+  });
+
+  factory DeemixFailure.fromJson(Map<String, dynamic> json) => DeemixFailure(
+    title: json['title'] as String? ?? '',
+    artist: json['artist'] as String? ?? '',
+    error: json['error'] as String? ?? '',
+    recovered: json['recovered'] as bool? ?? false,
+  );
+
+  final String title;
+  final String artist;
+  final String error;
+
+  /// Baixada pelo YouTube no lugar.
+  final bool recovered;
 }
 
 class DeemixItem {
@@ -154,6 +185,20 @@ class FakeServerStatusRepository implements ServerStatusRepository {
         progress: 40,
       ),
       DeemixItem(title: 'Levitating', artist: 'Dua Lipa', status: 'inQueue'),
+    ],
+    deemixFailures: [
+      DeemixFailure(
+        title: 'Redbone',
+        artist: 'Childish Gambino',
+        error: "reading 'HREF'",
+        recovered: true,
+      ),
+      DeemixFailure(
+        title: 'Rara',
+        artist: 'Alguém',
+        error: 'não baixou',
+        recovered: false,
+      ),
     ],
   );
 

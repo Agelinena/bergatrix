@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -22,6 +24,7 @@ import '../downloads/playlist_download_button.dart';
 import '../player/player_controller.dart';
 import '../player/player_texts.dart';
 import '../player/track_menu.dart';
+import '../playlists/playlist_shuffle.dart';
 import '../playlists/playlist_store.dart';
 import 'library_providers.dart';
 
@@ -40,7 +43,6 @@ class PlaylistScreen extends ConsumerStatefulWidget {
 
 class _PlaylistScreenState extends ConsumerState<PlaylistScreen> {
   String _query = '';
-  bool _shuffle = false;
   bool _reordering = false;
 
   /// Ordem enquanto reordena (ids), aplicada ao salvar.
@@ -71,17 +73,42 @@ class _PlaylistScreenState extends ConsumerState<PlaylistScreen> {
   void _needsServer(VoidCallback action) =>
       _online ? action() : AppToast.show(context, offlineMessage);
 
-  void _play(PlaylistDetail p, List<PlaylistTrack> shown, {int index = 0}) {
-    if (shown.isEmpty) return;
-    final player = ref.read(playerProvider.notifier);
-    // Aleatório ligado toca embaralhado; desligado, na ordem da lista.
-    if (ref.read(playerProvider).shuffle != _shuffle) player.toggleShuffle();
-    player.playList(
-      [for (final t in shown) t.asResult],
-      index,
-      context: p.name,
-      playlistId: p.id,
+  /// Toca a playlist inteira (não só o que a busca mostra), na ordem
+  /// escolhida, começando por [start]. Com o aleatório ligado, as outras
+  /// faixas vêm sorteadas; sem [start], começa por uma sorteada.
+  void _play(PlaylistDetail p, {PlaylistTrack? start}) {
+    final all = sortAndFilter(
+      p.tracks,
+      ref.read(playlistSortProvider(widget.id)),
+      '',
     );
+    if (all.isEmpty) return;
+    final shuffle = ref.read(playlistShuffleProvider(widget.id));
+    final index = start != null
+        ? all
+              .indexWhere((t) => t.trackId == start.trackId)
+              .clamp(0, all.length - 1)
+        : shuffle
+        ? Random().nextInt(all.length)
+        : 0;
+    ref
+        .read(playerProvider.notifier)
+        .playList(
+          [for (final t in all) t.asResult],
+          index,
+          context: p.name,
+          playlistId: p.id,
+          shuffle: shuffle,
+        );
+  }
+
+  /// "Aleatório" da playlist: fica guardado; se ela está tocando, vale na
+  /// hora para o player.
+  void _toggleShuffle() {
+    final value = !ref.read(playlistShuffleProvider(widget.id));
+    ref.read(playlistShuffleProvider(widget.id).notifier).set(value);
+    final player = ref.read(playerProvider.notifier);
+    if (player.playlistId == widget.id) player.setShuffle(value);
   }
 
   Future<void> _share(PlaylistDetail p) async {
@@ -445,12 +472,12 @@ class _PlaylistScreenState extends ConsumerState<PlaylistScreen> {
           runSpacing: 10,
           crossAxisAlignment: WrapCrossAlignment.center,
           children: [
-            PlayButton(playing: false, onPressed: () => _play(p, shown)),
+            PlayButton(playing: false, onPressed: () => _play(p)),
             AppChip(
               label: 'Aleatório',
               icon: Icons.shuffle,
-              active: _shuffle,
-              onTap: () => setState(() => _shuffle = !_shuffle),
+              active: ref.watch(playlistShuffleProvider(widget.id)),
+              onTap: _toggleShuffle,
             ),
             AppChip(
               label: 'Compartilhar',
@@ -539,7 +566,7 @@ class _PlaylistScreenState extends ConsumerState<PlaylistScreen> {
           ],
         )
       else
-        for (final (i, t) in shown.indexed)
+        for (final t in shown)
           TrackRow(
             key: ValueKey(t.trackId),
             id: t.trackId,
@@ -549,7 +576,7 @@ class _PlaylistScreenState extends ConsumerState<PlaylistScreen> {
             cover: imageFor(t.coverUrl),
             playing: playingId == t.asResult.id,
             downloadState: states[t.asResult.id] ?? DownloadState.naoBaixada,
-            onTap: () => _play(p, shown, index: i),
+            onTap: () => _play(p, start: t),
             onMore: () => showTrackMenu(
               context,
               ref,
