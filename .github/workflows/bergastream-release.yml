@@ -31,6 +31,7 @@ defaults:
 
 jobs:
   version:
+    timeout-minutes: 5
     runs-on: ubuntu-latest
     outputs:
       name: ${{ steps.v.outputs.name }}
@@ -50,6 +51,7 @@ jobs:
           echo "number=$number" >> "$GITHUB_OUTPUT"
 
   test:
+    timeout-minutes: 20
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -62,6 +64,7 @@ jobs:
       - run: flutter test
 
   android:
+    timeout-minutes: 40
     needs: [version, test]
     runs-on: ubuntu-latest
     steps:
@@ -118,14 +121,18 @@ jobs:
           path: 03-apps/bergastream/frontend/bergastream-android.apk
 
   linux:
+    timeout-minutes: 40
     needs: [version, test]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - name: Dependências do Linux
+        timeout-minutes: 15
         run: |
-          sudo apt-get update
-          sudo apt-get install -y clang cmake ninja-build pkg-config \
+          # Espelho do Ubuntu às vezes trava: tempo limite e novas tentativas.
+          APT="-o Acquire::Retries=5 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30"
+          sudo apt-get $APT update
+          sudo apt-get $APT install -y clang cmake ninja-build pkg-config \
             libgtk-3-dev liblzma-dev libstdc++-12-dev libmpv-dev \
             libsecret-1-dev libjsoncpp-dev
       - uses: subosito/flutter-action@v2
@@ -143,6 +150,7 @@ jobs:
           path: 03-apps/bergastream/frontend/bergastream-linux-x64.tar.gz
 
   windows:
+    timeout-minutes: 40
     needs: [version, test]
     runs-on: windows-latest
     steps:
@@ -166,6 +174,7 @@ jobs:
           path: 03-apps/bergastream/frontend/bergastream-windows-x64.zip
 
   release:
+    timeout-minutes: 15
     needs: [version, android, linux, windows]
     # Publica mesmo se o Android falhar (secrets ausentes): rodar o job do
     # Android de novo depois acrescenta o APK à mesma release.
