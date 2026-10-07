@@ -1,0 +1,78 @@
+import 'package:flutter/widgets.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../data/models/playlist_models.dart';
+import '../../data/repositories/playlist_repository.dart';
+import '../auth/session.dart';
+import '../player/player_texts.dart';
+
+Duration? _noRetry(int retryCount, Object error) => null;
+
+/// Playlists do servidor (do usuário e compartilhadas com ele). Vazia sem
+/// servidor. Invalidar depois de criar, renomear, apagar ou adicionar.
+final myPlaylistsProvider = FutureProvider<List<ServerPlaylist>>((ref) {
+  if (!ref.watch(sessionProvider.select((s) => s.canUseServer))) {
+    return const [];
+  }
+  return ref.read(playlistRepositoryProvider).myPlaylists();
+}, retry: _noRetry);
+
+final playlistDetailProvider = FutureProvider.autoDispose
+    .family<PlaylistDetail, String>(
+      (ref, id) => ref.read(playlistRepositoryProvider).detail(id),
+      retry: _noRetry,
+    );
+
+/// Imagem do servidor a partir de caminho relativo (`/api/...`).
+ImageProvider? serverImage(WidgetRef ref, String? path) {
+  if (path == null) return null;
+  if (path.startsWith('http')) return imageFor(path);
+  final server = ref.read(sessionProvider).server ?? '';
+  return NetworkImage('$server$path');
+}
+
+/// "N músicas · M pessoas" ou "N músicas · só você" (Seção 6.4).
+String playlistSubtitle({required int tracks, required int people}) {
+  final t = tracks == 1 ? '1 música' : '$tracks músicas';
+  final p = people <= 1 ? 'só você' : '$people pessoas';
+  return '$t · $p';
+}
+
+/// Ordenação da lista (chip que alterna a cada toque).
+enum PlaylistSort {
+  adicao('Adição'),
+  az('A–Z'),
+  artista('Artista');
+
+  const PlaylistSort(this.label);
+
+  final String label;
+
+  PlaylistSort get next => values[(index + 1) % values.length];
+}
+
+/// Filtra (título ou artista) e ordena as faixas da playlist.
+List<PlaylistTrack> sortAndFilter(
+  List<PlaylistTrack> tracks,
+  PlaylistSort sort,
+  String query,
+) {
+  final q = query.trim().toLowerCase();
+  final filtered = [
+    for (final t in tracks)
+      if (q.isEmpty || '${t.title} ${t.artist}'.toLowerCase().contains(q)) t,
+  ];
+  int byText(String a, String b) => a.toLowerCase().compareTo(b.toLowerCase());
+  switch (sort) {
+    case PlaylistSort.adicao:
+      filtered.sort((a, b) => a.position.compareTo(b.position));
+    case PlaylistSort.az:
+      filtered.sort((a, b) => byText(a.title, b.title));
+    case PlaylistSort.artista:
+      filtered.sort((a, b) {
+        final c = byText(a.artist, b.artist);
+        return c != 0 ? c : byText(a.title, b.title);
+      });
+  }
+  return filtered;
+}

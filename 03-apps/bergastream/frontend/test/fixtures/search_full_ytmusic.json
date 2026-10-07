@@ -1,0 +1,56 @@
+{
+  "tracks": [
+    {
+      "provider": "ytmusic",
+      "external_id": "BSTsnWoslP4",
+      "title": "Bohemian Rhapsody",
+      "artist": "Queen",
+      "album": "A Night At The Opera",
+      "duration_seconds": 355,
+      "isrc": null,
+      "cover_url": "https://yt3.googleusercontent.com/nLn1gxvYiZqzXOY9HyUXVXbFtmR5nhY8sDpbvBT1aw-Ejjsz__Nz90sZoc4nZgff2sf8WjowuVRVBlBTww=w544-h544-l90-rj"
+    },
+    {
+      "provider": "ytmusic",
+      "external_id": "JVc9-_OJ-lw",
+      "title": "Keep Yourself Alive",
+      "artist": "Queen",
+      "album": "Queen (Deluxe Edition)",
+      "duration_seconds": 228,
+      "isrc": null,
+      "cover_url": "https://yt3.googleusercontent.com/C-re7xu_Obm3DWKJrZVwwAohCifOOSwoCzra0_CyenhSI8cFzbDaEufBHW5RlkAee1lh6fNXWF7JFzI=w544-h544-l90-rj"
+    }
+  ],
+  "artists": [
+    {
+      "provider": "ytmusic",
+      "external_id": "UCEPMVbUzImPl4p8k4LkGevA",
+      "name": "Queen",
+      "image_url": "https://yt3.googleusercontent.com/_Qx50zW4-diO8SuAKhaccaNLyTvObgE-TQv1jYS4M9Kma6llb3s-IHpBBvuZAkPh88lHvXTQGaWS7aE=w544-h544-p-l90-rj"
+    },
+    {
+      "provider": "ytmusic",
+      "external_id": "UCcYgNw9ne8v1cxcAD_sIOWQ",
+      "name": "Queens Of The Stone Age",
+      "image_url": "https://lh3.googleusercontent.com/zm23SXI20lpXbZWpkwUxkdHWwe-0m7Bzz5vTmytnpsVcftkg-uwrtXGigDB5AQh5Rml_XfAf03oUDEI=w544-h544-p-l90-rj"
+    }
+  ],
+  "albums": [
+    {
+      "provider": "ytmusic",
+      "external_id": "MPREb_9hHD965Z9xx",
+      "title": "Greatest Hits",
+      "artist": "Queen",
+      "year": "1981",
+      "image_url": "https://yt3.googleusercontent.com/rd7gi88NIFYLUXHy2XQSwrFPL4K245XlFPyZaaYjdIRKRTAj_b0Wr0WgA5l6P_x1vxdtoVUiSNzQPjY=w544-h544-l90-rj"
+    },
+    {
+      "provider": "ytmusic",
+      "external_id": "MPREb_qglBQrgFaLN",
+      "title": "Who Wants to Live Forever (Live in Budapest)",
+      "artist": "Queen",
+      "year": "2026",
+      "image_url": "https://yt3.googleusercontent.com/ZzH9c7AkcN5HiECl_oU5pkaF_MdlAeEqtAl1QxveMirb8Ew5LdR_6tMTcnojL8Ru5ZX59Iku9_aWU56Q=w544-h544-l90-rj"
+    }
+  ]
+}

@@ -1,0 +1,32 @@
+[
+  {
+    "provider": "spotify",
+    "external_id": "2JiDi0qAXsPwhPqA2qaKGt",
+    "title": "Bohemian Rhapsody",
+    "artist": "Queen",
+    "album": "A Night At The Opera",
+    "duration_seconds": 355,
+    "isrc": "GBUM71029604",
+    "cover_url": "https://i.scdn.co/image/ab67616d0000b273fdab4a163ab9f6db72c952ee"
+  },
+  {
+    "provider": "spotify",
+    "external_id": "3xtPQCHJQ3o70PeVAaZSG2",
+    "title": "Queencard",
+    "artist": "i-dle",
+    "album": "I feel",
+    "duration_seconds": 161,
+    "isrc": "KRA392300001",
+    "cover_url": "https://i.scdn.co/image/ab67616d0000b27336de7dd078a0fc1de60848e3"
+  },
+  {
+    "provider": "spotify",
+    "external_id": "5lmMeytpSOBTzFYRS32fwA",
+    "title": "I Want To Break Free",
+    "artist": "Queen",
+    "album": "Bohemian Rhapsody (The Original Soundtrack)",
+    "duration_seconds": 223,
+    "isrc": "GBUM71805978",
+    "cover_url": "https://i.scdn.co/image/ab67616d0000b2730cb397024b7a1185c070d65a"
+  }
+]

@@ -1,0 +1,12 @@
+{
+  "access_token": "eyJ.access",
+  "refresh_token": "refresh-1",
+  "token_type": "bearer",
+  "expires_in": 900,
+  "user": {
+    "id": "9c3a9928-7c23-4998-9b5c-8b3df1d9f97a",
+    "username": "lucas",
+    "name": "lucas",
+    "is_admin": false
+  }
+}

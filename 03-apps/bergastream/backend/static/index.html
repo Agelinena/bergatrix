@@ -1,0 +1,92 @@
+<!DOCTYPE html><html lang="pt-BR"><head>
+<meta charset="utf-8"><title>Bergastream</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:system-ui,sans-serif;background:#111;color:#ddd;padding:20px;padding-bottom:130px}
+h1{color:#f60;margin-bottom:10px}
+#q{width:100%;padding:12px;font-size:16px;background:#222;border:1px solid #555;color:#ddd;border-radius:8px}
+.tabs{display:flex;gap:6px;margin:10px 0}
+.tabs button{padding:8px 20px;background:#333;color:#aaa;border:1px solid #555;cursor:pointer;border-radius:6px;font-size:14px}
+.tabs button.active{background:#f60;color:#fff}
+#results{list-style:none;padding:0}
+#results li{padding:10px;margin:5px 0;background:#222;border-radius:8px;display:flex;align-items:center;gap:12px;cursor:pointer}
+#results li img{width:48px;height:48px;border-radius:4px;object-fit:cover;background:#333}
+#results li .info{flex:1}
+#results li .info .title{font-weight:bold;color:#fff}
+#results li .info .artist{color:#999;font-size:14px}
+#results li .info .meta{color:#666;font-size:12px}
+.badge{font-size:11px;padding:3px 8px;border-radius:4px}
+.badge.spotify{background:#1db954;color:#fff}
+.badge.youtube{background:#c00;color:#fff}
+.badge.ytmusic{background:#282;color:#fff}
+#player{position:fixed;bottom:0;left:0;right:0;background:#1a1a1a;padding:15px 20px;display:flex;align-items:center;gap:10px;border-top:1px solid #444;flex-wrap:wrap}
+#player audio{width:50%;min-width:200px}
+#pl-actions button{padding:4px 12px;background:#444;color:#fff;border:1px solid #666;border-radius:4px;cursor:pointer;font-size:12px}
+#status{margin:8px 0;color:#f60;font-size:14px}
+</style></head><body>
+<h1>Bergastream</h1>
+<input id="q" type="text" placeholder="Buscar musica ou artista..." autocomplete="off">
+<div class="tabs">
+<button onclick="setSource('all')" class="active">Todos</button>
+<button onclick="setSource('spotify')">Spotify</button>
+<button onclick="setSource('ytmusic')">YT Music</button>
+<button onclick="setSource('youtube')">YouTube</button>
+</div>
+<div id="status"></div>
+<ul id="results"></ul>
+<div id="player">
+<div><span id="now-title"></span> - <span id="now-artist"></span><br><span id="now-kind"></span></div>
+<div id="pl-actions">
+<button onclick="addPlaylist('A')">+ PLA</button>
+<button onclick="addPlaylist('B')">+ PLB</button>
+<button onclick="delPlaylist()">- Remover</button>
+</div>
+<audio id="audio" controls preload="auto" style="display:none"></audio>
+<span id="dl-status"></span>
+</div>
+<script>
+var API='',cur='all',pol=null,trackId=null,users={};
+function esc(s){return(s||'').replace(/[<>&]/g,function(c){return{'<':'&lt;','>':'&gt;','&':'&amp;'}[c];});}
+function fd(s){if(!s)return'--';var m=Math.floor(s/60);return m+':'+(s%60).toString().padStart(2,'0');}
+function setSource(s){cur=s;document.querySelectorAll('.tabs button').forEach(function(b){b.className='';});event.target.className='active';dS();}
+function deb(fn,ms){var t;return function(){clearTimeout(t);t=setTimeout(fn,ms);};}
+function loadUsers(){fetch(API+'/api/users').then(function(r){return r.json();}).then(function(u){users={};u.forEach(function(x){users[x.name]=x.id;});}).catch(function(){});}
+loadUsers();
+function dS(){var q=document.getElementById('q').value.trim();if(!q)return;document.getElementById('status').textContent='Buscando...';fetch(API+'/api/search?q='+encodeURIComponent(q)+'&source='+cur).then(function(r){return r.json();}).then(function(d){render(d);}).catch(function(){document.getElementById('status').textContent='Erro';});}
+document.getElementById('q').onkeyup=deb(dS,400);
+function render(items){
+var ul=document.getElementById('results');ul.innerHTML='';var st=document.getElementById('status');
+if(!items.length){st.textContent='Nenhum resultado.';return;}
+st.textContent=items.length+' resultado(s)';
+items.forEach(function(item){
+var li=document.createElement('li');li.onclick=function(){play(item);};
+var img=document.createElement('img');
+if(item.cover_url){img.src=item.cover_url;}else{img.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 48 48%22%3E%3Crect width=%2248%22 height=%2248%22 fill=%22%23333%22/%3E%3Ctext x=%2224%22 y=%2230%22 text-anchor=%22middle%22 fill=%22%23666%22 font-size=%2224%22%3E%E2%99%AA%3C/text%3E%3C/svg%3E';}
+img.alt=item.title;img.width=48;img.height=48;
+var inf=document.createElement('div');inf.className='info';
+inf.innerHTML='<div class="title">'+esc(item.title)+'</div><div class="artist">'+esc(item.artist)+'</div><div class="meta">'+fd(item.duration_seconds)+(item.isrc?' ISRC':'')+'</div>';
+var bdg=document.createElement('span');bdg.className='badge '+item.provider;bdg.textContent=item.provider;
+li.append(img,inf,bdg);ul.appendChild(li);});}
+function play(item){
+if(pol){clearInterval(pol);pol=null;}
+document.getElementById('now-title').textContent=item.title;document.getElementById('now-artist').textContent=item.artist;
+document.getElementById('dl-status').textContent='Resolvendo...';document.getElementById('now-kind').textContent='';trackId=null;
+fetch(API+'/api/play',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+provider:item.provider,external_id:item.external_id,title:item.title,artist:item.artist,
+album:item.album||'',duration_seconds:item.duration_seconds||0,isrc:item.isrc||null,cover_url:item.cover_url||null
+})}).then(function(r){return r.json();}).then(function(d){
+trackId=d.track_id;
+if(d.status==='ready'){updateKind();pN(d.track_id);}
+else if(d.status==='downloading'){
+document.getElementById('dl-status').textContent='Baixando...';
+pol=setInterval(function(){
+fetch(API+'/api/tracks/'+d.track_id+'/status').then(function(s){return s.json();}).then(function(st){
+if(st.status==='ready'){clearInterval(pol);pol=null;updateKind();pN(d.track_id);}
+else if(st.status==='error'){clearInterval(pol);pol=null;document.getElementById('dl-status').textContent='Erro';}
+});},2000);}
+}).catch(function(){document.getElementById('dl-status').textContent='Erro';});}
+function pN(id){document.getElementById('dl-status').textContent='Pronto!';var a=document.getElementById('audio');a.style.display='block';a.src=API+'/api/tracks/'+id+'/stream';a.play();}
+function updateKind(){if(!trackId)return;fetch(API+'/api/tracks/'+trackId+'/status').then(function(r){return r.json();}).then(function(d){var k=d.kind||'cache';document.getElementById('now-kind').textContent=k==='permanent'?'Permanente':'Cache';document.getElementById('now-kind').style.color=k==='permanent'?'#f60':'#666';}).catch(function(){});}
+function addPlaylist(u){if(!trackId){alert('Toque uma musica primeiro');return;}var uid=users['User '+u];if(!uid)return;fetch(API+'/api/users/'+uid+'/playlists').then(function(r){return r.json();}).then(function(pls){if(!pls.length)return;return fetch(API+'/api/playlists/'+pls[0].id+'/tracks',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({provider:'youtube',external_id:trackId,title:'',artist:'',duration_seconds:0})});}).then(function(){updateKind();}).catch(function(){});}
+function delPlaylist(){if(!trackId){alert('Toque uma musica primeiro');return;}var ps=[];for(var u in users){ps.push(fetch(API+'/api/users/'+users[u]+'/playlists').then(function(r){return r.json();}).then(function(pls){for(var i=0;i<pls.length;i++){fetch(API+'/api/playlists/'+pls[i].id+'/tracks/'+trackId,{method:'DELETE'});}}));}Promise.all(ps).then(function(){updateKind();}).catch(function(){});}
+</script></body></html>

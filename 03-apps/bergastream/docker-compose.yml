@@ -1,113 +1,17 @@
+# Bergastream – Docker Compose
+#
+# Produção: só o `web` (nginx com o app web) fica na rede do Traefik, no
+# modelo B de docs/modelos-labels-traefik.md. O nginx repassa /api/ para a
+# API, que fica na rede interna junto com banco, Redis, worker e Deemix.
+#
+#   bergastream.${DOMAIN}                     → web (Authentik de fora; direto
+#                                               nos aparelhos de confiança)
+#   bergastream.${DOMAIN}/api-access-bypass/  → mesma coisa sem Authentik,
+#                                               para os apps (Android/desktop)
+#
+# Dados em ${STORAGE_PATH} (ver .env.example). Desenvolvimento local:
+# docker-compose.dev.yml (portas 8080/8000).
 services:
-  deemix:
-    image: registry.gitlab.com/bockiii/deemix-docker:latest
-    container_name: bergastream-deemix
-    restart: unless-stopped
-    environment:
-      - ARL=${DEEMIX_ARL}
-      - PUID=${PUID:-1000}
-      - PGID=${PGID:-1000}
-    volumes:
-      - ${VOLUMES_BASE}/bergastream/deemix_config:/config
-      - ${VOLUMES_BASE}/bergastream/deemix_dl:/downloads
-    networks:
-      - internal
-      - bergatrix-proxy
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:6595/api/connect >/dev/null 2>&1 || exit 1"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 20s
-    labels:
-      - "traefik.enable=true"
-      - "traefik.docker.network=bergatrix-proxy"
-      - "traefik.http.routers.bergastream-deemix.rule=Host(`${DEEMIX_DOMAIN}`) && !PathPrefix(`/api-access-bypass`) && !(ClientIP(`192.168.10.140/32`) || ClientIP(`192.168.10.121/32`) || ClientIP(`192.168.10.1/32`))"
-      - "traefik.http.routers.bergastream-deemix.tls=true"
-      - "traefik.http.routers.bergastream-deemix.entrypoints=websecure"
-      - "traefik.http.routers.bergastream-deemix.service=bergastream-deemix"
-      - "traefik.http.routers.bergastream-deemix.middlewares=crowdsec-bouncer@file,public-auth@file"
-      - "traefik.http.routers.bergastream-deemix.priority=100"
-      - "traefik.http.routers.bergastream-deemix-direct.rule=Host(`${DEEMIX_DOMAIN}`) && (ClientIP(`192.168.10.140/32`) || ClientIP(`192.168.10.121/32`) || ClientIP(`192.168.10.1/32`))"
-      - "traefik.http.routers.bergastream-deemix-direct.entrypoints=websecure"
-      - "traefik.http.routers.bergastream-deemix-direct.tls=true"
-      - "traefik.http.routers.bergastream-deemix-direct.service=bergastream-deemix"
-      - "traefik.http.routers.bergastream-deemix-direct.priority=110"
-      - "traefik.http.routers.bergastream-deemix-bypass.rule=Host(`${DEEMIX_DOMAIN}`) && PathPrefix(`/api-access-bypass`)"
-      - "traefik.http.routers.bergastream-deemix-bypass.entrypoints=websecure"
-      - "traefik.http.routers.bergastream-deemix-bypass.tls=true"
-      - "traefik.http.routers.bergastream-deemix-bypass.service=bergastream-deemix"
-      - "traefik.http.routers.bergastream-deemix-bypass.middlewares=crowdsec-bouncer@file,api-access-bypass@file"
-      - "traefik.http.routers.bergastream-deemix-bypass.priority=120"
-      - "traefik.http.services.bergastream-deemix.loadbalancer.server.port=6595"
-
-  api:
-    build: ./backend
-    container_name: bergastream-api
-    restart: unless-stopped
-    env_file: .env
-    volumes:
-      - ${VOLUMES_BASE}/bergastream/music:/data/music
-      - ${VOLUMES_BASE}/bergastream/media:/data/media
-      - ${VOLUMES_BASE}/bergastream/deemix_dl:/data/music/deemix_dl
-    networks:
-      - internal
-      - bergatrix-proxy
-    healthcheck:
-      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/api/health', timeout=3).status==200 else 1)\""]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 30s
-    labels:
-      - "traefik.enable=true"
-      - "traefik.docker.network=bergatrix-proxy"
-      - "traefik.http.routers.bergastream-api.rule=Host(`${API_DOMAIN}`)"
-      - "traefik.http.routers.bergastream-api.tls=true"
-      - "traefik.http.routers.bergastream-api.entrypoints=websecure"
-      - "traefik.http.routers.bergastream-api.service=bergastream-api"
-      - "traefik.http.routers.bergastream-api.middlewares=crowdsec-bouncer@file"
-      - "traefik.http.services.bergastream-api.loadbalancer.server.port=8000"
-    depends_on:
-      db:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-
-  web:
-    build:
-      context: ./frontend
-      args:
-        # URL completa da API — injetada no Flutter em tempo de build
-        API_URL: https://${API_DOMAIN}
-    container_name: bergastream-web
-    restart: unless-stopped
-    networks:
-      - bergatrix-proxy
-    labels:
-      - "traefik.enable=true"
-      - "traefik.docker.network=bergatrix-proxy"
-      - "traefik.http.routers.bergastream-web.rule=Host(`${WEB_DOMAIN}`) && !PathPrefix(`/api-access-bypass`) && !(ClientIP(`192.168.10.140/32`) || ClientIP(`192.168.10.121/32`) || ClientIP(`192.168.10.1/32`))"
-      - "traefik.http.routers.bergastream-web.tls=true"
-      - "traefik.http.routers.bergastream-web.entrypoints=websecure"
-      - "traefik.http.routers.bergastream-web.service=bergastream-web"
-      - "traefik.http.routers.bergastream-web.middlewares=crowdsec-bouncer@file,public-auth@file"
-      - "traefik.http.routers.bergastream-web.priority=100"
-      - "traefik.http.routers.bergastream-web-direct.rule=Host(`${WEB_DOMAIN}`) && (ClientIP(`192.168.10.140/32`) || ClientIP(`192.168.10.121/32`) || ClientIP(`192.168.10.1/32`))"
-      - "traefik.http.routers.bergastream-web-direct.entrypoints=websecure"
-      - "traefik.http.routers.bergastream-web-direct.tls=true"
-      - "traefik.http.routers.bergastream-web-direct.service=bergastream-web"
-      - "traefik.http.routers.bergastream-web-direct.priority=110"
-      - "traefik.http.routers.bergastream-web-bypass.rule=Host(`${WEB_DOMAIN}`) && PathPrefix(`/api-access-bypass`)"
-      - "traefik.http.routers.bergastream-web-bypass.entrypoints=websecure"
-      - "traefik.http.routers.bergastream-web-bypass.tls=true"
-      - "traefik.http.routers.bergastream-web-bypass.service=bergastream-web"
-      - "traefik.http.routers.bergastream-web-bypass.middlewares=crowdsec-bouncer@file,api-access-bypass@file"
-      - "traefik.http.routers.bergastream-web-bypass.priority=120"
-      - "traefik.http.services.bergastream-web.loadbalancer.server.port=80"
-    depends_on:
-      - api
-
   db:
     image: postgres:16-alpine
     container_name: bergastream-db
@@ -117,32 +21,167 @@ services:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
-      - ${VOLUMES_BASE}/bergastream/db:/var/lib/postgresql/data
+      - ${STORAGE_PATH}/db:/var/lib/postgresql/data
     networks:
-      - internal
+      - bergastream-internal
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
-      interval: 10s
+      test: pg_isready -U "${POSTGRES_USER}" -d "${POSTGRES_DB}"
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  migrate:
+    image: ghcr.io/amacneil/dbmate:2
+    container_name: bergastream-migrate
+    volumes:
+      - ./backend/db/migrations:/db/migrations:ro
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      PGSSLMODE: disable
+    command: --migrations-dir /db/migrations up
+    networks:
+      - bergastream-internal
+    depends_on:
+      db:
+        condition: service_healthy
+
+  deemix:
+    image: registry.gitlab.com/bockiii/deemix-docker:latest
+    container_name: bergastream-deemix
+    restart: unless-stopped
+    environment:
+      ARL: ${DEEMIX_ARL}
+      PUID: ${PUID:-1000}
+      PGID: ${PGID:-1000}
+    volumes:
+      - ${STORAGE_PATH}/deemix/config:/config
+      - ${STORAGE_PATH}/deemix/downloads:/downloads
+    networks:
+      - bergastream-internal
+      - bergastream-egress
+    healthcheck:
+      test: wget -qO- http://localhost:6595/api/connect >/dev/null 2>&1 || exit 1
+      interval: 30s
       timeout: 5s
       retries: 5
+      start_period: 20s
 
   redis:
     image: redis:7-alpine
     container_name: bergastream-redis
     restart: unless-stopped
-    volumes:
-      - ${VOLUMES_BASE}/bergastream/redis:/data
-    networks:
-      - internal
     command: redis-server --appendonly yes
+    volumes:
+      - ${STORAGE_PATH}/redis:/data
+    networks:
+      - bergastream-internal
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
+      test: redis-cli ping
+      interval: 5s
       timeout: 3s
+      retries: 10
+
+  worker:
+    build: ./backend
+    container_name: bergastream-worker
+    restart: unless-stopped
+    env_file: .env
+    environment: &backend-env
+      DATABASE_URL: ${DATABASE_URL}
+      MUSIC_DIR: /data/music
+      DEEMIX_URL: http://deemix:6595
+      REDIS_URL: redis://redis:6379/0
+      CACHE_TTL_HOURS: ${CACHE_TTL_HOURS:-48}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    volumes: &backend-volumes
+      - ${STORAGE_PATH}/music:/data/music
+      - ${STORAGE_PATH}/deemix/downloads:/data/music/deemix_dl
+    networks:
+      - bergastream-internal
+      - bergastream-egress
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    command: python worker.py
+
+  api:
+    build: ./backend
+    # Nome fixo: é o endereço que o nginx do `web` usa (único também na
+    # rede do Traefik, onde outros stacks podem ter um serviço "api").
+    container_name: bergastream-api
+    restart: unless-stopped
+    env_file: .env
+    environment: *backend-env
+    volumes: *backend-volumes
+    networks:
+      - bergastream-internal
+      - bergastream-egress
+    depends_on:
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health').status == 200 else 1)"
+      interval: 30s
+      timeout: 10s
       retries: 5
+      start_period: 30s
+
+  web:
+    build:
+      context: ./frontend
+    container_name: bergastream-web
+    restart: unless-stopped
+    networks:
+      - bergastream-internal
+      - bergatrix-proxy
+    depends_on:
+      - api
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=bergatrix-proxy"
+
+      # De fora: login do Authentik antes do app web.
+      - "traefik.http.routers.bergastream-router.rule=Host(`bergastream.${DOMAIN}`) && !PathPrefix(`/api-access-bypass`) && !(ClientIP(`192.168.10.140/32`) || ClientIP(`192.168.10.121/32`) || ClientIP(`192.168.10.1/32`))"
+      - "traefik.http.routers.bergastream-router.entrypoints=websecure"
+      - "traefik.http.routers.bergastream-router.tls=true"
+      - "traefik.http.routers.bergastream-router.service=bergastream-service"
+      - "traefik.http.routers.bergastream-router.middlewares=crowdsec-bouncer@file,public-auth@file"
+      - "traefik.http.routers.bergastream-router.priority=100"
+
+      # Aparelhos de confiança: direto.
+      - "traefik.http.routers.bergastream-direct.rule=Host(`bergastream.${DOMAIN}`) && (ClientIP(`192.168.10.140/32`) || ClientIP(`192.168.10.121/32`) || ClientIP(`192.168.10.1/32`))"
+      - "traefik.http.routers.bergastream-direct.entrypoints=websecure"
+      - "traefik.http.routers.bergastream-direct.tls=true"
+      - "traefik.http.routers.bergastream-direct.service=bergastream-service"
+      - "traefik.http.routers.bergastream-direct.priority=110"
+
+      # Apps (Android/Windows/Linux): servidor = https://bergastream.${DOMAIN}
+      # (o app descobre o prefixo sozinho). O prefixo é removido antes do
+      # nginx. Só a API passa (o app web segue atrás do Authentik); ela tem
+      # login próprio (JWT + limite de tentativas).
+      - "traefik.http.routers.bergastream-bypass.rule=Host(`bergastream.${DOMAIN}`) && PathPrefix(`/api-access-bypass/api`)"
+      - "traefik.http.routers.bergastream-bypass.entrypoints=websecure"
+      - "traefik.http.routers.bergastream-bypass.tls=true"
+      - "traefik.http.routers.bergastream-bypass.service=bergastream-service"
+      - "traefik.http.routers.bergastream-bypass.middlewares=crowdsec-bouncer@file,api-access-bypass@file"
+      - "traefik.http.routers.bergastream-bypass.priority=120"
+
+      - "traefik.http.services.bergastream-service.loadbalancer.server.port=80"
 
 networks:
+  # Banco e Redis sem saída para a internet.
+  bergastream-internal:
+    name: bergastream-internal
+    internal: true
+  # API, worker e Deemix buscam no Spotify/YouTube/Deezer.
+  bergastream-egress:
+    name: bergastream-egress
   bergatrix-proxy:
     external: true
-  internal:
-    driver: bridge

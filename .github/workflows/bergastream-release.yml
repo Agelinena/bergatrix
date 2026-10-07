@@ -1,0 +1,186 @@
+# Bergastream — gera os apps e publica a release ao enviar uma tag.
+#
+#   git tag bergastream-v0.2.0 && git push origin bergastream-v0.2.0
+#
+# Arquivos publicados (os apps procuram exatamente estes nomes para se
+# atualizar):
+#   bergastream-android.apk        APK universal assinado
+#   bergastream-linux-x64.tar.gz   pasta do app para Linux
+#   bergastream-windows-x64.zip    pasta do app para Windows
+#
+# Assinatura do Android (Settings → Secrets and variables → Actions):
+#   ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD,
+#   ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD
+# Sem eles o APK não é publicado (um APK assinado com outra chave não
+# atualiza o app instalado). Ver 03-apps/bergastream/docs/RELEASE.md.
+name: Bergastream release
+
+on:
+  push:
+    tags: ['bergastream-v*']
+
+permissions:
+  contents: write
+
+env:
+  FLUTTER_VERSION: '3.44.0'
+
+defaults:
+  run:
+    working-directory: 03-apps/bergastream/frontend
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      name: ${{ steps.v.outputs.name }}
+      number: ${{ steps.v.outputs.number }}
+    steps:
+      - id: v
+        working-directory: .
+        run: |
+          name="${GITHUB_REF_NAME#bergastream-v}"
+          if ! [[ "$name" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+            echo "::error::Tag deve ser bergastream-vX.Y.Z (recebido: $GITHUB_REF_NAME)"
+            exit 1
+          fi
+          # versionCode do Android: cresce a cada versão (1.2.3 → 10203).
+          number=$(( BASH_REMATCH[1] * 10000 + BASH_REMATCH[2] * 100 + BASH_REMATCH[3] ))
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+          echo "number=$number" >> "$GITHUB_OUTPUT"
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+      - run: flutter pub get
+      - run: flutter analyze
+      - run: flutter test
+
+  android:
+    needs: [version, test]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+      - name: Chave de assinatura
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "::error::Secrets ANDROID_* ausentes: configure a chave (docs/RELEASE.md) e rode este job de novo."
+            exit 1
+          fi
+          echo "$KEYSTORE_BASE64" | base64 -d > android/app/upload.jks
+          {
+            echo "storeFile=upload.jks"
+            echo "storePassword=$KEYSTORE_PASSWORD"
+            echo "keyAlias=$KEY_ALIAS"
+            echo "keyPassword=$KEY_PASSWORD"
+          } > android/key.properties
+      - run: >
+          flutter build apk --release
+          --build-name=${{ needs.version.outputs.name }}
+          --build-number=${{ needs.version.outputs.number }}
+      - run: mv build/app/outputs/flutter-apk/app-release.apk bergastream-android.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android
+          path: 03-apps/bergastream/frontend/bergastream-android.apk
+
+  linux:
+    needs: [version, test]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Dependências do Linux
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang cmake ninja-build pkg-config \
+            libgtk-3-dev liblzma-dev libstdc++-12-dev libmpv-dev \
+            libsecret-1-dev libjsoncpp-dev
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+      - run: >
+          flutter build linux --release
+          --build-name=${{ needs.version.outputs.name }}
+          --build-number=${{ needs.version.outputs.number }}
+      - run: tar -C build/linux/x64/release -czf bergastream-linux-x64.tar.gz --transform 's,^bundle,bergastream,' bundle
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: 03-apps/bergastream/frontend/bergastream-linux-x64.tar.gz
+
+  windows:
+    needs: [version, test]
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+      - run: >
+          flutter build windows --release
+          --build-name=${{ needs.version.outputs.name }}
+          --build-number=${{ needs.version.outputs.number }}
+      - shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force pkg | Out-Null
+          Copy-Item -Recurse build/windows/x64/runner/Release pkg/Bergastream
+          Compress-Archive -Path pkg/Bergastream -DestinationPath bergastream-windows-x64.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: 03-apps/bergastream/frontend/bergastream-windows-x64.zip
+
+  release:
+    needs: [version, android, linux, windows]
+    # Publica mesmo se o Android falhar (secrets ausentes): rodar o job do
+    # Android de novo depois acrescenta o APK à mesma release.
+    if: ${{ always() && needs.linux.result == 'success' && needs.windows.result == 'success' }}
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - run: ls -la dist
+      - uses: softprops/action-gh-release@v2
+        with:
+          name: Bergastream ${{ needs.version.outputs.name }}
+          tag_name: ${{ github.ref_name }}
+          fail_on_unmatched_files: false
+          files: |
+            dist/bergastream-android.apk
+            dist/bergastream-linux-x64.tar.gz
+            dist/bergastream-windows-x64.zip
+          body: |
+            ## Bergastream ${{ needs.version.outputs.name }}
+
+            | Plataforma | Arquivo | Como instalar |
+            |---|---|---|
+            | Android 7+ | `bergastream-android.apk` | Abra o APK no celular e permita "instalar apps desconhecidos". |
+            | Windows 10/11 (64 bits) | `bergastream-windows-x64.zip` | Extraia e abra `Bergastream\bergastream.exe`. |
+            | Linux x64 | `bergastream-linux-x64.tar.gz` | Extraia e rode `bergastream/bergastream`. Precisa de `libmpv` (Debian/Ubuntu: `sudo apt install libmpv2`). |
+
+            Os apps já instalados avisam desta versão sozinhos (ou em **Ajustes → Verificar atualizações**).

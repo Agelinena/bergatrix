@@ -1,8 +1,11 @@
 build/
 .dart_tool/
-.flutter-plugins
+.idea/
+*.iml
+android/
+windows/
+linux/
+docs/
+test/
+integration_test/
 .flutter-plugins-dependencies
-*.g.dart
-*.freezed.dart
-pubspec.lock
-.DS_Store

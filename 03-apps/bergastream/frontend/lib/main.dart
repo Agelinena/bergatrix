@@ -1,142 +1,42 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:just_audio_background/just_audio_background.dart';
-import 'package:timeago/timeago.dart' as timeago;
-import 'app.dart';
-import 'core/logger.dart';
-import 'providers/auth_provider.dart';
-import 'providers/player_provider.dart';
-import 'providers/sync_provider.dart';
+import 'package:just_audio_media_kit/just_audio_media_kit.dart';
 
-/// Master switch for the background-audio integration.
-///
-/// When true: JustAudioBackground.init runs at startup AND
-/// AudioPlayerService uses MediaItem as the AudioSource tag.  Together
-/// these power the lockscreen / notification media controls.
-///
-/// MUST match the constant in audio_player_service.dart's
-/// `_useBackgroundMediaItem`.
-const _enableBackgroundAudio = true;
+import 'app/app.dart';
+import 'core/platform/app_platform.dart';
+import 'core/storage/key_value_store.dart';
+import 'features/auth/session.dart';
+import 'features/downloads/file_fetcher.dart';
+import 'features/player/media_notification.dart';
 
-/// Global init error from JustAudioBackground.init.  Surfaced into the UI
-/// via a SnackBar on the first frame so the user can SEE that background
-/// audio failed (otherwise the player just spins forever on Android).
-String? backgroundInitError;
-
-void main() async {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Windows/Linux: o just_audio toca pelo media_kit (libmpv). No Android e
+  // na web não faz nada.
+  JustAudioMediaKit.ensureInitialized(linux: true, windows: true);
+  final platform = AppPlatform.detect();
+  final store = SecureKeyValueStore();
+  final storage = SessionStorage(
+    store,
+    prefix: SessionStorage.prefixFor(platform),
+  );
+  final session = await storage.load(
+    defaultServer: platform.isWeb ? webServerAddress() : null,
+  );
 
-  // Captura debugPrint num buffer em memória que a tela de Configurações > Logs
-  // pode renderizar.  Antes de qualquer outro setup para que mensagens do
-  // próprio JustAudioBackground.init() já apareçam lá.
-  AppLogger.install();
-
-  // Localised "há 3 semanas" / "há 6 dias" labels for the playlist
-  // "Adicionada em" column and other relative timestamps.
-  timeago.setLocaleMessages('pt_BR', timeago.PtBrMessages());
-
-  // Inicializa o background audio antes do runApp.  Necessário para
-  // Android (controles de notificação + manter o áudio tocando em
-  // background).  Pulamos no web — não há background audio service na
-  // web e o init falharia.
-  if (!kIsWeb && _enableBackgroundAudio) {
-    try {
-      await JustAudioBackground.init(
-        androidNotificationChannelId: 'xyz.bergaestudio.bergastream.audio',
-        androidNotificationChannelName: 'BergaStream',
-        androidNotificationOngoing: true,
-        // IMPORTANT: must stay false so the foreground service survives
-        // brief "paused" gaps that happen during track transitions
-        // (ProcessingState.completed → setAudioSource(next)).  When
-        // true, Android sometimes killed the service between tracks
-        // and playback would stop dead at the end of the first song.
-        androidStopForegroundOnPause: false,
-      );
-      debugPrint('[main] JustAudioBackground initialised OK');
-    } catch (e, st) {
-      backgroundInitError = '$e';
-      debugPrint('[main] JustAudioBackground.init FAILED: $e\n$st');
-    }
-  } else if (!kIsWeb) {
-    debugPrint('[main] Background audio DISABLED via _enableBackgroundAudio flag');
-  }
-
-  final container = ProviderContainer();
-  await container.read(authProvider.notifier).initialize();
-  // Eagerly construct the sync provider so its auth listener is armed
-  // before any further screen rebuilds.  build() returns immediately;
-  // the websocket connection is fired off in the background.
-  container.read(syncProvider);
-  if (container.read(authProvider).valueOrNull != null) {
-    container.read(syncProvider.notifier).connect();
-  }
-
-  // Note: loading overlay removal is handled in web/index.html via the
-  // 'flutter-first-frame' event — no dart:html needed here.
+  final mediaNotification = await initMediaNotification();
+  configureDownloadNotifications();
 
   runApp(
-    UncontrolledProviderScope(
-      container: container,
-      child: const _RootWithErrorListener(child: BergaStreamApp()),
+    ProviderScope(
+      overrides: [
+        appPlatformProvider.overrideWithValue(platform),
+        keyValueStoreProvider.overrideWithValue(store),
+        sessionStorageProvider.overrideWithValue(storage),
+        initialSessionProvider.overrideWithValue(session),
+        mediaNotificationProvider.overrideWithValue(mediaNotification),
+      ],
+      child: const BergastreamApp(),
     ),
   );
-}
-
-/// Wraps the app to surface global audio errors as SnackBars instead of
-/// failing silently.
-class _RootWithErrorListener extends ConsumerStatefulWidget {
-  final Widget child;
-  const _RootWithErrorListener({required this.child});
-
-  @override
-  ConsumerState<_RootWithErrorListener> createState() => _RootWithErrorListenerState();
-}
-
-class _RootWithErrorListenerState extends ConsumerState<_RootWithErrorListener> {
-  bool _shownInitError = false;
-  PlayerStatus? _lastStatus;
-
-  @override
-  void initState() {
-    super.initState();
-    if (backgroundInitError != null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) => _showInitError());
-    }
-  }
-
-  void _showInitError() {
-    if (_shownInitError) return;
-    _shownInitError = true;
-    final messenger = ScaffoldMessenger.maybeOf(context);
-    if (messenger == null) return;
-    messenger.showSnackBar(SnackBar(
-      backgroundColor: Colors.deepOrange,
-      duration: const Duration(seconds: 8),
-      content: Text(
-        'Áudio em background falhou ao iniciar:\n$backgroundInitError',
-        style: const TextStyle(fontSize: 12),
-      ),
-    ));
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    // Listen for player status transitions into "error" to show a SnackBar.
-    ref.listen<PlayerState>(playerProvider, (prev, next) {
-      if (next.status == PlayerStatus.error && _lastStatus != PlayerStatus.error) {
-        final messenger = ScaffoldMessenger.maybeOf(context);
-        final msg = next.lastError != null
-            ? 'Erro ao reproduzir: ${next.lastError}'
-            : 'Erro ao reproduzir áudio. Verifique a conexão.';
-        messenger?.showSnackBar(SnackBar(
-          backgroundColor: Colors.red,
-          duration: const Duration(seconds: 8),
-          content: Text(msg, style: const TextStyle(fontSize: 12)),
-        ));
-      }
-      _lastStatus = next.status;
-    });
-    return widget.child;
-  }
 }

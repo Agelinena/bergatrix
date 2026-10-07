@@ -1,0 +1,41 @@
+{
+  "source": "deezer",
+  "kind": "album",
+  "title": "Abbey Road (Remastered 2009)",
+  "subtitle": "The Beatles",
+  "cover_url": "https://cdn-images.dzcdn.net/images/cover/aa94ab293730bb7845d2aa8c672b2c29/1000x1000-000000-80-0-0.jpg",
+  "total": 17,
+  "tracks": [
+    {
+      "provider": "deezer",
+      "external_id": "116348452",
+      "title": "Come Together (Remastered 2009)",
+      "artist": "The Beatles",
+      "album": "Abbey Road (Remastered)",
+      "duration_seconds": 258,
+      "isrc": null,
+      "cover_url": "https://cdn-images.dzcdn.net/images/cover/aa94ab293730bb7845d2aa8c672b2c29/1000x1000-000000-80-0-0.jpg"
+    },
+    {
+      "provider": "deezer",
+      "external_id": "116348454",
+      "title": "Something (Remastered 2009)",
+      "artist": "The Beatles",
+      "album": "Abbey Road (Remastered)",
+      "duration_seconds": 181,
+      "isrc": null,
+      "cover_url": "https://cdn-images.dzcdn.net/images/cover/aa94ab293730bb7845d2aa8c672b2c29/1000x1000-000000-80-0-0.jpg"
+    },
+    {
+      "provider": "deezer",
+      "external_id": "116348456",
+      "title": "Maxwell's Silver Hammer (Remastered 2009)",
+      "artist": "The Beatles",
+      "album": "Abbey Road (Remastered)",
+      "duration_seconds": 206,
+      "isrc": null,
+      "cover_url": "https://cdn-images.dzcdn.net/images/cover/aa94ab293730bb7845d2aa8c672b2c29/1000x1000-000000-80-0-0.jpg"
+    }
+  ],
+  "external_url": "https://www.deezer.com/album/12047952"
+}

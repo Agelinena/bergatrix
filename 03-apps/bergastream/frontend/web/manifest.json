@@ -1,17 +1,13 @@
 {
-    "name": "BergaStream",
-    "short_name": "BergaStream",
-    "description": "Streaming de música self-hosted",
+    "name": "Bergastream",
+    "short_name": "Bergastream",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#121212",
-    "theme_color": "#1DB954",
-    "orientation": "any",
+    "background_color": "#0B0B0A",
+    "theme_color": "#0B0B0A",
+    "description": "Streaming musical self-hosted.",
+    "orientation": "portrait-primary",
     "prefer_related_applications": false,
-    "categories": [
-        "music",
-        "entertainment"
-    ],
     "icons": [
         {
             "src": "icons/Icon-192.png",

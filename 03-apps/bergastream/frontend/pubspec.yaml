@@ -1,104 +1,55 @@
 name: bergastream
-description: Self-hosted music streaming platform
-version: 1.0.0+1
+description: Bergastream, app de streaming musical self-hosted.
 publish_to: none
+version: 0.1.0+100
 
 environment:
-  sdk: ">=3.3.0 <4.0.0"
+  sdk: ^3.12.0
 
+# Os pacotes da Seção 3 da Documentação entram no passo que os usa.
 dependencies:
+  audio_service: ^0.18.19
+  audio_session: ^0.2.4
+  background_downloader: ^9.5.9
+  connectivity_plus: ^7.3.2
+  dio: ^5.11.1
+  drift: ^2.35.1
+  drift_flutter: ^0.3.1
   flutter:
     sdk: flutter
-
-  # State management
-  flutter_riverpod: ^2.5.1
-  riverpod_annotation: ^2.3.5
-
-  # Navigation
-  go_router: ^13.2.5
-
-  # Audio (just_audio inclui suporte Windows/Linux nativamente desde 0.9.x)
-  just_audio: ^0.9.40
-  # Reprodução em background + controles de notificação no Android.
-  # Sem isso, o áudio falha em background no Android 8+ e em alguns
-  # dispositivos não toca nem em foreground.
-  just_audio_background: ^0.0.1-beta.13
-  audio_session: ^0.1.21
-
-  # HTTP
-  dio: ^5.7.0
-
-  # Local storage
-  flutter_secure_storage: ^9.2.2
-
-  # UI
-  cached_network_image: ^3.4.1
-  shimmer: ^3.0.0
-  dynamic_color: ^1.7.0
-  marquee: ^2.2.3
-  palette_generator: ^0.3.3
-  toastification: ^2.1.0
-  readmore: ^3.0.0
-  percent_indicator: ^4.2.4
-
-  # Cross-platform local storage (replaces dart:html localStorage)
-  shared_preferences: ^2.3.2
-
-  # Conectividade — detecta on/offline para mostrar banner e cair em cache.
-  connectivity_plus: ^6.0.5
-
-  # WebSocket — usado pelo sync_provider (multi-device control).
-  web_socket_channel: ^3.0.1
-  device_info_plus: ^11.1.0
-
-  # Cross-platform file picker (replaces dart:html FileUploadInputElement)
-  file_picker: ^8.1.2
-
-  # Chromecast / Cast v2 device discovery via mDNS
-  multicast_dns: ^0.3.2
-
-  # Utils
-  intl: ^0.19.0
-  timeago: ^3.6.1
-  path_provider: ^2.1.5
+  flutter_riverpod: ^3.4.3
+  flutter_secure_storage: ^11.2.0
+  go_router: ^18.0.2
+  image_picker: ^1.2.4
+  json_annotation: ^4.12.0
+  just_audio: ^0.10.6
+  just_audio_media_kit: ^2.1.0
+  media_kit_libs_linux: ^1.2.1
+  media_kit_libs_windows_audio: ^1.0.9
+  open_filex: ^4.7.0
+  package_info_plus: ^10.2.2
+  path_provider: ^2.1.6
+  share_plus: ^13.3.1
+  url_launcher: ^6.3.3
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flutter_lints: ^4.0.0
-  build_runner: ^2.4.13
-  riverpod_generator: ^2.6.4
-  flutter_launcher_icons: ^0.14.1
+  integration_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  json_serializable: ^6.14.1
+  build_runner: ^2.15.1
+  drift_dev: ^2.35.1
 
 flutter:
   uses-material-design: true
-  assets:
-    - assets/images/logo.svg
-    - assets/images/logo_full.svg
-
-flutter_launcher_icons:
-  # Source: PNG gerado pelo script scripts/generate_icons.py a partir do SVG
-  # Execute: python scripts/generate_icons.py && dart run flutter_launcher_icons
-  image_path: "assets/images/icon_1024.png"
-
-  android: true
-  min_sdk_android: 21
-  adaptive_icon_background: "#1DB954"
-  adaptive_icon_foreground: "assets/images/icon_adaptive_fg.png"
-
-  ios: false          # não há alvo iOS neste projeto
-
-  web:
-    generate: true
-    image_path: "assets/images/icon_1024.png"
-    background_color: "#121212"
-    theme_color: "#1DB954"
-
-  windows:
-    generate: true
-    image_path: "assets/images/icon_1024.png"
-    icon_size: 48
-
-  linux:
-    generate: true
-    image_path: "assets/images/icon_1024.png"
+  fonts:
+    - family: BricolageGrotesque
+      fonts:
+        - asset: assets/fonts/BricolageGrotesque-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/BricolageGrotesque-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/BricolageGrotesque-ExtraBold.ttf
+          weight: 800

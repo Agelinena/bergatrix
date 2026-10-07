@@ -1,0 +1,32 @@
+[
+  {
+    "provider": "ytmusic",
+    "external_id": "32C0ohT-JFU",
+    "title": "We Are the Champions",
+    "artist": "",
+    "album": "",
+    "duration_seconds": 0,
+    "isrc": null,
+    "cover_url": null
+  },
+  {
+    "provider": "ytmusic",
+    "external_id": "ARwcMqXz4Zc",
+    "title": "Crazy Little Thing Called Love",
+    "artist": "",
+    "album": "",
+    "duration_seconds": 0,
+    "isrc": null,
+    "cover_url": null
+  },
+  {
+    "provider": "ytmusic",
+    "external_id": "JkTDwzKXoTM",
+    "title": "Good Old-Fashioned Lover Boy",
+    "artist": "",
+    "album": "",
+    "duration_seconds": 0,
+    "isrc": null,
+    "cover_url": null
+  }
+]

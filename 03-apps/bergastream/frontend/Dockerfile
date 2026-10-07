@@ -1,20 +1,13 @@
 FROM ghcr.io/cirruslabs/flutter:stable AS builder
-
 WORKDIR /app
-
-# Copia só o pubspec.yaml — lock não é commitado, será gerado aqui
-COPY pubspec.yaml ./
+COPY pubspec.yaml pubspec.lock ./
 RUN flutter pub get
-
-# Copia o restante do código (inclui web/ com index.html e assets/)
 COPY . .
-
-# Gera os arquivos .g.dart (Riverpod @riverpod annotations)
-RUN dart run build_runner build --delete-conflicting-outputs
-
-# API_URL é passado pelo docker-compose como build arg
-ARG API_URL=http://localhost:8000
-RUN flutter build web --release --dart-define=API_URL=${API_URL}
+# Os arquivos gerados (*.g.dart) já estão no repositório.
+# Na web o app usa o mesmo domínio que o serve (nginx → /api/).
+# --no-web-resources-cdn: CanvasKit e fontes saem do próprio servidor,
+# sem depender de gstatic.com.
+RUN flutter build web --release --no-web-resources-cdn
 
 FROM nginx:alpine AS production
 COPY --from=builder /app/build/web /usr/share/nginx/html
