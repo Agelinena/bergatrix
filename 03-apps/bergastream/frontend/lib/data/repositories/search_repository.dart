@@ -7,10 +7,11 @@ import '../models/search_full.dart';
 import '../models/search_result.dart';
 import 'fake_catalog.dart';
 
-/// Origem da busca (chips da Seção 6.3).
+/// Origem da busca (chips da Seção 6.3). O Spotify é a principal.
 enum SearchSource {
   spotify('spotify', 'Spotify'),
-  ytMusic('ytmusic', 'YT Music');
+  ytMusic('ytmusic', 'YT Music'),
+  deezer('deezer', 'Deezer');
 
   const SearchSource(this.apiValue, this.label);
 
@@ -27,9 +28,12 @@ abstract interface class SearchRepository {
   /// Lança [ApiException] (400 = link não reconhecido, 404 = não abriu).
   Future<ResolvedLink> resolve(String url);
 
-  /// Playlists do Spotify, Deezer e YouTube Music ("rádio X" traz a rádio
-  /// do artista). Lança [ApiException].
-  Future<List<PlaylistResult>> searchPlaylists(String query);
+  /// Playlists da origem da aba (no YT Music, "rádio X" traz a rádio do
+  /// artista). Lança [ApiException].
+  Future<List<PlaylistResult>> searchPlaylists(
+    String query,
+    SearchSource source,
+  );
 }
 
 class HttpSearchRepository implements SearchRepository {
@@ -59,10 +63,13 @@ class HttpSearchRepository implements SearchRepository {
   });
 
   @override
-  Future<List<PlaylistResult>> searchPlaylists(String query) => _call(() async {
+  Future<List<PlaylistResult>> searchPlaylists(
+    String query,
+    SearchSource source,
+  ) => _call(() async {
     final r = await _dio.get<List<dynamic>>(
       '/api/search/playlists',
-      queryParameters: {'q': query},
+      queryParameters: {'q': query, 'source': source.apiValue},
     );
     return [
       for (final p in r.data ?? const [])
@@ -124,13 +131,17 @@ class FakeSearchRepository implements SearchRepository {
   }
 
   @override
-  /// Playlists só para buscas com "rock" ou "rádio" (as outras buscas dos
-  /// testes ficam como antes).
+  /// Playlists só para buscas com "rock", "opera" ou "rádio" (as outras buscas dos
+  /// testes ficam como antes), da origem pedida; rádio só no YT Music.
   @override
-  Future<List<PlaylistResult>> searchPlaylists(String query) async {
+  Future<List<PlaylistResult>> searchPlaylists(
+    String query,
+    SearchSource source,
+  ) async {
     final q = query.toLowerCase();
     return [
-      if (q.startsWith('rádio') || q.startsWith('radio'))
+      if (source == SearchSource.ytMusic &&
+          (q.startsWith('rádio') || q.startsWith('radio')))
         const PlaylistResult(
           provider: 'ytmusic',
           externalId: 'RDEMx',
@@ -139,12 +150,12 @@ class FakeSearchRepository implements SearchRepository {
           url: 'https://music.youtube.com/playlist?list=RDEMx',
           isRadio: true,
         ),
-      if (q.contains('rock'))
-        const PlaylistResult(
-          provider: 'deezer',
+      if (q.contains('rock') || q.contains('opera'))
+        PlaylistResult(
+          provider: source.apiValue,
           externalId: '5619143162',
           title: 'Rock Brasil Anos 80',
-          owner: 'Editores Deezer Brasil',
+          owner: 'Editores',
           trackCount: 40,
           url: 'https://www.deezer.com/playlist/5619143162',
         ),

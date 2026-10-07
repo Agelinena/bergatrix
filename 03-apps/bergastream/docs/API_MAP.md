@@ -15,10 +15,10 @@ marcadas como públicas. Stream e download aceitam também `?t=<token de stream>
 | Endpoint | Parâmetros | Resposta |
 |---|---|---|
 | `GET /api/search` | `q`, `source` = `spotify` \| `ytmusic` \| `youtube` \| `all` (padrão) | `list[SearchResult]` |
-| `GET /api/search/full` | `q`, `source` = `spotify` (padrão) \| `ytmusic` | `FullSearch` = `tracks`, `artists`, `albums` |
+| `GET /api/search/full` | `q`, `source` = `spotify` (padrão) \| `ytmusic` \| `deezer` | `FullSearch` = `tracks`, `artists`, `albums` |
 | `GET /api/resolve` | `url` (Spotify, Deezer ou YouTube) | `ResolvedLink` |
 
-- `GET /api/search/playlists?q=` → `list[PlaylistResult]`: `provider` (`spotify`\|`deezer`\|`ytmusic`), `external_id`, `title`, `owner`, `track_count`, `image_url`, `url` (abre por `/api/resolve`), `kind` (`playlist`\|`radio`). "rádio <artista>" traz a rádio do artista (YouTube Music) primeiro; links `RD…` do YouTube Music abrem como rádio.
+- `GET /api/search/playlists?q=&source=` (só a origem pedida; sem `source`, as três) → `list[PlaylistResult]`: `provider` (`spotify`\|`deezer`\|`ytmusic`), `external_id`, `title`, `owner`, `track_count`, `image_url`, `url` (abre por `/api/resolve`), `kind` (`playlist`\|`radio`). "rádio <artista>" traz a rádio do artista (YouTube Music) primeiro; links `RD…` do YouTube Music abrem como rádio.
 - **`SearchResult`:** `provider`, `external_id`, `title`, `artist`, `album`, `duration_seconds`, `isrc`, `cover_url`, `artist_id`, `album_id`.
 - **`ArtistResult`:** `provider`, `external_id`, `name`, `image_url`. **`AlbumResult`:** `provider`, `external_id`, `title`, `artist`, `year`, `image_url`.
 - **`ResolvedLink`:** `source` (`spotify`\|`deezer`\|`youtube`), `kind` (`track`\|`album`\|`playlist`), `title`, `subtitle`, `cover_url`, `description`, `total`, `tracks` (até 10.000), `external_url`.
@@ -90,7 +90,7 @@ resultado guardado. Detalhes em `backend/app/playlists/ops.py`.
 | `GET /api/artists/{provider}/{id}` | `ArtistPage`: `name`, `image_url`, `followers`/`followers_text`, `top_tracks`, `albums` |
 | `GET /api/artists/{provider}/{id}/tracks?offset=&limit=` | `TrackPage`: `items`, `offset`, `total`, `next_offset` (limit ≤ 50, offset ≤ 5000) |
 
-`provider` = `spotify` \| `ytmusic`. Cache de 10 min. A busca dentro do artista é feita no app sobre as páginas carregadas.
+`provider` = `spotify` \| `ytmusic` \| `deezer`. Cache de 10 min. A busca dentro do artista é feita no app sobre as páginas carregadas.
 
 ---
 

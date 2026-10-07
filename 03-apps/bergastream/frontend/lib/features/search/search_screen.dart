@@ -222,7 +222,8 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
           ? [
               // Ex.: "rádio scorpions" pode não achar músicas, só a rádio.
               ..._playlists(context),
-              if ((ref.watch(playlistSearchProvider(_query)).value ?? const [])
+              if ((ref.watch(playlistSearchProvider((_query, _source))).value ??
+                      const [])
                   .isEmpty)
                 Padding(
                   padding: const EdgeInsets.only(top: 20),
@@ -237,11 +238,11 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     );
   }
 
-  /// Playlists do Spotify, Deezer e YouTube Music (e rádio de artista).
+  /// Playlists da origem da aba (no YT Music, também a rádio do artista).
   /// Carrega à parte: não atrasa as outras seções.
   List<Widget> _playlists(BuildContext context) {
     final playlists =
-        ref.watch(playlistSearchProvider(_query)).value ?? const [];
+        ref.watch(playlistSearchProvider((_query, _source))).value ?? const [];
     if (playlists.isEmpty) return const [];
     return [
       const SectionTitle('Playlists'),
@@ -268,13 +269,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     final playingId = ref.watch(
       playerProvider.select((s) => s.current?.track.id),
     );
-    // "rádio X": a rádio aparece antes de tudo.
-    final radioFirst = RegExp(
-      r'^\s*r[aá]dio\s',
-      caseSensitive: false,
-    ).hasMatch(_query);
     return [
-      if (radioFirst) ..._playlists(context),
       if (data.artists.isNotEmpty) ...[
         const SectionTitle('Artistas'),
         HorizontalShelf(
@@ -292,7 +287,8 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
           ],
         ),
       ],
-      if (!radioFirst) ..._playlists(context),
+      // Playlists entre Artistas e Álbuns (só da origem da aba).
+      ..._playlists(context),
       if (data.albums.isNotEmpty) ...[
         const SectionTitle('Álbuns'),
         HorizontalShelf(

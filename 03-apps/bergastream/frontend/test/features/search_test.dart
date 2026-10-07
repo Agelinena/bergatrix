@@ -219,7 +219,12 @@ void main() {
     await type(tester, 'rock');
     expect(find.text('Playlists'), findsOneWidget);
     expect(find.text('Rock Brasil Anos 80'), findsOneWidget);
+    // Aba principal (Spotify): só playlists do Spotify.
+    expect(find.text('Spotify · 40 músicas'), findsOneWidget);
+    await tester.tap(find.text('Deezer'));
+    await tester.pumpAndSettle();
     expect(find.text('Deezer · 40 músicas'), findsOneWidget);
+    expect(find.text('Spotify · 40 músicas'), findsNothing);
 
     await tester.tap(find.text('Rock Brasil Anos 80'));
     await tester.pumpAndSettle();
@@ -227,22 +232,52 @@ void main() {
     expect(find.text('Importar'), findsOneWidget);
   });
 
-  testWidgets('"rádio <artista>" traz a rádio antes de tudo', (tester) async {
+  testWidgets('"rádio <artista>" traz a rádio na aba YT Music', (tester) async {
     await pumpBergastream(
       tester,
       initialLocation: '/buscar',
       size: const Size(400, 1600),
     );
     await type(tester, 'rádio queen');
+    // Rádio só existe no YT Music.
+    expect(find.text('Rádio Scorpions'), findsNothing);
+    await tester.tap(find.text('YT Music'));
+    await tester.pumpAndSettle();
     expect(find.text('Rádio Scorpions'), findsOneWidget);
     expect(find.text('Rádio · YouTube Music'), findsOneWidget);
-    final playlists = tester.getTopLeft(find.text('Playlists')).dy;
-    for (final other in ['Músicas', 'Artistas']) {
-      final f = find.text(other);
-      if (f.evaluate().isNotEmpty) {
-        expect(playlists < tester.getTopLeft(f.first).dy, isTrue);
-      }
-    }
+  });
+
+  testWidgets('Playlists ficam entre Artistas e Álbuns', (tester) async {
+    await pumpBergastream(
+      tester,
+      initialLocation: '/buscar',
+      size: const Size(400, 2400),
+    );
+    await type(tester, 'opera');
+    double y(String t) => tester.getTopLeft(find.text(t).first).dy;
+    expect(find.text('Artistas'), findsOneWidget);
+    expect(find.text('Álbuns'), findsOneWidget);
+    expect(y('Artistas') < y('Playlists'), isTrue);
+    expect(y('Playlists') < y('Álbuns'), isTrue);
+  });
+
+  testWidgets('aba Deezer: músicas, artistas e álbuns do Deezer', (
+    tester,
+  ) async {
+    final container = await pumpBergastream(
+      tester,
+      initialLocation: '/buscar',
+      size: const Size(400, 1600),
+    );
+    expect(find.text('Deezer'), findsOneWidget);
+    await tester.tap(find.text('Deezer'));
+    await tester.pumpAndSettle();
+    await type(tester, 'queen');
+    await tester.tap(find.text('Bohemian Rhapsody'));
+    await tester.pumpAndSettle();
+    expect(container.read(playerProvider).current!.track.provider, 'deezer');
+    await tester.pump(const Duration(seconds: 3));
+    await tester.pumpAndSettle();
   });
 
   testWidgets('busca sem playlists não mostra a seção', (tester) async {
@@ -363,6 +398,8 @@ class _FailingSearch implements SearchRepository {
       throw const ApiException(ApiErrorKind.servidor);
 
   @override
-  Future<List<PlaylistResult>> searchPlaylists(String query) async =>
-      throw const ApiException(ApiErrorKind.servidor);
+  Future<List<PlaylistResult>> searchPlaylists(
+    String query,
+    SearchSource source,
+  ) async => throw const ApiException(ApiErrorKind.servidor);
 }

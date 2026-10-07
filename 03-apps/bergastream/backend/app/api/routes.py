@@ -52,19 +52,29 @@ async def search(q: str = Query(min_length=1), source: str = Query("all", patter
     return combined
 
 @router.get("/search/full", response_model=FullSearch)
-async def search_full(q: str = Query(min_length=1), source: str = Query("spotify", pattern="^(spotify|ytmusic)$"), user: CurrentUser = Depends(current_user)):
+async def search_full(q: str = Query(min_length=1), source: str = Query("spotify", pattern="^(spotify|ytmusic|deezer)$"), user: CurrentUser = Depends(current_user)):
     """Faixas, artistas e álbuns de uma origem (Seção 6.3 do app)."""
     if source == "spotify":
         return await asyncio.to_thread(spotify_search.search_full, q)
+    if source == "deezer":
+        from app.search import deezer as deezer_search
+        try:
+            return await asyncio.to_thread(deezer_search.search_full, q)
+        except Exception as exc:
+            logger.warning("[search] deezer falhou: %s", exc)
+            raise HTTPException(502, detail="O Deezer não respondeu")
     from app.search import ytmusic as ytmusic_search
     return await asyncio.to_thread(ytmusic_search.search_full, q)
 
 @router.get("/search/playlists", response_model=list[PlaylistResult])
-async def search_playlists(q: str = Query(min_length=1, max_length=200), user: CurrentUser = Depends(current_user)):
-    """Playlists do Spotify, Deezer e YouTube Music; "rádio <artista>" traz
-    a rádio do artista. Abrir: a `url` vai para /api/resolve."""
+async def search_playlists(q: str = Query(min_length=1, max_length=200),
+                           source: str | None = Query(None, pattern="^(spotify|ytmusic|deezer)$"),
+                           user: CurrentUser = Depends(current_user)):
+    """Playlists de uma origem (a aba da Busca) ou de todas; no YouTube
+    Music, "rádio <artista>" traz a rádio do artista. Abrir: a `url` vai
+    para /api/resolve."""
     from app.search.playlists import search_playlists as find
-    return await find(q)
+    return await find(q, source)
 
 
 @router.get("/resolve", response_model=ResolvedLink)
@@ -79,7 +89,7 @@ async def resolve(url: str = Query(min_length=8, max_length=2048), user: Current
 
 # Artista e álbum (Seção 6.7 do app)
 
-_PROVIDER = "^(spotify|ytmusic)$"
+_PROVIDER = "^(spotify|ytmusic|deezer)$"
 
 async def _catalog(fn, *args):
     from app.catalog.service import NotFound

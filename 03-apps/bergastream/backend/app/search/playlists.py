@@ -94,10 +94,12 @@ def _radio(artist_query: str) -> PlaylistResult | None:
         url=f"https://music.youtube.com/playlist?list={radio}")
 
 
-async def search_playlists(query: str) -> list[PlaylistResult]:
-    """Rádio (se pedida) primeiro; depois YouTube Music, Deezer e Spotify
-    intercalados. Uma origem fora do ar não derruba as outras."""
-    radio_match = _RADIO_RE.match(query)
+async def search_playlists(query: str, source: str | None = None) -> list[PlaylistResult]:
+    """Só as playlists de [source] (a aba da Busca); sem ela, das três,
+    intercaladas. A rádio só existe no YouTube Music e vem primeiro. Uma
+    origem fora do ar não derruba as outras."""
+    radio_match = _RADIO_RE.match(query) if source in (None, "ytmusic") else None
+    wanted = {source} if source else {"ytmusic", "deezer", "spotify"}
 
     async def safe(name, coro):
         try:
@@ -110,10 +112,13 @@ async def search_playlists(query: str) -> list[PlaylistResult]:
                   if radio_match else asyncio.sleep(0, result=None))
     # "rádio X": no YouTube Music a palavra "rádio" atrapalha a busca.
     yt_query = radio_match.group(1).strip() if radio_match else query
+    async def none():
+        return []
+
     yt, dz, sp, radio = await asyncio.gather(
-        safe("ytmusic", asyncio.to_thread(_ytmusic, yt_query)),
-        safe("deezer", _deezer(query)),
-        safe("spotify", asyncio.to_thread(_spotify, query)),
+        safe("ytmusic", asyncio.to_thread(_ytmusic, yt_query)) if "ytmusic" in wanted else none(),
+        safe("deezer", _deezer(query)) if "deezer" in wanted else none(),
+        safe("spotify", asyncio.to_thread(_spotify, query)) if "spotify" in wanted else none(),
         radio_task)
     mixed: list[PlaylistResult] = [radio] if isinstance(radio, PlaylistResult) else []
     for i in range(max(len(yt), len(dz), len(sp))):

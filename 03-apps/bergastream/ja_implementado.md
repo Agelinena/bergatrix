@@ -381,6 +381,15 @@ Rodado na imagem `ghcr.io/cirruslabs/flutter:stable` (Flutter 3.44.0 / Dart 3.12
 - Deploy de produção: compose com `${STORAGE_PATH}`, `container_name`, redes
   `bergastream-internal` (sem internet) e `bergastream-egress`, labels do modelo B.
 
+### Versão 0.1.7 — aba Deezer e playlists por origem
+- Abas da Busca: **Spotify** (principal), **YT Music** e **Deezer** (nova). Cada aba mostra só as
+  músicas, artistas, álbuns e playlists daquela origem; a rádio de artista ("rádio X") fica no
+  YT Music.
+- Seção **Playlists** sempre entre Artistas e Álbuns.
+- Deezer completo: busca (`/api/search/full?source=deezer`), página de artista (populares, álbuns,
+  todas as músicas paginadas álbum por álbum) e de álbum (`/api/artists|albums/deezer/...`); as
+  faixas baixam pelo Deezer (Deemix) com o YouTube de reserva.
+
 ### Versão 0.1.6 — playlists na busca
 - Seção **Playlists** na Busca: YouTube Music (editoriais e da comunidade), Deezer e Spotify,
   intercaladas, com capa, origem e número de músicas. Tocar abre a tela de link importado

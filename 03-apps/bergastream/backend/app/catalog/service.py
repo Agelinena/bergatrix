@@ -1,12 +1,12 @@
 """Artista (populares, álbuns, todas as faixas paginadas) e álbum, no
-Spotify e no YT Music. Respostas ficam 10 min em cache."""
+Spotify, no YT Music e no Deezer. Respostas ficam 10 min em cache."""
 from __future__ import annotations
 
 import logging
 
 from app.catalog.cache import cached
 from app.catalog.models import AlbumPage, ArtistPage, TrackPage
-from app.search import spotify, ytmusic
+from app.search import deezer, spotify, ytmusic
 from app.search.models import AlbumResult, SearchResult
 
 logger = logging.getLogger("bergastream.catalog")
@@ -192,17 +192,78 @@ def ytmusic_album(browse_id: str) -> AlbumPage:
                             for i in album.get("tracks") or []) if t])
 
 
+# ── Deezer ───────────────────────────────────────────────────────
+
+def _dz(path: str, **params) -> dict:
+    try:
+        return deezer.get(path, **params)
+    except deezer.DeezerError:
+        raise NotFound(path)
+
+
+def _deezer_albums(artist_id: str) -> list[dict]:
+    return cached(f"dz:albums:{artist_id}", _TTL,
+                  lambda: _dz(f"/artist/{artist_id}/albums", limit=100).get("data") or [])
+
+
+def _deezer_album_full(album_id: str) -> tuple[dict, list[SearchResult]]:
+    def load():
+        album = _dz(f"/album/{album_id}")
+        items = (album.get("tracks") or {}).get("data") or []
+        return album, [deezer.track_from(t, album) for t in items if t.get("id")]
+    return cached(f"dz:album:{album_id}", _TTL, load)
+
+
+def deezer_artist(artist_id: str) -> ArtistPage:
+    def load():
+        raw = _dz(f"/artist/{artist_id}")
+        top = _dz(f"/artist/{artist_id}/top", limit=10).get("data") or []
+        return ArtistPage(
+            provider="deezer", external_id=artist_id, name=raw.get("name", ""),
+            image_url=raw.get("picture_xl") or raw.get("picture_big"),
+            followers=raw.get("nb_fan"),
+            top_tracks=[deezer.track_from(t) for t in top if t.get("id")],
+            albums=[deezer.album_result(a) for a in _deezer_albums(artist_id)])
+    return cached(f"dz:artist:{artist_id}", _TTL, load)
+
+
+def deezer_artist_tracks(artist_id: str, offset: int, limit: int) -> TrackPage:
+    """Todas as faixas, álbum por álbum (como no Spotify)."""
+    albums = _deezer_albums(artist_id)
+    collected: list[SearchResult] = []
+    loaded_all = True
+    for a in albums:
+        collected = dedupe(collected + _deezer_album_full(str(a["id"]))[1])
+        if len(collected) > offset + limit:
+            loaded_all = False
+            break
+    estimated = sum(int(a.get("nb_tracks") or 0) for a in albums)
+    total = len(collected) if loaded_all else max(estimated, len(collected))
+    return page_of(collected, offset, limit, total)
+
+
+def deezer_album(album_id: str) -> AlbumPage:
+    album, tracks = _deezer_album_full(album_id)
+    artist = album.get("artist") or {}
+    return AlbumPage(
+        provider="deezer", external_id=album_id, title=album.get("title", ""),
+        artist=artist.get("name", ""), artist_id=str(artist["id"]) if artist.get("id") else None,
+        year=(album.get("release_date") or "")[:4] or None,
+        image_url=album.get("cover_xl") or album.get("cover_big"), tracks=tracks)
+
+
 # ── Entrada ──────────────────────────────────────────────────────
 
 def artist(provider: str, external_id: str) -> ArtistPage:
-    return spotify_artist(external_id) if provider == "spotify" else ytmusic_artist(external_id)
+    return {"spotify": spotify_artist, "deezer": deezer_artist}.get(
+        provider, ytmusic_artist)(external_id)
 
 
 def artist_tracks(provider: str, external_id: str, offset: int, limit: int) -> TrackPage:
-    if provider == "spotify":
-        return spotify_artist_tracks(external_id, offset, limit)
-    return ytmusic_artist_tracks(external_id, offset, limit)
+    return {"spotify": spotify_artist_tracks, "deezer": deezer_artist_tracks}.get(
+        provider, ytmusic_artist_tracks)(external_id, offset, limit)
 
 
 def album(provider: str, external_id: str) -> AlbumPage:
-    return spotify_album(external_id) if provider == "spotify" else ytmusic_album(external_id)
+    return {"spotify": spotify_album, "deezer": deezer_album}.get(
+        provider, ytmusic_album)(external_id)

@@ -19,9 +19,11 @@ final searchResultsProvider = FutureProvider.autoDispose
 /// Playlists achadas na busca (seção "Playlists"). Vazia se falhar: as
 /// outras seções continuam.
 final playlistSearchProvider = FutureProvider.autoDispose
-    .family<List<PlaylistResult>, String>((ref, query) async {
+    .family<List<PlaylistResult>, (String, SearchSource)>((ref, key) async {
       try {
-        return await ref.read(searchRepositoryProvider).searchPlaylists(query);
+        return await ref
+            .read(searchRepositoryProvider)
+            .searchPlaylists(key.$1, key.$2);
       } on Object {
         return const [];
       }

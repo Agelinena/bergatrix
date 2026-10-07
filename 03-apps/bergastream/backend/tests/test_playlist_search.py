@@ -82,6 +82,18 @@ async def main():
     res = await pl.search_playlists("rock")
     ok([r.provider for r in res], ["ytmusic", "spotify", "ytmusic", "spotify", "spotify"], "Deezer fora não derruba")
 
+    print("=== só a origem da aba ===")
+    pl._deezer = dz
+    res = await pl.search_playlists("rock", "spotify")
+    ok({r.provider for r in res}, {"spotify"}, "aba Spotify: só Spotify")
+    res = await pl.search_playlists("rock", "deezer")
+    ok([r.provider for r in res], ["deezer"], "aba Deezer: só Deezer")
+    calls.pop("radio", None)
+    res = await pl.search_playlists("rádio scorpions", "spotify")
+    ok(("radio" in calls, {r.kind for r in res}), (False, {"playlist"}), "rádio só no YouTube Music")
+    res = await pl.search_playlists("rádio scorpions", "ytmusic")
+    ok((res[0].kind, {r.provider for r in res}), ("radio", {"ytmusic"}), "aba YT Music: rádio + YouTube")
+
     print("=== Spotify: playlists do próprio Spotify ficam de fora ===")
     from importlib import reload
     import app.search.playlists as fresh

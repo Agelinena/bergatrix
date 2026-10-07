@@ -15,7 +15,7 @@ from urllib.parse import parse_qs, urlparse
 import httpx
 from pydantic import BaseModel
 
-from app.search import spotify, ytmusic
+from app.search import deezer, spotify, ytmusic
 from app.search.models import SearchResult
 
 logger = logging.getLogger("bergastream.search.resolve")
@@ -177,16 +177,6 @@ def _resolve_spotify(link: ParsedLink) -> ResolvedLink:
 
 # ── Deezer (API pública) ─────────────────────────────────────────
 
-def _deezer_track(item: dict, album: dict | None = None) -> SearchResult:
-    alb = item.get("album") or album or {}
-    return SearchResult(
-        provider="deezer", external_id=str(item["id"]), title=item.get("title", ""),
-        artist=(item.get("artist") or {}).get("name", ""), album=alb.get("title", ""),
-        duration_seconds=int(item.get("duration") or 0), isrc=item.get("isrc"),
-        cover_url=alb.get("cover_xl") or alb.get("cover_big"),
-    )
-
-
 async def _resolve_deezer(link: ParsedLink) -> ResolvedLink:
     external = f"https://www.deezer.com/{link.kind}/{link.id}"
     async with httpx.AsyncClient(base_url="https://api.deezer.com", timeout=15) as cli:
@@ -198,7 +188,7 @@ async def _resolve_deezer(link: ParsedLink) -> ResolvedLink:
 
         data = await get(f"/{link.kind}/{link.id}")
         if link.kind == "track":
-            t = _deezer_track(data)
+            t = deezer.track_from(data)
             return ResolvedLink(source="deezer", kind="track", title=t.title, subtitle=t.artist,
                                 cover_url=t.cover_url, total=1, tracks=[t], external_url=external)
 
@@ -209,7 +199,7 @@ async def _resolve_deezer(link: ParsedLink) -> ResolvedLink:
             items += page.get("data") or []
             next_url = page.get("next")
         album = data if link.kind == "album" else None
-        tracks = [_deezer_track(i, album) for i in items[:MAX_TRACKS] if i.get("id")]
+        tracks = [deezer.track_from(i, album) for i in items[:MAX_TRACKS] if i.get("id")]
         return ResolvedLink(
             source="deezer", kind=link.kind, title=data.get("title", ""),
             subtitle=((data.get("artist") or data.get("creator")) or {}).get("name", ""),

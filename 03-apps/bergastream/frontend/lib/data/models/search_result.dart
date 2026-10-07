@@ -35,8 +35,9 @@ class SearchResult {
   final String? artistId;
   final String? albumId;
 
-  /// Artista e álbum têm página no app (Spotify e YT Music).
-  bool get hasCatalogPages => provider == 'spotify' || provider == 'ytmusic';
+  /// Artista e álbum têm página no app (Spotify, YT Music e Deezer).
+  bool get hasCatalogPages =>
+      provider == 'spotify' || provider == 'ytmusic' || provider == 'deezer';
 
   /// Id estável para a UI (cor da capa, chaves de lista).
   String get id => '$provider:$externalId';
