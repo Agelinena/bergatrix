@@ -72,10 +72,20 @@ class PlayerTimings {
   const PlayerTimings({
     this.pollInterval = const Duration(milliseconds: 1500),
     this.prepareTimeout = const Duration(minutes: 3),
+    this.rapidChangeDelay = const Duration(milliseconds: 500),
+    this.prefetchAfter = const Duration(seconds: 20),
   });
 
   final Duration pollInterval;
   final Duration prepareTimeout;
+
+  /// Trocas seguidas de música (vários toques rápidos): espera isto antes de
+  /// pedir ao servidor, para não baixar as que foram só "passadas".
+  final Duration rapidChangeDelay;
+
+  /// Depois de tocar isto (ou metade de uma faixa curta), pede ao servidor
+  /// para preparar só a próxima: a troca fica instantânea.
+  final Duration prefetchAfter;
 }
 
 final playerTimingsProvider = Provider<PlayerTimings>(
@@ -104,6 +114,12 @@ final playerProvider = NotifierProvider<PlayerController, PlayerState>(
 class PlayerController extends Notifier<PlayerState> {
   final _queue = PlayQueue();
   int _generation = 0;
+
+  /// Quando começou a carregar a faixa anterior (detecta trocas rápidas).
+  DateTime _lastLoadAt = DateTime.fromMillisecondsSinceEpoch(0);
+
+  /// Faixa cuja próxima já foi pedida ao servidor.
+  int? _prefetchedFor;
   Duration? _duration;
   bool _counted = false;
   final _subscriptions = <StreamSubscription<Object?>>[];
@@ -387,6 +403,7 @@ class PlayerController extends Notifier<PlayerState> {
     _counted = false;
     _duration = null;
     _publish(status: PlaybackStatus.preparando);
+    _prefetchedFor = null;
     _notification?.showTrack(
       id: item.track.id,
       title: item.track.title,
@@ -397,7 +414,8 @@ class PlayerController extends Notifier<PlayerState> {
           : null,
       coverUrl: item.track.coverUrl,
     );
-    await _engine.stop();
+    // Pausa (e não "stop"): o serviço de mídia continua ativo na troca.
+    await _engine.pause();
 
     // 1. Arquivo baixado no aparelho (funciona sem servidor) — Seção 7.3.
     final local = await ref
@@ -424,6 +442,14 @@ class PlayerController extends Notifier<PlayerState> {
 
     // 2. Streaming do servidor.
     final timings = ref.read(playerTimingsProvider);
+    // Toques rápidos em várias músicas: só a última vai para o servidor.
+    final now = DateTime.now();
+    final rapid = now.difference(_lastLoadAt) < const Duration(seconds: 1);
+    _lastLoadAt = now;
+    if (rapid && timings.rapidChangeDelay > Duration.zero) {
+      await Future<void>.delayed(timings.rapidChangeDelay);
+      if (generation != _generation) return;
+    }
     try {
       final prepared = await _repository.prepare(item.track);
       var readiness = prepared.readiness;
@@ -493,11 +519,39 @@ class PlayerController extends Notifier<PlayerState> {
             : null,
       );
     }
+    _maybePrefetch(item, position);
     _notification?.showState(
       playing: state.isPlaying,
       loading: state.isPreparing,
       position: position,
     );
+  }
+
+  /// Pede ao servidor só a próxima música, depois de a atual tocar um pouco
+  /// (quem passa músicas rápido não dispara downloads).
+  void _maybePrefetch(QueueItem current, Duration position) {
+    if (_prefetchedFor == current.uid ||
+        state.status != PlaybackStatus.tocando) {
+      return;
+    }
+    final after = ref.read(playerTimingsProvider).prefetchAfter;
+    final duration = _duration;
+    final half = duration == null ? null : duration * 0.5;
+    if (position < after && (half == null || position < half)) return;
+    _prefetchedFor = current.uid;
+    final next = _queue.peekNext;
+    if (next == null || !ref.read(sessionProvider).canUseServer) return;
+    unawaited(() async {
+      try {
+        final local = await ref
+            .read(localDatabaseProvider)
+            ?.downloadedFor(next.track);
+        if (local?.audioPath != null) return; // já está no aparelho
+        await _repository.prepare(next.track);
+      } on Object catch (e) {
+        debugPrint('Não preparou a próxima: $e');
+      }
+    }());
   }
 
   void _onNotificationCommand(String command, [Duration? position]) {
@@ -536,7 +590,10 @@ class PlayerController extends Notifier<PlayerState> {
       message: message,
     );
     _notification?.showState(
-      playing: state.isPlaying,
+      // Preparando a próxima conta como "tocando" para o Android: o serviço
+      // de mídia segue em primeiro plano com a CPU acordada (tela bloqueada).
+      // Sem isso a troca de faixa parava com a tela desligada.
+      playing: state.isPlaying || state.isPreparing,
       loading: state.isPreparing,
       position: _engine.position,
     );

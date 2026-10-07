@@ -82,7 +82,10 @@ void main() {
         fileFetcherProvider.overrideWithValue(NoFetch()),
         networkCheckProvider.overrideWithValue(_Wifi()),
         playerTimingsProvider.overrideWithValue(
-          const PlayerTimings(pollInterval: Duration.zero),
+          const PlayerTimings(
+            pollInterval: Duration.zero,
+            rapidChangeDelay: Duration.zero,
+          ),
         ),
         serverPingProvider.overrideWithValue((_) async => pingOk),
         connectivityChangesProvider.overrideWithValue(const Stream.empty()),

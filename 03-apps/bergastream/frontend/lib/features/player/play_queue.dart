@@ -84,6 +84,14 @@ class PlayQueue {
     if (_shuffle) _upNext.shuffle(_random);
   }
 
+  /// A que vem depois da atual, sem avançar (para baixar antes).
+  QueueItem? get peekNext {
+    if (_current == null || repeat == PlayerRepeat.umaFaixa) return null;
+    if (_manual.isNotEmpty) return _manual.first;
+    if (_upNext.isNotEmpty) return _upNext.first;
+    return null;
+  }
+
   /// "Adicionar à fila": entra no fim da sua fila (FIFO).
   QueueItem add(SearchResult track) {
     final item = _item(track);

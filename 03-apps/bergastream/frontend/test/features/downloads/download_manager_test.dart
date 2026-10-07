@@ -111,7 +111,10 @@ void main() {
         networkCheckProvider.overrideWithValue(network),
         playbackRepositoryProvider.overrideWithValue(server),
         playerTimingsProvider.overrideWithValue(
-          const PlayerTimings(pollInterval: Duration.zero),
+          const PlayerTimings(
+            pollInterval: Duration.zero,
+            rapidChangeDelay: Duration.zero,
+          ),
         ),
         appPlatformProvider.overrideWithValue(const AppPlatform.app()),
         keyValueStoreProvider.overrideWithValue(MemoryKeyValueStore()),

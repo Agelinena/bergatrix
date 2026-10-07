@@ -119,7 +119,10 @@ Future<ProviderContainer> pumpBergastream(
         ),
       ),
       playerTimingsProvider.overrideWithValue(
-        const PlayerTimings(pollInterval: Duration.zero),
+        const PlayerTimings(
+          pollInterval: Duration.zero,
+          rapidChangeDelay: Duration.zero,
+        ),
       ),
     ],
   );

@@ -381,6 +381,15 @@ Rodado na imagem `ghcr.io/cirruslabs/flutter:stable` (Flutter 3.44.0 / Dart 3.12
 - Deploy de produção: compose com `${STORAGE_PATH}`, `container_name`, redes
   `bergastream-internal` (sem internet) e `bergastream-egress`, labels do modelo B.
 
+### Versão 0.1.8 — troca de música com a tela bloqueada
+- Na troca de faixa o app continua "tocando" para o Android (estado "carregando"): o serviço de
+  mídia segue em primeiro plano com a trava de CPU. Antes a próxima música não começava com a
+  tela bloqueada.
+- Só a próxima música é preparada no servidor, depois de a atual tocar 20 s (ou metade, se curta);
+  a troca fica instantânea.
+- Toques rápidos em várias músicas: espera meio segundo antes de pedir ao servidor, então só a
+  última escolhida é baixada.
+
 ### Versão 0.1.7 — aba Deezer e playlists por origem
 - Abas da Busca: **Spotify** (principal), **YT Music** e **Deezer** (nova). Cada aba mostra só as
   músicas, artistas, álbuns e playlists daquela origem; a rádio de artista ("rádio X") fica no

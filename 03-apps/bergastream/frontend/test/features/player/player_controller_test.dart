@@ -6,7 +6,9 @@ import 'package:bergastream/data/local/database.dart';
 import 'package:bergastream/data/models/search_result.dart';
 import 'package:bergastream/features/auth/session.dart';
 import 'package:bergastream/data/repositories/playback_repository.dart';
+import 'package:audio_service/audio_service.dart';
 import 'package:bergastream/features/player/audio_engine.dart';
+import 'package:bergastream/features/player/media_notification.dart';
 import 'package:bergastream/features/player/play_queue.dart';
 import 'package:bergastream/features/player/player_controller.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -37,7 +39,10 @@ void main() {
         audioEngineProvider.overrideWithValue(engine),
         playbackRepositoryProvider.overrideWithValue(repo),
         playerTimingsProvider.overrideWithValue(
-          const PlayerTimings(pollInterval: Duration.zero),
+          const PlayerTimings(
+            pollInterval: Duration.zero,
+            rapidChangeDelay: Duration.zero,
+          ),
         ),
         playRecorderProvider.overrideWithValue((
           SearchResult t, {
@@ -251,7 +256,10 @@ void main() {
         audioEngineProvider.overrideWithValue(engine2),
         playbackRepositoryProvider.overrideWithValue(repo),
         playerTimingsProvider.overrideWithValue(
-          const PlayerTimings(pollInterval: Duration.zero),
+          const PlayerTimings(
+            pollInterval: Duration.zero,
+            rapidChangeDelay: Duration.zero,
+          ),
         ),
         playRecorderProvider.overrideWithValue(
           (SearchResult t, {String? playlistId}) {},
@@ -300,4 +308,94 @@ void main() {
       expect(container.read(playlistShuffleProvider('p1')), isTrue);
     },
   );
+
+  group('segundo plano e downloads', () {
+    test('trocando de música, o Android continua vendo "tocando"', () async {
+      final handler = BergaAudioHandler();
+      final c = ProviderContainer(
+        overrides: [
+          audioEngineProvider.overrideWithValue(engine),
+          playbackRepositoryProvider.overrideWithValue(repo),
+          playerTimingsProvider.overrideWithValue(
+            const PlayerTimings(
+              pollInterval: Duration.zero,
+              rapidChangeDelay: Duration.zero,
+            ),
+          ),
+          playRecorderProvider.overrideWithValue(
+            (SearchResult t, {String? playlistId}) {},
+          ),
+          mediaNotificationProvider.overrideWithValue(handler),
+          localDatabaseProvider.overrideWithValue(null),
+          appPlatformProvider.overrideWithValue(const AppPlatform.app()),
+          keyValueStoreProvider.overrideWithValue(MemoryKeyValueStore()),
+          initialSessionProvider.overrideWithValue(loggedIn),
+        ],
+      );
+      addTearDown(c.dispose);
+      final ctl = c.read(playerProvider.notifier);
+      repo.gate = Completer<void>();
+      final loading = ctl.playList(abc, 0, context: 'Busca');
+      await pumpEventQueue();
+      // Preparando no servidor: serviço em primeiro plano (CPU acordada).
+      expect(c.read(playerProvider).status, PlaybackStatus.preparando);
+      expect(handler.playbackState.value.playing, isTrue);
+      expect(
+        handler.playbackState.value.processingState,
+        AudioProcessingState.loading,
+      );
+      repo.gate!.complete();
+      await loading;
+      expect(handler.playbackState.value.playing, isTrue);
+      // Pausado de verdade: aí sim sai do primeiro plano.
+      await ctl.togglePlay();
+      expect(handler.playbackState.value.playing, isFalse);
+    });
+
+    test('depois de 20 s pede ao servidor só a próxima', () async {
+      await controller().playList(abc, 0, context: 'Busca');
+      engine.emitDuration(const Duration(minutes: 4));
+      repo.prepared.clear();
+      engine.emitPosition(const Duration(seconds: 10));
+      await pumpEventQueue();
+      expect(repo.prepared, isEmpty);
+      engine.emitPosition(const Duration(seconds: 21));
+      engine.emitPosition(const Duration(seconds: 40));
+      await pumpEventQueue();
+      expect(repo.prepared, ['B']); // só a próxima, uma vez
+    });
+
+    test('faixa curta: pede a próxima na metade', () async {
+      await controller().playList(abc, 0, context: 'Busca');
+      engine.emitDuration(const Duration(seconds: 30));
+      repo.prepared.clear();
+      engine.emitPosition(const Duration(seconds: 16));
+      await pumpEventQueue();
+      expect(repo.prepared, ['B']);
+    });
+
+    test('vários toques rápidos: só a última vai para o servidor', () async {
+      final c = ProviderContainer(
+        parent: container,
+        overrides: [
+          playerTimingsProvider.overrideWithValue(
+            const PlayerTimings(
+              pollInterval: Duration.zero,
+              rapidChangeDelay: Duration(milliseconds: 50),
+            ),
+          ),
+        ],
+      );
+      addTearDown(c.dispose);
+      final ctl = c.read(playerProvider.notifier);
+      final first = ctl.playList([song('A')], 0, context: 'Busca');
+      await pumpEventQueue();
+      final second = ctl.playList([song('B')], 0, context: 'Busca');
+      final third = ctl.playList([song('C')], 0, context: 'Busca');
+      await Future.wait([first, second, third]);
+      // A primeira foi direto (nada antes); B foi "passada" e não baixou.
+      expect(repo.prepared, ['A', 'C']);
+      expect(c.read(playerProvider).current!.track.title, 'C');
+    });
+  });
 }

@@ -101,7 +101,10 @@ Widget wrap(
         ),
       ),
       playerTimingsProvider.overrideWithValue(
-        const PlayerTimings(pollInterval: Duration.zero),
+        const PlayerTimings(
+          pollInterval: Duration.zero,
+          rapidChangeDelay: Duration.zero,
+        ),
       ),
     ],
   );
