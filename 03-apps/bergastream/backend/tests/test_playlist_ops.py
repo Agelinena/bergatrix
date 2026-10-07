@@ -160,6 +160,48 @@ async def main():
             res = await send([op("delete", playlist=pid, base_updated_at="2000-01-01T00:00:00+00:00")], who="leitor")
             ok(res["results"][0]["status"], "forbidden", "só o dono apaga")
 
+            print("=== importar com os dados da playlist original ===")
+            from app.images import routes as images
+            from app.playlists import ops as ops_module
+            from app.search.resolve import clean_description
+            png = bytes.fromhex(
+                "89504e470d0a1a0a0000000d4948445200000001000000010806000000"
+                "1f15c4890000000d49444154789c6360000002000154a24f5d0000000049454e44ae426082")
+            seen = []
+
+            async def fake_fetch(url):
+                seen.append(url)
+                if "falha" in url:
+                    raise images.ImageError("Imagem indisponível", transient=True)
+                if not images.allowed(url):
+                    raise images.ImageError("Origem de imagem não permitida")
+                return png, ".png"
+
+            original = ops_module.images.fetch_allowed_image
+            ops_module.images.fetch_allowed_image = fake_fetch
+            try:
+                res = await send([
+                    op("create", ref="tmp:imp", name="Importada", description="Do Spotify"),
+                    op("cover", playlist="tmp:imp", url="https://i.scdn.co/image/abc"),
+                    op("add", playlist="tmp:imp", track=track("A")),
+                ])
+                ok([r["status"] for r in res["results"]], ["applied"] * 3, "cria, capa e faixa")
+                iid = res["refs"]["tmp:imp"]
+                playlist_ids.append(iid)
+                d = (await c.get(f"/api/playlists/{iid}", headers=h["dono"])).json()
+                ok((d["name"], d["description"]), ("Importada", "Do Spotify"), "nome e descrição")
+                ok(d["cover_url"] is not None, True, "capa gravada")
+                r = await c.get(d["cover_url"])
+                ok((r.status_code, r.content[:4]), (200, png[:4]), "capa servida")
+                res = await send([op("cover", playlist=iid, url="https://exemplo.com/a.png")])
+                ok(res["results"][0]["status"], "invalid", "origem não permitida")
+                res = await send([op("cover", playlist=iid, url="https://i.scdn.co/falha")])
+                ok(res["results"][0]["status"], "retry", "rede falhou: tenta depois")
+            finally:
+                ops_module.images.fetch_allowed_image = original
+            ok(clean_description("Hits &amp; mais <a href='x'>aqui</a>\n  agora"),
+               "Hits & mais aqui agora", "descrição do Spotify vira texto simples")
+
             print("=== validação ===")
             r = await c.post("/api/playlists/ops", json={"ops": []}, headers=h["dono"])
             ok(r.status_code, 422, "lote vazio")

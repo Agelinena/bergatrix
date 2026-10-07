@@ -135,6 +135,7 @@ class FakeSearchRepository implements SearchRepository {
       kind: 'playlist',
       title: 'Roadtrip importada',
       subtitle: 'Ana',
+      description: 'Para pegar a estrada',
       total: 3,
       tracks: [for (var i = 0; i < 3; i++) trackOf(i, SearchSource.spotify)],
       externalUrl: url,

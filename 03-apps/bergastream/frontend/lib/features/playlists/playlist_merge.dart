@@ -13,6 +13,7 @@ PlaylistDetail? applyOpsToDetail(
   DateTime? now,
 }) {
   var name = base.name;
+  var coverUrl = base.coverUrl;
   final tracks = [...base.tracks];
   for (final op in ops) {
     if (op.playlist != base.id) continue;
@@ -21,6 +22,9 @@ PlaylistDetail? applyOpsToDetail(
         break;
       case PlaylistOpType.rename:
         name = op.name ?? name;
+      case PlaylistOpType.cover:
+        // Mostra a imagem da origem até o servidor gravar a dele.
+        coverUrl = op.url ?? coverUrl;
       case PlaylistOpType.add:
         final t = op.track!;
         final exists = tracks.any(
@@ -66,7 +70,7 @@ PlaylistDetail? applyOpsToDetail(
     description: base.description,
     owner: base.owner,
     role: base.role,
-    coverUrl: base.coverUrl,
+    coverUrl: coverUrl,
     updatedAt: base.updatedAt,
     members: base.members,
     tracks: [
@@ -93,7 +97,12 @@ PlaylistDetail? applyOpsToDetail(
 
 /// Playlist criada no aparelho que ainda não chegou ao servidor.
 PlaylistDetail pendingPlaylist(PlaylistOp create, {Person? owner}) =>
-    PlaylistDetail(id: create.playlist, name: create.name ?? '', owner: owner);
+    PlaylistDetail(
+      id: create.playlist,
+      name: create.name ?? '',
+      description: create.description ?? '',
+      owner: owner,
+    );
 
 /// Lista da Biblioteca com as alterações pendentes.
 List<ServerPlaylist> applyOpsToList(
@@ -103,19 +112,23 @@ List<ServerPlaylist> applyOpsToList(
 }) {
   final list = [...base];
   int find(String id) => list.indexWhere((p) => p.id == id);
-  ServerPlaylist copy(ServerPlaylist p, {String? name, int? trackCount}) =>
-      ServerPlaylist(
-        id: p.id,
-        name: name ?? p.name,
-        description: p.description,
-        owner: p.owner,
-        role: p.role,
-        trackCount: trackCount ?? p.trackCount,
-        durationSeconds: p.durationSeconds,
-        peopleCount: p.peopleCount,
-        coverUrl: p.coverUrl,
-        updatedAt: p.updatedAt,
-      );
+  ServerPlaylist copy(
+    ServerPlaylist p, {
+    String? name,
+    int? trackCount,
+    String? coverUrl,
+  }) => ServerPlaylist(
+    id: p.id,
+    name: name ?? p.name,
+    description: p.description,
+    owner: p.owner,
+    role: p.role,
+    trackCount: trackCount ?? p.trackCount,
+    durationSeconds: p.durationSeconds,
+    peopleCount: p.peopleCount,
+    coverUrl: coverUrl ?? p.coverUrl,
+    updatedAt: p.updatedAt,
+  );
   for (final op in ops) {
     final i = find(op.playlist);
     switch (op.type) {
@@ -123,11 +136,18 @@ List<ServerPlaylist> applyOpsToList(
         if (i < 0) {
           list.insert(
             0,
-            ServerPlaylist(id: op.playlist, name: op.name ?? '', owner: me),
+            ServerPlaylist(
+              id: op.playlist,
+              name: op.name ?? '',
+              description: op.description ?? '',
+              owner: me,
+            ),
           );
         }
       case PlaylistOpType.rename when i >= 0:
         list[i] = copy(list[i], name: op.name);
+      case PlaylistOpType.cover when i >= 0:
+        list[i] = copy(list[i], coverUrl: op.url);
       case PlaylistOpType.add when i >= 0:
         list[i] = copy(list[i], trackCount: list[i].trackCount + 1);
       case PlaylistOpType.remove when i >= 0 && list[i].trackCount > 0:

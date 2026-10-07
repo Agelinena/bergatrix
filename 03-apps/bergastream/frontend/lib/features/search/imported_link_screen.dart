@@ -118,13 +118,10 @@ class ImportedLinkScreen extends ConsumerWidget {
                                 ),
                         ),
                         PrimaryButton(
-                          label: 'Adicionar músicas à playlist',
-                          onPressed: () => addToPlaylist(
-                            context,
-                            ref,
-                            tracks: link.tracks,
-                            suggestedName: link.title,
-                          ),
+                          label: link.isTrack
+                              ? 'Adicionar à playlist'
+                              : 'Importar',
+                          onPressed: () => importLink(context, ref, link),
                         ),
                       ],
                     ),

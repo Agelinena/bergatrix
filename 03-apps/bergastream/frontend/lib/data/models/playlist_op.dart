@@ -8,7 +8,7 @@ import 'search_result.dart';
 /// descreve o que a pessoa quis ("adicionar X", "mover Y para depois de Z"),
 /// e não o estado final, combina com o que mudou no servidor enquanto o
 /// aparelho estava offline (ver `backend/app/playlists/ops.py`).
-enum PlaylistOpType { create, rename, add, remove, move, delete }
+enum PlaylistOpType { create, rename, add, remove, move, delete, cover }
 
 class PlaylistOp {
   const PlaylistOp._({
@@ -17,6 +17,8 @@ class PlaylistOp {
     required this.playlist,
     this.ref,
     this.name,
+    this.description,
+    this.url,
     this.base,
     this.track,
     this.trackId,
@@ -27,14 +29,27 @@ class PlaylistOp {
   });
 
   /// Nova playlist; até existir no servidor ela é conhecida por [ref].
-  factory PlaylistOp.create({required String ref, required String name}) =>
-      PlaylistOp._(
-        opId: newOpId(),
-        type: PlaylistOpType.create,
-        playlist: ref,
-        ref: ref,
-        name: name,
-      );
+  factory PlaylistOp.create({
+    required String ref,
+    required String name,
+    String? description,
+  }) => PlaylistOp._(
+    opId: newOpId(),
+    type: PlaylistOpType.create,
+    playlist: ref,
+    ref: ref,
+    name: name,
+    description: description,
+  );
+
+  /// Capa a partir da imagem da playlist original ([url] de Spotify,
+  /// Deezer ou YouTube; o servidor baixa).
+  factory PlaylistOp.cover(String playlist, String url) => PlaylistOp._(
+    opId: newOpId(),
+    type: PlaylistOpType.cover,
+    playlist: playlist,
+    url: url,
+  );
 
   /// [base]: nome que o aparelho conhecia (detecta conflito).
   factory PlaylistOp.rename(
@@ -106,6 +121,8 @@ class PlaylistOp {
       playlist: (json['playlist'] ?? json['ref']) as String,
       ref: json['ref'] as String?,
       name: json['name'] as String?,
+      description: json['description'] as String?,
+      url: json['url'] as String?,
       base: json['base'] as String?,
       track: rawTrack is Map<String, dynamic>
           ? SearchResult.fromJson(rawTrack)
@@ -125,6 +142,8 @@ class PlaylistOp {
   final String playlist;
   final String? ref;
   final String? name;
+  final String? description;
+  final String? url;
   final String? base;
   final SearchResult? track;
   final String? trackId;
@@ -139,6 +158,8 @@ class PlaylistOp {
     if (type != PlaylistOpType.create) 'playlist': playlist,
     'ref': ?ref,
     'name': ?name,
+    'description': ?description,
+    'url': ?url,
     'base': ?base,
     if (track != null) 'track': track!.toJson(),
     if (trackId != null) 'track': trackId,
@@ -158,6 +179,8 @@ class PlaylistOp {
       playlist: type == PlaylistOpType.create ? playlist : map(playlist)!,
       ref: ref,
       name: name,
+      description: description,
+      url: url,
       base: base,
       track: track,
       trackId: map(trackId),

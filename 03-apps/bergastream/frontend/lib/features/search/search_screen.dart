@@ -467,13 +467,8 @@ class _ImportedCard extends ConsumerWidget {
             ),
             const SizedBox(height: 12),
             PrimaryButton(
-              label: 'Adicionar músicas à playlist',
-              onPressed: () => addToPlaylist(
-                context,
-                ref,
-                tracks: link.tracks,
-                suggestedName: link.title,
-              ),
+              label: link.isTrack ? 'Adicionar à playlist' : 'Importar',
+              onPressed: () => importLink(context, ref, link),
             ),
           ],
         ),

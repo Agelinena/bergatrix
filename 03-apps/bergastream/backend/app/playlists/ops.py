@@ -32,6 +32,7 @@ from pydantic import BaseModel, Field
 from app.auth.dependencies import CurrentUser
 from app.core.redis import get_redis
 from app.downloads import queue as q
+from app.images import routes as images
 from app.playlists import repository as repo
 from app.playlists import service
 from app.tracks import service as tracks_service
@@ -53,10 +54,12 @@ Status = Literal["applied", "conflict", "gone", "forbidden", "invalid", "retry"]
 
 class Op(BaseModel):
     op_id: uuid.UUID
-    type: Literal["create", "rename", "add", "remove", "move", "delete"]
+    type: Literal["create", "rename", "add", "remove", "move", "delete", "cover"]
     playlist: str | None = None     # id ou ref (todas menos create)
     ref: str | None = None          # create: ref da playlist; add: ref da faixa
     name: str | None = Field(None, max_length=100)
+    description: str | None = Field(None, max_length=500)  # create
+    url: str | None = Field(None, max_length=2048)  # cover: capa da origem
     base: str | None = None         # rename: nome que o aparelho conhecia
     track: Any = None               # add: SearchResult; remove/move: id ou ref
     after: str | None = None        # move: faixa que fica antes (None = topo)
@@ -139,7 +142,7 @@ async def _apply_one(pool, user: CurrentUser, op: Op, refs: dict[str, str]) -> O
         if _ORDER[role] < _ORDER[need]:
             raise _Fail("forbidden", "Sem permissão para alterar esta playlist")
         handler = {"rename": _rename, "add": _add, "remove": _remove,
-                   "move": _move, "delete": _delete}[op.type]
+                   "move": _move, "delete": _delete, "cover": _cover}[op.type]
         return await handler(pool, user, op, playlist_id, refs)
     except _Fail as e:
         return OpResult(op_id=op_id, status=e.status, playlist_id=playlist_id,
@@ -154,7 +157,8 @@ async def _create(pool, user: CurrentUser, op: Op) -> OpResult:
         async with conn.transaction():
             # Playlist e registro juntos: reenviar nunca cria duas.
             playlist_id = str(await conn.fetchval(
-                "INSERT INTO playlists (user_id, name) VALUES ($1, $2) RETURNING id", user.id, name))
+                "INSERT INTO playlists (user_id, name, description) VALUES ($1, $2, $3) RETURNING id",
+                user.id, name, (op.description or "").strip()[:500]))
             result = OpResult(op_id=str(op.op_id), status="applied", playlist_id=playlist_id)
             await _remember(conn, user, result)
     return result
@@ -247,6 +251,20 @@ async def _delete(pool, user, op: Op, playlist_id: str, refs) -> OpResult:
         await repo.release_if_orphan(pool, track_id)
     if cover:
         Path(cover).unlink(missing_ok=True)
+    return OpResult(op_id=str(op.op_id), status="applied", playlist_id=playlist_id)
+
+
+async def _cover(pool, user, op: Op, playlist_id: str, refs) -> OpResult:
+    """Capa a partir da imagem da playlist original (importação de link).
+    Só hosts de capas conhecidos, como o proxy de imagens."""
+    try:
+        data, ext = await images.fetch_allowed_image(op.url or "")
+    except images.ImageError as exc:
+        if exc.transient:
+            return OpResult(op_id=str(op.op_id), status="retry", playlist_id=playlist_id,
+                            message=str(exc))
+        raise _Fail("invalid", str(exc))
+    await service.save_cover(pool, playlist_id, data, ext)
     return OpResult(op_id=str(op.op_id), status="applied", playlist_id=playlist_id)
 
 

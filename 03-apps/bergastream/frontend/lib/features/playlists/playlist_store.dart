@@ -511,6 +511,59 @@ class PlaylistEditor {
     return result?.refs[op.ref] ?? op.ref!;
   }
 
+  /// "Importar tudo" de um link: playlist nova com o nome, a descrição e a
+  /// capa da original, e todas as faixas. Com servidor, a playlist é criada
+  /// na hora e as faixas vão num envio só (o servidor adiciona em segundo
+  /// plano, na ordem); sem servidor, tudo entra na fila.
+  Future<String> importPlaylist({
+    required String name,
+    String description = '',
+    String? coverUrl,
+    required List<SearchResult> tracks,
+  }) async {
+    final create = PlaylistOp.create(
+      ref: PlaylistOp.newRef(),
+      name: name.trim(),
+      description: description.trim().isEmpty ? null : description.trim(),
+    );
+    final ref = create.ref!;
+    final cover = coverUrl == null ? null : PlaylistOp.cover(ref, coverUrl);
+    final db = _db;
+    if (db == null || _ref.read(sessionProvider).canUseServer) {
+      String? id;
+      try {
+        final result = await _repo.applyOps([create, ?cover]);
+        id = result.refs[ref];
+        if (id == null) {
+          throw const PlaylistConflict('Não foi possível importar.');
+        }
+        if (tracks.isNotEmpty) await _repo.addTracks(id, tracks);
+        // Capa que falhou por rede: tenta de novo depois, pela fila.
+        final coverRetry = result.results
+            .where((r) => r.opId == cover?.opId && !r.status.isFinal)
+            .isNotEmpty;
+        if (coverRetry && db != null) {
+          await db.addPlaylistOp(id, jsonEncode(cover!.remap({ref: id})));
+        }
+        _refresh();
+        return id;
+      } on ApiException catch (e) {
+        if (db == null || !e.isTransient) rethrow;
+        if (id != null) {
+          // A playlist já existe: só as músicas ficam para depois.
+          await _submit([for (final t in tracks) PlaylistOp.add(id, t)]);
+          return id;
+        }
+      }
+    }
+    await _submit([
+      create,
+      ?cover,
+      for (final t in tracks) PlaylistOp.add(ref, t),
+    ]);
+    return ref;
+  }
+
   Future<void> rename(
     String playlistId, {
     required String name,

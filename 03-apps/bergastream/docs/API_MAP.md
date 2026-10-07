@@ -20,7 +20,7 @@ marcadas como públicas. Stream e download aceitam também `?t=<token de stream>
 
 - **`SearchResult`:** `provider`, `external_id`, `title`, `artist`, `album`, `duration_seconds`, `isrc`, `cover_url`, `artist_id`, `album_id`.
 - **`ArtistResult`:** `provider`, `external_id`, `name`, `image_url`. **`AlbumResult`:** `provider`, `external_id`, `title`, `artist`, `year`, `image_url`.
-- **`ResolvedLink`:** `source` (`spotify`\|`deezer`\|`youtube`), `kind` (`track`\|`album`\|`playlist`), `title`, `subtitle`, `cover_url`, `total`, `tracks` (até 10.000), `external_url`.
+- **`ResolvedLink`:** `source` (`spotify`\|`deezer`\|`youtube`), `kind` (`track`\|`album`\|`playlist`), `title`, `subtitle`, `cover_url`, `description`, `total`, `tracks` (até 10.000), `external_url`.
 
 ---
 
@@ -68,7 +68,7 @@ O `<audio>` do navegador não envia `Authorization`: a web pede o token e toca `
 | `GET /api/users` · `GET /api/users/{id}/playlists` | admin · próprio/admin | legados |
 
 **Alterações em lote (edição offline dos apps):** `POST /api/playlists/ops` com
-`{"ops": [{"op_id": uuid, "type": "create|rename|add|remove|move|delete", ...}]}` → `{"results":
+`{"ops": [{"op_id": uuid, "type": "create|rename|add|remove|move|delete|cover", ...}]}` (`create` aceita `description`; `cover` recebe `url` da capa original, de host permitido) → `{"results":
 [{"op_id", "status": "applied|conflict|gone|forbidden|invalid|retry", "playlist_id"?, "track_id"?,
 "current"?}], "refs": {"tmp:…": "<id>"}}`. Aplicadas na ordem, como intenções sobre o estado atual;
 `rename` com `base` e `delete` com `base_updated_at` detectam conflito (`force` aplica mesmo assim);

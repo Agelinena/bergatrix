@@ -6,6 +6,7 @@ Uso: GET /api/resolve?url=...
 from __future__ import annotations
 
 import asyncio
+import html
 import logging
 import re
 from dataclasses import dataclass
@@ -30,6 +31,7 @@ class ResolvedLink(BaseModel):
     title: str
     subtitle: str = ""  # artista do álbum ou dono da playlist
     cover_url: str | None = None
+    description: str = ""  # da playlist original (importar com os dados)
     total: int = 0
     tracks: list[SearchResult] = []
     external_url: str
@@ -55,6 +57,15 @@ _SPOTIFY_RE = re.compile(r"open\.spotify\.com/(?:intl-[\w-]+/)?(track|album|play
 _SPOTIFY_URI_RE = re.compile(r"^spotify:(track|album|playlist):([A-Za-z0-9]+)$")
 _DEEZER_RE = re.compile(r"deezer\.com/(?:[a-z]{2}(?:-[a-z]{2})?/)?(track|album|playlist)/(\d+)")
 _YT_ID_RE = re.compile(r"^[A-Za-z0-9_-]{11}$")
+
+
+def clean_description(text: str | None) -> str:
+    """Descrição da origem como texto simples (o Spotify manda HTML escapado
+    e links), no limite de 500 caracteres das playlists."""
+    if not text:
+        return ""
+    plain = re.sub(r"<[^>]+>", "", html.unescape(text))
+    return re.sub(r"\s+", " ", plain).strip()[:500]
 
 
 def parse_link(url: str) -> ParsedLink | None:
@@ -146,7 +157,7 @@ def _resolve_spotify(link: ParsedLink) -> ResolvedLink:
             cover_url=spotify._image(album.get("images")),
             total=album.get("total_tracks", len(tracks)), tracks=tracks, external_url=external)
 
-    playlist = sp.playlist(link.id, fields="name,owner(display_name),images,tracks(total)")
+    playlist = sp.playlist(link.id, fields="name,description,owner(display_name),images,tracks(total)")
     tracks = []
     page = sp.playlist_items(link.id, limit=100, additional_types=("track",))
     while page and len(tracks) < MAX_TRACKS:
@@ -159,6 +170,7 @@ def _resolve_spotify(link: ParsedLink) -> ResolvedLink:
         source="spotify", kind="playlist", title=playlist.get("name", ""),
         subtitle=(playlist.get("owner") or {}).get("display_name") or "",
         cover_url=spotify._image(playlist.get("images")),
+        description=clean_description(playlist.get("description")),
         total=(playlist.get("tracks") or {}).get("total", len(tracks)),
         tracks=tracks[:MAX_TRACKS], external_url=external)
 
@@ -202,6 +214,7 @@ async def _resolve_deezer(link: ParsedLink) -> ResolvedLink:
             source="deezer", kind=link.kind, title=data.get("title", ""),
             subtitle=((data.get("artist") or data.get("creator")) or {}).get("name", ""),
             cover_url=data.get("cover_xl") or data.get("picture_xl"),
+            description=clean_description(data.get("description")),
             total=data.get("nb_tracks", len(tracks)), tracks=tracks, external_url=external)
 
 
@@ -243,5 +256,6 @@ def _resolve_youtube(link: ParsedLink) -> ResolvedLink:
         source="youtube", kind="playlist", title=playlist.get("title", ""),
         subtitle=author.get("name", "") if isinstance(author, dict) else (author or ""),
         cover_url=ytmusic.thumbnail(playlist.get("thumbnails")),
+        description=clean_description(playlist.get("description")),
         total=playlist.get("trackCount") or len(tracks), tracks=tracks[:MAX_TRACKS],
         external_url=f"https://{host}/playlist?list={link.id}")

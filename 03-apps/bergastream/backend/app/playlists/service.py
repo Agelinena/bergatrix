@@ -1,11 +1,13 @@
 """Playlists completas: listas, detalhe, permissões e colaboradores (SQL)."""
 from __future__ import annotations
 
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from pydantic import BaseModel
 
 from app.auth.dependencies import CurrentUser
+from app.config import settings
 
 if TYPE_CHECKING:
     import asyncpg
@@ -184,3 +186,18 @@ async def delete(pool: "asyncpg.Pool", playlist_id: str) -> list[str]:
         "SELECT track_id FROM playlist_tracks WHERE playlist_id = $1", playlist_id)]
     await pool.execute("DELETE FROM playlists WHERE id = $1", playlist_id)
     return track_ids
+
+
+COVERS_DIR = Path(settings.music_dir) / "covers"
+
+
+async def save_cover(pool: "asyncpg.Pool", playlist_id: str, data: bytes, ext: str) -> None:
+    """Grava a capa da playlist (upload ou importada de um link)."""
+    COVERS_DIR.mkdir(parents=True, exist_ok=True)
+    old = await pool.fetchval("SELECT cover_path FROM playlists WHERE id = $1", playlist_id)
+    path = COVERS_DIR / f"{playlist_id}{ext}"
+    if old and old != str(path):
+        Path(old).unlink(missing_ok=True)
+    path.write_bytes(data)
+    await pool.execute("UPDATE playlists SET cover_path = $2, updated_at = now() WHERE id = $1",
+                       playlist_id, str(path))

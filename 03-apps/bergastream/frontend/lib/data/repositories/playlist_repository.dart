@@ -194,6 +194,10 @@ class FakePlaylistRepository implements PlaylistRepository {
   final removed = <String>[];
   int coverUploads = 0;
 
+  /// Descrição e capa (URL da origem) por playlist.
+  final descriptions = <String, String>{};
+  final covers = <String, String>{};
+
   /// Faixas da playlist p1 (como no protótipo, com quem adicionou).
   final tracks = <PlaylistTrack>[
     for (final (i, (title, artist, by, secs)) in [
@@ -230,6 +234,8 @@ class FakePlaylistRepository implements PlaylistRepository {
         role: role.name,
         trackCount: trackLists[p.id]?.length ?? 0,
         peopleCount: 1 + (members[p.id]?.length ?? 0),
+        description: descriptions[p.id] ?? '',
+        coverUrl: covers[p.id],
         updatedAt: p.updatedAt,
       ),
   ];
@@ -242,6 +248,8 @@ class FakePlaylistRepository implements PlaylistRepository {
       name: p.name,
       owner: me,
       role: role.name,
+      description: descriptions[id] ?? '',
+      coverUrl: covers[id],
       updatedAt: p.updatedAt,
       members: [
         const PlaylistMember(user: ana, role: 'editor'),
@@ -335,6 +343,9 @@ class FakePlaylistRepository implements PlaylistRepository {
       }
       if (op.type == PlaylistOpType.create) {
         final p = await create(op.name!);
+        if (op.description case final d? when d.isNotEmpty) {
+          descriptions[p.id] = d;
+        }
         refs[op.ref!] = p.id;
         trackLists[p.id] = [];
         results.add(result(OpStatus.applied, id: p.id));
@@ -421,6 +432,8 @@ class FakePlaylistRepository implements PlaylistRepository {
             continue;
           }
           await delete(id);
+        case PlaylistOpType.cover:
+          covers[id] = op.url!;
         case PlaylistOpType.create:
           break;
       }

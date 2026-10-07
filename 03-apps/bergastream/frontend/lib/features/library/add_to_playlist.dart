@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
+import '../../app/routes.dart';
 import '../../core/network/api_error.dart';
 import '../../core/theme/berga_colors.dart';
 import '../../core/theme/berga_sizes.dart';
 import '../../core/theme/berga_text.dart';
 import '../../core/widgets/widgets.dart';
+import '../../data/models/search_full.dart';
 import '../../data/models/search_result.dart';
 import '../../data/models/playlist_models.dart';
 import '../playlists/playlist_store.dart';
@@ -190,5 +193,59 @@ class _PlaylistPicker extends ConsumerWidget {
         ),
       ),
     );
+  }
+}
+
+/// "Importar" um link de playlist ou álbum: pergunta se cria uma playlist
+/// nova com todos os dados da original (nome, descrição e foto de capa) ou
+/// se só adiciona as músicas a uma playlist escolhida.
+Future<void> importLink(
+  BuildContext context,
+  WidgetRef ref,
+  ResolvedLink link,
+) async {
+  if (link.isTrack) {
+    return addToPlaylist(context, ref, tracks: link.tracks);
+  }
+  final n = link.tracks.length;
+  final choice = await showChoiceDialog(
+    context,
+    message: 'Importar "${link.title}"?',
+    detail:
+        'Importar tudo cria uma playlist nova com o nome, a descrição e a '
+        'foto de capa do ${link.sourceLabel}, e ${n == 1 ? 'a música' : 'as $n músicas'}. '
+        'Ou escolha só as músicas para pôr numa playlist sua.',
+    options: const ['Só as músicas', 'Importar tudo'],
+  );
+  if (!context.mounted || choice == null) return;
+  if (choice == 0) {
+    return addToPlaylist(
+      context,
+      ref,
+      tracks: link.tracks,
+      suggestedName: link.title,
+    );
+  }
+  try {
+    final id = await ref
+        .read(playlistEditorProvider)
+        .importPlaylist(
+          name: link.title,
+          description: link.description,
+          coverUrl: link.coverUrl,
+          tracks: link.tracks,
+        );
+    if (!context.mounted) return;
+    AppToast.show(
+      context,
+      n == 1
+          ? 'Playlist "${link.title}" importada'
+          : 'Playlist "${link.title}" importada com $n músicas',
+    );
+    context.push(AppRoutes.playlist(id));
+  } on ApiException catch (e) {
+    if (context.mounted) AppToast.show(context, e.message);
+  } on PlaylistConflict catch (e) {
+    if (context.mounted) AppToast.show(context, e.message);
   }
 }

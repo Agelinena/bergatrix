@@ -10,7 +10,6 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from app.auth.dependencies import CurrentUser, current_user
-from app.config import settings
 from app.core.db import get_pool
 from app.core.redis import get_redis
 from app.downloads import queue as q
@@ -23,7 +22,6 @@ from app.tracks.models import PlayRequest
 logger = logging.getLogger("bergastream.playlists")
 router = APIRouter(prefix="/api", tags=["playlists"])
 
-_COVERS = Path(settings.music_dir) / "covers"
 _IMAGE_TYPES = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp"}
 _MAX_COVER = 5 * 1024 * 1024
 _ORDER = {"viewer": 0, "editor": 1, "owner": 2}
@@ -194,14 +192,7 @@ async def upload_cover(playlist_id: str, file: UploadFile = File(...), user: Cur
     if len(data) > _MAX_COVER:
         raise HTTPException(413, detail="Imagem maior que 5 MB")
     pool = get_pool()
-    _COVERS.mkdir(parents=True, exist_ok=True)
-    old = await pool.fetchval("SELECT cover_path FROM playlists WHERE id = $1", playlist_id)
-    path = _COVERS / f"{playlist_id}{ext}"
-    if old and old != str(path):
-        Path(old).unlink(missing_ok=True)
-    path.write_bytes(data)
-    await pool.execute("UPDATE playlists SET cover_path = $2, updated_at = now() WHERE id = $1",
-                       playlist_id, str(path))
+    await service.save_cover(pool, playlist_id, data, ext)
     return await service.summary(pool, playlist_id, user.id)
 
 

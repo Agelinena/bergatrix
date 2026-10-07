@@ -82,6 +82,7 @@ class ResolvedLink {
     required this.title,
     this.subtitle = '',
     this.coverUrl,
+    this.description = '',
     this.total = 0,
     this.tracks = const [],
     required this.externalUrl,
@@ -98,6 +99,9 @@ class ResolvedLink {
   final String title;
   final String subtitle;
   final String? coverUrl;
+
+  /// Descrição da playlist original (vai junto em "Importar tudo").
+  final String description;
   final int total;
   final List<SearchResult> tracks;
   final String externalUrl;

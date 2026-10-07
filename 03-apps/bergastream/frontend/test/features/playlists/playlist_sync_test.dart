@@ -262,6 +262,46 @@ void main() {
     },
   );
 
+  test(
+    'importar tudo: nome, descrição, capa e faixas (com servidor)',
+    () async {
+      final id = await editor().importPlaylist(
+        name: 'Do Spotify',
+        description: 'Para pegar a estrada',
+        coverUrl: 'https://i.scdn.co/image/x',
+        tracks: [song('a'), song('b')],
+      );
+      expect(PlaylistOp.isRef(id), isFalse);
+      expect(repo.descriptions[id], 'Para pegar a estrada');
+      expect(repo.covers[id], 'https://i.scdn.co/image/x');
+      expect(repo.added[id], ['Música a', 'Música b']);
+      expect(await pending(), 0);
+    },
+  );
+
+  test('importar tudo sem servidor: entra na fila e vai depois', () async {
+    online(false);
+    final id = await editor().importPlaylist(
+      name: 'Offline',
+      description: 'Desc',
+      coverUrl: 'https://i.scdn.co/image/y',
+      tracks: [song('a')],
+    );
+    expect(PlaylistOp.isRef(id), isTrue);
+    final local = await detail(id);
+    expect(
+      (local.name, local.description, local.coverUrl),
+      ('Offline', 'Desc', 'https://i.scdn.co/image/y'),
+    );
+    expect(local.tracks, hasLength(1));
+    online(true);
+    await flush();
+    final created = repo.playlists.last;
+    expect(repo.covers[created.id], 'https://i.scdn.co/image/y');
+    expect(repo.descriptions[created.id], 'Desc');
+    expect(repo.trackLists[created.id], hasLength(1));
+  });
+
   test('servidor fora ou "retry": nada se perde', () async {
     await editOffline();
     online(true);

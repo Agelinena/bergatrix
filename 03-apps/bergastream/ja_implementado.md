@@ -381,6 +381,15 @@ Rodado na imagem `ghcr.io/cirruslabs/flutter:stable` (Flutter 3.44.0 / Dart 3.12
 - Deploy de produção: compose com `${STORAGE_PATH}`, `container_name`, redes
   `bergastream-internal` (sem internet) e `bergastream-egress`, labels do modelo B.
 
+### Versão 0.1.3 — importar playlist com todos os dados
+- Botão "Importar" no link de playlist/álbum pergunta: **Importar tudo** (playlist nova com o nome,
+  a descrição e a foto de capa da original, e todas as músicas) ou **Só as músicas** (escolhe a
+  playlist de destino, como antes).
+- Servidor: `GET /api/resolve` devolve `description` (Spotify, Deezer, YouTube; HTML vira texto);
+  operação `cover` em `POST /api/playlists/ops` baixa a capa da origem (mesmos hosts permitidos do
+  proxy de imagens) e `create` aceita `description`. Sem servidor, tudo entra na fila.
+- A descrição aparece na tela da playlist.
+
 ### Versão 0.1.2 — importação grande e ordenação
 - Importar link de playlist com mais de 500 músicas: o limite passou a 10.000 (máximo do Spotify)
   na leitura do link e no envio em lote; o envio continua num pedido só para manter a ordem.

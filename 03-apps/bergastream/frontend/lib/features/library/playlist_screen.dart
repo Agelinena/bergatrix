@@ -400,6 +400,16 @@ class _PlaylistScreenState extends ConsumerState<PlaylistScreen> {
         ),
       ),
       ScreenTitle(p.name, bottom: 4),
+      if (p.description.isNotEmpty)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 4),
+          child: Text(
+            p.description,
+            maxLines: 3,
+            overflow: TextOverflow.ellipsis,
+            style: mu,
+          ),
+        ),
       Text(
         [
           '${p.tracks.length} músicas',

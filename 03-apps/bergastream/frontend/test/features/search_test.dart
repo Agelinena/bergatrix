@@ -134,7 +134,7 @@ void main() {
     );
   });
 
-  testWidgets('link de playlist: cartão e "Adicionar músicas à playlist"', (
+  testWidgets('link de playlist: cartão e "Importar" → "Só as músicas"', (
     tester,
   ) async {
     final playlists = FakePlaylistRepository();
@@ -143,7 +143,10 @@ void main() {
     expect(find.text('Roadtrip importada'), findsOneWidget);
     expect(find.text('3 músicas · Deezer'), findsOneWidget);
 
-    await tester.tap(find.text('Adicionar músicas à playlist'));
+    await tester.tap(find.text('Importar'));
+    await tester.pumpAndSettle();
+    expect(find.text('Importar "Roadtrip importada"?'), findsOneWidget);
+    await tester.tap(find.text('Só as músicas'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Roadtrip'));
     await tester.pumpAndSettle();
@@ -157,7 +160,9 @@ void main() {
     final playlists = FakePlaylistRepository();
     await tester.pumpWidget(wrap(const SearchScreen(), playlists: playlists));
     await type(tester, 'https://open.spotify.com/playlist/1');
-    await tester.tap(find.text('Adicionar músicas à playlist'));
+    await tester.tap(find.text('Importar'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Só as músicas'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Nova playlist'));
     await tester.pumpAndSettle();
@@ -170,6 +175,36 @@ void main() {
     expect(playlists.playlists.last.name, 'Roadtrip importada');
     expect(playlists.added[playlists.playlists.last.id], hasLength(3));
     await tester.pump(const Duration(seconds: 2));
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('"Importar tudo": nome, descrição e todas as músicas', (
+    tester,
+  ) async {
+    final playlists = FakePlaylistRepository();
+    await pumpBergastream(
+      tester,
+      initialLocation: '/buscar',
+      playlists: playlists,
+      size: const Size(400, 1400),
+    );
+    await type(tester, 'https://open.spotify.com/playlist/1');
+    await tester.tap(find.text('Importar'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Importar tudo'));
+    await settleDb(tester);
+    final created = playlists.playlists.last;
+    expect(created.name, 'Roadtrip importada');
+    expect(playlists.descriptions[created.id], 'Para pegar a estrada');
+    expect(playlists.covers, isEmpty); // o link do teste não tem capa
+    expect(playlists.added[created.id], hasLength(3));
+    // Abre a playlist nova, com a descrição.
+    expect(find.text('Para pegar a estrada'), findsOneWidget);
+    expect(
+      find.text('Playlist "Roadtrip importada" importada com 3 músicas'),
+      findsOneWidget,
+    );
+    await tester.pump(const Duration(seconds: 3));
     await tester.pumpAndSettle();
   });
 

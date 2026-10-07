@@ -65,6 +65,7 @@ ResolvedLink _$ResolvedLinkFromJson(Map<String, dynamic> json) => ResolvedLink(
   title: json['title'] as String,
   subtitle: json['subtitle'] as String? ?? '',
   coverUrl: json['cover_url'] as String?,
+  description: json['description'] as String? ?? '',
   total: (json['total'] as num?)?.toInt() ?? 0,
   tracks:
       (json['tracks'] as List<dynamic>?)
