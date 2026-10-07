@@ -85,7 +85,22 @@ jobs:
             echo "::error::Secrets ANDROID_* ausentes: configure a chave (docs/RELEASE.md) e rode este job de novo."
             exit 1
           fi
-          echo "$KEYSTORE_BASE64" | base64 -d > android/app/upload.jks
+          # Tolera valores colados com espaço/quebra de linha ou com "nome=".
+          # Senhas e alias desta chave não têm espaço nem "=": fica o último
+          # pedaço e o que vem depois do último "=".
+          clean() { local v; v=$(printf '%s' "$1" | tr '\r\n\t' '   ' | awk '{print $NF}'); printf '%s' "${v##*=}"; }
+          KEYSTORE_PASSWORD=$(clean "$KEYSTORE_PASSWORD")
+          KEY_ALIAS=$(clean "$KEY_ALIAS")
+          KEY_PASSWORD=$(clean "$KEY_PASSWORD")
+          printf '%s' "$KEYSTORE_BASE64" | tr -d '[:space:]' | base64 -d > android/app/upload.jks
+          if ! keytool -list -keystore android/app/upload.jks -storepass "$KEYSTORE_PASSWORD" >/dev/null 2>&1; then
+            echo "::error::ANDROID_KEYSTORE_BASE64 ou ANDROID_KEYSTORE_PASSWORD incorretos (a chave não abre)."
+            exit 1
+          fi
+          if ! keytool -list -keystore android/app/upload.jks -storepass "$KEYSTORE_PASSWORD" -alias "$KEY_ALIAS" >/dev/null 2>&1; then
+            echo "::error::ANDROID_KEY_ALIAS não existe na chave. Valor esperado: upload (só isso, sem espaço nem 'nome=')."
+            exit 1
+          fi
           {
             echo "storeFile=upload.jks"
             echo "storePassword=$KEYSTORE_PASSWORD"
