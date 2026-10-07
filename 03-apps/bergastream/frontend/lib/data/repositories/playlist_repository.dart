@@ -87,6 +87,8 @@ class HttpPlaylistRepository implements PlaylistRepository {
       data: {
         'tracks': [for (final t in tracks) t.toJson()],
       },
+      // Playlist inteira num envio só (até 10.000 faixas, alguns MB).
+      options: Options(sendTimeout: const Duration(minutes: 2)),
     ),
   );
 

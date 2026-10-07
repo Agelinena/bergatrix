@@ -23,20 +23,48 @@ String playlistSubtitle({required int tracks, required int people}) {
   return '$t · $p';
 }
 
-/// Ordenação da lista (chip que alterna a cada toque).
+/// Ordenação das faixas dentro da playlist ("Ordenar por").
 enum PlaylistSort {
-  adicao('Adição'),
-  az('A–Z'),
-  artista('Artista');
+  playlist('Ordem da playlist', 'Ordem'),
+  recentes('Adicionadas por último', 'Recentes'),
+  antigas('Adicionadas primeiro', 'Antigas'),
+  tituloAz('Título (A–Z)', 'A–Z'),
+  tituloZa('Título (Z–A)', 'Z–A'),
+  artistaAz('Artista (A–Z)', 'Artista A–Z'),
+  artistaZa('Artista (Z–A)', 'Artista Z–A'),
+  albumAz('Álbum (A–Z)', 'Álbum A–Z'),
+  albumZa('Álbum (Z–A)', 'Álbum Z–A'),
+  curtas('Mais curtas primeiro', 'Curtas'),
+  longas('Mais longas primeiro', 'Longas');
 
-  const PlaylistSort(this.label);
+  const PlaylistSort(this.label, this.short);
 
+  /// Na lista "Ordenar por".
   final String label;
 
-  PlaylistSort get next => values[(index + 1) % values.length];
+  /// No botão ao lado da busca.
+  final String short;
 }
 
-/// Filtra (título ou artista) e ordena as faixas da playlist.
+/// Ordenação escolhida em cada playlist (vale enquanto o app está aberto).
+final playlistSortProvider =
+    NotifierProvider.family<PlaylistSortChoice, PlaylistSort, String>(
+      PlaylistSortChoice.new,
+    );
+
+class PlaylistSortChoice extends Notifier<PlaylistSort> {
+  PlaylistSortChoice(this.playlistId);
+
+  final String playlistId;
+
+  @override
+  PlaylistSort build() => PlaylistSort.playlist;
+
+  void set(PlaylistSort sort) => state = sort;
+}
+
+/// Filtra (título, artista ou álbum) e ordena as faixas da playlist.
+/// Empates mantêm a ordem da playlist.
 List<PlaylistTrack> sortAndFilter(
   List<PlaylistTrack> tracks,
   PlaylistSort sort,
@@ -45,19 +73,44 @@ List<PlaylistTrack> sortAndFilter(
   final q = query.trim().toLowerCase();
   final filtered = [
     for (final t in tracks)
-      if (q.isEmpty || '${t.title} ${t.artist}'.toLowerCase().contains(q)) t,
+      if (q.isEmpty ||
+          '${t.title} ${t.artist} ${t.album}'.toLowerCase().contains(q))
+        t,
   ];
-  int byText(String a, String b) => a.toLowerCase().compareTo(b.toLowerCase());
-  switch (sort) {
-    case PlaylistSort.adicao:
-      filtered.sort((a, b) => a.position.compareTo(b.position));
-    case PlaylistSort.az:
-      filtered.sort((a, b) => byText(a.title, b.title));
-    case PlaylistSort.artista:
-      filtered.sort((a, b) {
-        final c = byText(a.artist, b.artist);
-        return c != 0 ? c : byText(a.title, b.title);
-      });
+  int text(String a, String b) => a.toLowerCase().compareTo(b.toLowerCase());
+  int added(PlaylistTrack a, PlaylistTrack b) {
+    final da = DateTime.tryParse(a.addedAt);
+    final db = DateTime.tryParse(b.addedAt);
+    if (da == null || db == null) return a.position.compareTo(b.position);
+    return da.compareTo(db);
   }
+
+  final int Function(PlaylistTrack, PlaylistTrack) compare = switch (sort) {
+    PlaylistSort.playlist => (a, b) => 0,
+    PlaylistSort.recentes => (a, b) => added(b, a),
+    PlaylistSort.antigas => added,
+    PlaylistSort.tituloAz => (a, b) => text(a.title, b.title),
+    PlaylistSort.tituloZa => (a, b) => text(b.title, a.title),
+    PlaylistSort.artistaAz => (a, b) {
+      final c = text(a.artist, b.artist);
+      return c != 0 ? c : text(a.title, b.title);
+    },
+    PlaylistSort.artistaZa => (a, b) {
+      final c = text(b.artist, a.artist);
+      return c != 0 ? c : text(a.title, b.title);
+    },
+    PlaylistSort.albumAz => (a, b) => text(a.album, b.album),
+    PlaylistSort.albumZa => (a, b) => text(b.album, a.album),
+    PlaylistSort.curtas => (a, b) => a.durationSeconds.compareTo(
+      b.durationSeconds,
+    ),
+    PlaylistSort.longas => (a, b) => b.durationSeconds.compareTo(
+      a.durationSeconds,
+    ),
+  };
+  filtered.sort((a, b) {
+    final c = compare(a, b);
+    return c != 0 ? c : a.position.compareTo(b.position);
+  });
   return filtered;
 }

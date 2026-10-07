@@ -48,7 +48,8 @@ class HttpSearchRepository implements SearchRepository {
     final r = await _dio.get<Map<String, dynamic>>(
       '/api/resolve',
       queryParameters: {'url': url},
-      options: Options(receiveTimeout: const Duration(seconds: 90)),
+      // Playlists grandes (até 10.000 faixas) levam minutos para ler.
+      options: Options(receiveTimeout: const Duration(minutes: 5)),
     );
     return ResolvedLink.fromJson(r.data!);
   });

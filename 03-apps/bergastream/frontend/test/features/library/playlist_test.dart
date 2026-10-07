@@ -16,43 +16,71 @@ void main() {
   group('ordenação e busca', () {
     List<String> titles(List<PlaylistTrack> l) => [for (final t in l) t.title];
 
-    test('Adição segue a posição', () {
+    test('ordem da playlist segue a posição', () {
       expect(
         titles(
-          sortAndFilter(tracks.reversed.toList(), PlaylistSort.adicao, ''),
+          sortAndFilter(tracks.reversed.toList(), PlaylistSort.playlist, ''),
         ).first,
         'Blinding Lights',
       );
     });
 
-    test('A–Z por título', () {
-      expect(titles(sortAndFilter(tracks, PlaylistSort.az, '')), [
+    test('adicionadas por último / primeiro (data de adição)', () {
+      expect(titles(sortAndFilter(tracks, PlaylistSort.recentes, '')), [
+        'Smells Like Teen Spirit',
+        'Redbone',
+        'Get Lucky',
+        'Levitating',
+        'Blinding Lights',
+      ]);
+      expect(
+        titles(sortAndFilter(tracks, PlaylistSort.antigas, '')).first,
+        'Blinding Lights',
+      );
+    });
+
+    test('título A–Z e Z–A', () {
+      final az = titles(sortAndFilter(tracks, PlaylistSort.tituloAz, ''));
+      expect(az, [
         'Blinding Lights',
         'Get Lucky',
         'Levitating',
         'Redbone',
         'Smells Like Teen Spirit',
       ]);
+      expect(
+        titles(sortAndFilter(tracks, PlaylistSort.tituloZa, '')),
+        az.reversed,
+      );
     });
 
-    test('Artista, depois título', () {
+    test('artista (depois título), nos dois sentidos', () {
       expect(
-        titles(sortAndFilter(tracks, PlaylistSort.artista, '')).first,
+        titles(sortAndFilter(tracks, PlaylistSort.artistaAz, '')).first,
         'Redbone',
+      );
+      expect(
+        titles(sortAndFilter(tracks, PlaylistSort.artistaZa, '')).first,
+        'Blinding Lights',
+      );
+    });
+
+    test('duração: mais curtas e mais longas', () {
+      expect(
+        titles(sortAndFilter(tracks, PlaylistSort.curtas, '')).first,
+        'Blinding Lights',
+      );
+      expect(
+        titles(sortAndFilter(tracks, PlaylistSort.longas, '')).first,
+        'Get Lucky',
       );
     });
 
     test('busca por título ou artista', () {
-      expect(titles(sortAndFilter(tracks, PlaylistSort.adicao, 'daft')), [
+      expect(titles(sortAndFilter(tracks, PlaylistSort.playlist, 'daft')), [
         'Get Lucky',
       ]);
-      expect(sortAndFilter(tracks, PlaylistSort.adicao, 'xyz'), isEmpty);
-    });
-
-    test('o chip alterna Adição → A–Z → Artista → Adição', () {
-      expect(PlaylistSort.adicao.next, PlaylistSort.az);
-      expect(PlaylistSort.az.next, PlaylistSort.artista);
-      expect(PlaylistSort.artista.next, PlaylistSort.adicao);
+      expect(sortAndFilter(tracks, PlaylistSort.playlist, 'xyz'), isEmpty);
     });
 
     test('legenda da lista', () {
@@ -94,9 +122,16 @@ void main() {
     await openDetail(tester);
     double y(String t) => tester.getTopLeft(find.text(t)).dy;
     expect(y('Blinding Lights') < y('Levitating'), isTrue);
-    await tester.tap(find.text('Adição'));
+    await tester.tap(find.text('Ordem'));
     await tester.pumpAndSettle();
-    expect(find.text('A–Z'), findsOneWidget);
+    await tester.tap(find.text('Adicionadas por último'));
+    await tester.pumpAndSettle();
+    expect(find.text('Recentes'), findsOneWidget);
+    expect(y('Smells Like Teen Spirit') < y('Blinding Lights'), isTrue);
+    await tester.tap(find.text('Recentes'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Título (A–Z)'));
+    await tester.pumpAndSettle();
     expect(y('Get Lucky') < y('Levitating'), isTrue);
     await tester.enterText(find.byType(TextField), 'nirvana');
     await tester.pumpAndSettle();

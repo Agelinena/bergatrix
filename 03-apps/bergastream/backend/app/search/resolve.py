@@ -19,7 +19,9 @@ from app.search.models import SearchResult
 
 logger = logging.getLogger("bergastream.search.resolve")
 
-MAX_TRACKS = 500
+# Limite de faixas lidas de um link (uma playlist do Spotify tem no máximo
+# 10.000). Antes era 500 e playlists maiores chegavam cortadas.
+MAX_TRACKS = 10_000
 
 
 class ResolvedLink(BaseModel):

@@ -333,7 +333,7 @@ Rodado na imagem `ghcr.io/cirruslabs/flutter:stable` (Flutter 3.44.0 / Dart 3.12
 
 ### Passo 7 — Busca completa e links
 - `GET /api/search/full` (faixas, artistas, álbuns; Spotify e YouTube Music via ytmusicapi).
-- `GET /api/resolve?url=` para links do Spotify, Deezer e YouTube (faixa, álbum, playlist; até 500 faixas).
+- `GET /api/resolve?url=` para links do Spotify, Deezer e YouTube (faixa, álbum, playlist; até 10.000 faixas).
 - Busca com seções, histórico de buscas, busca local (biblioteca/baixadas) e tela de link importado.
 
 ### Passo 8 — Artista, álbum e playlist
@@ -380,6 +380,14 @@ Rodado na imagem `ghcr.io/cirruslabs/flutter:stable` (Flutter 3.44.0 / Dart 3.12
 - CI: `.github/workflows/bergastream-release.yml` (tag `bergastream-vX.Y.Z`).
 - Deploy de produção: compose com `${STORAGE_PATH}`, `container_name`, redes
   `bergastream-internal` (sem internet) e `bergastream-egress`, labels do modelo B.
+
+### Versão 0.1.2 — importação grande e ordenação
+- Importar link de playlist com mais de 500 músicas: o limite passou a 10.000 (máximo do Spotify)
+  na leitura do link e no envio em lote; o envio continua num pedido só para manter a ordem.
+  Tempos de espera maiores no app e no nginx (5 min para ler o link) e corpo até 16 MB.
+- "Ordenar por" dentro da playlist: ordem da playlist, adicionadas por último/primeiro, título,
+  artista e álbum (A–Z/Z–A), mais curtas/mais longas. A escolha vale por playlist enquanto o app
+  está aberto; tocar segue a ordem mostrada.
 
 ### Versão 0.1.1 — edição offline de playlists e correções de uso
 - **Playlists sempre sincronizadas, também offline:** toda alteração (criar, renomear, adicionar,

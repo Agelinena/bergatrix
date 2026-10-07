@@ -20,7 +20,7 @@ marcadas como públicas. Stream e download aceitam também `?t=<token de stream>
 
 - **`SearchResult`:** `provider`, `external_id`, `title`, `artist`, `album`, `duration_seconds`, `isrc`, `cover_url`, `artist_id`, `album_id`.
 - **`ArtistResult`:** `provider`, `external_id`, `name`, `image_url`. **`AlbumResult`:** `provider`, `external_id`, `title`, `artist`, `year`, `image_url`.
-- **`ResolvedLink`:** `source` (`spotify`\|`deezer`\|`youtube`), `kind` (`track`\|`album`\|`playlist`), `title`, `subtitle`, `cover_url`, `total`, `tracks` (até 500), `external_url`.
+- **`ResolvedLink`:** `source` (`spotify`\|`deezer`\|`youtube`), `kind` (`track`\|`album`\|`playlist`), `title`, `subtitle`, `cover_url`, `total`, `tracks` (até 10.000), `external_url`.
 
 ---
 
@@ -57,7 +57,7 @@ O `<audio>` do navegador não envia `Authorization`: a web pede o token e toca `
 | `PATCH /api/playlists/{id}` | dono/editor | `{"name"?, "description"?}` |
 | `DELETE /api/playlists/{id}` | dono | 204 |
 | `POST /api/playlists/{id}/tracks` | dono/editor | corpo `SearchResult` |
-| `POST /api/playlists/{id}/tracks/bulk` | dono/editor | `{"tracks": [SearchResult…]}` (até 500) → 202 |
+| `POST /api/playlists/{id}/tracks/bulk` | dono/editor | `{"tracks": [SearchResult…]}` (até 10.000, num envio só para manter a ordem) → 202 |
 | `DELETE /api/playlists/{id}/tracks/{track_id}` | dono/editor | |
 | `PUT /api/playlists/{id}/order` | dono/editor | `{"track_ids": [...]}` → 204 |
 | `PUT /api/playlists/{id}/cover` | dono/editor | multipart `file` (JPEG/PNG/WebP, até 5 MB) |

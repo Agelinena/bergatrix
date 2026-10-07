@@ -55,11 +55,13 @@ class PlaylistPatch(BaseModel):
 
 
 class BulkTracks(BaseModel):
-    tracks: list[PlayRequest] = Field(min_length=1, max_length=500)
+    # Playlist importada inteira num envio só: um único processamento em
+    # segundo plano mantém a ordem (lotes paralelos embaralhariam).
+    tracks: list[PlayRequest] = Field(min_length=1, max_length=10_000)
 
 
 class Order(BaseModel):
-    track_ids: list[str] = Field(max_length=5000)
+    track_ids: list[str] = Field(max_length=10_000)
 
 
 class MemberRole(BaseModel):

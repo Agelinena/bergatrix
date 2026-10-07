@@ -40,7 +40,6 @@ class PlaylistScreen extends ConsumerStatefulWidget {
 
 class _PlaylistScreenState extends ConsumerState<PlaylistScreen> {
   String _query = '';
-  PlaylistSort _sort = PlaylistSort.adicao;
   bool _shuffle = false;
   bool _reordering = false;
 
@@ -168,12 +167,76 @@ class _PlaylistScreenState extends ConsumerState<PlaylistScreen> {
       () => _editor.reorder(
         p.id,
         [
-          for (final t in sortAndFilter(p.tracks, PlaylistSort.adicao, ''))
+          for (final t in sortAndFilter(p.tracks, PlaylistSort.playlist, ''))
             t.trackId,
         ],
         [for (final t in draft) t.trackId],
       ),
     );
+  }
+
+  /// "Ordenar por": critério e sentido; a escolha fica para esta playlist.
+  Future<void> _chooseSort(PlaylistSort current) async {
+    final c = BergaColors.of(context);
+    final chosen = await showModalBottomSheet<PlaylistSort>(
+      context: context,
+      useRootNavigator: true,
+      backgroundColor: c.card,
+      barrierColor: c.scrim,
+      elevation: 0,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(BergaSizes.sheetRadius),
+        ),
+      ),
+      builder: (sheetContext) => SafeArea(
+        top: false,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.sizeOf(sheetContext).height * 0.8,
+          ),
+          child: ListView(
+            shrinkWrap: true,
+            padding: BergaSizes.sheetPadding,
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Text(
+                  'Ordenar por',
+                  style: BergaText.h2.copyWith(color: c.tx),
+                ),
+              ),
+              for (final option in PlaylistSort.values)
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => Navigator.of(sheetContext).pop(option),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            option.label,
+                            style: BergaText.body.copyWith(
+                              color: option == current ? c.gr : c.tx,
+                            ),
+                          ),
+                        ),
+                        if (option == current)
+                          Icon(Icons.check, size: 20, color: c.gr),
+                      ],
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (chosen != null) {
+      ref.read(playlistSortProvider(widget.id).notifier).set(chosen);
+    }
   }
 
   void _openMenu(PlaylistDetail p) {
@@ -197,8 +260,11 @@ class _PlaylistScreenState extends ConsumerState<PlaylistScreen> {
               'Reordenar',
               () => setState(() {
                 _reordering = true;
-                _sort = PlaylistSort.adicao;
-                _draft = sortAndFilter(p.tracks, PlaylistSort.adicao, '');
+                // Arrastar só faz sentido na ordem da playlist.
+                ref
+                    .read(playlistSortProvider(widget.id).notifier)
+                    .set(PlaylistSort.playlist);
+                _draft = sortAndFilter(p.tracks, PlaylistSort.playlist, '');
               }),
             ),
           if (role.isOwner && !PlaylistOp.isRef(p.id))
@@ -296,6 +362,7 @@ class _PlaylistScreenState extends ConsumerState<PlaylistScreen> {
     final me = ref.watch(sessionProvider.select((s) => s.username));
     // Edita também offline: as alterações vão na volta do servidor.
     final role = p.playlistRole;
+    final sort = ref.watch(playlistSortProvider(widget.id));
     final synced = !PlaylistOp.isRef(p.id);
     final pendingIds = ref.watch(pendingPlaylistIdsProvider);
     final hasPending =
@@ -307,9 +374,7 @@ class _PlaylistScreenState extends ConsumerState<PlaylistScreen> {
         ? 'Você'
         : person.name;
     final people = [who(p.owner), for (final m in p.members) who(m.user)];
-    final shown = _reordering
-        ? _draft!
-        : sortAndFilter(p.tracks, _sort, _query);
+    final shown = _reordering ? _draft! : sortAndFilter(p.tracks, sort, _query);
     final playingId = ref.watch(
       playerProvider.select((s) => s.current?.track.id),
     );
@@ -419,8 +484,9 @@ class _PlaylistScreenState extends ConsumerState<PlaylistScreen> {
               ),
             ),
             AppChip(
-              label: _sort.label,
-              onTap: () => setState(() => _sort = _sort.next),
+              label: sort.short,
+              icon: Icons.sort,
+              onTap: () => _chooseSort(sort),
             ),
           ],
         ),
