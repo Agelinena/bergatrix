@@ -40,6 +40,10 @@ async def lifespan(app: FastAPI):
     for d in ("cache", "deemix_dl", "permanent"):
         (Path(settings.music_dir) / d).mkdir(parents=True, exist_ok=True)
 
+    # Faixas em playlist que ficaram como cache (ou o contrário): conserta.
+    from app.storage.permanence import reconcile
+    await reconcile(pool)
+
     from app.storage.service import run_forever as cl
     t = asyncio.create_task(cl(pool))
     logger.info("Limpeza agendada (1h)")

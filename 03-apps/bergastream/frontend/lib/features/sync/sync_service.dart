@@ -11,7 +11,7 @@ import '../../data/repositories/playlist_repository.dart';
 import '../auth/session.dart';
 import '../downloads/download_manager.dart';
 import '../home/home_providers.dart';
-import '../library/library_providers.dart';
+import '../playlists/playlist_store.dart';
 import '../settings/preferences.dart';
 
 /// Diferença entre a playlist no servidor e a cópia baixada.
@@ -60,6 +60,9 @@ class SyncService extends Notifier<void> {
     if (_running || !ref.read(sessionProvider).canUseServer) return;
     _running = true;
     try {
+      // Alterações de playlist feitas offline primeiro: o resto (downloads)
+      // já vê o resultado.
+      await ref.read(playlistSyncProvider.notifier).flush();
       await sendPendingPlays();
       if (ref.read(preferencesProvider).autoDownloadNew) {
         await updateDownloadedPlaylists();
@@ -115,7 +118,7 @@ class SyncService extends Notifier<void> {
       await ref.read(downloadManagerProvider.notifier).downloadPlaylist(detail);
       updated++;
     }
-    if (updated > 0) ref.invalidate(myPlaylistsProvider);
+    if (updated > 0) ref.invalidate(serverPlaylistsProvider);
     return updated;
   }
 }

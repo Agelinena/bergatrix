@@ -32,7 +32,7 @@ enum PlaylistRole {
 }
 
 /// Playlist do servidor na lista da Biblioteca (`GET /api/me/playlists`).
-@JsonSerializable(fieldRename: FieldRename.snake, createToJson: false)
+@JsonSerializable(fieldRename: FieldRename.snake, explicitToJson: true)
 class ServerPlaylist {
   const ServerPlaylist({
     required this.id,
@@ -49,6 +49,8 @@ class ServerPlaylist {
 
   factory ServerPlaylist.fromJson(Map<String, dynamic> json) =>
       _$ServerPlaylistFromJson(json);
+
+  Map<String, dynamic> toJson() => _$ServerPlaylistToJson(this);
 
   final String id;
   final String name;
@@ -67,7 +69,7 @@ class ServerPlaylist {
 }
 
 /// Faixa da playlist, com quem adicionou e se está pronta no servidor.
-@JsonSerializable(fieldRename: FieldRename.snake, createToJson: false)
+@JsonSerializable(fieldRename: FieldRename.snake, explicitToJson: true)
 class PlaylistTrack {
   const PlaylistTrack({
     required this.trackId,
@@ -88,6 +90,8 @@ class PlaylistTrack {
 
   factory PlaylistTrack.fromJson(Map<String, dynamic> json) =>
       _$PlaylistTrackFromJson(json);
+
+  Map<String, dynamic> toJson() => _$PlaylistTrackToJson(this);
 
   final String trackId;
   final String provider;
@@ -117,19 +121,21 @@ class PlaylistTrack {
   );
 }
 
-@JsonSerializable(fieldRename: FieldRename.snake, createToJson: false)
+@JsonSerializable(fieldRename: FieldRename.snake, explicitToJson: true)
 class PlaylistMember {
   const PlaylistMember({required this.user, required this.role});
 
   factory PlaylistMember.fromJson(Map<String, dynamic> json) =>
       _$PlaylistMemberFromJson(json);
 
+  Map<String, dynamic> toJson() => _$PlaylistMemberToJson(this);
+
   final Person user;
   final String role;
 }
 
 /// Detalhe da playlist (`GET /api/playlists/{id}`).
-@JsonSerializable(fieldRename: FieldRename.snake, createToJson: false)
+@JsonSerializable(fieldRename: FieldRename.snake, explicitToJson: true)
 class PlaylistDetail {
   const PlaylistDetail({
     required this.id,
@@ -145,6 +151,8 @@ class PlaylistDetail {
 
   factory PlaylistDetail.fromJson(Map<String, dynamic> json) =>
       _$PlaylistDetailFromJson(json);
+
+  Map<String, dynamic> toJson() => _$PlaylistDetailToJson(this);
 
   final String id;
   final String name;

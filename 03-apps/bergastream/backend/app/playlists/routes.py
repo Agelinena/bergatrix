@@ -14,6 +14,7 @@ from app.config import settings
 from app.core.db import get_pool
 from app.core.redis import get_redis
 from app.downloads import queue as q
+from app.playlists import ops as playlist_ops
 from app.playlists import repository as repo
 from app.playlists import service
 from app.tracks import service as tracks_service
@@ -84,6 +85,13 @@ async def create(body: NewPlaylist, user: CurrentUser = Depends(current_user)):
         "INSERT INTO playlists (user_id, name, description) VALUES ($1, $2, $3) RETURNING id",
         user.id, body.name.strip(), body.description.strip())
     return await service.summary(pool, str(row["id"]), user.id)
+
+
+@router.post("/playlists/ops", response_model=playlist_ops.BatchResult)
+async def apply_ops(body: playlist_ops.OpBatch, user: CurrentUser = Depends(current_user)):
+    """Alterações em lote, na ordem (inclusive as feitas offline nos apps).
+    Ver app/playlists/ops.py: intenções, conflitos e reenvio seguro."""
+    return await playlist_ops.apply_batch(get_pool(), user, body)
 
 
 @router.get("/playlists/{playlist_id}", response_model=service.PlaylistDetail)

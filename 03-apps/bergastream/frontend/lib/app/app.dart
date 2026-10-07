@@ -8,6 +8,7 @@ import '../features/downloads/download_manager.dart';
 import '../features/sync/local_playlists_offer.dart';
 import '../features/sync/server_monitor.dart';
 import '../features/sync/sync_service.dart';
+import '../features/playlists/sync_notices.dart';
 import '../features/update/update_prompt.dart';
 import 'app_frame.dart';
 import 'router.dart';
@@ -46,7 +47,9 @@ class _BergastreamAppState extends ConsumerState<BergastreamApp> {
       routerConfig: ref.watch(routerProvider),
       builder: (context, child) => AppFrame(
         platform: platform,
-        child: UpdateWatcher(child: LocalPlaylistsOffer(child: child!)),
+        child: UpdateWatcher(
+          child: SyncNoticesListener(child: LocalPlaylistsOffer(child: child!)),
+        ),
       ),
     );
   }

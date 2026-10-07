@@ -34,6 +34,20 @@ ServerPlaylist _$ServerPlaylistFromJson(Map<String, dynamic> json) =>
       updatedAt: json['updated_at'] as String?,
     );
 
+Map<String, dynamic> _$ServerPlaylistToJson(ServerPlaylist instance) =>
+    <String, dynamic>{
+      'id': instance.id,
+      'name': instance.name,
+      'description': instance.description,
+      'owner': instance.owner?.toJson(),
+      'role': instance.role,
+      'track_count': instance.trackCount,
+      'duration_seconds': instance.durationSeconds,
+      'people_count': instance.peopleCount,
+      'cover_url': instance.coverUrl,
+      'updated_at': instance.updatedAt,
+    };
+
 PlaylistTrack _$PlaylistTrackFromJson(Map<String, dynamic> json) =>
     PlaylistTrack(
       trackId: json['track_id'] as String,
@@ -54,11 +68,32 @@ PlaylistTrack _$PlaylistTrackFromJson(Map<String, dynamic> json) =>
       sizeBytes: (json['size_bytes'] as num?)?.toInt(),
     );
 
+Map<String, dynamic> _$PlaylistTrackToJson(PlaylistTrack instance) =>
+    <String, dynamic>{
+      'track_id': instance.trackId,
+      'provider': instance.provider,
+      'external_id': instance.externalId,
+      'title': instance.title,
+      'artist': instance.artist,
+      'album': instance.album,
+      'duration_seconds': instance.durationSeconds,
+      'isrc': instance.isrc,
+      'cover_url': instance.coverUrl,
+      'added_by': instance.addedBy?.toJson(),
+      'added_at': instance.addedAt,
+      'position': instance.position,
+      'ready': instance.ready,
+      'size_bytes': instance.sizeBytes,
+    };
+
 PlaylistMember _$PlaylistMemberFromJson(Map<String, dynamic> json) =>
     PlaylistMember(
       user: Person.fromJson(json['user'] as Map<String, dynamic>),
       role: json['role'] as String,
     );
+
+Map<String, dynamic> _$PlaylistMemberToJson(PlaylistMember instance) =>
+    <String, dynamic>{'user': instance.user.toJson(), 'role': instance.role};
 
 PlaylistDetail _$PlaylistDetailFromJson(Map<String, dynamic> json) =>
     PlaylistDetail(
@@ -82,3 +117,16 @@ PlaylistDetail _$PlaylistDetailFromJson(Map<String, dynamic> json) =>
               .toList() ??
           const [],
     );
+
+Map<String, dynamic> _$PlaylistDetailToJson(PlaylistDetail instance) =>
+    <String, dynamic>{
+      'id': instance.id,
+      'name': instance.name,
+      'description': instance.description,
+      'owner': instance.owner?.toJson(),
+      'role': instance.role,
+      'cover_url': instance.coverUrl,
+      'updated_at': instance.updatedAt,
+      'members': instance.members.map((e) => e.toJson()).toList(),
+      'tracks': instance.tracks.map((e) => e.toJson()).toList(),
+    };

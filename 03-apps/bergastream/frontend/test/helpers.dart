@@ -21,6 +21,7 @@ import 'package:bergastream/features/auth/session.dart';
 import 'package:bergastream/features/update/update_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_test/flutter_test.dart';
 
 import 'app_harness.dart';
 import 'fake_player.dart';
@@ -46,7 +47,10 @@ Widget wrap(
   FakeUpdateRepository? updates,
   FakeUpdateLauncher? launcher,
 }) {
-  return ProviderScope(
+  // Container descartado no fim do teste (e não junto com a árvore): fechar
+  // as consultas do Drift agenda um timer que o teste de tela não aceita
+  // depois que a árvore foi desmontada.
+  final container = ProviderContainer(
     overrides: [
       appPlatformProvider.overrideWithValue(platform),
       updateTargetProvider.overrideWithValue(updateTarget),
@@ -95,6 +99,10 @@ Widget wrap(
         const PlayerTimings(pollInterval: Duration.zero),
       ),
     ],
+  );
+  addTearDown(container.dispose);
+  return UncontrolledProviderScope(
+    container: container,
     child: MaterialApp(
       debugShowCheckedModeBanner: false,
       theme: theme ?? BergaTheme.dark,

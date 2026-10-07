@@ -2585,6 +2585,665 @@ class AppStateCompanion extends UpdateCompanion<AppStateEntry> {
   }
 }
 
+class $PendingPlaylistOpsTable extends PendingPlaylistOps
+    with TableInfo<$PendingPlaylistOpsTable, PendingPlaylistOpRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $PendingPlaylistOpsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _seqMeta = const VerificationMeta('seq');
+  @override
+  late final GeneratedColumn<int> seq = GeneratedColumn<int>(
+    'seq',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _playlistIdMeta = const VerificationMeta(
+    'playlistId',
+  );
+  @override
+  late final GeneratedColumn<String> playlistId = GeneratedColumn<String>(
+    'playlist_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _opJsonMeta = const VerificationMeta('opJson');
+  @override
+  late final GeneratedColumn<String> opJson = GeneratedColumn<String>(
+    'op_json',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [seq, playlistId, opJson, createdAt];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'pending_playlist_ops';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<PendingPlaylistOpRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('seq')) {
+      context.handle(
+        _seqMeta,
+        seq.isAcceptableOrUnknown(data['seq']!, _seqMeta),
+      );
+    }
+    if (data.containsKey('playlist_id')) {
+      context.handle(
+        _playlistIdMeta,
+        playlistId.isAcceptableOrUnknown(data['playlist_id']!, _playlistIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_playlistIdMeta);
+    }
+    if (data.containsKey('op_json')) {
+      context.handle(
+        _opJsonMeta,
+        opJson.isAcceptableOrUnknown(data['op_json']!, _opJsonMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_opJsonMeta);
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_createdAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {seq};
+  @override
+  PendingPlaylistOpRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return PendingPlaylistOpRow(
+      seq: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}seq'],
+      )!,
+      playlistId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}playlist_id'],
+      )!,
+      opJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}op_json'],
+      )!,
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+    );
+  }
+
+  @override
+  $PendingPlaylistOpsTable createAlias(String alias) {
+    return $PendingPlaylistOpsTable(attachedDatabase, alias);
+  }
+}
+
+class PendingPlaylistOpRow extends DataClass
+    implements Insertable<PendingPlaylistOpRow> {
+  final int seq;
+
+  /// Id da playlist no servidor ou o ref temporário ("tmp:…").
+  final String playlistId;
+  final String opJson;
+  final DateTime createdAt;
+  const PendingPlaylistOpRow({
+    required this.seq,
+    required this.playlistId,
+    required this.opJson,
+    required this.createdAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['seq'] = Variable<int>(seq);
+    map['playlist_id'] = Variable<String>(playlistId);
+    map['op_json'] = Variable<String>(opJson);
+    map['created_at'] = Variable<DateTime>(createdAt);
+    return map;
+  }
+
+  PendingPlaylistOpsCompanion toCompanion(bool nullToAbsent) {
+    return PendingPlaylistOpsCompanion(
+      seq: Value(seq),
+      playlistId: Value(playlistId),
+      opJson: Value(opJson),
+      createdAt: Value(createdAt),
+    );
+  }
+
+  factory PendingPlaylistOpRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return PendingPlaylistOpRow(
+      seq: serializer.fromJson<int>(json['seq']),
+      playlistId: serializer.fromJson<String>(json['playlistId']),
+      opJson: serializer.fromJson<String>(json['opJson']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'seq': serializer.toJson<int>(seq),
+      'playlistId': serializer.toJson<String>(playlistId),
+      'opJson': serializer.toJson<String>(opJson),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+    };
+  }
+
+  PendingPlaylistOpRow copyWith({
+    int? seq,
+    String? playlistId,
+    String? opJson,
+    DateTime? createdAt,
+  }) => PendingPlaylistOpRow(
+    seq: seq ?? this.seq,
+    playlistId: playlistId ?? this.playlistId,
+    opJson: opJson ?? this.opJson,
+    createdAt: createdAt ?? this.createdAt,
+  );
+  PendingPlaylistOpRow copyWithCompanion(PendingPlaylistOpsCompanion data) {
+    return PendingPlaylistOpRow(
+      seq: data.seq.present ? data.seq.value : this.seq,
+      playlistId: data.playlistId.present
+          ? data.playlistId.value
+          : this.playlistId,
+      opJson: data.opJson.present ? data.opJson.value : this.opJson,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('PendingPlaylistOpRow(')
+          ..write('seq: $seq, ')
+          ..write('playlistId: $playlistId, ')
+          ..write('opJson: $opJson, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(seq, playlistId, opJson, createdAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is PendingPlaylistOpRow &&
+          other.seq == this.seq &&
+          other.playlistId == this.playlistId &&
+          other.opJson == this.opJson &&
+          other.createdAt == this.createdAt);
+}
+
+class PendingPlaylistOpsCompanion
+    extends UpdateCompanion<PendingPlaylistOpRow> {
+  final Value<int> seq;
+  final Value<String> playlistId;
+  final Value<String> opJson;
+  final Value<DateTime> createdAt;
+  const PendingPlaylistOpsCompanion({
+    this.seq = const Value.absent(),
+    this.playlistId = const Value.absent(),
+    this.opJson = const Value.absent(),
+    this.createdAt = const Value.absent(),
+  });
+  PendingPlaylistOpsCompanion.insert({
+    this.seq = const Value.absent(),
+    required String playlistId,
+    required String opJson,
+    required DateTime createdAt,
+  }) : playlistId = Value(playlistId),
+       opJson = Value(opJson),
+       createdAt = Value(createdAt);
+  static Insertable<PendingPlaylistOpRow> custom({
+    Expression<int>? seq,
+    Expression<String>? playlistId,
+    Expression<String>? opJson,
+    Expression<DateTime>? createdAt,
+  }) {
+    return RawValuesInsertable({
+      if (seq != null) 'seq': seq,
+      if (playlistId != null) 'playlist_id': playlistId,
+      if (opJson != null) 'op_json': opJson,
+      if (createdAt != null) 'created_at': createdAt,
+    });
+  }
+
+  PendingPlaylistOpsCompanion copyWith({
+    Value<int>? seq,
+    Value<String>? playlistId,
+    Value<String>? opJson,
+    Value<DateTime>? createdAt,
+  }) {
+    return PendingPlaylistOpsCompanion(
+      seq: seq ?? this.seq,
+      playlistId: playlistId ?? this.playlistId,
+      opJson: opJson ?? this.opJson,
+      createdAt: createdAt ?? this.createdAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (seq.present) {
+      map['seq'] = Variable<int>(seq.value);
+    }
+    if (playlistId.present) {
+      map['playlist_id'] = Variable<String>(playlistId.value);
+    }
+    if (opJson.present) {
+      map['op_json'] = Variable<String>(opJson.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('PendingPlaylistOpsCompanion(')
+          ..write('seq: $seq, ')
+          ..write('playlistId: $playlistId, ')
+          ..write('opJson: $opJson, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $SyncNoticesTable extends SyncNotices
+    with TableInfo<$SyncNoticesTable, SyncNoticeRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $SyncNoticesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _kindMeta = const VerificationMeta('kind');
+  @override
+  late final GeneratedColumn<String> kind = GeneratedColumn<String>(
+    'kind',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _playlistIdMeta = const VerificationMeta(
+    'playlistId',
+  );
+  @override
+  late final GeneratedColumn<String> playlistId = GeneratedColumn<String>(
+    'playlist_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _dataJsonMeta = const VerificationMeta(
+    'dataJson',
+  );
+  @override
+  late final GeneratedColumn<String> dataJson = GeneratedColumn<String>(
+    'data_json',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    kind,
+    playlistId,
+    dataJson,
+    createdAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'sync_notices';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<SyncNoticeRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('kind')) {
+      context.handle(
+        _kindMeta,
+        kind.isAcceptableOrUnknown(data['kind']!, _kindMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_kindMeta);
+    }
+    if (data.containsKey('playlist_id')) {
+      context.handle(
+        _playlistIdMeta,
+        playlistId.isAcceptableOrUnknown(data['playlist_id']!, _playlistIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_playlistIdMeta);
+    }
+    if (data.containsKey('data_json')) {
+      context.handle(
+        _dataJsonMeta,
+        dataJson.isAcceptableOrUnknown(data['data_json']!, _dataJsonMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_dataJsonMeta);
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_createdAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  SyncNoticeRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return SyncNoticeRow(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      kind: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}kind'],
+      )!,
+      playlistId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}playlist_id'],
+      )!,
+      dataJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}data_json'],
+      )!,
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+    );
+  }
+
+  @override
+  $SyncNoticesTable createAlias(String alias) {
+    return $SyncNoticesTable(attachedDatabase, alias);
+  }
+}
+
+class SyncNoticeRow extends DataClass implements Insertable<SyncNoticeRow> {
+  final int id;
+  final String kind;
+  final String playlistId;
+  final String dataJson;
+  final DateTime createdAt;
+  const SyncNoticeRow({
+    required this.id,
+    required this.kind,
+    required this.playlistId,
+    required this.dataJson,
+    required this.createdAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['kind'] = Variable<String>(kind);
+    map['playlist_id'] = Variable<String>(playlistId);
+    map['data_json'] = Variable<String>(dataJson);
+    map['created_at'] = Variable<DateTime>(createdAt);
+    return map;
+  }
+
+  SyncNoticesCompanion toCompanion(bool nullToAbsent) {
+    return SyncNoticesCompanion(
+      id: Value(id),
+      kind: Value(kind),
+      playlistId: Value(playlistId),
+      dataJson: Value(dataJson),
+      createdAt: Value(createdAt),
+    );
+  }
+
+  factory SyncNoticeRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return SyncNoticeRow(
+      id: serializer.fromJson<int>(json['id']),
+      kind: serializer.fromJson<String>(json['kind']),
+      playlistId: serializer.fromJson<String>(json['playlistId']),
+      dataJson: serializer.fromJson<String>(json['dataJson']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'kind': serializer.toJson<String>(kind),
+      'playlistId': serializer.toJson<String>(playlistId),
+      'dataJson': serializer.toJson<String>(dataJson),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+    };
+  }
+
+  SyncNoticeRow copyWith({
+    int? id,
+    String? kind,
+    String? playlistId,
+    String? dataJson,
+    DateTime? createdAt,
+  }) => SyncNoticeRow(
+    id: id ?? this.id,
+    kind: kind ?? this.kind,
+    playlistId: playlistId ?? this.playlistId,
+    dataJson: dataJson ?? this.dataJson,
+    createdAt: createdAt ?? this.createdAt,
+  );
+  SyncNoticeRow copyWithCompanion(SyncNoticesCompanion data) {
+    return SyncNoticeRow(
+      id: data.id.present ? data.id.value : this.id,
+      kind: data.kind.present ? data.kind.value : this.kind,
+      playlistId: data.playlistId.present
+          ? data.playlistId.value
+          : this.playlistId,
+      dataJson: data.dataJson.present ? data.dataJson.value : this.dataJson,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('SyncNoticeRow(')
+          ..write('id: $id, ')
+          ..write('kind: $kind, ')
+          ..write('playlistId: $playlistId, ')
+          ..write('dataJson: $dataJson, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, kind, playlistId, dataJson, createdAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is SyncNoticeRow &&
+          other.id == this.id &&
+          other.kind == this.kind &&
+          other.playlistId == this.playlistId &&
+          other.dataJson == this.dataJson &&
+          other.createdAt == this.createdAt);
+}
+
+class SyncNoticesCompanion extends UpdateCompanion<SyncNoticeRow> {
+  final Value<int> id;
+  final Value<String> kind;
+  final Value<String> playlistId;
+  final Value<String> dataJson;
+  final Value<DateTime> createdAt;
+  const SyncNoticesCompanion({
+    this.id = const Value.absent(),
+    this.kind = const Value.absent(),
+    this.playlistId = const Value.absent(),
+    this.dataJson = const Value.absent(),
+    this.createdAt = const Value.absent(),
+  });
+  SyncNoticesCompanion.insert({
+    this.id = const Value.absent(),
+    required String kind,
+    required String playlistId,
+    required String dataJson,
+    required DateTime createdAt,
+  }) : kind = Value(kind),
+       playlistId = Value(playlistId),
+       dataJson = Value(dataJson),
+       createdAt = Value(createdAt);
+  static Insertable<SyncNoticeRow> custom({
+    Expression<int>? id,
+    Expression<String>? kind,
+    Expression<String>? playlistId,
+    Expression<String>? dataJson,
+    Expression<DateTime>? createdAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (kind != null) 'kind': kind,
+      if (playlistId != null) 'playlist_id': playlistId,
+      if (dataJson != null) 'data_json': dataJson,
+      if (createdAt != null) 'created_at': createdAt,
+    });
+  }
+
+  SyncNoticesCompanion copyWith({
+    Value<int>? id,
+    Value<String>? kind,
+    Value<String>? playlistId,
+    Value<String>? dataJson,
+    Value<DateTime>? createdAt,
+  }) {
+    return SyncNoticesCompanion(
+      id: id ?? this.id,
+      kind: kind ?? this.kind,
+      playlistId: playlistId ?? this.playlistId,
+      dataJson: dataJson ?? this.dataJson,
+      createdAt: createdAt ?? this.createdAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (kind.present) {
+      map['kind'] = Variable<String>(kind.value);
+    }
+    if (playlistId.present) {
+      map['playlist_id'] = Variable<String>(playlistId.value);
+    }
+    if (dataJson.present) {
+      map['data_json'] = Variable<String>(dataJson.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('SyncNoticesCompanion(')
+          ..write('id: $id, ')
+          ..write('kind: $kind, ')
+          ..write('playlistId: $playlistId, ')
+          ..write('dataJson: $dataJson, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -2596,6 +3255,9 @@ abstract class _$AppDatabase extends GeneratedDatabase {
       $LocalCollaboratorsTable(this);
   late final $PendingPlaysTable pendingPlays = $PendingPlaysTable(this);
   late final $AppStateTable appState = $AppStateTable(this);
+  late final $PendingPlaylistOpsTable pendingPlaylistOps =
+      $PendingPlaylistOpsTable(this);
+  late final $SyncNoticesTable syncNotices = $SyncNoticesTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -2607,6 +3269,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     localCollaborators,
     pendingPlays,
     appState,
+    pendingPlaylistOps,
+    syncNotices,
   ];
 }
 
@@ -4062,6 +4726,412 @@ typedef $$AppStateTableProcessedTableManager =
       AppStateEntry,
       PrefetchHooks Function()
     >;
+typedef $$PendingPlaylistOpsTableCreateCompanionBuilder =
+    PendingPlaylistOpsCompanion Function({
+      Value<int> seq,
+      required String playlistId,
+      required String opJson,
+      required DateTime createdAt,
+    });
+typedef $$PendingPlaylistOpsTableUpdateCompanionBuilder =
+    PendingPlaylistOpsCompanion Function({
+      Value<int> seq,
+      Value<String> playlistId,
+      Value<String> opJson,
+      Value<DateTime> createdAt,
+    });
+
+class $$PendingPlaylistOpsTableFilterComposer
+    extends Composer<_$AppDatabase, $PendingPlaylistOpsTable> {
+  $$PendingPlaylistOpsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get seq => $composableBuilder(
+    column: $table.seq,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get playlistId => $composableBuilder(
+    column: $table.playlistId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get opJson => $composableBuilder(
+    column: $table.opJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$PendingPlaylistOpsTableOrderingComposer
+    extends Composer<_$AppDatabase, $PendingPlaylistOpsTable> {
+  $$PendingPlaylistOpsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get seq => $composableBuilder(
+    column: $table.seq,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get playlistId => $composableBuilder(
+    column: $table.playlistId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get opJson => $composableBuilder(
+    column: $table.opJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$PendingPlaylistOpsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $PendingPlaylistOpsTable> {
+  $$PendingPlaylistOpsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get seq =>
+      $composableBuilder(column: $table.seq, builder: (column) => column);
+
+  GeneratedColumn<String> get playlistId => $composableBuilder(
+    column: $table.playlistId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get opJson =>
+      $composableBuilder(column: $table.opJson, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+}
+
+class $$PendingPlaylistOpsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $PendingPlaylistOpsTable,
+          PendingPlaylistOpRow,
+          $$PendingPlaylistOpsTableFilterComposer,
+          $$PendingPlaylistOpsTableOrderingComposer,
+          $$PendingPlaylistOpsTableAnnotationComposer,
+          $$PendingPlaylistOpsTableCreateCompanionBuilder,
+          $$PendingPlaylistOpsTableUpdateCompanionBuilder,
+          (
+            PendingPlaylistOpRow,
+            BaseReferences<
+              _$AppDatabase,
+              $PendingPlaylistOpsTable,
+              PendingPlaylistOpRow
+            >,
+          ),
+          PendingPlaylistOpRow,
+          PrefetchHooks Function()
+        > {
+  $$PendingPlaylistOpsTableTableManager(
+    _$AppDatabase db,
+    $PendingPlaylistOpsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$PendingPlaylistOpsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$PendingPlaylistOpsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$PendingPlaylistOpsTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<int> seq = const Value.absent(),
+                Value<String> playlistId = const Value.absent(),
+                Value<String> opJson = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+              }) => PendingPlaylistOpsCompanion(
+                seq: seq,
+                playlistId: playlistId,
+                opJson: opJson,
+                createdAt: createdAt,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> seq = const Value.absent(),
+                required String playlistId,
+                required String opJson,
+                required DateTime createdAt,
+              }) => PendingPlaylistOpsCompanion.insert(
+                seq: seq,
+                playlistId: playlistId,
+                opJson: opJson,
+                createdAt: createdAt,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable<$PendingPlaylistOpsTable, PendingPlaylistOpRow>(
+                    table,
+                  ),
+                  BaseReferences<
+                    _$AppDatabase,
+                    $PendingPlaylistOpsTable,
+                    PendingPlaylistOpRow
+                  >(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$PendingPlaylistOpsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $PendingPlaylistOpsTable,
+      PendingPlaylistOpRow,
+      $$PendingPlaylistOpsTableFilterComposer,
+      $$PendingPlaylistOpsTableOrderingComposer,
+      $$PendingPlaylistOpsTableAnnotationComposer,
+      $$PendingPlaylistOpsTableCreateCompanionBuilder,
+      $$PendingPlaylistOpsTableUpdateCompanionBuilder,
+      (
+        PendingPlaylistOpRow,
+        BaseReferences<
+          _$AppDatabase,
+          $PendingPlaylistOpsTable,
+          PendingPlaylistOpRow
+        >,
+      ),
+      PendingPlaylistOpRow,
+      PrefetchHooks Function()
+    >;
+typedef $$SyncNoticesTableCreateCompanionBuilder =
+    SyncNoticesCompanion Function({
+      Value<int> id,
+      required String kind,
+      required String playlistId,
+      required String dataJson,
+      required DateTime createdAt,
+    });
+typedef $$SyncNoticesTableUpdateCompanionBuilder =
+    SyncNoticesCompanion Function({
+      Value<int> id,
+      Value<String> kind,
+      Value<String> playlistId,
+      Value<String> dataJson,
+      Value<DateTime> createdAt,
+    });
+
+class $$SyncNoticesTableFilterComposer
+    extends Composer<_$AppDatabase, $SyncNoticesTable> {
+  $$SyncNoticesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get kind => $composableBuilder(
+    column: $table.kind,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get playlistId => $composableBuilder(
+    column: $table.playlistId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get dataJson => $composableBuilder(
+    column: $table.dataJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$SyncNoticesTableOrderingComposer
+    extends Composer<_$AppDatabase, $SyncNoticesTable> {
+  $$SyncNoticesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get kind => $composableBuilder(
+    column: $table.kind,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get playlistId => $composableBuilder(
+    column: $table.playlistId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get dataJson => $composableBuilder(
+    column: $table.dataJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$SyncNoticesTableAnnotationComposer
+    extends Composer<_$AppDatabase, $SyncNoticesTable> {
+  $$SyncNoticesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get kind =>
+      $composableBuilder(column: $table.kind, builder: (column) => column);
+
+  GeneratedColumn<String> get playlistId => $composableBuilder(
+    column: $table.playlistId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get dataJson =>
+      $composableBuilder(column: $table.dataJson, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+}
+
+class $$SyncNoticesTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $SyncNoticesTable,
+          SyncNoticeRow,
+          $$SyncNoticesTableFilterComposer,
+          $$SyncNoticesTableOrderingComposer,
+          $$SyncNoticesTableAnnotationComposer,
+          $$SyncNoticesTableCreateCompanionBuilder,
+          $$SyncNoticesTableUpdateCompanionBuilder,
+          (
+            SyncNoticeRow,
+            BaseReferences<_$AppDatabase, $SyncNoticesTable, SyncNoticeRow>,
+          ),
+          SyncNoticeRow,
+          PrefetchHooks Function()
+        > {
+  $$SyncNoticesTableTableManager(_$AppDatabase db, $SyncNoticesTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$SyncNoticesTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$SyncNoticesTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$SyncNoticesTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<String> kind = const Value.absent(),
+                Value<String> playlistId = const Value.absent(),
+                Value<String> dataJson = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+              }) => SyncNoticesCompanion(
+                id: id,
+                kind: kind,
+                playlistId: playlistId,
+                dataJson: dataJson,
+                createdAt: createdAt,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required String kind,
+                required String playlistId,
+                required String dataJson,
+                required DateTime createdAt,
+              }) => SyncNoticesCompanion.insert(
+                id: id,
+                kind: kind,
+                playlistId: playlistId,
+                dataJson: dataJson,
+                createdAt: createdAt,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable<$SyncNoticesTable, SyncNoticeRow>(table),
+                  BaseReferences<
+                    _$AppDatabase,
+                    $SyncNoticesTable,
+                    SyncNoticeRow
+                  >(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$SyncNoticesTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $SyncNoticesTable,
+      SyncNoticeRow,
+      $$SyncNoticesTableFilterComposer,
+      $$SyncNoticesTableOrderingComposer,
+      $$SyncNoticesTableAnnotationComposer,
+      $$SyncNoticesTableCreateCompanionBuilder,
+      $$SyncNoticesTableUpdateCompanionBuilder,
+      (
+        SyncNoticeRow,
+        BaseReferences<_$AppDatabase, $SyncNoticesTable, SyncNoticeRow>,
+      ),
+      SyncNoticeRow,
+      PrefetchHooks Function()
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -4078,4 +5148,8 @@ class $AppDatabaseManager {
       $$PendingPlaysTableTableManager(_db, _db.pendingPlays);
   $$AppStateTableTableManager get appState =>
       $$AppStateTableTableManager(_db, _db.appState);
+  $$PendingPlaylistOpsTableTableManager get pendingPlaylistOps =>
+      $$PendingPlaylistOpsTableTableManager(_db, _db.pendingPlaylistOps);
+  $$SyncNoticesTableTableManager get syncNotices =>
+      $$SyncNoticesTableTableManager(_db, _db.syncNotices);
 }

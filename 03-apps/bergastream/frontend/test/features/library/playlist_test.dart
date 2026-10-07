@@ -1,4 +1,5 @@
 import 'package:bergastream/data/models/playlist_models.dart';
+import 'package:bergastream/data/models/playlist_op.dart';
 import 'package:bergastream/data/repositories/playlist_repository.dart';
 import 'package:bergastream/features/library/library_providers.dart';
 import 'package:bergastream/features/library/people_screen.dart';
@@ -155,7 +156,12 @@ void main() {
     expect(find.byIcon(Icons.drag_handle), findsNWidgets(4));
     await tester.tap(find.text('Concluir'));
     await tester.pumpAndSettle();
-    expect(repo.reorders.single, ['tr1', 'tr2', 'tr3', 'tr4']);
+    // Nada mudou de lugar: nada vai para o servidor.
+    expect(repo.reorders, isEmpty);
+    expect(
+      repo.batches.expand((b) => b).where((o) => o.type == PlaylistOpType.move),
+      isEmpty,
+    );
     await tester.pump(const Duration(seconds: 2));
     await tester.pumpAndSettle();
   });

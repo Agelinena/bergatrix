@@ -3,7 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/network/api_error.dart';
 import '../api/api_dio.dart';
+import '../../features/playlists/playlist_merge.dart';
 import '../models/playlist_models.dart';
+import '../models/playlist_op.dart';
 import '../models/search_result.dart';
 
 /// Playlists no servidor (Seção 9, área "Playlists").
@@ -26,6 +28,9 @@ abstract interface class PlaylistRepository {
     required String mimeType,
   });
   Future<List<Person>> directory();
+
+  /// Alterações em lote, na ordem (`POST /api/playlists/ops`).
+  Future<OpBatchResult> applyOps(List<PlaylistOp> ops);
   Future<void> setMember(String playlistId, String userId, PlaylistRole role);
   Future<void> removeMember(String playlistId, String userId);
 }
@@ -140,6 +145,17 @@ class HttpPlaylistRepository implements PlaylistRepository {
     () => _dio.delete<void>('/api/playlists/$playlistId/members/$userId'),
   );
 
+  @override
+  Future<OpBatchResult> applyOps(List<PlaylistOp> ops) => _call(() async {
+    final r = await _dio.post<Map<String, dynamic>>(
+      '/api/playlists/ops',
+      data: {
+        'ops': [for (final op in ops) op.toJson()],
+      },
+    );
+    return OpBatchResult.fromJson(r.data!);
+  });
+
   static Future<T> _call<T>(Future<T> Function() body) async {
     try {
       return await body();
@@ -162,6 +178,15 @@ class FakePlaylistRepository implements PlaylistRepository {
     const ServerPlaylist(id: 'p1', name: 'Roadtrip'),
   ];
   final added = <String, List<String>>{};
+
+  /// Lotes recebidos em [applyOps] (na ordem).
+  final batches = <List<PlaylistOp>>[];
+
+  /// Substitui as regras do servidor num teste (ex.: forçar conflito).
+  OpBatchResult Function(List<PlaylistOp> ops)? opsHandler;
+
+  /// Simula servidor fora do ar em [applyOps].
+  bool offline = false;
   final members = <String, Map<String, PlaylistRole>>{};
   final reorders = <List<String>>[];
   final removed = <String>[];
@@ -191,6 +216,9 @@ class FakePlaylistRepository implements PlaylistRepository {
       ),
   ];
 
+  /// Faixas de cada playlist (p1 = [tracks]).
+  late final trackLists = <String, List<PlaylistTrack>>{'p1': tracks};
+
   @override
   Future<List<ServerPlaylist>> myPlaylists() async => [
     for (final p in playlists)
@@ -198,8 +226,9 @@ class FakePlaylistRepository implements PlaylistRepository {
         id: p.id,
         name: p.name,
         role: role.name,
-        trackCount: p.id == 'p1' ? tracks.length : 0,
+        trackCount: trackLists[p.id]?.length ?? 0,
         peopleCount: 1 + (members[p.id]?.length ?? 0),
+        updatedAt: p.updatedAt,
       ),
   ];
 
@@ -211,11 +240,12 @@ class FakePlaylistRepository implements PlaylistRepository {
       name: p.name,
       owner: me,
       role: role.name,
+      updatedAt: p.updatedAt,
       members: [
         const PlaylistMember(user: ana, role: 'editor'),
         const PlaylistMember(user: pedro, role: 'viewer'),
       ],
-      tracks: id == 'p1' ? List.of(tracks) : const [],
+      tracks: List.of(trackLists[id] ?? const <PlaylistTrack>[]),
     );
   }
 
@@ -229,12 +259,18 @@ class FakePlaylistRepository implements PlaylistRepository {
   @override
   Future<void> rename(String id, String name) async {
     final i = playlists.indexWhere((p) => p.id == id);
-    playlists[i] = ServerPlaylist(id: id, name: name);
+    playlists[i] = ServerPlaylist(
+      id: id,
+      name: name,
+      updatedAt: playlists[i].updatedAt,
+    );
   }
 
   @override
-  Future<void> delete(String id) async =>
-      playlists.removeWhere((p) => p.id == id);
+  Future<void> delete(String id) async {
+    playlists.removeWhere((p) => p.id == id);
+    trackLists.remove(id);
+  }
 
   @override
   Future<void> addTrack(String playlistId, SearchResult track) async =>
@@ -247,16 +283,148 @@ class FakePlaylistRepository implements PlaylistRepository {
   @override
   Future<void> removeTrack(String playlistId, String trackId) async {
     removed.add(trackId);
-    tracks.removeWhere((t) => t.trackId == trackId);
+    trackLists[playlistId]?.removeWhere((t) => t.trackId == trackId);
   }
 
   @override
   Future<void> reorder(String playlistId, List<String> trackIds) async {
     reorders.add(trackIds);
-    tracks.sort(
+    trackLists[playlistId]?.sort(
       (a, b) =>
           trackIds.indexOf(a.trackId).compareTo(trackIds.indexOf(b.trackId)),
     );
+  }
+
+  /// Mesmas regras do servidor (`backend/app/playlists/ops.py`).
+  @override
+  Future<OpBatchResult> applyOps(List<PlaylistOp> ops) async {
+    if (offline) {
+      throw const ApiException(ApiErrorKind.semConexao);
+    }
+    batches.add(ops);
+    if (opsHandler case final handler?) return handler(ops);
+    final refs = <String, String>{};
+    final results = <OpResult>[];
+    String map(String id) => refs[id] ?? id;
+    for (final op in ops) {
+      OpResult result(
+        OpStatus status, {
+        String? id,
+        Map<String, dynamic>? current,
+        String? trackId,
+      }) => OpResult(
+        opId: op.opId,
+        status: status,
+        playlistId: id,
+        current: current,
+        trackId: trackId,
+      );
+      final pending = [op.playlist, op.trackId, op.after, op.before]
+          .whereType<String>()
+          .where(
+            (v) =>
+                op.type != PlaylistOpType.create &&
+                PlaylistOp.isRef(v) &&
+                !refs.containsKey(v),
+          );
+      if (pending.isNotEmpty) {
+        results.add(result(OpStatus.retry));
+        continue;
+      }
+      if (op.type == PlaylistOpType.create) {
+        final p = await create(op.name!);
+        refs[op.ref!] = p.id;
+        trackLists[p.id] = [];
+        results.add(result(OpStatus.applied, id: p.id));
+        continue;
+      }
+      final id = map(op.playlist);
+      final i = playlists.indexWhere((p) => p.id == id);
+      if (i < 0) {
+        results.add(result(OpStatus.gone, id: id));
+        continue;
+      }
+      final need = op.type == PlaylistOpType.delete
+          ? PlaylistRole.owner
+          : PlaylistRole.editor;
+      if (role.index > need.index) {
+        results.add(result(OpStatus.forbidden, id: id));
+        continue;
+      }
+      final current = playlists[i];
+      switch (op.type) {
+        case PlaylistOpType.rename:
+          if (current.name != op.name &&
+              !op.force &&
+              op.base != null &&
+              current.name != op.base) {
+            results.add(
+              result(
+                OpStatus.conflict,
+                id: id,
+                current: {'name': current.name},
+              ),
+            );
+            continue;
+          }
+          await rename(id, op.name!);
+        case PlaylistOpType.add:
+          final t = op.track!;
+          final trackId = 'srv-${t.externalId}';
+          refs[op.ref!] = trackId;
+          await addTrack(id, t);
+          final list = trackLists[id] ??= [];
+          if (!list.any((x) => x.trackId == trackId)) {
+            list.add(
+              PlaylistTrack(
+                trackId: trackId,
+                provider: t.provider,
+                externalId: t.externalId,
+                title: t.title,
+                artist: t.artist,
+                addedBy: me,
+                addedAt: '2026-10-07T12:00:00Z',
+                position: list.length + 1,
+              ),
+            );
+          }
+          results.add(result(OpStatus.applied, id: id, trackId: trackId));
+          continue;
+        case PlaylistOpType.remove:
+          await removeTrack(id, map(op.trackId!));
+        case PlaylistOpType.move:
+          final order = [
+            for (final t in trackLists[id] ?? const <PlaylistTrack>[])
+              t.trackId,
+          ];
+          final moved = moveInOrder(
+            order,
+            map(op.trackId!),
+            after: op.after == null ? null : map(op.after!),
+            before: op.before == null ? null : map(op.before!),
+          );
+          await reorder(id, moved);
+        case PlaylistOpType.delete:
+          if (!op.force &&
+              op.baseUpdatedAt != null &&
+              current.updatedAt != null &&
+              current.updatedAt != op.baseUpdatedAt) {
+            results.add(
+              result(
+                OpStatus.conflict,
+                id: id,
+                current: {'name': current.name},
+              ),
+            );
+            continue;
+          }
+          await delete(id);
+        case PlaylistOpType.create:
+          break;
+      }
+      results.add(result(OpStatus.applied, id: id));
+    }
+    return OpBatchResult(results: results, refs: refs);
   }
 
   @override

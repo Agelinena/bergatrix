@@ -106,8 +106,10 @@ void main() {
         find.text('Servidor indisponível. Mostrando suas músicas baixadas.'),
         findsOneWidget,
       );
+      // A lista vem da cópia guardada quando havia servidor; a baixada
+      // aparece com o ícone.
       expect(find.text('Roadtrip'), findsOneWidget);
-      expect(find.text('Baixada'), findsOneWidget);
+      expect(find.byIcon(Icons.download_done), findsWidgets);
 
       await tester.tap(find.text('Roadtrip'));
       await settleDb(tester);

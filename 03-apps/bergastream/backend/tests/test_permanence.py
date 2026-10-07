@@ -4,6 +4,7 @@ Uso: docker compose exec -T api python tests/test_permanence.py
 """
 from __future__ import annotations
 import asyncio
+import secrets
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -14,13 +15,19 @@ from app.tracks import repository as track_repo
 from app.tracks.models import PlayRequest
 from app.tracks import service as tracks_service
 from app.playlists.repository import add_track_to_playlist, remove_track_from_playlist, get_track_playlist_count
-from app.users.repository import get_users
 
 
 async def test():
     print("=== Teste de Permanência ===")
     pool = await create_pool()
     r = await get_redis()
+
+    # Restos de uma execução interrompida.
+    for old in await pool.fetch(
+            "SELECT track_id FROM external_ids WHERE provider = 'youtube' AND external_id = 'test_video_id'"):
+        for table in ("playlist_tracks", "files", "external_ids"):
+            await pool.execute(f"DELETE FROM {table} WHERE track_id = $1", old["track_id"])
+        await pool.execute("DELETE FROM tracks WHERE id = $1", old["track_id"])
 
     # 1. Mock de download de faixa
     req = PlayRequest(
@@ -41,19 +48,17 @@ async def test():
     )
     print("   Download mockado (kind=cache)")
 
-    # 2. Busca usuarios e playlists
-    users = await get_users(pool)
-    print(f"   Usuarios: {[u.name for u in users]}")
-
-    # Pega as playlists
-    user_a_playlist = await pool.fetchrow(
-        "SELECT p.id FROM playlists p JOIN users u ON u.id=p.user_id WHERE u.name='User A'"
-    )
-    user_b_playlist = await pool.fetchrow(
-        "SELECT p.id FROM playlists p JOIN users u ON u.id=p.user_id WHERE u.name='User B'"
-    )
-    pl_a = user_a_playlist["id"]
-    pl_b = user_b_playlist["id"]
+    # 2. Usuários e playlists temporários (os fictícios "User A/B" saíram
+    # na migração 0009).
+    tag = secrets.token_hex(3)
+    user_a = await pool.fetchval(
+        "INSERT INTO users (name, username) VALUES ($1, $1) RETURNING id", f"perm_a_{tag}")
+    user_b = await pool.fetchval(
+        "INSERT INTO users (name, username) VALUES ($1, $1) RETURNING id", f"perm_b_{tag}")
+    pl_a = await pool.fetchval(
+        "INSERT INTO playlists (user_id, name) VALUES ($1, 'A') RETURNING id", user_a)
+    pl_b = await pool.fetchval(
+        "INSERT INTO playlists (user_id, name) VALUES ($1, 'B') RETURNING id", user_b)
 
     # 3. Adicionar ao User A -> permanent
     await add_track_to_playlist(pool, pl_a, track_id)
@@ -96,6 +101,7 @@ async def test():
     await pool.execute("DELETE FROM playlist_tracks WHERE track_id=$1", track_id)
     await pool.execute("DELETE FROM external_ids WHERE track_id=$1", track_id)
     await pool.execute("DELETE FROM tracks WHERE id=$1", track_id)
+    await pool.execute("DELETE FROM users WHERE id = ANY($1::uuid[])", [user_a, user_b])
 
     await close_pool()
     await close_redis()

@@ -25,6 +25,14 @@ class ApiException implements Exception {
 
   String get message => kind.message;
 
+  /// Falha passageira (rede, servidor fora, tempo esgotado): vale tentar de
+  /// novo mais tarde sem perder o que estava sendo enviado.
+  bool get isTransient =>
+      kind == ApiErrorKind.semConexao ||
+      kind == ApiErrorKind.tempoEsgotado ||
+      kind == ApiErrorKind.servidor ||
+      kind == ApiErrorKind.muitasTentativas;
+
   /// Converte erros do `dio` (rede, 401, 4xx, 5xx, tempo esgotado).
   factory ApiException.fromDio(DioException e) {
     final status = e.response?.statusCode;

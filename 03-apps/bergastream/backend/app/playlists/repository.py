@@ -2,6 +2,8 @@
 from __future__ import annotations
 from typing import TYPE_CHECKING
 
+from app.storage.permanence import sync_permanence
+
 if TYPE_CHECKING:
     import asyncpg
 
@@ -19,11 +21,9 @@ async def add_track_to_playlist(
         playlist_id, track_id, added_by,
     )
     await pool.execute("UPDATE playlists SET updated_at = now() WHERE id = $1", playlist_id)
-    # Atualiza kind para permanent
-    await pool.execute(
-        "UPDATE files SET kind = 'permanent' WHERE track_id = $1 AND kind != 'permanent'",
-        track_id,
-    )
+    # Permanente (marcação e pasta). Se o arquivo ainda não existe, o
+    # registro do download faz isso quando ele chegar.
+    await sync_permanence(pool, track_id)
     return True
 
 
@@ -40,15 +40,8 @@ async def remove_track_from_playlist(pool: "asyncpg.Pool", playlist_id: str, tra
 
 async def release_if_orphan(pool: "asyncpg.Pool", track_id: str) -> None:
     """Faixa que não está em nenhuma playlist vira cache (com o timer
-    zerado), para a limpeza apagar depois do TTL."""
-    remaining = await pool.fetchval(
-        "SELECT count(*) FROM playlist_tracks WHERE track_id = $1", track_id,
-    )
-    if remaining == 0:
-        await pool.execute(
-            "UPDATE files SET kind = 'cache', last_played_at = now() WHERE track_id = $1",
-            track_id,
-        )
+    zerado e de volta à pasta cache/), para a limpeza apagar depois do TTL."""
+    await sync_permanence(pool, track_id)
 
 
 async def get_track_playlist_count(pool: "asyncpg.Pool", track_id: str) -> int:

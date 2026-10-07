@@ -12,8 +12,10 @@ import '../../core/widgets/widgets.dart';
 import '../../data/local/database.dart';
 import '../../data/repositories/local_playlists.dart';
 import '../downloads/download_manager.dart';
-import '../../data/repositories/playlist_repository.dart';
+import '../../data/models/playlist_models.dart';
 import '../auth/session.dart';
+import '../playlists/playlist_store.dart';
+import '../playlists/sync_notices.dart';
 import 'library_providers.dart';
 
 /// Aba Biblioteca (Seção 6.4): playlists do servidor (suas e compartilhadas)
@@ -28,24 +30,53 @@ class LibraryScreen extends ConsumerWidget {
     final server = ref.watch(myPlaylistsProvider);
     final local = ref.watch(localPlaylistsProvider);
     final serverList = server.value ?? const [];
+    final serverIds = {for (final p in serverList) p.id};
     final downloaded = ref.watch(downloadedPlaylistsProvider).value ?? const [];
     final downloadedIds = {for (final d in downloaded) d.id};
     final downloadedUpdatedAt = {
       for (final d in downloaded) d.id: d.serverUpdatedAt,
     };
     final online = ref.watch(sessionProvider.select((s) => s.canUseServer));
-    // Sem servidor: as playlists baixadas (Seção 8.6).
-    final offline = online ? const <LocalPlaylistRow>[] : downloaded;
+    final pending = ref.watch(pendingPlaylistIdsProvider);
+    // Sem servidor: as baixadas que não estão na cópia da lista (Seção 8.6).
+    final offline = online
+        ? const <LocalPlaylistRow>[]
+        : [
+            for (final d in downloaded)
+              if (!serverIds.contains(d.id)) d,
+          ];
+
+    Widget? trailing(ServerPlaylist p) {
+      if (pending.contains(p.id)) {
+        return Tooltip(
+          message: 'Alterações aguardando envio',
+          child: Icon(Icons.cloud_upload_outlined, size: 18, color: c.mu),
+        );
+      }
+      if (!downloadedIds.contains(p.id)) return null;
+      if (online && downloadedUpdatedAt[p.id] != p.updatedAt) {
+        return Tooltip(
+          message: 'Atualização disponível',
+          child: Icon(Icons.sync, size: 18, color: c.gr),
+        );
+      }
+      return const DownloadStateIcon(state: DownloadState.baixada);
+    }
 
     return RefreshIndicator(
       color: c.gr,
-      onRefresh: () => ref.refresh(myPlaylistsProvider.future),
+      onRefresh: () async {
+        await ref.read(playlistSyncProvider.notifier).flush();
+        ref.invalidate(serverPlaylistsProvider);
+        await ref.read(serverPlaylistsProvider.future);
+      },
       child: ListView(
         key: const PageStorageKey('library'),
         padding: AppLayout.screenPadding(context),
         children: [
           const ScreenTitle('Biblioteca'),
-          if (server.hasError)
+          const SyncNoticesBanner(),
+          if (server.hasError && serverList.isEmpty)
             Text(
               server.error is ApiException
                   ? (server.error! as ApiException).message
@@ -68,14 +99,7 @@ class LibraryScreen extends ConsumerWidget {
               ),
               cover: serverImage(ref, p.coverUrl),
               onTap: () => context.push(AppRoutes.playlist(p.id)),
-              trailing: !downloadedIds.contains(p.id)
-                  ? null
-                  : downloadedUpdatedAt[p.id] != p.updatedAt
-                  ? Tooltip(
-                      message: 'Atualização disponível',
-                      child: Icon(Icons.sync, size: 18, color: c.gr),
-                    )
-                  : const DownloadStateIcon(state: DownloadState.baixada),
+              trailing: trailing(p),
             ),
           for (final p in offline)
             PlaylistRow(
@@ -104,7 +128,8 @@ class LibraryScreen extends ConsumerWidget {
   }
 }
 
-/// "Nova playlist": no servidor quando logado; senão, só no aparelho.
+/// "Nova playlist": com conta, vai para o servidor (na hora ou, sem
+/// servidor, quando ele voltar); sem conta, fica só no aparelho.
 Future<void> createPlaylist(BuildContext context, WidgetRef ref) async {
   final name = await showTextInputDialog(
     context,
@@ -113,16 +138,17 @@ Future<void> createPlaylist(BuildContext context, WidgetRef ref) async {
     confirmLabel: 'Criar',
   );
   if (name == null || !context.mounted) return;
-  if (!ref.read(sessionProvider).canUseServer) {
+  if (!hasAccount(ref.read(sessionProvider))) {
     final p = await ref.read(localPlaylistsProvider.notifier).create(name);
     if (context.mounted) context.push(AppRoutes.localPlaylist(p.id));
     return;
   }
   try {
-    final p = await ref.read(playlistRepositoryProvider).create(name);
-    ref.invalidate(myPlaylistsProvider);
-    if (context.mounted) context.push(AppRoutes.playlist(p.id));
+    final id = await ref.read(playlistEditorProvider).create(name);
+    if (context.mounted) context.push(AppRoutes.playlist(id));
   } on ApiException catch (e) {
+    if (context.mounted) AppToast.show(context, e.message);
+  } on PlaylistConflict catch (e) {
     if (context.mounted) AppToast.show(context, e.message);
   }
 }

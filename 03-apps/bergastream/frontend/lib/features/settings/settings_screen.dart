@@ -15,6 +15,7 @@ import '../../data/local/database.dart';
 import '../auth/session.dart';
 import '../downloads/download_manager.dart';
 import '../downloads/manage_downloads_screen.dart';
+import '../playlists/playlist_store.dart';
 import '../update/update_prompt.dart';
 import '../update/update_service.dart';
 import 'preferences.dart';
@@ -26,6 +27,27 @@ class SettingsScreen extends ConsumerWidget {
 
   Future<void> _logout(BuildContext context, WidgetRef ref) async {
     if (ref.read(appPlatformProvider).isApp) {
+      // Alterações de playlist feitas offline: tenta enviar antes de sair.
+      // (A fila já está carregada: a tela observa o provider.)
+      var pending = ref.read(pendingPlaylistOpsProvider).value?.length ?? 0;
+      if (pending > 0) {
+        await ref.read(playlistSyncProvider.notifier).flush();
+        pending = ref.read(pendingPlaylistOpsProvider).value?.length ?? 0;
+      }
+      if (pending > 0) {
+        if (!context.mounted) return;
+        final leave = await showChoiceDialog(
+          context,
+          message: pending == 1
+              ? '1 alteração de playlist ainda não foi enviada ao servidor '
+                    'e será perdida ao sair.'
+              : '$pending alterações de playlist ainda não foram enviadas ao '
+                    'servidor e serão perdidas ao sair.',
+          options: const ['Cancelar', 'Sair mesmo assim'],
+        );
+        if (leave != 1) return;
+      }
+      if (!context.mounted) return;
       final choice = await showChoiceDialog(
         context,
         message: 'Manter as músicas baixadas neste aparelho?',
@@ -37,6 +59,9 @@ class SettingsScreen extends ConsumerWidget {
       }
     }
     await ref.read(sessionProvider.notifier).logout();
+    // A cópia das playlists e a fila são da conta: saem do aparelho junto.
+    await ref.read(playlistCacheProvider)?.clearAll();
+    ref.invalidate(serverPlaylistsProvider);
   }
 
   @override
@@ -44,6 +69,8 @@ class SettingsScreen extends ConsumerWidget {
     final c = BergaColors.of(context);
     final session = ref.watch(sessionProvider);
     final prefs = ref.watch(preferencesProvider);
+    // Mantém a fila de playlists carregada (aviso ao sair).
+    ref.watch(pendingPlaylistOpsProvider);
     final downloadsAvailable = ref
         .read(downloadManagerProvider.notifier)
         .available;

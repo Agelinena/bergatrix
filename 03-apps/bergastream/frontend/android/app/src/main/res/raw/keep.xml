@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Recursos usados só pelo nome (em tempo de execução): sem isto, a redução
+     de recursos do build de release os remove. O ícone da notificação de
+     reprodução (audio_service) sumia e o Android fechava o app ao tocar. -->
+<resources xmlns:tools="http://schemas.android.com/tools"
+    tools:keep="@drawable/ic_stat_bergastream" />

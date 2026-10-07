@@ -67,6 +67,14 @@ O `<audio>` do navegador não envia `Authorization`: a web pede o token e toca `
 | `GET /api/users/directory` | logado | `list[Person]` (para convidar) |
 | `GET /api/users` · `GET /api/users/{id}/playlists` | admin · próprio/admin | legados |
 
+**Alterações em lote (edição offline dos apps):** `POST /api/playlists/ops` com
+`{"ops": [{"op_id": uuid, "type": "create|rename|add|remove|move|delete", ...}]}` → `{"results":
+[{"op_id", "status": "applied|conflict|gone|forbidden|invalid|retry", "playlist_id"?, "track_id"?,
+"current"?}], "refs": {"tmp:…": "<id>"}}`. Aplicadas na ordem, como intenções sobre o estado atual;
+`rename` com `base` e `delete` com `base_updated_at` detectam conflito (`force` aplica mesmo assim);
+refs `tmp:` permitem criar e editar uma playlist no mesmo lote; reenviar o mesmo `op_id` devolve o
+resultado guardado. Detalhes em `backend/app/playlists/ops.py`.
+
 - **`PlaylistSummary`:** `id`, `name`, `description`, `owner` (`Person`), `role` (`owner`\|`editor`\|`viewer`), `track_count`, `duration_seconds`, `people_count`, `cover_url`, `updated_at`.
 - **`PlaylistDetail`:** `PlaylistSummary` + `members` (`user`, `role`) + `tracks`.
 - **`PlaylistTrack`:** `track_id`, `provider`, `external_id`, `title`, `artist`, `album`, `duration_seconds`, `isrc`, `cover_url`, `added_by`, `added_at`, `position`, `ready`, `size_bytes`.

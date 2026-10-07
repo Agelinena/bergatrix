@@ -5,6 +5,7 @@ import logging
 import shutil
 from pathlib import Path
 from app.config import settings
+from app.storage.permanence import sync_permanence
 from app.core.db import get_pool
 from app.downloads import state as dl_state
 from app.downloads import deemix, youtube as yt_downloader
@@ -71,6 +72,9 @@ async def _register_in_db(track_id: str, file_path: Path, fmt: str, db_pool=None
                format = EXCLUDED.format""",
         track_id, str(file_path), size, fmt,
     )
+    # A faixa pode já estar numa playlist (entrou antes de o arquivo existir):
+    # aí nasce permanente, na pasta permanent/.
+    await sync_permanence(pool, track_id)
 
 
 async def _do_download_spotify(play_req: PlayRequest, track_id: str) -> tuple[bool, str | None]:

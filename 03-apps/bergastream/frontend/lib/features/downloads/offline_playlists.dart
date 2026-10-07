@@ -4,7 +4,7 @@ import '../../data/local/database.dart';
 import '../../data/models/playlist_models.dart';
 
 /// Playlist baixada lida do banco local, no mesmo formato do servidor (para
-/// a mesma tela funcionar sem servidor). Somente leitura.
+/// a mesma tela funcionar sem servidor).
 final offlinePlaylistProvider = StreamProvider.autoDispose
     .family<PlaylistDetail?, String>((ref, id) {
       final db = ref.watch(localDatabaseProvider);
@@ -19,7 +19,7 @@ final offlinePlaylistProvider = StreamProvider.autoDispose
           id: id,
           name: playlist.name,
           owner: Person(id: '', username: '', name: playlist.owner),
-          role: 'viewer',
+          role: playlist.role,
           coverUrl: playlist.coverUrl,
           updatedAt: playlist.serverUpdatedAt,
           members: [

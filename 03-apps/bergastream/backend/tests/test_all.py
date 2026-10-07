@@ -1,6 +1,6 @@
 """Testes automatizados da Etapa 2 — Bergastream."""
 from __future__ import annotations
-import asyncio, sys
+import asyncio, secrets, sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from app.core.db import create_pool, close_pool
@@ -29,12 +29,21 @@ async def t1(p):
 
 async def t2(p):
     print('\n=== 2. Permanencia ===')
+    # Restos de uma execução interrompida (faixa PT sem limpeza).
+    for old in await p.fetch("SELECT track_id FROM external_ids WHERE provider='youtube' AND external_id='PT'"):
+        for t in ('playlist_tracks','files','external_ids'):
+            await p.execute(f'DELETE FROM {t} WHERE track_id=$1',old['track_id'])
+        await p.execute('DELETE FROM tracks WHERE id=$1',old['track_id'])
     r=await ts.resolve_and_register(p,PlayRequest(provider='youtube',external_id='PT',title='P',artist='P',duration_seconds=180))
     tid=r.track_id
     await p.execute("INSERT INTO files(track_id,path,size_bytes,format,kind)VALUES($1,$2,500,'mp3_192','cache')",tid,f'/cache/{tid}.mp3')
     ok(await p.fetchval('SELECT kind FROM files WHERE track_id=$1',tid),'cache','inicia cache')
-    pa=await p.fetchval("SELECT p.id FROM playlists p JOIN users u ON u.id=p.user_id WHERE u.name='User A'")
-    pb=await p.fetchval("SELECT p.id FROM playlists p JOIN users u ON u.id=p.user_id WHERE u.name='User B'")
+    # Usuários e playlists temporários (os fictícios "User A/B" saíram na 0009).
+    tag=secrets.token_hex(3)
+    ua=await p.fetchval("INSERT INTO users(name,username)VALUES($1,$1)RETURNING id",f'perm_a_{tag}')
+    ub=await p.fetchval("INSERT INTO users(name,username)VALUES($1,$1)RETURNING id",f'perm_b_{tag}')
+    pa=await p.fetchval("INSERT INTO playlists(user_id,name)VALUES($1,'A')RETURNING id",ua)
+    pb=await p.fetchval("INSERT INTO playlists(user_id,name)VALUES($1,'B')RETURNING id",ub)
     await atp(p,pa,tid);ok(await p.fetchval('SELECT kind FROM files WHERE track_id=$1',tid),'permanent','add A')
     await atp(p,pb,tid);ok(await p.fetchval('SELECT kind FROM files WHERE track_id=$1',tid),'permanent','add B')
     await rtp(p,pa,tid);ok(await p.fetchval('SELECT kind FROM files WHERE track_id=$1',tid),'permanent','remove A')
@@ -48,6 +57,7 @@ async def t2(p):
     await p.execute('DELETE FROM playlist_tracks WHERE track_id=$1',tid)
     await p.execute('DELETE FROM external_ids WHERE track_id=$1',tid)
     await p.execute('DELETE FROM tracks WHERE id=$1',tid)
+    await p.execute('DELETE FROM users WHERE id=ANY($1::uuid[])',[ua,ub])
 
 async def t3():
     print('\n=== 3. Concorrencia ===')

@@ -2,26 +2,11 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/models/playlist_models.dart';
-import '../../data/repositories/playlist_repository.dart';
 import '../auth/session.dart';
+
+export '../playlists/playlist_store.dart'
+    show myPlaylistsProvider, playlistDetailProvider;
 import '../player/player_texts.dart';
-
-Duration? _noRetry(int retryCount, Object error) => null;
-
-/// Playlists do servidor (do usuário e compartilhadas com ele). Vazia sem
-/// servidor. Invalidar depois de criar, renomear, apagar ou adicionar.
-final myPlaylistsProvider = FutureProvider<List<ServerPlaylist>>((ref) {
-  if (!ref.watch(sessionProvider.select((s) => s.canUseServer))) {
-    return const [];
-  }
-  return ref.read(playlistRepositoryProvider).myPlaylists();
-}, retry: _noRetry);
-
-final playlistDetailProvider = FutureProvider.autoDispose
-    .family<PlaylistDetail, String>(
-      (ref, id) => ref.read(playlistRepositoryProvider).detail(id),
-      retry: _noRetry,
-    );
 
 /// Imagem do servidor a partir de caminho relativo (`/api/...`).
 ImageProvider? serverImage(WidgetRef ref, String? path) {

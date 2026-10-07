@@ -84,6 +84,28 @@ class PendingPlays extends Table {
   DateTimeColumn get playedAt => dateTime()();
 }
 
+/// Alterações de playlist feitas no aparelho, a enviar ao servidor na
+/// ordem (`PlaylistOp` em JSON). Saem da fila quando o servidor responde.
+@DataClassName('PendingPlaylistOpRow')
+class PendingPlaylistOps extends Table {
+  IntColumn get seq => integer().autoIncrement()();
+
+  /// Id da playlist no servidor ou o ref temporário ("tmp:…").
+  TextColumn get playlistId => text()();
+  TextColumn get opJson => text()();
+  DateTimeColumn get createdAt => dateTime()();
+}
+
+/// Avisos da sincronização que pedem uma decisão (conflitos).
+@DataClassName('SyncNoticeRow')
+class SyncNotices extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  TextColumn get kind => text()();
+  TextColumn get playlistId => text()();
+  TextColumn get dataJson => text()();
+  DateTimeColumn get createdAt => dateTime()();
+}
+
 /// Chave/valor: preferências e caches (ex.: métricas da tela inicial).
 @DataClassName('AppStateEntry')
 class AppState extends Table {
@@ -134,6 +156,8 @@ class PlaylistDownloadProgress {
     LocalCollaborators,
     PendingPlays,
     AppState,
+    PendingPlaylistOps,
+    SyncNotices,
   ],
 )
 class AppDatabase extends _$AppDatabase {
@@ -144,13 +168,18 @@ class AppDatabase extends _$AppDatabase {
 
   /// Versões e migrações desde o início (Seção 10).
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
     onCreate: (m) => m.createAll(),
     onUpgrade: (m, from, to) async {
-      // Próximas versões: migrações passo a passo a partir de [from].
+      // Passo a passo a partir de [from].
+      if (from < 2) {
+        // Edição de playlists offline e conflitos.
+        await m.createTable(pendingPlaylistOps);
+        await m.createTable(syncNotices);
+      }
     },
   );
 
@@ -448,6 +477,57 @@ class AppDatabase extends _$AppDatabase {
   Future<void> deletePendingPlays(Iterable<int> ids) =>
       (delete(pendingPlays)..where((p) => p.id.isIn(ids))).go();
 
+  // ── Alterações de playlist pendentes ──────────────────────────
+
+  Future<void> addPlaylistOp(String playlistId, String opJson) =>
+      into(pendingPlaylistOps).insert(
+        PendingPlaylistOpsCompanion.insert(
+          playlistId: playlistId,
+          opJson: opJson,
+          createdAt: DateTime.now(),
+        ),
+      );
+
+  Future<List<PendingPlaylistOpRow>> playlistOpsInOrder() => (select(
+    pendingPlaylistOps,
+  )..orderBy([(o) => OrderingTerm.asc(o.seq)])).get();
+
+  Stream<List<PendingPlaylistOpRow>> watchPlaylistOps() => (select(
+    pendingPlaylistOps,
+  )..orderBy([(o) => OrderingTerm.asc(o.seq)])).watch();
+
+  Future<void> deletePlaylistOps(Iterable<int> seqs) =>
+      (delete(pendingPlaylistOps)..where((o) => o.seq.isIn(seqs))).go();
+
+  /// Reescreve uma operação (refs trocados pelos ids do servidor).
+  Future<void> updatePlaylistOp(int seq, String playlistId, String opJson) =>
+      (update(pendingPlaylistOps)..where((o) => o.seq.equals(seq))).write(
+        PendingPlaylistOpsCompanion(
+          playlistId: Value(playlistId),
+          opJson: Value(opJson),
+        ),
+      );
+
+  // ── Avisos de sincronização ───────────────────────────────────
+
+  Future<void> addNotice(String kind, String playlistId, String dataJson) =>
+      into(syncNotices).insert(
+        SyncNoticesCompanion.insert(
+          kind: kind,
+          playlistId: playlistId,
+          dataJson: dataJson,
+          createdAt: DateTime.now(),
+        ),
+      );
+
+  Stream<List<SyncNoticeRow>> watchNotices() =>
+      (select(syncNotices)..orderBy([(n) => OrderingTerm.asc(n.id)])).watch();
+
+  Future<void> deleteNotice(int id) =>
+      (delete(syncNotices)..where((n) => n.id.equals(id))).go();
+
+  Future<void> clearNotices() => delete(syncNotices).go();
+
   Future<String?> stateValue(String key) async => (await (select(
     appState,
   )..where((s) => s.key.equals(key))).getSingleOrNull())?.value;
@@ -455,6 +535,9 @@ class AppDatabase extends _$AppDatabase {
   Future<void> setStateValue(String key, String value) => into(
     appState,
   ).insertOnConflictUpdate(AppStateCompanion.insert(key: key, value: value));
+
+  Future<void> deleteStateValue(String key) =>
+      (delete(appState)..where((s) => s.key.equals(key))).go();
 }
 
 /// Banco local. Nulo na web (inclusive na simulação do Android no

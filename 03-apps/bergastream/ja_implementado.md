@@ -381,6 +381,24 @@ Rodado na imagem `ghcr.io/cirruslabs/flutter:stable` (Flutter 3.44.0 / Dart 3.12
 - Deploy de produção: compose com `${STORAGE_PATH}`, `container_name`, redes
   `bergastream-internal` (sem internet) e `bergastream-egress`, labels do modelo B.
 
+### Versão 0.1.1 — edição offline de playlists e correções de uso
+- **Playlists sempre sincronizadas, também offline:** toda alteração (criar, renomear, adicionar,
+  remover, mover, apagar) vira uma *intenção* numa fila no aparelho (Drift, esquema v2), aparece na
+  hora e vai para o servidor em `POST /api/playlists/ops` quando ele estiver disponível. O servidor
+  aplica as intenções sobre o estado atual, então mudanças feitas na web nesse meio-tempo se
+  combinam. Conflitos reais viram avisos na Biblioteca: nome mudado nos dois lados ("Manter" /
+  "Usar o meu"), playlist apagada aqui mas alterada lá ("Apagar mesmo assim") e alterações numa
+  playlist apagada lá ("Recriar com minhas mudanças"). Reenvio seguro por `op_id`
+  (`0008_playlist_ops.sql`). Ao sair da conta com alterações pendentes, o app avisa.
+- **App fechava ao tocar (Android):** o ícone da notificação de reprodução era removido pela redução
+  de recursos do build de release; `res/raw/keep.xml` mantém. Testado no emulador: tocar, trocar de
+  música no meio, notificação com controles, tela de bloqueio e segundo plano.
+- **Músicas de playlist ficavam como cache:** o arquivo baixado depois de a faixa entrar na playlist
+  nascia como cache (e seria apagado em 48 h). Agora marcação e pasta (`music/cache` ↔
+  `music/permanent`) mudam juntas (`app/storage/permanence.py`), e a API conserta o que estiver
+  inconsistente ao subir.
+- Usuários fictícios "User A/B" da migração 0004 removidos (`0009_remove_seed_users.sql`).
+
 ### Correção de concorrência no download (relatada no uso)
 Dois cliques rápidos faziam o backend pegar o arquivo da faixa anterior e salvar com o id errado.
 Agora o arquivo vem do item da fila do Deemix daquela faixa, a fila é limpa e as tags são

@@ -10,7 +10,7 @@ import '../../core/theme/berga_text.dart';
 import '../../core/widgets/widgets.dart';
 import '../../data/models/playlist_models.dart';
 import '../../data/repositories/playlist_repository.dart';
-import 'library_providers.dart';
+import '../playlists/playlist_store.dart';
 
 /// Tela "Pessoas" da playlist (Seção 6.4): o dono define, para cada usuário
 /// do servidor, se vê, edita ou não tem acesso.
@@ -36,8 +36,8 @@ class _PeopleScreenState extends ConsumerState<PeopleScreen> {
       } else {
         await repo.setMember(widget.id, userId, role);
       }
-      ref.invalidate(playlistDetailProvider(widget.id));
-      ref.invalidate(myPlaylistsProvider);
+      ref.invalidate(serverPlaylistDetailProvider(widget.id));
+      ref.invalidate(serverPlaylistsProvider);
     } on ApiException catch (e) {
       if (mounted) AppToast.show(context, e.message);
     }

@@ -9,7 +9,7 @@ import '../../data/models/search_result.dart';
 import '../../data/repositories/local_playlists.dart';
 import '../../data/repositories/playlist_repository.dart';
 import '../auth/session.dart';
-import '../library/library_providers.dart';
+import '../playlists/playlist_store.dart';
 
 /// Ao entrar com login num aparelho com playlists locais, pergunta se envia
 /// para o servidor (Seção 8.6): "Enviar" / "Manter só aqui".
@@ -75,7 +75,7 @@ Future<void> offerUpload(BuildContext context, WidgetRef ref) async {
       break;
     }
   }
-  ref.invalidate(myPlaylistsProvider);
+  ref.invalidate(serverPlaylistsProvider);
   if (sent > 0 && context.mounted) {
     AppToast.show(
       context,
