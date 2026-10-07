@@ -86,11 +86,52 @@ class AlbumTile extends StatelessWidget {
   }
 }
 
+/// Playlist na prateleira: capa, nome e origem ("Deezer · 40 músicas").
+class PlaylistTile extends StatelessWidget {
+  const PlaylistTile({
+    super.key,
+    required this.id,
+    required this.title,
+    required this.subtitle,
+    this.image,
+    this.onTap,
+  });
+
+  final String id;
+  final String title;
+  final String subtitle;
+  final ImageProvider? image;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return _ShelfItem(
+      cover: image == null
+          ? const Cover.playlist(size: BergaSizes.shelfItem)
+          : Cover(
+              seed: id,
+              title: title,
+              size: BergaSizes.shelfItem,
+              image: image,
+            ),
+      caption: title,
+      subtitle: subtitle,
+      onTap: onTap,
+    );
+  }
+}
+
 class _ShelfItem extends StatelessWidget {
-  const _ShelfItem({required this.cover, required this.caption, this.onTap});
+  const _ShelfItem({
+    required this.cover,
+    required this.caption,
+    this.subtitle,
+    this.onTap,
+  });
 
   final Widget cover;
   final String caption;
+  final String? subtitle;
   final VoidCallback? onTap;
 
   @override
@@ -113,6 +154,17 @@ class _ShelfItem extends StatelessWidget {
                 color: BergaColors.of(context).tx,
               ),
             ),
+            if (subtitle != null)
+              Text(
+                subtitle!,
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: BergaText.secondary.copyWith(
+                  fontSize: 12,
+                  color: BergaColors.of(context).mu,
+                ),
+              ),
           ],
         ),
       ),

@@ -249,6 +249,21 @@ def _resolve_youtube(link: ParsedLink) -> ResolvedLink:
             cover_url=cover, total=len(tracks), tracks=tracks[:MAX_TRACKS],
             external_url=f"https://music.youtube.com/browse/{link.id}")
 
+    if link.id.startswith("RD") and not link.id.startswith("RDCLAK"):
+        # Rádio (de artista ou de música): lista "infinita", sem página de
+        # playlist; vem pelo get_watch_playlist.
+        watch = yt.get_watch_playlist(playlistId=link.id, limit=100)
+        tracks = [t for t in (ytmusic.watch_track_from(i) for i in watch.get("tracks") or []) if t]
+        if not tracks:
+            raise LinkNotFound(link.id)
+        first_artist = tracks[0].artist.split(",")[0].strip()
+        return ResolvedLink(
+            source="youtube", kind="playlist", title=f"Rádio {first_artist}",
+            subtitle="YouTube Music", cover_url=tracks[0].cover_url,
+            description="Músicas do artista e parecidas, escolhidas pelo YouTube Music.",
+            total=len(tracks), tracks=tracks,
+            external_url=f"https://music.youtube.com/playlist?list={link.id}")
+
     playlist = yt.get_playlist(link.id, limit=MAX_TRACKS)
     tracks = [t for t in (ytmusic.track_from(i) for i in playlist.get("tracks") or []) if t]
     author = playlist.get("author")

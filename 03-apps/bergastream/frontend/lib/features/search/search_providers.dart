@@ -16,6 +16,17 @@ final searchResultsProvider = FutureProvider.autoDispose
       retry: _noRetry,
     );
 
+/// Playlists achadas na busca (seção "Playlists"). Vazia se falhar: as
+/// outras seções continuam.
+final playlistSearchProvider = FutureProvider.autoDispose
+    .family<List<PlaylistResult>, String>((ref, query) async {
+      try {
+        return await ref.read(searchRepositoryProvider).searchPlaylists(query);
+      } on Object {
+        return const [];
+      }
+    }, retry: _noRetry);
+
 /// Link resolvido (usado pela Busca e pela tela da playlist importada).
 final resolvedLinkProvider = FutureProvider.autoDispose
     .family<ResolvedLink, String>(

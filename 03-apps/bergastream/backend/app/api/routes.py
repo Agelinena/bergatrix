@@ -11,7 +11,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, R
 from fastapi import Path as Path_
 from pydantic import BaseModel, Field
 from fastapi.responses import FileResponse, StreamingResponse
-from app.search.models import FullSearch, SearchResult
+from app.search.models import FullSearch, PlaylistResult, SearchResult
 from app.search.resolve import LinkNotFound, ResolvedLink, UnsupportedLink, resolve as resolve_link
 from app.search import spotify as spotify_search
 from app.search import youtube as youtube_search
@@ -58,6 +58,14 @@ async def search_full(q: str = Query(min_length=1), source: str = Query("spotify
         return await asyncio.to_thread(spotify_search.search_full, q)
     from app.search import ytmusic as ytmusic_search
     return await asyncio.to_thread(ytmusic_search.search_full, q)
+
+@router.get("/search/playlists", response_model=list[PlaylistResult])
+async def search_playlists(q: str = Query(min_length=1, max_length=200), user: CurrentUser = Depends(current_user)):
+    """Playlists do Spotify, Deezer e YouTube Music; "rádio <artista>" traz
+    a rádio do artista. Abrir: a `url` vai para /api/resolve."""
+    from app.search.playlists import search_playlists as find
+    return await find(q)
+
 
 @router.get("/resolve", response_model=ResolvedLink)
 async def resolve(url: str = Query(min_length=8, max_length=2048), user: CurrentUser = Depends(current_user)):

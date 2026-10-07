@@ -26,6 +26,10 @@ abstract interface class SearchRepository {
 
   /// Lança [ApiException] (400 = link não reconhecido, 404 = não abriu).
   Future<ResolvedLink> resolve(String url);
+
+  /// Playlists do Spotify, Deezer e YouTube Music ("rádio X" traz a rádio
+  /// do artista). Lança [ApiException].
+  Future<List<PlaylistResult>> searchPlaylists(String query);
 }
 
 class HttpSearchRepository implements SearchRepository {
@@ -52,6 +56,18 @@ class HttpSearchRepository implements SearchRepository {
       options: Options(receiveTimeout: const Duration(minutes: 5)),
     );
     return ResolvedLink.fromJson(r.data!);
+  });
+
+  @override
+  Future<List<PlaylistResult>> searchPlaylists(String query) => _call(() async {
+    final r = await _dio.get<List<dynamic>>(
+      '/api/search/playlists',
+      queryParameters: {'q': query},
+    );
+    return [
+      for (final p in r.data ?? const [])
+        PlaylistResult.fromJson(p as Map<String, dynamic>),
+    ];
   });
 
   static Future<T> _call<T>(Future<T> Function() body) async {
@@ -105,6 +121,34 @@ class FakeSearchRepository implements SearchRepository {
           ),
       ],
     );
+  }
+
+  @override
+  /// Playlists só para buscas com "rock" ou "rádio" (as outras buscas dos
+  /// testes ficam como antes).
+  @override
+  Future<List<PlaylistResult>> searchPlaylists(String query) async {
+    final q = query.toLowerCase();
+    return [
+      if (q.startsWith('rádio') || q.startsWith('radio'))
+        const PlaylistResult(
+          provider: 'ytmusic',
+          externalId: 'RDEMx',
+          title: 'Rádio Scorpions',
+          owner: 'YouTube Music',
+          url: 'https://music.youtube.com/playlist?list=RDEMx',
+          isRadio: true,
+        ),
+      if (q.contains('rock'))
+        const PlaylistResult(
+          provider: 'deezer',
+          externalId: '5619143162',
+          title: 'Rock Brasil Anos 80',
+          owner: 'Editores Deezer Brasil',
+          trackCount: 40,
+          url: 'https://www.deezer.com/playlist/5619143162',
+        ),
+    ];
   }
 
   @override

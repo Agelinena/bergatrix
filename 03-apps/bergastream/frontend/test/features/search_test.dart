@@ -208,6 +208,53 @@ void main() {
     await tester.pumpAndSettle();
   });
 
+  testWidgets('busca mostra playlists e abre como link importado', (
+    tester,
+  ) async {
+    await pumpBergastream(
+      tester,
+      initialLocation: '/buscar',
+      size: const Size(400, 1600),
+    );
+    await type(tester, 'rock');
+    expect(find.text('Playlists'), findsOneWidget);
+    expect(find.text('Rock Brasil Anos 80'), findsOneWidget);
+    expect(find.text('Deezer · 40 músicas'), findsOneWidget);
+
+    await tester.tap(find.text('Rock Brasil Anos 80'));
+    await tester.pumpAndSettle();
+    expect(find.byType(ImportedLinkScreen), findsOneWidget);
+    expect(find.text('Importar'), findsOneWidget);
+  });
+
+  testWidgets('"rádio <artista>" traz a rádio antes de tudo', (tester) async {
+    await pumpBergastream(
+      tester,
+      initialLocation: '/buscar',
+      size: const Size(400, 1600),
+    );
+    await type(tester, 'rádio queen');
+    expect(find.text('Rádio Scorpions'), findsOneWidget);
+    expect(find.text('Rádio · YouTube Music'), findsOneWidget);
+    final playlists = tester.getTopLeft(find.text('Playlists')).dy;
+    for (final other in ['Músicas', 'Artistas']) {
+      final f = find.text(other);
+      if (f.evaluate().isNotEmpty) {
+        expect(playlists < tester.getTopLeft(f.first).dy, isTrue);
+      }
+    }
+  });
+
+  testWidgets('busca sem playlists não mostra a seção', (tester) async {
+    await pumpBergastream(
+      tester,
+      initialLocation: '/buscar',
+      size: const Size(400, 1600),
+    );
+    await type(tester, 'queen');
+    expect(find.text('Playlists'), findsNothing);
+  });
+
   testWidgets('arrastar a linha para o lado adiciona à fila', (tester) async {
     tall(tester);
     final container = await pumpBergastream(
@@ -313,5 +360,9 @@ class _FailingSearch implements SearchRepository {
 
   @override
   Future<ResolvedLink> resolve(String url) async =>
+      throw const ApiException(ApiErrorKind.servidor);
+
+  @override
+  Future<List<PlaylistResult>> searchPlaylists(String query) async =>
       throw const ApiException(ApiErrorKind.servidor);
 }

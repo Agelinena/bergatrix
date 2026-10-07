@@ -37,6 +37,19 @@ class AlbumResult(BaseModel):
     image_url: str | None = None
 
 
+class PlaylistResult(BaseModel):
+    """Playlist (ou rádio de artista) nos resultados de busca. [url] abre
+    pelo mesmo caminho dos links colados (GET /api/resolve)."""
+    provider: str  # 'spotify' | 'deezer' | 'ytmusic'
+    external_id: str
+    title: str
+    owner: str = ""
+    track_count: int | None = None
+    image_url: str | None = None
+    url: str
+    kind: str = "playlist"  # 'playlist' | 'radio'
+
+
 class FullSearch(BaseModel):
     """Resposta de GET /api/search/full."""
     tracks: list[SearchResult] = []

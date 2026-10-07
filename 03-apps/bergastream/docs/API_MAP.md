@@ -18,6 +18,7 @@ marcadas como públicas. Stream e download aceitam também `?t=<token de stream>
 | `GET /api/search/full` | `q`, `source` = `spotify` (padrão) \| `ytmusic` | `FullSearch` = `tracks`, `artists`, `albums` |
 | `GET /api/resolve` | `url` (Spotify, Deezer ou YouTube) | `ResolvedLink` |
 
+- `GET /api/search/playlists?q=` → `list[PlaylistResult]`: `provider` (`spotify`\|`deezer`\|`ytmusic`), `external_id`, `title`, `owner`, `track_count`, `image_url`, `url` (abre por `/api/resolve`), `kind` (`playlist`\|`radio`). "rádio <artista>" traz a rádio do artista (YouTube Music) primeiro; links `RD…` do YouTube Music abrem como rádio.
 - **`SearchResult`:** `provider`, `external_id`, `title`, `artist`, `album`, `duration_seconds`, `isrc`, `cover_url`, `artist_id`, `album_id`.
 - **`ArtistResult`:** `provider`, `external_id`, `name`, `image_url`. **`AlbumResult`:** `provider`, `external_id`, `title`, `artist`, `year`, `image_url`.
 - **`ResolvedLink`:** `source` (`spotify`\|`deezer`\|`youtube`), `kind` (`track`\|`album`\|`playlist`), `title`, `subtitle`, `cover_url`, `description`, `total`, `tracks` (até 10.000), `external_url`.

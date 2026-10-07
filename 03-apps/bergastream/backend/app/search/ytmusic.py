@@ -59,6 +59,17 @@ def track_from(item: dict, album_name: str = "", cover: str | None = None,
     )
 
 
+def watch_track_from(item: dict) -> SearchResult | None:
+    """Faixa de uma rádio (get_watch_playlist): duração em texto ("4:34")
+    e miniatura em `thumbnail`."""
+    seconds = 0
+    for part in str(item.get("length") or "").split(":"):
+        if part.isdigit():
+            seconds = seconds * 60 + int(part)
+    return track_from({**item, "duration_seconds": seconds,
+                       "thumbnails": item.get("thumbnails") or item.get("thumbnail")})
+
+
 def _is_valid_video_id(vid: str) -> bool:
     if not vid or not _VIDEO_ID_RE.match(vid):
         return False

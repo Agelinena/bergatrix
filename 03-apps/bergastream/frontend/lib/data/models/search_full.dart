@@ -114,3 +114,55 @@ class ResolvedLink {
     _ => 'YouTube',
   };
 }
+
+/// Playlist (ou rádio de artista) achada na busca (`GET /api/search/playlists`).
+/// Abre como um link colado: [url] vai para a tela de link importado.
+class PlaylistResult {
+  const PlaylistResult({
+    required this.provider,
+    required this.externalId,
+    required this.title,
+    this.owner = '',
+    this.trackCount,
+    this.imageUrl,
+    required this.url,
+    this.isRadio = false,
+  });
+
+  factory PlaylistResult.fromJson(Map<String, dynamic> json) => PlaylistResult(
+    provider: json['provider'] as String,
+    externalId: json['external_id'] as String,
+    title: json['title'] as String? ?? '',
+    owner: json['owner'] as String? ?? '',
+    trackCount: json['track_count'] as int?,
+    imageUrl: json['image_url'] as String?,
+    url: json['url'] as String,
+    isRadio: json['kind'] == 'radio',
+  );
+
+  /// `spotify`, `deezer` ou `ytmusic`.
+  final String provider;
+  final String externalId;
+  final String title;
+  final String owner;
+  final int? trackCount;
+  final String? imageUrl;
+  final String url;
+  final bool isRadio;
+
+  String get id => '$provider:$externalId';
+
+  String get sourceLabel => switch (provider) {
+    'spotify' => 'Spotify',
+    'deezer' => 'Deezer',
+    _ => 'YouTube Music',
+  };
+
+  /// "Deezer · 40 músicas" / "Rádio · YouTube Music".
+  String get subtitle => isRadio
+      ? 'Rádio · $sourceLabel'
+      : [
+          sourceLabel,
+          if (trackCount case final n?) n == 1 ? '1 música' : '$n músicas',
+        ].join(' · ');
+}

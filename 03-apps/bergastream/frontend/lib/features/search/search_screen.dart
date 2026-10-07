@@ -220,17 +220,47 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
       ),
       data: (data) => data.isEmpty
           ? [
-              Padding(
-                padding: const EdgeInsets.only(top: 20),
-                child: Text(
-                  'Nada encontrado para "$_query". Tente outro nome ou cole '
-                  'um link.',
-                  style: mu,
+              // Ex.: "rádio scorpions" pode não achar músicas, só a rádio.
+              ..._playlists(context),
+              if ((ref.watch(playlistSearchProvider(_query)).value ?? const [])
+                  .isEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 20),
+                  child: Text(
+                    'Nada encontrado para "$_query". Tente outro nome ou cole '
+                    'um link.',
+                    style: mu,
+                  ),
                 ),
-              ),
             ]
           : _results(context, data),
     );
+  }
+
+  /// Playlists do Spotify, Deezer e YouTube Music (e rádio de artista).
+  /// Carrega à parte: não atrasa as outras seções.
+  List<Widget> _playlists(BuildContext context) {
+    final playlists =
+        ref.watch(playlistSearchProvider(_query)).value ?? const [];
+    if (playlists.isEmpty) return const [];
+    return [
+      const SectionTitle('Playlists'),
+      HorizontalShelf(
+        children: [
+          for (final p in playlists)
+            PlaylistTile(
+              id: p.id,
+              title: p.title,
+              subtitle: p.subtitle,
+              image: imageFor(p.imageUrl),
+              onTap: () {
+                _remember();
+                context.push(AppRoutes.importedLink(p.url));
+              },
+            ),
+        ],
+      ),
+    ];
   }
 
   List<Widget> _results(BuildContext context, FullSearchResult data) {
@@ -238,7 +268,13 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     final playingId = ref.watch(
       playerProvider.select((s) => s.current?.track.id),
     );
+    // "rádio X": a rádio aparece antes de tudo.
+    final radioFirst = RegExp(
+      r'^\s*r[aá]dio\s',
+      caseSensitive: false,
+    ).hasMatch(_query);
     return [
+      if (radioFirst) ..._playlists(context),
       if (data.artists.isNotEmpty) ...[
         const SectionTitle('Artistas'),
         HorizontalShelf(
@@ -256,6 +292,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
           ],
         ),
       ],
+      if (!radioFirst) ..._playlists(context),
       if (data.albums.isNotEmpty) ...[
         const SectionTitle('Álbuns'),
         HorizontalShelf(

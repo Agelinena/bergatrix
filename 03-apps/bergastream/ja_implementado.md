@@ -381,6 +381,18 @@ Rodado na imagem `ghcr.io/cirruslabs/flutter:stable` (Flutter 3.44.0 / Dart 3.12
 - Deploy de produção: compose com `${STORAGE_PATH}`, `container_name`, redes
   `bergastream-internal` (sem internet) e `bergastream-egress`, labels do modelo B.
 
+### Versão 0.1.6 — playlists na busca
+- Seção **Playlists** na Busca: YouTube Music (editoriais e da comunidade), Deezer e Spotify,
+  intercaladas, com capa, origem e número de músicas. Tocar abre a tela de link importado
+  ("Importar tudo" / "Só as músicas").
+- **"rádio <artista>"** (ou "radio …") traz a rádio do artista do YouTube Music em primeiro lugar;
+  ela abre como lista (`get_watch_playlist`, ~50–150 faixas).
+- Spotify: apps novos não leem playlists do próprio Spotify (mudança de 27/11/2024); a busca as
+  omite e o servidor descarta as de dono "spotify". Alternativas: copiar a playlist para a conta
+  e colar o link, ou usar as equivalentes do YouTube Music/Deezer.
+- Servidor: `GET /api/search/playlists`, `app/search/playlists.py`; origem fora do ar não derruba
+  as outras. Workflow com limite de tempo por job e novas tentativas no `apt`.
+
 ### Versão 0.1.5 — player, aleatório e falhas do Deemix
 - **Arrastar para a fila** menos sensível: precisa puxar a linha 35% da largura (mínimo 110 px) e
   soltar depois do ponto; "petelecos" na rolagem não contam mais. Vibra ao passar do ponto.
