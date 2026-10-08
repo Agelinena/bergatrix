@@ -16,6 +16,7 @@ from .subtitle_sync import (
 )
 from . import bazarr
 from . import arr
+from . import subtitle_refine
 
 logger = logging.getLogger(__name__)
 
@@ -545,10 +546,90 @@ class Pipeline:
             self._active_syncs.add(filepath)
 
         try:
-            return self._sync_subtitle_once(filepath, source_path)
+            synced = self._sync_subtitle_once(filepath, source_path)
+            # Sync (Bazarr/ALASS) acerta o relógio global; o refino corrige as falas
+            # que ainda ficaram adiantadas/atrasadas, comparando o conteúdo.
+            self.refine_subtitle(filepath, source_path=source_path)
+            return synced
         finally:
             with self._active_syncs_lock:
                 self._active_syncs.discard(filepath)
+
+    def refine_subtitle(
+        self,
+        filepath: str,
+        source_path: str | None = None,
+        apply: bool | None = None,
+        force: bool = False,
+    ) -> dict | None:
+        """
+        Audita (SUBTITLE_REFINE=audit) ou corrige (=fix) a sincronia fala a fala da
+        legenda PT usando a legenda embutida como referência. Nunca altera o texto e
+        nunca derruba o fluxo: qualquer falha só gera log.
+        """
+        mode = subtitle_refine.REFINE_MODE
+        if apply is None:
+            if mode not in ("audit", "fix"):
+                return None
+            apply = mode == "fix"
+
+        subtitle = source_path if source_path and os.path.exists(source_path) else find_pt_subtitle(filepath)
+        if not subtitle or not os.path.exists(subtitle) or not os.path.exists(filepath):
+            return None
+        if ".ai." in os.path.basename(subtitle).lower():
+            return None  # tradução por IA já reaproveita os tempos da referência
+
+        name = os.path.basename(filepath)
+        if not force:
+            previous = subtitle_refine.load_reports().get(filepath, {})
+            stat = os.stat(subtitle)
+            if (
+                previous.get("legenda") == subtitle
+                and previous.get("legenda_mtime") == stat.st_mtime
+                and previous.get("legenda_tamanho") == stat.st_size
+                and (previous.get("veredito") != "corrigivel" or not apply)
+            ):
+                return previous
+
+        media_info = get_media_info(filepath)
+        streams = [] if not media_info else [
+            s for s in media_info.get('streams', []) if s.get('codec_type') == 'subtitle'
+        ]
+        reference_stream = subtitle_refine.select_reference_stream(streams, tuple(SOURCE_LANGUAGES))
+        if not reference_stream:
+            logger.info(f"Refino: {name} sem legenda de texto embutida para referência — pulando.")
+            report = {"legenda": subtitle, "veredito": "sem_referencia"}
+            subtitle_refine.save_report(filepath, report)
+            return report
+
+        reference_path = f"{os.path.splitext(filepath)[0]}.refine.ref.temp.srt"
+        try:
+            if not extract_subtitle(filepath, reference_stream['index'], reference_path):
+                return None
+            report = subtitle_refine.refine_file(subtitle, reference_path, apply=apply)
+        except subtitle_refine.RefineError as e:
+            logger.warning(f"Refino: {name}: {e}")
+            return None
+        except Exception as e:
+            logger.error(f"Refino falhou para {name}: {e}")
+            return None
+        finally:
+            if os.path.exists(reference_path):
+                try:
+                    os.remove(reference_path)
+                except OSError:
+                    pass
+
+        report["stream_referencia"] = reference_stream['index']
+        subtitle_refine.save_report(filepath, report)
+        before = report.get("offset_antes", {})
+        logger.info(
+            f"MÉTODO=refino_conteudo arquivo={name} veredito={report['veredito']} "
+            f"qualidade={report.get('qualidade', '-')} casadas={report.get('casadas_pct', 0)}% "
+            f"fora_do_tempo={before.get('fora_do_tempo', 0)} p90={before.get('p90_abs', 0)}s "
+            f"alteradas={report.get('alteradas', 0)} ({report.get('segundos', 0)}s)"
+        )
+        return report
 
     def _sync_subtitle_once(self, filepath: str, source_path: str | None = None) -> bool:
         """Executa uma única sincronização, protegida contra chamadas duplicadas."""

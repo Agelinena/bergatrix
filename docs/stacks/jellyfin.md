@@ -16,7 +16,7 @@ Um **dashboard web** (FastAPI) expõe o acervo, status de legenda/otimização, 
 - **Mídia:** Jellyfin, Jellyseerr, Sonarr, Radarr, Prowlarr, Bazarr, Recyclarr, qBittorrent, SABnzbd, FlareSolverr, torrent-indexer (felipemarinho97)
 - **Apps próprios (Python 3.10/3.11):** FastAPI + Uvicorn + Jinja2 + httpx + watchdog + python-dotenv
 - **Mídia/encode:** FFmpeg/ffprobe, **NVENC (`hevc_nvenc`) / libx265**, **ALASS** (alinhamento de legenda)
-- **IA local:** **Ollama** (`translategemma:4b`) para tradução de legendas
+- **IA local:** **Ollama** (`translategemma:4b`) para tradução de legendas; **`bge-m3`** (embeddings, ~1,2 GB VRAM, `keep_alive` 2m) para o refino de sincronia
 - **Frontend dashboard:** Tailwind CSS (CDN) + HTMX + Alpine.js
 - **GPU:** NVIDIA runtime (GTX 1060, 1 chip NVENC, compartilhada com Ollama)
 
@@ -62,6 +62,7 @@ Volumes: tudo ancorado em `${STORAGE_PATH}` (configs em `…/config/<serviço>`,
 
 ### Legendarr-worker (legenda + validação)
 - **Legenda:** pula se já há PT-BR interna/externa; se externa existe, ainda refina sincronia com ALASS. Pipeline **Bazarr** (`PATCH …/subtitles`, idioma `BAZARR_LANGUAGE=pb`, aguarda até 120s) → **ALASS** contra a legenda de texto embutida em inglês → se Bazarr falha, **tradução por IA**.
+- **Refino por conteúdo (`core/subtitle_refine.py`):** roda após todo sync (Bazarr/ALASS). Embeddings multilíngues (`bge-m3` via Ollama) de cada fala PT e de cada fala da legenda de texto embutida (prefere inglês completo, não-SDH; ignora forced/commentary) → programação dinâmica monotônica em janela de ±`REFINE_WINDOW_SECONDS` (casamentos 1:1, 1:2, 2:1, 2:2 e pulos). Falas casadas com confiança herdam o tempo da referência; as demais são deslocadas pelo offset mediano dos vizinhos. **Texto nunca é alterado** (invariante checada). Portões: referência ≥ 40% das falas PT, ≥ `REFINE_MIN_MATCH` falas casadas, deslocamento ≤ janela; reprovou → não toca. Falas curtas ("Sim.", "Tá bom.") só viram âncora se concordarem com os vizinhos. `SUBTITLE_REFINE=off|audit|fix` (padrão `audit`: só relatório). Correção grava backup `.pre-refine` e troca atômica via `.refine.tmp` (o watchdog ignora). Legendas `.AI.` são puladas (já usam os tempos da referência). CLI: `docker exec legendarr-worker python -m core.subtitle_refine --video <arquivo> [--apply]`.
 - **Tradução IA:** 100% local via Ollama (`translategemma:4b`), serializada (1 por vez na GPU via `TranslationQueue` + lock); formato numerado `[N]` com revisão por bloco (até 3 rodadas) e fallback posicional; descarta se cobertura < 90%; reusa timestamps originais ao remontar o SRT.
 - **Rotulagem:** legendas de IA recebem `.AI.por.srt` (Jellyfin mostra "Português - AI"); as do Bazarr são normalizadas para `.por.srt`.
 - **Validação de áudio:** garante áudio no idioma **original** (`originalLanguage` do *arr → ISO via `LANG_NAME_TO_CODES`); se ausente, **deleta o arquivo, blocklista o release (history/failed) e dispara nova busca**; modo seguro dá benefício da dúvida a faixas `und` (a menos que `AUDIO_CHECK_STRICT=true`).
@@ -77,11 +78,12 @@ Volumes: tudo ancorado em `${STORAGE_PATH}` (configs em `…/config/<serviço>`,
 **Sem banco relacional próprio.** Estado em arquivos JSON/log no volume `${STORAGE_PATH}/config/legendarr` (montado como `/app/stats` e `/app/jobs`):
 - `stats.json` (optimizer: por arquivo → `original_size`, `optimized_size`, `saved_bytes`, timestamp)
 - `translation_stats.json` (entradas dedupe por filepath: status `success|failed|skipped|bazarr_alass|bazarr_raw|skipped_internal|skipped_external|success_alass_refine|aligned`, attempts, source_lang, source_codec, stream_index, model, timestamp)
+- `subtitle_refine.json` (refino por conteúdo, por mídia: `veredito` `sincronizada|corrigivel|corrigida|baixa_confianca|referencia_incompativel|deslocamento_excessivo|sem_referencia`, `qualidade` 0–100, `casadas_pct`, `similaridade_mediana`, `offset_antes/depois` {mediana, p90, máx, fora_do_tempo}, `piores` falas, `legenda_mtime/tamanho` p/ não reprocessar)
 - `audio_rejections.json` (contador de re-downloads por chave `movie:`/`episode:`/`path:`)
 - `audio_verified.json` / `subtitle_verified.json` (caches `{path: mtime}`)
 - `skiplist.json` (optimizer: `{filepath: {reason, size}}`)
 - `requires_redownload.txt` (log append) e `worker.log` (RotatingFileHandler ~1MB×2)
-- **Jobs:** arquivos JSON em `/app/jobs` (criados pela web, consumidos por polling de 5s pelo worker `JobProcessor`): `{id, type[translate|validate_and_translate|scan], filepath, force, stream_index, arr_event, status}`
+- **Jobs:** arquivos JSON em `/app/jobs` (criados pela web, consumidos por polling de 5s pelo worker `JobProcessor`): `{id, type[translate|validate_and_translate|scan|alass_align|alass_batch|refine], apply (refine), filepath, force, stream_index, arr_event, status}`
 
 Os demais serviços (Jellyfin, *arr) mantêm seus próprios SQLite internos sob `${STORAGE_PATH}/config/<serviço>`.
 
@@ -98,7 +100,7 @@ Os demais serviços (Jellyfin, *arr) mantêm seus próprios SQLite internos sob 
 - `GET /api/logs?lines=` — tail do `worker.log` (máx 2000 linhas)
 
 ## 🔗 Integracoes externas
-- **Ollama** (LLM local em `http://ollama:11434`, `translategemma:4b`) — na rede `bergatrix-proxy`
+- **Ollama** (LLM local em `http://ollama:11434`, `translategemma:4b` + embeddings `bge-m3`) — na rede `bergatrix-proxy`. O `bge-m3` precisa estar puxado (`docker exec ollama ollama pull bge-m3`); sem ele o refino só loga aviso.
 - **TMDB/indexers** via Prowlarr e **providers de legenda** via Bazarr (configurados nas UIs)
 - **Wildcard `*.daberga.com`** compartilhado do Traefik via `tls=true` (sem `certresolver`) — os domínios públicos consomem esse cert, não emitem o próprio; a CA continua sendo o Let's Encrypt
 - **Usenet/torrents** via SABnzbd e qBittorrent
@@ -113,6 +115,7 @@ Os demais serviços (Jellyfin, *arr) mantêm seus próprios SQLite internos sob 
 ## 🔑 Variaveis de ambiente necessarias
 - **Infra/host:** `DOMAIN`, `STORAGE_PATH`, `PUID`, `PGID`, `TZ`, `LOG_LEVEL`, `NVIDIA_VISIBLE_DEVICES`, `NVIDIA_DRIVER_CAPABILITIES`
 - **IA/tradução:** `LOCAL_AI_URL`, `TRANSLATOR_MODEL`, `OLLAMA_NUM_CTX`, `OLLAMA_TIMEOUT`, `TRANSLATOR_TEMPERATURE`, `BLOCK_RETRANSLATE_ROUNDS`, `TRANSLATE_BATCH_BLOCKS`, `TRANSLATION_MIN_BLOCK_COVERAGE`, `AI_SUBTITLE_LABEL`
+- **Refino de sincronia:** `SUBTITLE_REFINE`, `REFINE_EMBED_MODEL`, `REFINE_EMBED_KEEP_ALIVE`, `REFINE_WINDOW_SECONDS`, `REFINE_TOLERANCE_SECONDS`, `REFINE_MIN_MATCH`
 - **Legenda/validação:** `SCAN_INTERVAL`, `RETRY_INTERVAL_HOURS`, `MAX_FAST_RETRIES`, `COOLDOWN_HOURS`, `BAZARR_URL`, `BAZARR_API_KEY`, `BAZARR_LANGUAGE`, `BAZARR_WAIT_SECONDS`, `RADARR_URL`, `RADARR_API_KEY`, `SONARR_URL`, `SONARR_API_KEY`, `AUDIO_CHECK_STRICT`, `MAX_REDOWNLOAD_ATTEMPTS`, `AUDIO_KEEP_TAG`, `MIN_DURATION_PERCENT`, `SUBTITLE_MIN_COVERAGE`, `STALLED_TIMEOUT_MINUTES`, `STALLED_CHECK_INTERVAL`
 - **Optimizer:** `MAX_WORKERS`, `RESCAN_INTERVAL`, `OPTIMIZER_SKIP_BITRATE_2160P/1080P/SD`, `OPTIMIZER_SKIPLIST_FILE`, `OPTIMIZER_GPU_POLL`, `OPTIMIZER_GPU_TIMEOUT`, `OPTIMIZER_GPU_COOLDOWN`
 - **torrent-indexer-br:** `FLARESOLVERR_ADDRESS`, `LONG_LIVED_CACHE_EXPIRATION`, `CACHE_EXPIRATION`, `REDIS_URI` (vazio = cache em memória), `PORT`
@@ -122,7 +125,7 @@ Os demais serviços (Jellyfin, *arr) mantêm seus próprios SQLite internos sob 
 ## 🗂️ Estrutura de codigo
 `docker-compose.yml` define os 13 serviços. `app/` contém 3 imagens custom buildadas localmente:
 - **`app/web`** (`legendarr-web`): `main.py` (rotas + cache de mídia), `bazarr.py` (cliente Bazarr), `templates/index.html` (Tailwind/HTMX/Alpine), `static/style.css`.
-- **`app/worker`** (`legendarr-worker`): `main.py` (orquestra); `core/pipeline.py` (**cérebro** do fluxo legenda+validação); `core/scanner.py` (varredura + auditorias); `core/translator.py` (tradução por chunks/blocos via Ollama); `core/translation_queue.py` (fila serializada de IA); `core/translation_stats.py`; `core/bazarr.py` e `core/arr.py` (clientes de API); `core/job_processor.py`; `core/stalled_monitor.py`; `core/utils.py` (ffprobe/ffmpeg/SRT).
+- **`app/worker`** (`legendarr-worker`): `main.py` (orquestra); `core/pipeline.py` (**cérebro** do fluxo legenda+validação); `core/scanner.py` (varredura + auditorias); `core/translator.py` (tradução por chunks/blocos via Ollama); `core/subtitle_sync.py` (parse/render SRT + mapa ordinal); `core/subtitle_refine.py` (refino de sincronia por conteúdo, também CLI); `core/translation_queue.py` (fila serializada de IA); `core/translation_stats.py`; `core/bazarr.py` e `core/arr.py` (clientes de API); `core/job_processor.py`; `core/stalled_monitor.py`; `core/utils.py` (ffprobe/ffmpeg/SRT).
 - **`app/optimizer`**: `main.py` (threads de worker + rescan periódico); `core/processor.py` (pipeline NVENC/x265 com heal + recuperação de GPU); `core/scanner.py` (watchdog com estabilização); `core/job_queue.py` (`DedupQueue`); `core/skiplist.py`; `core/stats_manager.py`.
 
 Dockerfiles: optimizer `python:3.10-slim`, worker/web `python:3.11-slim`, todos com ffmpeg (worker também baixa o binário ALASS).

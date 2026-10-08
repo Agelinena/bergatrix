@@ -82,6 +82,15 @@ class JobProcessor:
                     target_file,
                     source_path=job.get("source_path"),
                 )
+            elif job_type == "refine":
+                # apply: true = corrige | false = só relatório | ausente = segue SUBTITLE_REFINE
+                logger.info(f"Executando refino de sincronia por conteúdo em {target_file}")
+                self.pipeline.refine_subtitle(
+                    target_file,
+                    source_path=job.get("source_path"),
+                    apply=job.get("apply"),
+                    force=True,
+                )
             elif job_type == "scan":
                 logger.info("Executando varredura manual da biblioteca...")
                 from core.scanner import _has_subtitle, MEDIA_EXTENSIONS
