@@ -11,6 +11,7 @@ import '../../core/storage/key_value_store.dart';
 import '../../data/local/database.dart';
 import '../../data/models/search_result.dart';
 import '../../data/repositories/playback_repository.dart';
+import '../../data/repositories/session_repository.dart';
 import '../auth/session.dart';
 import '../home/home_providers.dart';
 import '../playlists/last_played.dart';
@@ -33,6 +34,7 @@ class PlayerState {
     this.context,
     this.duration,
     this.message,
+    this.shared = false,
   });
 
   final QueueItem? current;
@@ -53,6 +55,10 @@ class PlayerState {
 
   /// Aviso para mostrar uma vez (erro ao tocar, modo de repetição...).
   final PlayerMessage? message;
+
+  /// Tocando numa sessão compartilhada ("ouvir junto"): a fila é a da
+  /// sessão e aleatório/repetir ficam desligados.
+  final bool shared;
 
   bool get isPlaying => status == PlaybackStatus.tocando;
   bool get isPreparing => status == PlaybackStatus.preparando;
@@ -107,6 +113,22 @@ final playerPositionProvider = StreamProvider<Duration>(
   (ref) => ref.watch(audioEngineProvider).positionStream,
 );
 
+/// Sessão compartilhada ligada ao player (ver `features/session`). O player
+/// manda as ações para ela em vez de mexer na própria fila e pergunta onde
+/// a música deveria estar.
+abstract interface class SharedPlayback {
+  /// Onde a música deveria estar agora.
+  Duration get position;
+
+  /// Se este aparelho deve estar tocando (a sessão toca e ninguém pausou
+  /// aqui).
+  bool get shouldPlay;
+
+  void act(Map<String, Object?> action);
+
+  Future<void> togglePlay();
+}
+
 final playerProvider = NotifierProvider<PlayerController, PlayerState>(
   PlayerController.new,
 );
@@ -130,6 +152,143 @@ class PlayerController extends Notifier<PlayerState> {
 
   static const notPlayable = 'Não foi possível tocar esta música.';
   static const notDownloaded = 'Esta música não está baixada.';
+  static const sharedQueue = 'Na sessão, a ordem da fila é a mesma para todos.';
+
+  /// Diferença tolerada para o ponto da sessão antes de corrigir.
+  static const sessionDriftTolerance = Duration(milliseconds: 1500);
+
+  /// Máximo de faixas mandadas de uma vez para a sessão (o servidor corta
+  /// em 2000).
+  static const sessionMaxTracks = 2000;
+
+  // ── Sessão compartilhada ──
+
+  SharedPlayback? _group;
+
+  /// uid local → uid na sessão.
+  final _sharedUids = <int, String>{};
+  List<String> _sharedOrder = const [];
+  int _sharedIndex = -1;
+
+  /// Faixa que está (ou ficou) carregada no motor.
+  String? _loadedTrackId;
+
+  bool get inSession => _group != null;
+
+  /// Entra numa sessão: a partir de agora a fila é a dela.
+  void attachGroup(SharedPlayback group) {
+    _group = group;
+    _sharedOrder = const [];
+    _sharedIndex = -1;
+    _publish();
+  }
+
+  /// Saiu da sessão: a música para e a fila fica como estava.
+  void detachGroup() {
+    if (_group == null || !ref.mounted) return;
+    _group = null;
+    _sharedUids.clear();
+    _sharedOrder = const [];
+    _sharedIndex = -1;
+    _generation++;
+    unawaited(_engine.pause());
+    _publish(
+      status: _queue.current == null
+          ? PlaybackStatus.parado
+          : PlaybackStatus.pausado,
+    );
+  }
+
+  /// O que está tocando aqui, para começar uma sessão com isso.
+  ({List<SearchResult> tracks, Duration position, bool playing})?
+  sessionSeed() {
+    final current = _queue.current;
+    if (current == null) return null;
+    return (
+      tracks: [
+        current.track,
+        for (final i in _queue.manual) i.track,
+        for (final i in _queue.upNext) i.track,
+      ],
+      position: _needsLoad ? (_resumeAt ?? Duration.zero) : _engine.position,
+      playing: state.isPlaying || state.isPreparing,
+    );
+  }
+
+  /// Aviso rápido (a sessão usa para "Marina pausou", erros...).
+  void showMessage(String text) => _publish(message: PlayerMessage(text));
+
+  /// Segue o estado da sessão: troca a fila, carrega a faixa atual no ponto
+  /// certo, pausa/toca e corrige atrasos maiores que
+  /// [sessionDriftTolerance].
+  Future<void> applySession(
+    SessionPlayback playback, {
+    required String context,
+  }) async {
+    final group = _group;
+    if (group == null) return;
+    _context = context;
+    _playlistId = null;
+    _playlistTracks = const {};
+    final order = [for (final e in playback.queue) e.uid];
+    if (playback.index != _sharedIndex || !listEquals(order, _sharedOrder)) {
+      _sharedOrder = order;
+      _sharedIndex = playback.index;
+      final items = _queue.loadShared([
+        for (final e in playback.queue) e.track,
+      ], playback.index);
+      _sharedUids
+        ..clear()
+        ..addAll({
+          for (final (i, item) in items.indexed)
+            item.uid: playback.queue[i].uid,
+        });
+    }
+    final current = _queue.current;
+    if (current == null) {
+      // Sessão sem nada tocando.
+      _generation++;
+      _loadedTrackId = null;
+      await _engine.pause();
+      if (!ref.mounted) return;
+      _publish(status: PlaybackStatus.parado);
+      return;
+    }
+    final sameTrack = _loadedTrackId == current.track.id;
+    if (sameTrack && state.isPreparing) {
+      // Carregando: ao terminar, pega o ponto da sessão daquele momento.
+      _publish();
+      return;
+    }
+    if (!sameTrack ||
+        _needsLoad ||
+        state.status == PlaybackStatus.parado ||
+        state.status == PlaybackStatus.erro) {
+      await _loadCurrent();
+      return;
+    }
+    final shouldPlay = group.shouldPlay;
+    // Pausado só aqui (cada um pausa o seu): o ponto não importa até voltar.
+    if (shouldPlay || !playback.playing) {
+      final expected = group.position;
+      if ((_engine.position - expected).abs() > sessionDriftTolerance) {
+        await _engine.seek(expected);
+        if (!ref.mounted) return;
+      }
+    }
+    if (shouldPlay && !state.isPlaying) {
+      _engine.play();
+      _publish(status: PlaybackStatus.tocando);
+    } else if (!shouldPlay && state.isPlaying) {
+      await _engine.pause();
+      if (!ref.mounted) return;
+      _publish(status: PlaybackStatus.pausado);
+    } else {
+      _publish();
+    }
+  }
+
+  String? _sharedUidOf(int localUid) => _sharedUids[localUid];
 
   @override
   PlayerState build() {
@@ -157,6 +316,34 @@ class PlayerController extends Notifier<PlayerState> {
     String? playlistId,
     bool? shuffle,
   }) async {
+    if (_group case final group?) {
+      // Na sessão: a lista vai para todos (aleatório = embaralhada aqui).
+      var list = tracks;
+      var start = index;
+      if (shuffle ?? false) {
+        list = [
+          tracks[index],
+          ...([...tracks]..removeAt(index))..shuffle(),
+        ];
+        start = 0;
+      }
+      if (list.length > sessionMaxTracks) {
+        final from = start.clamp(0, list.length - sessionMaxTracks);
+        list = list.sublist(from, from + sessionMaxTracks);
+        start -= from;
+      }
+      group.act({
+        'action': 'play_list',
+        'tracks': [for (final t in list) t.toJson()],
+        'index': start,
+      });
+      if (playlistId != null) {
+        unawaited(
+          ref.read(playlistLastPlayedProvider.notifier).touch(playlistId),
+        );
+      }
+      return;
+    }
     // Aleatório da nova lista (sem gravar na playlist que tocava antes).
     if (shuffle != null) _queue.setShuffle(shuffle);
     _queue.playList(tracks, index);
@@ -258,6 +445,10 @@ class PlayerController extends Notifier<PlayerState> {
 
   /// "Adicionar à fila". Se nada estiver tocando, começa por ela.
   Future<void> addToQueue(SearchResult track) async {
+    if (_group case final group?) {
+      group.act({'action': 'add', 'track': track.toJson()});
+      return;
+    }
     _queue.add(track);
     if (state.current == null) {
       _queue.startFromManual();
@@ -269,6 +460,7 @@ class PlayerController extends Notifier<PlayerState> {
   }
 
   Future<void> togglePlay() async {
+    if (_group case final group?) return group.togglePlay();
     switch (state.status) {
       case PlaybackStatus.tocando:
         await _engine.pause();
@@ -289,11 +481,22 @@ class PlayerController extends Notifier<PlayerState> {
     }
   }
 
-  Future<void> next() => _advance(ended: false);
+  Future<void> next() async {
+    if (_group case final group?) return group.act({'action': 'next'});
+    await _advance(ended: false);
+  }
 
   /// "Anterior". Com [track] (arrastar o mini player), sempre volta para a
   /// música anterior, sem só recomeçar a atual.
   Future<void> previous({bool track = false}) async {
+    if (_group case final group?) {
+      if (track && _sharedIndex > 0) {
+        group.act({'action': 'jump', 'uid': _sharedOrder[_sharedIndex - 1]});
+      } else {
+        group.act({'action': 'previous'});
+      }
+      return;
+    }
     final action = _queue.previous(track ? Duration.zero : _engine.position);
     if (action == PreviousAction.reiniciar) {
       await _engine.seek(Duration.zero);
@@ -303,6 +506,12 @@ class PlayerController extends Notifier<PlayerState> {
   }
 
   Future<void> seek(Duration position) async {
+    if (_group case final group?) {
+      group.act({'action': 'seek', 'position_ms': position.inMilliseconds});
+      // Já pula aqui; a confirmação da sessão chega em seguida.
+      if (!state.isPreparing && !_needsLoad) await _engine.seek(position);
+      return;
+    }
     if (_needsLoad) {
       _resumeAt = position;
       unawaited(_save());
@@ -323,6 +532,10 @@ class PlayerController extends Notifier<PlayerState> {
   void toggleShuffle() => setShuffle(!_queue.shuffle);
 
   void setShuffle(bool value) {
+    if (_group != null) {
+      if (value) showMessage(sharedQueue);
+      return;
+    }
     if (value == _queue.shuffle) return;
     _queue.setShuffle(value);
     final playlist = _playlistId;
@@ -335,6 +548,7 @@ class PlayerController extends Notifier<PlayerState> {
   }
 
   void cycleRepeat() {
+    if (_group != null) return showMessage(sharedQueue);
     _queue.repeat = _queue.repeat.next;
     _publish(
       message: PlayerMessage(switch (_queue.repeat) {
@@ -346,6 +560,11 @@ class PlayerController extends Notifier<PlayerState> {
   }
 
   void removeFromQueue(int uid) {
+    if (_group case final group?) {
+      final shared = _sharedUidOf(uid);
+      if (shared != null) group.act({'action': 'remove', 'uid': shared});
+      return;
+    }
     _queue
       ..removeManual(uid)
       ..removeUpNext(uid);
@@ -353,16 +572,34 @@ class PlayerController extends Notifier<PlayerState> {
   }
 
   void clearQueue() {
+    if (_group != null) return;
     _queue.clearManual();
     _publish();
   }
 
   void reorderQueue(int oldIndex, int newIndex) {
+    if (_group != null) return;
     _queue.reorderManual(oldIndex, newIndex);
     _publish();
   }
 
   void reorderUpNext(int oldIndex, int newIndex) {
+    if (_group case final group?) {
+      final upNext = _queue.upNext;
+      if (oldIndex < 0 || oldIndex >= upNext.length) return;
+      final shared = _sharedUidOf(upNext[oldIndex].uid);
+      if (shared == null) return;
+      // Mesma conta do servidor: posição final na fila inteira.
+      group.act({
+        'action': 'move',
+        'uid': shared,
+        'to': _sharedIndex + 1 + newIndex,
+      });
+      // Mostra já na nova ordem; a sessão confirma em seguida.
+      _queue.reorderUpNext(oldIndex, newIndex);
+      _publish();
+      return;
+    }
     _queue.reorderUpNext(oldIndex, newIndex);
     _publish();
   }
@@ -387,6 +624,14 @@ class PlayerController extends Notifier<PlayerState> {
   }
 
   void _onCompleted() {
+    if (_group case final group?) {
+      // Na sessão quem avança é o servidor (o primeiro aviso vale).
+      final uid = state.current == null
+          ? null
+          : _sharedUidOf(state.current!.uid);
+      if (uid != null) group.act({'action': 'ended', 'uid': uid});
+      return;
+    }
     if (state.status == PlaybackStatus.tocando) {
       unawaited(_advance(ended: true));
     }
@@ -402,6 +647,7 @@ class PlayerController extends Notifier<PlayerState> {
     final generation = ++_generation;
     _counted = false;
     _duration = null;
+    _loadedTrackId = item.track.id;
     _publish(status: PlaybackStatus.preparando);
     _prefetchedFor = null;
     _notification?.showTrack(
@@ -426,9 +672,7 @@ class PlayerController extends Notifier<PlayerState> {
     if (path != null && File(path).existsSync()) {
       await _engine.setFile(path);
       if (generation != _generation) return;
-      if (startAt != null) await _engine.seek(startAt);
-      _engine.play();
-      _publish(status: PlaybackStatus.tocando);
+      await _start(startAt);
       return;
     }
     // 3. Sem arquivo e sem servidor: avisa.
@@ -472,9 +716,7 @@ class PlayerController extends Notifier<PlayerState> {
       if (generation != _generation) return;
       await _engine.setUrl(url);
       if (generation != _generation) return;
-      if (startAt != null) await _engine.seek(startAt);
-      _engine.play();
-      _publish(status: PlaybackStatus.tocando);
+      await _start(startAt);
     } on Object catch (e) {
       if (generation != _generation) return;
       debugPrint('Falha ao tocar ${item.track.title}: $e');
@@ -486,6 +728,21 @@ class PlayerController extends Notifier<PlayerState> {
               : notPlayable,
         ),
       );
+    }
+  }
+
+  /// Começa a tocar a faixa já carregada. Na sessão, vai para o ponto em
+  /// que ela está agora (o download pode ter levado segundos) e só toca se
+  /// a sessão estiver tocando.
+  Future<void> _start(Duration? startAt) async {
+    final group = _group;
+    final at = group?.position ?? startAt;
+    if (at != null && at > Duration.zero) await _engine.seek(at);
+    if (group == null || group.shouldPlay) {
+      _engine.play();
+      _publish(status: PlaybackStatus.tocando);
+    } else {
+      _publish(status: PlaybackStatus.pausado);
     }
   }
 
@@ -579,6 +836,7 @@ class PlayerController extends Notifier<PlayerState> {
         state.repeat != _queue.repeat ||
         (status != null && status != state.status);
     state = PlayerState(
+      shared: _group != null,
       current: _queue.current,
       status: status ?? state.status,
       shuffle: _queue.shuffle,

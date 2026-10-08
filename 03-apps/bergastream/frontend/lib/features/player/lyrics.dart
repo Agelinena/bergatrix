@@ -75,6 +75,12 @@ class LyricsCard extends ConsumerWidget {
 
   static const title = 'Letra';
 
+  /// Linhas no cartão (a anterior, a atual e as próximas).
+  static const visibleLines = 7;
+
+  /// Altura mínima: o cartão não "pula" quando as linhas mudam.
+  static const minHeight = 360.0;
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final lyrics = ref.watch(lyricsProvider(LyricsRequest(track))).value;
@@ -84,16 +90,28 @@ class LyricsCard extends ConsumerWidget {
     if (lyrics.isSynced) {
       final position = ref.watch(playerPositionProvider).value ?? Duration.zero;
       final current = currentLineIndex(lyrics.synced, position);
-      final start = current < 0 ? 0 : current;
+      // A anterior (apagada), a atual e as próximas: letra grande, como no
+      // Spotify.
+      final start = current < 1 ? 0 : current - 1;
       lines = [
-        for (var i = start; i < lyrics.synced.length && i < start + 4; i++)
+        for (
+          var i = start;
+          i < lyrics.synced.length && i < start + visibleLines;
+          i++
+        )
           Text(
             lyrics.synced[i].text.isEmpty ? '♪' : lyrics.synced[i].text,
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
             style: BergaText.h2.copyWith(
-              color: i == current ? c.tx : c.mu,
-              fontWeight: i == current ? FontWeight.w800 : FontWeight.w600,
+              fontSize: 22,
+              height: 1.3,
+              color: i == current
+                  ? c.tx
+                  : i < current
+                  ? c.mu.withValues(alpha: 0.6)
+                  : c.mu,
+              fontWeight: FontWeight.w800,
             ),
           ),
       ];
@@ -113,14 +131,17 @@ class LyricsCard extends ConsumerWidget {
         onTap: () => openLyrics(context, track),
         child: Container(
           width: double.infinity,
-          padding: const EdgeInsets.all(16),
+          constraints: BoxConstraints(
+            minHeight: lyrics.isSynced ? minHeight : 0,
+          ),
+          padding: const EdgeInsets.all(18),
           decoration: BoxDecoration(
             color: c.card,
             borderRadius: BorderRadius.circular(BergaSizes.cardRadius),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
-            spacing: 6,
+            spacing: 10,
             children: [
               Row(
                 children: [

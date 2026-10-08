@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/theme/berga_colors.dart';
 import '../../core/theme/berga_text.dart';
 import '../../core/widgets/widgets.dart';
+import '../session/session_sheet.dart';
 import 'play_queue.dart';
 import 'player_controller.dart';
 import 'player_texts.dart';
@@ -163,6 +164,7 @@ class PlayerBar extends ConsumerWidget {
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  SessionButton(iconSize: 22, idleColor: c.mu),
                   control(
                     Icons.lyrics_outlined,
                     'Letra',

@@ -7,6 +7,7 @@ import '../../core/theme/berga_sizes.dart';
 import '../../core/theme/berga_text.dart';
 import '../../core/widgets/widgets.dart';
 import '../../app/catalog_navigation.dart';
+import '../session/session_sheet.dart';
 import 'play_queue.dart';
 import 'lyrics.dart';
 import 'player_controller.dart';
@@ -69,11 +70,17 @@ class _FullPlayerState extends ConsumerState<FullPlayer> {
       String tooltip,
       VoidCallback onPressed, {
       bool active = false,
+      // Na sessão (aleatório e repetir): apagado, mas explica ao tocar.
+      bool disabled = false,
     }) => IconButton(
       onPressed: onPressed,
       icon: Icon(icon),
       iconSize: 26,
-      color: active ? c.gr : c.tx,
+      color: disabled
+          ? c.mu.withValues(alpha: 0.4)
+          : active
+          ? c.gr
+          : c.tx,
       tooltip: tooltip,
     );
 
@@ -100,6 +107,7 @@ class _FullPlayerState extends ConsumerState<FullPlayer> {
                     style: BergaText.secondary.copyWith(color: c.mu),
                   ),
                 ),
+                const SessionButton(),
                 IconButton(
                   onPressed: () {
                     // Fecha o player e navega com o router capturado antes
@@ -157,6 +165,7 @@ class _FullPlayerState extends ConsumerState<FullPlayer> {
                     'Aleatório',
                     controller.toggleShuffle,
                     active: state.shuffle,
+                    disabled: state.shared,
                   ),
                   control(Icons.skip_previous, 'Anterior', controller.previous),
                   PlayButton(
@@ -172,6 +181,7 @@ class _FullPlayerState extends ConsumerState<FullPlayer> {
                     'Repetir',
                     controller.cycleRepeat,
                     active: state.repeat != PlayerRepeat.desligado,
+                    disabled: state.shared,
                   ),
                   control(
                     Icons.queue_music,
@@ -185,6 +195,8 @@ class _FullPlayerState extends ConsumerState<FullPlayer> {
             if (_showQueue) const QueuePanel(),
             // Letra abaixo dos controles (como no Spotify); some sem letra.
             if (!_showQueue) LyricsCard(track: track),
+            // Espaço no fim: dá para rolar até a letra ficar no meio da tela.
+            SizedBox(height: MediaQuery.sizeOf(context).height * 0.35),
           ],
         ),
       ),

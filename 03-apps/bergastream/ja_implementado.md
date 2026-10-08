@@ -381,6 +381,26 @@ Rodado na imagem `ghcr.io/cirruslabs/flutter:stable` (Flutter 3.44.0 / Dart 3.12
 - Deploy de produção: compose com `${STORAGE_PATH}`, `container_name`, redes
   `bergastream-internal` (sem internet) e `bergastream-egress`, labels do modelo B.
 
+### Versão 0.2.0 — ouvir junto (sessão compartilhada)
+- **Sessão compartilhada:** botão **Ouvir junto** (ícone de pessoas) no player grande, na barra
+  do computador e em Ajustes. Quem cria escolhe o **modo de pausa**: *Pausar para todos* ou
+  *Cada um pausa o seu* (pausa só no aparelho; ao voltar, entra no ponto em que os outros
+  estão). A sessão começa com o que estava tocando.
+- Convida qualquer usuário do servidor; o convite aparece como diálogo ("Marina te chamou para
+  ouvir junto" → Entrar / Agora não). Qualquer participante convida, põe na fila, remove,
+  reordena, pula, volta e busca na música — vale para todos. Quem criou muda o modo de pausa,
+  remove pessoas e encerra.
+- Como funciona: o servidor guarda a fila e o ponto da música (âncora `position_ms` em
+  `anchor_at`); cada aparelho toca o próprio áudio no ponto calculado, com o relógio acertado por
+  ping/pong, e corrige atrasos acima de 1,5 s. Fim da faixa: o primeiro aviso avança para
+  todos. O servidor prepara a atual e a próxima uma vez só.
+- Backend: `app/sessions/` (playback, hub, service, routes), migração `0012_listen_sessions.sql`,
+  WebSocket em `/api/sessions/{id}/ws` (token na primeira mensagem); nginx da web repassa o
+  upgrade de WebSocket. App: `features/session/` e `data/repositories/session_repository.dart`.
+- Letra: o cartão do player grande ficou maior (linha anterior, atual e próximas, fonte maior)
+  e dá para rolar o player até a letra ficar no meio da tela.
+- Testes: backend `test_session_playback` 23 e `test_sessions` 38; app 330.
+
 ### Versão 0.1.9 — letra sincronizada
 - Letra das músicas pelo **LRCLIB** (lrclib.net, aberto e gratuito, sem chave): `POST /api/lyrics`
   com a faixa; busca exata (artista, título, álbum, duração) e, se não achar, pela busca com o
@@ -495,9 +515,10 @@ conferidas com ffprobe (título diferente → descarta e baixa do YouTube).
 | Suíte | Resultado |
 |---|---|
 | Flutter `flutter analyze` | ✅ sem problemas |
-| Flutter `flutter test` | ✅ 242 |
+| Flutter `flutter test` | ✅ 330 |
 | Flutter `integration_test` (flutter-tester) | ✅ 2 |
 | Backend auth / playlists / history / resolve / catalog / downloads / images | ✅ 38 / 32 / 12 / 17 / 11 / 13 / 12 |
+| Backend sessões (estado / REST + WebSocket) | ✅ 23 / 38 |
 | E2E no Chrome (8080): sem sessão → login; busca; capas pelo proxy; recarregar mantém sessão | ✅ |
 | APK release, AAB, Linux release | ✅ compilam |
 | Windows | ⏳ compila só no CI (windows-latest) |

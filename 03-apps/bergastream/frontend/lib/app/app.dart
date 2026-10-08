@@ -9,6 +9,7 @@ import '../features/sync/local_playlists_offer.dart';
 import '../features/sync/server_monitor.dart';
 import '../features/sync/sync_service.dart';
 import '../features/playlists/sync_notices.dart';
+import '../features/session/session_sheet.dart';
 import '../features/settings/preferences.dart';
 import '../features/update/update_prompt.dart';
 import 'app_frame.dart';
@@ -49,7 +50,11 @@ class _BergastreamAppState extends ConsumerState<BergastreamApp> {
       builder: (context, child) => AppFrame(
         platform: platform,
         child: UpdateWatcher(
-          child: SyncNoticesListener(child: LocalPlaylistsOffer(child: child!)),
+          child: SessionInviteWatcher(
+            child: SyncNoticesListener(
+              child: LocalPlaylistsOffer(child: child!),
+            ),
+          ),
         ),
       ),
     );

@@ -35,6 +35,38 @@ class _QueuePanelState extends ConsumerState<QueuePanel> {
         ? state.upNext
         : state.upNext.take(QueuePanel.preview).toList();
 
+    if (state.shared) {
+      // Sessão compartilhada: uma fila só, a mesma para todos.
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const _Header(title: 'Fila da sessão'),
+          if (state.upNext.isEmpty)
+            Text(
+              'Nada a seguir. Use "Adicionar à fila": entra para todos.',
+              style: mu,
+            )
+          else ...[
+            _ReorderableItems(
+              items: upNext,
+              onReorder: controller.reorderUpNext,
+              onRemove: controller.removeFromQueue,
+            ),
+            if (state.upNext.length > QueuePanel.preview)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: AppChip(
+                  label: _showAll
+                      ? 'Ver menos'
+                      : 'Ver todas (${state.upNext.length})',
+                  onTap: () => setState(() => _showAll = !_showAll),
+                ),
+              ),
+          ],
+        ],
+      );
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [

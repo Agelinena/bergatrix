@@ -19,6 +19,8 @@ import 'package:bergastream/features/player/audio_engine.dart';
 import 'package:bergastream/features/player/player_controller.dart';
 import 'package:bergastream/features/auth/session.dart';
 import 'package:bergastream/data/repositories/lyrics_repository.dart';
+import 'package:bergastream/data/repositories/session_repository.dart';
+import 'package:bergastream/features/session/group_session.dart';
 import 'package:bergastream/data/repositories/server_status_repository.dart';
 import 'package:bergastream/features/update/update_service.dart';
 import 'package:flutter/material.dart';
@@ -48,6 +50,7 @@ Widget wrap(
   UpdateTarget? updateTarget,
   FakeUpdateRepository? updates,
   FakeUpdateLauncher? launcher,
+  SessionRepository? sessions,
 }) {
   // Container descartado no fim do teste (e não junto com a árvore): fechar
   // as consultas do Drift agenda um timer que o teste de tela não aceita
@@ -60,6 +63,13 @@ Widget wrap(
       ),
       serverStatusRefreshProvider.overrideWithValue(null),
       lyricsRepositoryProvider.overrideWithValue(FakeLyricsRepository()),
+      sessionRepositoryProvider.overrideWithValue(
+        sessions ?? FakeSessionRepository(),
+      ),
+      sessionSocketFactoryProvider.overrideWithValue(
+        ({required server, required sessionId}) => FakeSessionSocket(),
+      ),
+      groupTimingsProvider.overrideWithValue(noGroupTimers),
       updateTargetProvider.overrideWithValue(updateTarget),
       updateRepositoryProvider.overrideWithValue(
         updates ?? FakeUpdateRepository(),

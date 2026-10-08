@@ -243,6 +243,28 @@ class PlayQueue {
     );
   }
 
+  /// Fila de uma sessão compartilhada: a lista inteira, com a atual em
+  /// [index] (as anteriores viram o histórico). Sem "sua fila", aleatório
+  /// nem repetição: a ordem é a mesma para todos. Devolve os itens na ordem
+  /// de [tracks].
+  List<QueueItem> loadShared(List<SearchResult> tracks, int index) {
+    final items = [for (final t in tracks) _item(t)];
+    final valid = index >= 0 && index < items.length;
+    _source = items;
+    _manual.clear();
+    _played.clear();
+    _shuffle = false;
+    repeat = PlayerRepeat.desligado;
+    _history
+      ..clear()
+      ..addAll(valid ? items.sublist(0, index) : const []);
+    _current = valid ? items[index] : null;
+    _upNext
+      ..clear()
+      ..addAll(valid ? items.sublist(index + 1) : const []);
+    return items;
+  }
+
   /// Começa a tocar um item da sua fila quando nada estava carregado.
   QueueItem? startFromManual() {
     if (_current != null || _manual.isEmpty) return null;

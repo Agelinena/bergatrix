@@ -67,12 +67,15 @@ void main() {
     expect(find.text(LyricsCard.title), findsOneWidget);
     expect(find.text('Primeira linha da letra'), findsOneWidget);
 
-    engine.emitPosition(const Duration(seconds: 16));
+    engine.emitPosition(const Duration(seconds: 26));
     await tester.pumpAndSettle();
-    // A atual vem primeiro; a que já passou sai do cartão.
+    // A anterior fica (apagada); as de antes dela saem do cartão.
     expect(find.text('Primeira linha da letra'), findsNothing);
-    final current = tester.widget<Text>(find.text('Segunda linha da letra'));
-    expect(current.style!.fontWeight, FontWeight.w800);
+    expect(find.text('Segunda linha da letra'), findsOneWidget);
+    final current = tester.widget<Text>(find.text('Terceira linha da letra'));
+    final previous = tester.widget<Text>(find.text('Segunda linha da letra'));
+    expect(current.style!.fontSize, 22);
+    expect(current.style!.color!.a, greaterThan(previous.style!.color!.a));
     await tester.pump(const Duration(seconds: 3));
     await tester.pumpAndSettle();
   });

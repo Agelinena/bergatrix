@@ -25,6 +25,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:bergastream/data/models/stats.dart';
 import 'package:bergastream/data/repositories/fake_catalog.dart';
 import 'package:bergastream/data/repositories/lyrics_repository.dart';
+import 'package:bergastream/data/repositories/session_repository.dart';
+import 'package:bergastream/features/session/group_session.dart';
 import 'package:bergastream/data/repositories/server_status_repository.dart';
 import 'package:bergastream/features/update/update_service.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -41,6 +43,15 @@ const loggedIn = SessionState(
 );
 
 const noServer = SessionState(status: SessionStatus.semServidorConfigurado);
+
+/// Sessão compartilhada sem timers (os testes de tela não aceitam timers
+/// pendentes no fim).
+const noGroupTimers = GroupTimings(
+  invitePoll: null,
+  syncCheck: null,
+  keepAlive: null,
+  reconnectDelays: [],
+);
 
 /// Monta o app completo com plataforma, sessão e repositório fictícios.
 /// Devolve o container para os testes lerem o estado.
@@ -64,6 +75,7 @@ Future<ProviderContainer> pumpBergastream(
   UpdateTarget? updateTarget,
   FakeUpdateRepository? updates,
   FakeUpdateLauncher? launcher,
+  SessionRepository? sessions,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
@@ -77,6 +89,13 @@ Future<ProviderContainer> pumpBergastream(
       ),
       serverStatusRefreshProvider.overrideWithValue(null),
       lyricsRepositoryProvider.overrideWithValue(FakeLyricsRepository()),
+      sessionRepositoryProvider.overrideWithValue(
+        sessions ?? FakeSessionRepository(),
+      ),
+      sessionSocketFactoryProvider.overrideWithValue(
+        ({required server, required sessionId}) => FakeSessionSocket(),
+      ),
+      groupTimingsProvider.overrideWithValue(noGroupTimers),
       updateTargetProvider.overrideWithValue(updateTarget),
       updateRepositoryProvider.overrideWithValue(
         updates ?? FakeUpdateRepository(),

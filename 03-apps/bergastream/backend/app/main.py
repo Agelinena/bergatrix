@@ -19,6 +19,7 @@ from app.playlists.routes import router as playlists_router
 from app.history.routes import router as history_router
 from app.images.routes import router as images_router
 from app.server.routes import router as server_router
+from app.sessions.routes import router as sessions_router
 
 logging.basicConfig(
     level=getattr(logging, settings.log_level.upper(), logging.INFO),
@@ -51,10 +52,14 @@ async def lifespan(app: FastAPI):
 
     from app.storage.service import run_forever as cl
     t = asyncio.create_task(cl(pool))
+    # Sessões compartilhadas: avança a faixa se nenhum aparelho avisar o fim.
+    from app.sessions.service import watchdog
+    session_watchdog = asyncio.create_task(watchdog(pool))
     logger.info("Limpeza agendada (1h)")
     logger.info("API pronta")
     yield
     t.cancel()
+    session_watchdog.cancel()
     logger.info("Encerrando...")
     await close_pool()
 
@@ -72,6 +77,7 @@ app.include_router(playlists_router)
 app.include_router(history_router)
 app.include_router(images_router)
 app.include_router(server_router)
+app.include_router(sessions_router)
 app.include_router(api_router)
 
 _st = Path(__file__).parent.parent / "static"

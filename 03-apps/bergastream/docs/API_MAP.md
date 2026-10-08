@@ -160,6 +160,43 @@ Regras:
 
 ---
 
+## 9c. Sessão compartilhada ("ouvir junto")
+
+Uma pessoa fica em no máximo uma sessão. Qualquer participante convida e mexe na reprodução; só
+quem criou muda as configurações, remove pessoas e encerra.
+
+| Endpoint | Quem | Corpo / resposta |
+|---|---|---|
+| `GET /api/sessions/me` | logado | `{"current": SessionInfo\|null, "invites": [Invite]}` (o app consulta a cada 20 s) |
+| `POST /api/sessions` | logado | `{"name"?, "pause_mode": "all"\|"individual"}` → `SessionInfo` (201) |
+| `GET /api/sessions/{id}` | participante | `SessionInfo` |
+| `PATCH /api/sessions/{id}` | dono | `{"name"?, "pause_mode"?}` → `SessionInfo` |
+| `DELETE /api/sessions/{id}` | dono | encerra para todos (204) |
+| `POST /api/sessions/{id}/invite` | participante | `{"user_ids": [...]}` → 204 |
+| `POST /api/sessions/{id}/join` · `/leave` · `/decline` | convidado / participante | `join` → `SessionInfo`; os outros 204 |
+| `DELETE /api/sessions/{id}/members/{user_id}` | dono | remove (204) |
+| `POST /api/sessions/{id}/actions` | participante | mesma ação do WebSocket, por HTTP (reserva) → `Playback` |
+
+`Playback`: `{"queue": [{"uid", "track": SearchResult, "added_by"}], "index", "playing",
+"position_ms", "anchor_at", "version"}` — a posição agora é `position_ms + (agora − anchor_at)`
+(relógio do servidor, ms) quando `playing`.
+
+**WebSocket** `GET /api/sessions/{id}/ws` — a primeira mensagem é `{"type": "auth", "token":
+<access token>}` (fora da URL para não ir para logs). Fecha com **4401** (token inválido: o app
+renova e reconecta) ou **4403** (não participa).
+
+- Servidor → app: `hello {session}`, `playback {playback, server_now, by}`, `session {session}`
+  (pessoas, online, modo de pausa), `pong {t0, server_now}`, `error {message}`, `ended`,
+  `removed`, `left`.
+- App → servidor: `ping {t0}` (acerto de relógio) e `action` com `action` =
+  `play_list {tracks, index}`, `add`/`add_next {track}`, `remove {uid}`, `move {uid, to}`,
+  `jump {uid}`, `next`, `previous`, `seek {position_ms}`, `pause`, `resume` (ignorados no modo
+  `individual`), `ended {uid}` (só o primeiro aviso de fim da faixa avança).
+- O servidor prepara a faixa atual e a próxima uma vez para todos e avança sozinho se ninguém
+  avisar o fim (duração + 20 s).
+
+---
+
 ## 10. Administração
 
 | Endpoint | Quem |

@@ -20,6 +20,7 @@ import '../auth/session.dart';
 import '../downloads/download_manager.dart';
 import '../downloads/manage_downloads_screen.dart';
 import '../playlists/playlist_store.dart';
+import '../session/session_sheet.dart';
 import '../update/update_prompt.dart';
 import '../update/update_service.dart';
 import 'preferences.dart';
@@ -143,6 +144,7 @@ class SettingsScreen extends ConsumerWidget {
             ],
           ),
         ),
+        if (session.isLoggedIn) const SessionSettingsCard(),
         const _AppearanceCard(),
         if (session.canUseServer) const _ServerStatusCard(),
         if (ref.watch(updateTargetProvider) != null) const _AboutCard(),
