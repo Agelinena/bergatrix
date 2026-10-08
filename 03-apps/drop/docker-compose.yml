@@ -7,15 +7,32 @@ services:
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m
+    pids_limit: 100
+    mem_limit: 256m
+    cpus: 1.0
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
     networks:
       - bergatrix-proxy
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=bergatrix-proxy"
+      - "traefik.http.middlewares.drop-rate-limit.ratelimit.average=30"
+      - "traefik.http.middlewares.drop-rate-limit.ratelimit.period=1m"
+      - "traefik.http.middlewares.drop-rate-limit.ratelimit.burst=10"
       - "traefik.http.routers.drop-router.rule=Host(`drop.${DOMAIN}`)"
       - "traefik.http.routers.drop-router.entrypoints=websecure"
       - "traefik.http.routers.drop-router.tls=true"
       - "traefik.http.routers.drop-router.service=drop-service"
+      - "traefik.http.routers.drop-router.middlewares=drop-rate-limit"
       - "traefik.http.services.drop-service.loadbalancer.server.port=8000"
 
 networks:
