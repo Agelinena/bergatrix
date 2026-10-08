@@ -4,6 +4,8 @@ pydantic-settings==2.5.2
 asyncpg==0.29.0
 spotipy==2.24.0
 yt-dlp[default]>=2025.11.12
+# Plugin do yt-dlp: busca PO Tokens no serviço pot-provider (mesma versão da imagem).
+bgutil-ytdlp-pot-provider==2.0.2
 ytmusicapi==1.12.3
 python-multipart==0.0.20
 httpx==0.27.2

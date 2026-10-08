@@ -141,4 +141,6 @@ gunzip -c bergastream-AAAA-MM-DD.sql.gz | docker compose exec -T db psql -U berg
 | 404 em tudo | Rede `bergatrix-proxy` errada ou regra descartada: `docker logs traefik 2>&1 \| grep -i bergastream`. |
 | 502 no navegador | API parada ou reiniciando: `docker compose ps` e `docker compose logs api`. |
 | Músicas não baixam do Deezer | ARL vencido: pegue o cookie de novo, troque no `.env`, `docker compose up -d deemix api worker`. O YouTube segue como alternativa. |
+| Música falha no Deemix e também no YouTube; log do worker: "bloqueado pelo Modo Restrito" | O DNS da rede (AdGuard → "pesquisa segura") força o Modo Restrito do YouTube e barra músicas explícitas. No AdGuard Home: **Configurações → Configurações do cliente → Adicionar cliente** com o IP do servidor, desmarque "Usar configurações globais" e desligue a pesquisa segura só para ele. |
+| Log do worker: "Sign in to confirm you're not a bot" em todos os clientes | O YouTube está bloqueando o IP. Confira se o `bergastream-pot` está de pé (`docker compose ps`); se persistir, use cookies de uma conta **secundária** (`YT_COOKIES_FILE`, ver `.env.example`). Muitos pedidos seguidos geram HTTP 429 por um tempo. |
 | "Muitas tentativas" no login | 5 senhas erradas em 15 min para aquele usuário e IP: espere ou troque a senha (USUARIOS.md). |

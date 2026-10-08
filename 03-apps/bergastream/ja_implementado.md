@@ -381,6 +381,19 @@ Rodado na imagem `ghcr.io/cirruslabs/flutter:stable` (Flutter 3.44.0 / Dart 3.12
 - Deploy de produção: compose com `${STORAGE_PATH}`, `container_name`, redes
   `bergastream-internal` (sem internet) e `bergastream-egress`, labels do modelo B.
 
+### Plano B do YouTube mais forte (servidor)
+- Quando o Deemix falha: busca no **YouTube Music** (ytmusicapi, com duração — a busca antiga
+  do YT Music vinha sem duração e era sempre descartada) e no YouTube; tolerância de duração
+  gradual (até 20 s ou 10% com desconto, no lugar de 3 s fixos); busca sem "(feat. …)" e com o
+  artista principal; tenta até 3 candidatos.
+- YouTube bloqueando o servidor ("não sou um robô"): serviço **pot-provider**
+  (bgutil-ytdlp-pot-provider 2.0.2, só na rede interna) gera PO Tokens; o download tenta
+  `mweb` + token, depois `web_embedded` e o cliente padrão. Cookies de conta opcionais
+  (`YT_COOKIES_FILE`).
+- Modo Restrito imposto pela rede (AdGuard "pesquisa segura") é detectado e avisado no log
+  (ver DEPLOY.md → Problemas comuns).
+- Testes: `test_youtube_match` 19.
+
 ### Versão 0.2.1 — "Tocar em…" e fila da sessão como a normal
 - **Tocar em…** (como o Spotify Connect): cada app logado (navegador, Android, Windows, Linux)
   aparece numa lista com nome e ícone; só um toca por vez. Tocar algo num aparelho faz dele o

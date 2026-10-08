@@ -140,17 +140,19 @@ async def _do_download_deezer(play_req: PlayRequest, track_id: str) -> tuple[boo
 
 
 async def _do_download_youtube_fallback(play_req: PlayRequest, track_id: str) -> tuple[bool, str | None]:
-    candidate = await yt_downloader.find_best_candidate(play_req.title, play_req.artist, play_req.duration_seconds)
-    if not candidate:
-        return False, None
-    ok, src_path, fmt = await yt_downloader.download_video(candidate["video_id"])
-    if ok and src_path and fmt:
-        dest = await _move_to_cache(src_path, track_id, fmt)
-        if dest:
-            pool = get_pool()
-            await track_repo.link_external_id(pool, track_id, "youtube", candidate["video_id"])
-            await _register_in_db(track_id, dest, fmt)
-            return True, "youtube"
+    # Os melhores candidatos em ordem: um vídeo bloqueado ou indisponível
+    # não impede o próximo.
+    candidates = await yt_downloader.find_candidates(
+        play_req.title, play_req.artist, play_req.duration_seconds)
+    for candidate in candidates:
+        ok, src_path, fmt = await yt_downloader.download_video(candidate["video_id"])
+        if ok and src_path and fmt:
+            dest = await _move_to_cache(src_path, track_id, fmt)
+            if dest:
+                pool = get_pool()
+                await track_repo.link_external_id(pool, track_id, "youtube", candidate["video_id"])
+                await _register_in_db(track_id, dest, fmt)
+                return True, "youtube"
     return False, None
 
 

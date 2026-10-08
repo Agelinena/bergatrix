@@ -97,6 +97,8 @@ services:
     volumes: &backend-volumes
       - ${STORAGE_PATH}/music:/data/music
       - ${STORAGE_PATH}/deemix/downloads:/data/music/deemix_dl
+      # Cookies opcionais do YouTube (YT_COOKIES_FILE no .env), só leitura.
+      - ${STORAGE_PATH}/youtube:/data/youtube:ro
     networks:
       - bergastream-internal
       - bergastream-egress
@@ -108,6 +110,18 @@ services:
       migrate:
         condition: service_completed_successfully
     command: python worker.py
+
+  # Gera PO Tokens para o yt-dlp (o YouTube bloqueia menos o servidor no
+  # plano B do download). Sem autenticação: fica só na rede interna (nenhuma
+  # porta publicada); a rede de egress é para falar com o Google.
+  pot-provider:
+    image: brainicism/bgutil-ytdlp-pot-provider:2.0.2
+    container_name: bergastream-pot
+    restart: unless-stopped
+    init: true
+    networks:
+      - bergastream-internal
+      - bergastream-egress
 
   api:
     build: ./backend

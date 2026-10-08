@@ -25,6 +25,14 @@ class Settings(BaseSettings):
     music_dir: str = "/data/music"
     cache_ttl_hours: int = 48
 
+    # ── YouTube (plano B do download) ─────────────────────────
+    # Cookies (formato Netscape) de uma conta do YouTube, para quando o
+    # YouTube pedir "não sou um robô" ao servidor. Opcional.
+    yt_cookies_file: str = ""
+    # Gerador de PO Tokens (serviço pot-provider do compose): o YouTube
+    # confia mais nos pedidos e bloqueia menos o servidor. Vazio = sem ele.
+    pot_provider_url: str = "http://bergastream-pot:4416"
+
     # ── Autenticação ──────────────────────────────────────────
     # Segredo dos JWT. Vazio = gera um aleatório ao subir (as sessões caem a
     # cada reinício); em produção defina JWT_SECRET no .env.
