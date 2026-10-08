@@ -623,12 +623,14 @@ class Pipeline:
         report["stream_referencia"] = reference_stream['index']
         subtitle_refine.save_report(filepath, report)
         before = report.get("offset_antes", {})
+        reading = report.get("leitura", {})
         logger.info(
             f"MÉTODO=refino_conteudo arquivo={name} veredito={report['veredito']} "
             f"qualidade={report.get('qualidade', '-')} casadas={report.get('casadas_pct', 0)}% "
             f"fora_do_tempo={before.get('fora_do_tempo', 0)} p90={before.get('p90_abs', 0)}s "
             f"alteradas={report.get('alteradas', 0)} propostas={report.get('propostas', 0)} "
-            f"({report.get('segundos', 0)}s)"
+            f"rapidas={reading.get('rapidas_antes', 0)}->{reading.get('rapidas_depois', 0)} "
+            f"estendidas={reading.get('estendidas', 0)} ({report.get('segundos', 0)}s)"
         )
         return report
 

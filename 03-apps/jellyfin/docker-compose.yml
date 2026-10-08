@@ -301,6 +301,7 @@ services:
       - REFINE_WINDOW_SECONDS=${REFINE_WINDOW_SECONDS:-12}
       - REFINE_TOLERANCE_SECONDS=${REFINE_TOLERANCE_SECONDS:-0.3}
       - REFINE_MIN_MATCH=${REFINE_MIN_MATCH:-0.6}
+      - REFINE_MAX_CPS=${REFINE_MAX_CPS:-17}
       - SCAN_INTERVAL=${SCAN_INTERVAL:-3600}
       # Cooldown progressivo de legendas: revisita a cada RETRY_INTERVAL_HOURS;
       # após MAX_FAST_RETRIES falhas, recua para COOLDOWN_HOURS (3 dias)

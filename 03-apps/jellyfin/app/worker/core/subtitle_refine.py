@@ -50,6 +50,8 @@ REFINE_WINDOW = float(os.environ.get("REFINE_WINDOW_SECONDS", "12"))
 REFINE_TOLERANCE = float(os.environ.get("REFINE_TOLERANCE_SECONDS", "0.3"))
 # Fração mínima das falas PT casadas com confiança para aplicar a correção.
 REFINE_MIN_MATCH = float(os.environ.get("REFINE_MIN_MATCH", "0.6"))
+# Velocidade máxima de leitura (caracteres/s). 17 é a referência para PT-BR adulto.
+REFINE_MAX_CPS = float(os.environ.get("REFINE_MAX_CPS", "17"))
 REPORT_FILE = "/app/stats/subtitle_refine.json"
 
 # Calibrados com bge-m3 em pares EN↔PT: traduções ficam em 0,75–0,98; frases sem
@@ -63,6 +65,12 @@ MERGE_PENALTY = 0.12         # custo extra por fala adicional num grupo (evita f
 TIME_WEIGHT = 0.1            # leve preferência pela candidata mais próxima no tempo
 NEIGHBOR_SPAN = 60.0         # vizinhança (s) para o offset das falas não casadas
 OFF_THRESHOLD = 0.5          # fala com |delta| acima disto conta como "fora do tempo"
+# Tempo de leitura: o início vem da referência (é o que se percebe na sincronia); o fim
+# pode se estender para dar tempo de ler o português, que costuma ser mais longo.
+MIN_GAP = 0.083              # s: intervalo mínimo até a próxima fala (~2 quadros)
+MIN_DURATION = 5 / 6         # s: duração mínima de uma fala
+MAX_DURATION = 7.0           # s: duração máxima ao estender
+MAX_LEAD_IN = 0.2            # s: quanto o início pode ser adiantado se o fim não tiver espaço
 MOVES = ((1, 1), (1, 2), (2, 1), (2, 2))
 
 _TAGS = re.compile(r"<[^>]+>|\{[^}]*\}")
@@ -272,6 +280,42 @@ def _offset_stats(deltas: list[float]) -> dict:
     }
 
 
+def visible_chars(text: str) -> int:
+    """Caracteres que o espectador lê (sem tags; quebra de linha conta como espaço)."""
+    return len(re.sub(r"\s+", " ", _TAGS.sub("", text)).strip())
+
+
+def reading_cps(cue: Cue) -> float:
+    return visible_chars(cue.text) / max(0.001, cue.end - cue.start)
+
+
+def fit_reading_time(cues: list[Cue], original: list[Cue], moved_start: list[bool]) -> int:
+    """
+    Dá tempo de leitura sem invadir a próxima fala. O fim passa a ser o maior entre o
+    fim atual, a duração que a fala tinha no arquivo de entrada (escolha do tradutor) e
+    o mínimo para ler a REFINE_MAX_CPS. Se ainda faltar espaço e o início acabou de ser
+    movido para o da referência, ele pode ser adiantado em até MAX_LEAD_IN. Falas cujo
+    início não mudou nunca recuam (senão recuariam a cada nova passada).
+
+    Retorna quantas falas foram estendidas.
+    """
+    extended = 0
+    for k, cue in enumerate(cues):
+        needed = max(MIN_DURATION, visible_chars(cue.text) / REFINE_MAX_CPS)
+        duration = min(MAX_DURATION, max(needed, original[k].end - original[k].start))
+        limit = cues[k + 1].start - MIN_GAP if k + 1 < len(cues) else cue.start + duration
+        new_end = max(cue.end, min(cue.start + duration, limit))
+        new_start = cue.start
+        missing = needed - (new_end - new_start)
+        if missing > 0 and moved_start[k]:
+            floor = cues[k - 1].end + MIN_GAP if k else 0.0
+            new_start = min(cue.start, max(cue.start - min(MAX_LEAD_IN, missing), floor, 0.0))
+        if new_end > cue.end + 0.001 or new_start < cue.start - 0.001:
+            extended += 1
+        cue.start, cue.end = new_start, new_end
+    return extended
+
+
 def _short(text: str, limit: int = 70) -> str:
     value = re.sub(r"\s+", " ", text).strip()
     return value if len(value) <= limit else value[:limit - 1] + "…"
@@ -356,15 +400,20 @@ def refine_cues(target: list[Cue], reference: list[Cue], embedder, window: float
     new_cues = []
     for k, cue in enumerate(target):
         start, end = proposed.get(k, (cue.start, cue.end))
-        if abs(start - cue.start) < REFINE_TOLERANCE and abs(end - cue.end) < REFINE_TOLERANCE:
-            start, end = cue.start, cue.end
-        new_cues.append(Cue(start, end, cue.text))
+        if abs(start - cue.start) < REFINE_TOLERANCE:
+            start = cue.start
+        if abs(end - cue.end) < REFINE_TOLERANCE:
+            end = cue.end
+        new_cues.append(Cue(start, max(end, start + 0.001), cue.text))
 
-    # Ordem e sobreposição.
+    # Ordem, tempo de leitura (só nas falas retemporizadas) e sobreposição.
+    for k in range(1, len(new_cues)):
+        if new_cues[k].start < new_cues[k - 1].start:
+            new_cues[k].start = new_cues[k - 1].start + 0.001
+    moved_start = [abs(old.start - new.start) >= 0.001 for old, new in zip(target, new_cues)]
+    extended = fit_reading_time(new_cues, target, moved_start)
     for k in range(1, len(new_cues)):
         previous, current = new_cues[k - 1], new_cues[k]
-        if current.start < previous.start:
-            current.start = previous.start + 0.001
         if previous.end > current.start and current.start - previous.start >= 0.5:
             previous.end = current.start - 0.001
     for cue in new_cues:
@@ -404,6 +453,12 @@ def refine_cues(target: list[Cue], reference: list[Cue], embedder, window: float
         "offset_depois": _offset_stats(deltas_after),
         "propostas": changed,  # antes dos portões; "alteradas" = o que foi gravado
         "deslocamento_max": round(max_shift, 3),
+        "leitura": {
+            "limite_cps": REFINE_MAX_CPS,
+            "rapidas_antes": sum(1 for c in target if reading_cps(c) > REFINE_MAX_CPS),
+            "rapidas_depois": sum(1 for c in new_cues if reading_cps(c) > REFINE_MAX_CPS),
+            "estendidas": extended,
+        },
         "piores": [
             {
                 "tempo": format_timestamp(target[k].start),
@@ -542,6 +597,10 @@ def format_report(report: dict) -> str:
         f"máx {after.get('max_abs', 0)}s  fora do tempo={after.get('fora_do_tempo', 0)}",
         f"Alteradas: {report.get('alteradas', 0)} (propostas: {report.get('propostas', 0)})  deslocamento máx: {report.get('deslocamento_max', 0)}s  "
         f"({report.get('segundos', 0)}s)",
+        f"Leitura (> {report.get('leitura', {}).get('limite_cps', REFINE_MAX_CPS):g} car/s): "
+        f"rápidas antes={report.get('leitura', {}).get('rapidas_antes', 0)} "
+        f"depois={report.get('leitura', {}).get('rapidas_depois', 0)} "
+        f"estendidas={report.get('leitura', {}).get('estendidas', 0)}",
     ]
     for item in report.get("piores", []):
         lines.append(f"  {item['tempo']}  {item['delta']:+.2f}s  PT: {item['pt']}  |  REF: {item['ref']}")
