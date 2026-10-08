@@ -7,6 +7,7 @@ import '../../core/theme/berga_sizes.dart';
 import '../../core/theme/berga_text.dart';
 import '../../core/widgets/widgets.dart';
 import '../../app/catalog_navigation.dart';
+import '../devices/devices_sheet.dart';
 import '../session/session_sheet.dart';
 import 'play_queue.dart';
 import 'lyrics.dart';
@@ -107,6 +108,7 @@ class _FullPlayerState extends ConsumerState<FullPlayer> {
                     style: BergaText.secondary.copyWith(color: c.mu),
                   ),
                 ),
+                const DevicesButton(),
                 const SessionButton(),
                 IconButton(
                   onPressed: () {
@@ -147,6 +149,11 @@ class _FullPlayerState extends ConsumerState<FullPlayer> {
               ),
             ),
             ScreenTitle(track.title, bottom: 2),
+            if (state.playingOn case final device?)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: PlayingOnLabel(name: device),
+              ),
             Text(
               state.isPreparing ? 'Baixando…' : artistAndAlbum(track),
               style: BergaText.secondary.copyWith(

@@ -8,6 +8,8 @@ import 'package:bergastream/features/auth/session.dart';
 import 'package:bergastream/features/player/audio_engine.dart';
 import 'package:bergastream/features/player/player_controller.dart';
 import 'package:bergastream/features/session/group_session.dart';
+import 'package:bergastream/features/devices/device_controller.dart';
+import 'package:bergastream/features/devices/device_identity.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -16,10 +18,11 @@ import '../../fake_player.dart';
 
 const marina = Person(id: 'u-marina', username: 'marina', name: 'Marina');
 
-Map<String, dynamic> entry(String uid, String title) => {
+Map<String, dynamic> entry(String uid, String title, {bool manual = false}) => {
   'uid': uid,
   'track': song(title).toJson(),
   'added_by': 'demo',
+  'manual': manual,
 };
 
 /// Reprodução no formato do servidor.
@@ -30,8 +33,11 @@ Map<String, dynamic> playback({
   int positionMs = 0,
   int anchorAt = start,
   int version = 1,
+  Set<String> manual = const {},
 }) => {
-  'queue': [for (final t in titles) entry('u$t', t)],
+  'queue': [
+    for (final t in titles) entry('u$t', t, manual: manual.contains(t)),
+  ],
   'index': index,
   'playing': playing,
   'position_ms': positionMs,
@@ -130,6 +136,11 @@ void main() {
           ),
         ),
         groupClockProvider.overrideWithValue(() => clock),
+        deviceIdentityProvider.overrideWith((ref) async => testDevice),
+        deviceSocketFactoryProvider.overrideWithValue(
+          ({required server}) => FakeSessionSocket(),
+        ),
+        deviceTimingsProvider.overrideWithValue(noDeviceTimers),
       ],
     );
     addTearDown(container.dispose);
@@ -330,14 +341,41 @@ void main() {
 
   test('criar: a sessão começa com o que está tocando aqui', () async {
     await player().playList([song('A'), song('B')], 0, context: 'Busca');
+    await player().addToQueue(song('M'));
     engine.currentPosition = const Duration(seconds: 12);
     await group().create(name: '', mode: PauseMode.all);
     await settle();
     expect(repo.calls, contains('create:all'));
-    expect(repo.actions.map((a) => a['action']), ['play_list', 'seek']);
-    expect((repo.actions.first['tracks'] as List).length, 2);
+    expect(repo.actions.map((a) => a['action']), ['play_list', 'seek', 'add']);
+    expect(
+      [for (final t in repo.actions.first['tracks'] as List) t['title']],
+      ['A', 'B'],
+    );
     expect(repo.actions[1]['position_ms'], 12000);
+    // "Sua fila" daqui vira a fila manual da sessão.
+    expect((repo.actions[2]['track'] as Map)['title'], 'M');
     expect(groupState().active, isTrue);
+  });
+
+  test('fila como no modo normal: manuais logo depois da atual, depois a '
+      'lista', () async {
+    await joinWith(
+      sessionJson(
+        pb: playback(titles: ['A', 'M1', 'M2', 'B', 'C'], manual: {'M1', 'M2'}),
+      ),
+    );
+    expect(playerState().manual.map((i) => i.track.title), ['M1', 'M2']);
+    expect(playerState().upNext.map((i) => i.track.title), ['B', 'C']);
+
+    // Reordenar cada grupo manda a posição final na fila inteira.
+    player().reorderQueue(1, 0);
+    player().reorderUpNext(1, 0);
+    player().clearQueue();
+    expect(actions(), [
+      {'action': 'move', 'uid': 'uM2', 'to': 1},
+      {'action': 'move', 'uid': 'uC', 'to': 3},
+      {'action': 'clear_manual'},
+    ]);
   });
 
   test('ao abrir o app numa sessão: reconecta sem tocar sozinho', () async {

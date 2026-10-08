@@ -40,14 +40,33 @@ ok((pb.current().track.title, pb.playing, pb.position_ms, pb.anchor_at, pb.versi
    "começa em B, tocando, âncora no agora")
 ok(pb.position_at(4000), 3000, "posição corre com o relógio")
 
+print("=== fila manual, como no modo normal ===")
+apply(pb, {"action": "add", "track": t("D")}, 2000, "marina")
+ok((titles(pb), pb.queue[2].added_by, pb.queue[2].manual), (["A", "B", "D", "C"], "marina", True),
+   "adicionar entra logo depois da atual")
+apply(pb, {"action": "add", "track": t("E")}, 2000, "lucas")
+ok(titles(pb), ["A", "B", "D", "E", "C"], "fila manual em ordem de chegada, antes do resto da lista")
+apply(pb, {"action": "add_next", "track": t("X")}, 2000, "marina")
+ok(titles(pb), ["A", "B", "X", "D", "E", "C"], "tocar em seguida: topo da fila manual")
+apply(pb, {"action": "move", "uid": pb.queue[4].uid, "to": 2}, 2000, "lucas")
+ok(titles(pb), ["A", "B", "E", "X", "D", "C"], "reordenar dentro da fila manual")
+apply(pb, {"action": "move", "uid": pb.queue[5].uid, "to": 2}, 2000, "lucas")
+ok(titles(pb), ["A", "B", "E", "X", "D", "C"], "resto da lista não passa à frente da fila manual")
+apply(pb, {"action": "clear_manual"}, 2000, "lucas")
+ok(titles(pb), ["A", "B", "C"], "limpar a fila manual")
+
+print("=== tocar outra lista preserva a fila manual ===")
+other = Playback()
+apply(other, {"action": "play_list", "tracks": [t("A"), t("B")], "index": 0}, 1000, "lucas")
+apply(other, {"action": "add", "track": t("M")}, 1000, "marina")
+apply(other, {"action": "play_list", "tracks": [t("X"), t("Y"), t("Z")], "index": 1}, 2000, "lucas")
+ok((titles(other), other.current().track.title, [e.manual for e in other.queue]),
+   (["X", "Y", "M", "Z"], "Y", [False, False, True, False]), "M toca logo depois de Y")
+
 print("=== fila compartilhada ===")
 apply(pb, {"action": "add", "track": t("D")}, 2000, "marina")
-ok((titles(pb), pb.queue[-1].added_by), (["A", "B", "C", "D"], "marina"), "adicionar vai para o fim")
-apply(pb, {"action": "add_next", "track": t("X")}, 2000, "marina")
-ok(titles(pb), ["A", "B", "X", "C", "D"], "tocar em seguida")
-uid_d = pb.queue[-1].uid
-apply(pb, {"action": "move", "uid": uid_d, "to": 2}, 2000, "lucas")
-ok(titles(pb), ["A", "B", "D", "X", "C"], "mover entre as próximas")
+apply(pb, {"action": "add", "track": t("X")}, 2000, "marina")
+ok(titles(pb), ["A", "B", "D", "X", "C"], "duas na fila manual")
 try:
     apply(pb, {"action": "move", "uid": pb.queue[0].uid, "to": 3}, 2000, "lucas")
     ok(True, False, "não move as já tocadas")

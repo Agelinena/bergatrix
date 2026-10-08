@@ -110,12 +110,12 @@ def main():
 
                 wm.send_json({"type": "action", "action": "add", "track": t("D")})
                 ok([e["track"]["title"] for e in recv(wl, "playback")["playback"]["queue"]],
-                   ["A", "B", "C", "D"], "fila da marina chega para o lucas")
+                   ["A", "D", "B", "C"], "fila da marina chega para o lucas (logo depois da atual)")
                 recv(wm, "playback")
                 wm.send_json({"type": "action", "action": "next"})
                 pb = recv(wl, "playback")["playback"]
                 recv(wm, "playback")
-                ok(pb["queue"][pb["index"]]["track"]["title"], "B", "próxima vale para todos")
+                ok(pb["queue"][pb["index"]]["track"]["title"], "D", "próxima vale para todos (a da fila manual)")
 
                 wm.send_json({"type": "action", "action": "pause"})
                 ok(recv(wl, "playback")["playback"]["playing"], False, "pausa para todos (modo 'all')")

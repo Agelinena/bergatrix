@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/network/api_error.dart';
 import '../../data/repositories/session_repository.dart';
 import '../auth/session.dart';
+import '../devices/device_controller.dart';
 import '../player/player_controller.dart';
 
 /// Sessão compartilhada ("ouvir junto") do lado do app.
@@ -146,11 +147,14 @@ class GroupSessionController extends Notifier<GroupState>
   @override
   Duration get position => state.playback.positionAt(serverNow);
 
+  /// Só o aparelho ativo da pessoa sai som (os outros seguem a sessão
+  /// calados, como controle).
   @override
   bool get shouldPlay =>
       state.playback.playing &&
       state.playback.current != null &&
-      !state.localPaused;
+      !state.localPaused &&
+      ref.read(devicesProvider).canPlayHere;
 
   @override
   void act(Map<String, Object?> action) {
@@ -235,6 +239,13 @@ class GroupSessionController extends Notifier<GroupState>
             'position_ms': seed.position.inMilliseconds,
           });
         }
+        // "Sua fila" daqui vira a fila manual da sessão (mesma ordem).
+        for (final track in seed.manual) {
+          playback = await _repository.act(info.id, {
+            'action': 'add',
+            'track': track.toJson(),
+          });
+        }
         if (!seed.playing && mode == PauseMode.all) {
           playback = await _repository.act(info.id, {'action': 'pause'});
         }
@@ -313,6 +324,10 @@ class GroupSessionController extends Notifier<GroupState>
           if (i.sessionId != info.id) i,
       ],
     );
+    // Fora do modo remoto: na sessão cada aparelho segue a sessão. Entrar
+    // por este aparelho faz dele o que toca.
+    ref.read(devicesProvider.notifier).sync();
+    if (!localPaused) ref.read(devicesProvider.notifier).claim();
     _attached = _player..attachGroup(this);
     unawaited(_apply());
     _connect();
@@ -329,6 +344,7 @@ class GroupSessionController extends Notifier<GroupState>
     state = GroupState(invites: state.invites);
     _attached = null;
     _player.detachGroup();
+    ref.read(devicesProvider.notifier).sync();
     if (message != null) _player.showMessage(message);
   }
 
@@ -484,6 +500,12 @@ class GroupSessionController extends Notifier<GroupState>
       _reconnect = null;
       if (state.info != null && _socket == null) _connect();
     });
+  }
+
+  /// Outro aparelho da pessoa passou a tocar (ou este): o player segue a
+  /// regra de novo (chamado pelos aparelhos).
+  void devicesChanged() {
+    if (state.active) unawaited(_apply());
   }
 
   /// Faz o player seguir a sessão.

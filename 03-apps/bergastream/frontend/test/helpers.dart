@@ -21,6 +21,8 @@ import 'package:bergastream/features/auth/session.dart';
 import 'package:bergastream/data/repositories/lyrics_repository.dart';
 import 'package:bergastream/data/repositories/session_repository.dart';
 import 'package:bergastream/features/session/group_session.dart';
+import 'package:bergastream/features/devices/device_controller.dart';
+import 'package:bergastream/features/devices/device_identity.dart';
 import 'package:bergastream/data/repositories/server_status_repository.dart';
 import 'package:bergastream/features/update/update_service.dart';
 import 'package:flutter/material.dart';
@@ -70,6 +72,11 @@ Widget wrap(
         ({required server, required sessionId}) => FakeSessionSocket(),
       ),
       groupTimingsProvider.overrideWithValue(noGroupTimers),
+      deviceIdentityProvider.overrideWith((ref) async => testDevice),
+      deviceSocketFactoryProvider.overrideWithValue(
+        ({required server}) => FakeSessionSocket(),
+      ),
+      deviceTimingsProvider.overrideWithValue(noDeviceTimers),
       updateTargetProvider.overrideWithValue(updateTarget),
       updateRepositoryProvider.overrideWithValue(
         updates ?? FakeUpdateRepository(),

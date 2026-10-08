@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/theme/berga_colors.dart';
 import '../../core/theme/berga_text.dart';
 import '../../core/widgets/widgets.dart';
+import '../devices/devices_sheet.dart';
 import '../session/session_sheet.dart';
 import 'play_queue.dart';
 import 'player_controller.dart';
@@ -105,14 +106,19 @@ class PlayerBar extends ConsumerWidget {
                         overflow: TextOverflow.ellipsis,
                         style: BergaText.trackTitle.copyWith(color: c.tx),
                       ),
-                      Text(
-                        state.isPreparing ? 'Baixando…' : artistAndAlbum(track),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: BergaText.secondary.copyWith(
-                          color: state.isPreparing ? c.gr : c.mu,
+                      if (state.playingOn case final device?)
+                        PlayingOnLabel(name: device, compact: true)
+                      else
+                        Text(
+                          state.isPreparing
+                              ? 'Baixando…'
+                              : artistAndAlbum(track),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: BergaText.secondary.copyWith(
+                            color: state.isPreparing ? c.gr : c.mu,
+                          ),
                         ),
-                      ),
                     ],
                   ),
                 ),
@@ -164,6 +170,7 @@ class PlayerBar extends ConsumerWidget {
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  DevicesButton(iconSize: 22, idleColor: c.mu),
                   SessionButton(iconSize: 22, idleColor: c.mu),
                   control(
                     Icons.lyrics_outlined,

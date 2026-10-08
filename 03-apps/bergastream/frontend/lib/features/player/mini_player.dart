@@ -11,6 +11,7 @@ import 'full_player.dart';
 import 'player_controller.dart';
 import 'player_texts.dart';
 import 'seek_bar.dart';
+import '../devices/devices_sheet.dart';
 
 /// Mini player flutuante (Seção 6.6). Só aparece com faixa carregada; tocar
 /// nele abre o player grande. Enquanto o servidor prepara a faixa mostra
@@ -107,16 +108,19 @@ class _MiniPlayerState extends ConsumerState<MiniPlayer> {
                             overflow: TextOverflow.ellipsis,
                             style: BergaText.trackTitle.copyWith(color: c.tx),
                           ),
-                          Text(
-                            state.isPreparing
-                                ? 'Baixando…'
-                                : artistAndAlbum(track),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: BergaText.secondary.copyWith(
-                              color: state.isPreparing ? c.gr : c.mu,
+                          if (state.playingOn case final device?)
+                            PlayingOnLabel(name: device, compact: true)
+                          else
+                            Text(
+                              state.isPreparing
+                                  ? 'Baixando…'
+                                  : artistAndAlbum(track),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: BergaText.secondary.copyWith(
+                                color: state.isPreparing ? c.gr : c.mu,
+                              ),
                             ),
-                          ),
                         ],
                       ),
                     ),

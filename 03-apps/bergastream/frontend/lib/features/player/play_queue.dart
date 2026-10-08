@@ -244,10 +244,14 @@ class PlayQueue {
   }
 
   /// Fila de uma sessão compartilhada: a lista inteira, com a atual em
-  /// [index] (as anteriores viram o histórico). Sem "sua fila", aleatório
-  /// nem repetição: a ordem é a mesma para todos. Devolve os itens na ordem
-  /// de [tracks].
-  List<QueueItem> loadShared(List<SearchResult> tracks, int index) {
+  /// [index] (as anteriores viram o histórico) e as [manual] seguintes como
+  /// "sua fila". Sem aleatório nem repetição: a ordem é a mesma para todos.
+  /// Devolve os itens na ordem de [tracks].
+  List<QueueItem> loadShared(
+    List<SearchResult> tracks,
+    int index, {
+    int manual = 0,
+  }) {
     final items = [for (final t in tracks) _item(t)];
     final valid = index >= 0 && index < items.length;
     _source = items;
@@ -259,9 +263,13 @@ class PlayQueue {
       ..clear()
       ..addAll(valid ? items.sublist(0, index) : const []);
     _current = valid ? items[index] : null;
+    final split = valid
+        ? (index + 1 + manual).clamp(index + 1, items.length)
+        : 0;
+    _manual.addAll(valid ? items.sublist(index + 1, split) : const []);
     _upNext
       ..clear()
-      ..addAll(valid ? items.sublist(index + 1) : const []);
+      ..addAll(valid ? items.sublist(split) : const []);
     return items;
   }
 

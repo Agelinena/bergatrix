@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/platform/app_platform.dart';
 import '../core/theme/berga_theme.dart';
 import '../features/auth/session.dart';
+import '../features/devices/device_controller.dart';
 import '../features/downloads/download_manager.dart';
 import '../features/sync/local_playlists_offer.dart';
 import '../features/sync/server_monitor.dart';
@@ -39,6 +40,9 @@ class _BergastreamAppState extends ConsumerState<BergastreamApp> {
 
   @override
   Widget build(BuildContext context) {
+    // "Tocar em…": mantém este aparelho conectado aos outros da conta (um
+    // "read" só não refaz a conexão ao entrar ou sair da conta).
+    ref.listen(devicesProvider, (_, _) {});
     final platform = ref.watch(appPlatformProvider);
     return MaterialApp.router(
       title: 'Bergastream',

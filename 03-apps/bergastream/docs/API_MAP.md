@@ -177,9 +177,11 @@ quem criou muda as configurações, remove pessoas e encerra.
 | `DELETE /api/sessions/{id}/members/{user_id}` | dono | remove (204) |
 | `POST /api/sessions/{id}/actions` | participante | mesma ação do WebSocket, por HTTP (reserva) → `Playback` |
 
-`Playback`: `{"queue": [{"uid", "track": SearchResult, "added_by"}], "index", "playing",
+`Playback`: `{"queue": [{"uid", "track": SearchResult, "added_by", "manual"}], "index", "playing",
 "position_ms", "anchor_at", "version"}` — a posição agora é `position_ms + (agora − anchor_at)`
-(relógio do servidor, ms) quando `playing`.
+(relógio do servidor, ms) quando `playing`. A fila segue a regra do modo normal: logo depois da
+atual vêm as faixas `manual` ("Adicionar à fila", em ordem de chegada) e depois o resto da lista
+tocada; tocar outra lista preserva a fila manual.
 
 **WebSocket** `GET /api/sessions/{id}/ws` — a primeira mensagem é `{"type": "auth", "token":
 <access token>}` (fora da URL para não ir para logs). Fecha com **4401** (token inválido: o app
@@ -189,11 +191,33 @@ renova e reconecta) ou **4403** (não participa).
   (pessoas, online, modo de pausa), `pong {t0, server_now}`, `error {message}`, `ended`,
   `removed`, `left`.
 - App → servidor: `ping {t0}` (acerto de relógio) e `action` com `action` =
-  `play_list {tracks, index}`, `add`/`add_next {track}`, `remove {uid}`, `move {uid, to}`,
+  `play_list {tracks, index}`, `add {track}` (fim da fila manual), `add_next {track}` (topo dela),
+  `clear_manual`, `remove {uid}`, `move {uid, to}` (dentro do próprio grupo),
   `jump {uid}`, `next`, `previous`, `seek {position_ms}`, `pause`, `resume` (ignorados no modo
   `individual`), `ended {uid}` (só o primeiro aviso de fim da faixa avança).
 - O servidor prepara a faixa atual e a próxima uma vez para todos e avança sozinho se ninguém
   avisar o fim (duração + 20 s).
+
+---
+
+## 9d. Aparelhos ("Tocar em…")
+
+**WebSocket** `GET /api/devices/ws` — cada app aberto e logado se conecta; primeira mensagem
+`{"type": "auth", "token", "device": {"id", "name", "platform"}}` (`platform`: web, android,
+windows, linux). Só o aparelho **ativo** toca; os outros mostram o estado dele e mandam comandos.
+Estado em memória na API (some ao reiniciar; os apps reconectam).
+
+- App → servidor: `activate` (vai tocar aqui), `state {state}` (só o ativo: faixa, status,
+  posição, fila resumida), `command {command}` (para o ativo executar: `play_list`, `add`,
+  `toggle`, `next`, `previous`, `seek`, `shuffle`, `repeat`, `remove`, `clear`,
+  `reorder_manual`, `reorder_next`), `transfer {to, state?}`, `handoff_state {state}`, `ping`.
+- Servidor → app: `hello {device_id, devices, active, state, server_now}`, `devices {devices,
+  active}`, `state {state, from}`, `command {command, from}`, `handoff {to}` (pare e mande a fila
+  completa), `play_here {state}` (agora toca aqui), `pong`, `error`.
+- Fecha com **4401** (login inválido) e **4409** (o mesmo aparelho conectou de novo, ex.: outra
+  aba).
+- Na sessão "ouvir junto", só o aparelho ativo de cada pessoa sai som; os outros seguem a
+  sessão calados.
 
 ---
 

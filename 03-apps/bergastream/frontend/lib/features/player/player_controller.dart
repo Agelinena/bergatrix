@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -35,6 +36,7 @@ class PlayerState {
     this.duration,
     this.message,
     this.shared = false,
+    this.playingOn,
   });
 
   final QueueItem? current;
@@ -59,6 +61,10 @@ class PlayerState {
   /// Tocando numa sessão compartilhada ("ouvir junto"): a fila é a da
   /// sessão e aleatório/repetir ficam desligados.
   final bool shared;
+
+  /// Outro aparelho da pessoa é o que está tocando ("Tocando em …"). Os
+  /// controles daqui comandam aquele aparelho.
+  final String? playingOn;
 
   bool get isPlaying => status == PlaybackStatus.tocando;
   bool get isPreparing => status == PlaybackStatus.preparando;
@@ -109,9 +115,92 @@ final playRecorderProvider = Provider<PlayRecorder>((ref) {
 });
 
 /// Posição atual da faixa (separada do estado para não redesenhar tudo).
+/// Com outro aparelho tocando, é a posição calculada daquele aparelho.
 final playerPositionProvider = StreamProvider<Duration>(
-  (ref) => ref.watch(audioEngineProvider).positionStream,
+  (ref) => ref.watch(playerProvider.notifier).positionStream,
 );
+
+/// Outro aparelho da mesma conta que está tocando ("Tocar em…"). O player
+/// daqui mostra o estado dele e manda os comandos para ele.
+abstract interface class RemoteControl {
+  String get deviceName;
+
+  void command(Map<String, Object?> command);
+}
+
+/// O que o aparelho que toca conta aos outros (ver [PlayerController.remoteSnapshot]).
+class RemotePlayerState {
+  RemotePlayerState({
+    this.current,
+    this.status = PlaybackStatus.parado,
+    this.positionMs = 0,
+    this.durationMs,
+    this.context,
+    this.shuffle = false,
+    this.repeat = PlayerRepeat.desligado,
+    this.manual = const [],
+    this.upNext = const [],
+    required this.receivedAt,
+  });
+
+  /// [receivedAt]: relógio daqui (ms) do instante em que [positionMs] valia.
+  factory RemotePlayerState.fromJson(
+    Map<String, dynamic> json, {
+    required int receivedAt,
+  }) {
+    QueueItem? item(Object? raw) {
+      if (raw is! Map<String, dynamic>) return null;
+      return QueueItem(
+        raw['uid'] as int,
+        SearchResult.fromJson(raw['track'] as Map<String, dynamic>),
+      );
+    }
+
+    List<QueueItem> items(Object? raw) => [
+      for (final r in raw as List<dynamic>? ?? const []) ?item(r),
+    ];
+    return RemotePlayerState(
+      current: item(json['current']),
+      status: PlaybackStatus.values.firstWhere(
+        (s) => s.name == json['status'],
+        orElse: () => PlaybackStatus.parado,
+      ),
+      positionMs: json['position_ms'] as int? ?? 0,
+      durationMs: json['duration_ms'] as int?,
+      context: json['context'] as String?,
+      shuffle: json['shuffle'] as bool? ?? false,
+      repeat: PlayerRepeat.values.firstWhere(
+        (r) => r.name == json['repeat'],
+        orElse: () => PlayerRepeat.desligado,
+      ),
+      manual: items(json['manual']),
+      upNext: items(json['up_next']),
+      receivedAt: receivedAt,
+    );
+  }
+
+  final QueueItem? current;
+  final PlaybackStatus status;
+  final int positionMs;
+  final int? durationMs;
+  final String? context;
+  final bool shuffle;
+  final PlayerRepeat repeat;
+  final List<QueueItem> manual;
+  final List<QueueItem> upNext;
+  final int receivedAt;
+
+  Duration? get duration =>
+      durationMs == null ? null : Duration(milliseconds: durationMs!);
+
+  /// Posição agora (relógio daqui em ms), sem passar do fim.
+  Duration positionAt(int nowMs) {
+    var ms = positionMs;
+    if (status == PlaybackStatus.tocando) ms += max(0, nowMs - receivedAt);
+    if (durationMs != null) ms = min(ms, durationMs!);
+    return Duration(milliseconds: ms);
+  }
+}
 
 /// Sessão compartilhada ligada ao player (ver `features/session`). O player
 /// manda as ações para ela em vez de mexer na própria fila e pergunta onde
@@ -161,6 +250,134 @@ class PlayerController extends Notifier<PlayerState> {
   /// em 2000).
   static const sessionMaxTracks = 2000;
 
+  // ── Outro aparelho tocando ("Tocar em…") ──
+
+  RemoteControl? _remote;
+  RemotePlayerState? _remoteState;
+
+  /// Status do player daqui enquanto mostra o outro aparelho.
+  PlaybackStatus _localStatus = PlaybackStatus.parado;
+  Timer? _remoteTicker;
+  String? _playingOn;
+  final _positions = StreamController<Duration>.broadcast();
+
+  /// Posição para a barra e a letra (daqui ou do aparelho que toca).
+  Stream<Duration> get positionStream => _positions.stream;
+
+  bool get isRemote => _remote != null;
+
+  /// Outro aparelho passou a tocar: este para e vira controle remoto.
+  void attachRemote(RemoteControl remote) {
+    if (_remote == null) {
+      _localStatus = switch (state.status) {
+        PlaybackStatus.tocando ||
+        PlaybackStatus.preparando => PlaybackStatus.pausado,
+        final other => other,
+      };
+      _generation++;
+      unawaited(_engine.pause());
+    }
+    _remote = remote;
+    _remoteTicker ??= Timer.periodic(
+      const Duration(milliseconds: 500),
+      (_) => _emitRemotePosition(),
+    );
+    _publish();
+  }
+
+  /// Volta a mostrar o player daqui (o outro aparelho saiu ou passou a vez).
+  void detachRemote() {
+    if (_remote == null || !ref.mounted) return;
+    _remote = null;
+    _remoteState = null;
+    _remoteTicker?.cancel();
+    _remoteTicker = null;
+    _publish(status: _localStatus);
+    _positions.add(
+      _needsLoad ? (_resumeAt ?? Duration.zero) : _engine.position,
+    );
+  }
+
+  /// Estado novo do aparelho que toca.
+  void applyRemoteState(RemotePlayerState remote) {
+    if (_remote == null) return;
+    _remoteState = remote;
+    _publish();
+    _emitRemotePosition();
+  }
+
+  /// Nome do outro aparelho que está tocando (também na sessão "ouvir
+  /// junto", em que este aparelho segue a sessão sem som).
+  void setPlayingOn(String? name) {
+    if (_playingOn == name || !ref.mounted) return;
+    _playingOn = name;
+    _publish();
+  }
+
+  void _emitRemotePosition() {
+    final remote = _remoteState;
+    if (remote == null || _positions.isClosed) return;
+    _positions.add(remote.positionAt(DateTime.now().millisecondsSinceEpoch));
+  }
+
+  /// Resumo do que toca aqui, para os outros aparelhos mostrarem e
+  /// controlarem (uids e posições valem para os comandos de volta).
+  Map<String, Object?> remoteSnapshot() {
+    Map<String, Object?> item(QueueItem i) => {
+      'uid': i.uid,
+      'track': i.track.toJson(),
+    };
+    final current = _queue.current;
+    return {
+      'current': current == null ? null : item(current),
+      'status': state.status.name,
+      'position_ms':
+          (_needsLoad ? (_resumeAt ?? Duration.zero) : _engine.position)
+              .inMilliseconds,
+      'duration_ms': _duration?.inMilliseconds,
+      'context': _context,
+      'shuffle': _queue.shuffle,
+      'repeat': _queue.repeat.name,
+      'manual': [for (final i in _queue.manual.take(100)) item(i)],
+      'up_next': [for (final i in _queue.upNext.take(200)) item(i)],
+    };
+  }
+
+  /// Passa a vez para outro aparelho: para aqui e devolve a fila inteira e
+  /// o ponto da música.
+  Map<String, Object?> handoffState() {
+    final playing = state.isPlaying || state.isPreparing;
+    final snapshot = _snapshot();
+    _generation++;
+    unawaited(_engine.pause());
+    if (_queue.current != null) _publish(status: PlaybackStatus.pausado);
+    return {...snapshot, 'playing': playing};
+  }
+
+  /// Recebe a vez de outro aparelho: mesma fila, mesmo ponto.
+  Future<void> playFromHandoff(Map<String, dynamic> json) async {
+    try {
+      _restoreFrom(json);
+    } on Object catch (e) {
+      debugPrint('Transferência inválida: $e');
+      return;
+    }
+    if (_queue.current == null) {
+      _publish(status: PlaybackStatus.parado);
+      return;
+    }
+    final ms = json['position_ms'] as int? ?? 0;
+    final at = ms > 0 ? Duration(milliseconds: ms) : null;
+    if (json['playing'] == false) {
+      _resumeAt = at;
+      _needsLoad = true;
+      _publish(status: PlaybackStatus.pausado);
+      unawaited(_save());
+      return;
+    }
+    await _loadCurrent(startAt: at);
+  }
+
   // ── Sessão compartilhada ──
 
   SharedPlayback? _group;
@@ -169,6 +386,7 @@ class PlayerController extends Notifier<PlayerState> {
   final _sharedUids = <int, String>{};
   List<String> _sharedOrder = const [];
   int _sharedIndex = -1;
+  int _sharedManual = 0;
 
   /// Faixa que está (ou ficou) carregada no motor.
   String? _loadedTrackId;
@@ -200,16 +418,18 @@ class PlayerController extends Notifier<PlayerState> {
   }
 
   /// O que está tocando aqui, para começar uma sessão com isso.
-  ({List<SearchResult> tracks, Duration position, bool playing})?
+  ({
+    List<SearchResult> tracks,
+    List<SearchResult> manual,
+    Duration position,
+    bool playing,
+  })?
   sessionSeed() {
     final current = _queue.current;
     if (current == null) return null;
     return (
-      tracks: [
-        current.track,
-        for (final i in _queue.manual) i.track,
-        for (final i in _queue.upNext) i.track,
-      ],
+      tracks: [current.track, for (final i in _queue.upNext) i.track],
+      manual: [for (final i in _queue.manual) i.track],
       position: _needsLoad ? (_resumeAt ?? Duration.zero) : _engine.position,
       playing: state.isPlaying || state.isPreparing,
     );
@@ -231,12 +451,18 @@ class PlayerController extends Notifier<PlayerState> {
     _playlistId = null;
     _playlistTracks = const {};
     final order = [for (final e in playback.queue) e.uid];
-    if (playback.index != _sharedIndex || !listEquals(order, _sharedOrder)) {
+    final manual = playback.manualCount;
+    if (playback.index != _sharedIndex ||
+        manual != _sharedManual ||
+        !listEquals(order, _sharedOrder)) {
       _sharedOrder = order;
       _sharedIndex = playback.index;
-      final items = _queue.loadShared([
-        for (final e in playback.queue) e.track,
-      ], playback.index);
+      _sharedManual = manual;
+      final items = _queue.loadShared(
+        [for (final e in playback.queue) e.track],
+        playback.index,
+        manual: manual,
+      );
       _sharedUids
         ..clear()
         ..addAll({
@@ -290,6 +516,25 @@ class PlayerController extends Notifier<PlayerState> {
 
   String? _sharedUidOf(int localUid) => _sharedUids[localUid];
 
+  /// "Mover" na sessão: [list] é a fila manual ([offset] 0) ou "a seguir"
+  /// ([offset] = tamanho da fila manual). Mesma conta do servidor: posição
+  /// final na fila inteira.
+  void _reorderShared(
+    List<QueueItem> list,
+    int oldIndex,
+    int newIndex, {
+    required int offset,
+  }) {
+    if (oldIndex < 0 || oldIndex >= list.length) return;
+    final shared = _sharedUidOf(list[oldIndex].uid);
+    if (shared == null) return;
+    _group?.act({
+      'action': 'move',
+      'uid': shared,
+      'to': _sharedIndex + 1 + offset + newIndex,
+    });
+  }
+
   @override
   PlayerState build() {
     final engine = ref.watch(audioEngineProvider);
@@ -303,6 +548,8 @@ class PlayerController extends Notifier<PlayerState> {
       for (final s in _subscriptions) {
         s.cancel();
       }
+      _remoteTicker?.cancel();
+      _positions.close();
     });
     return const PlayerState();
   }
@@ -316,6 +563,17 @@ class PlayerController extends Notifier<PlayerState> {
     String? playlistId,
     bool? shuffle,
   }) async {
+    if (_remote case final remote?) {
+      remote.command({
+        'action': 'play_list',
+        'tracks': [for (final t in tracks.take(sessionMaxTracks)) t.toJson()],
+        'index': index.clamp(0, sessionMaxTracks - 1),
+        'context': context,
+        'playlist_id': playlistId,
+        'shuffle': shuffle,
+      });
+      return;
+    }
     if (_group case final group?) {
       // Na sessão: a lista vai para todos (aleatório = embaralhada aqui).
       var list = tracks;
@@ -389,16 +647,8 @@ class PlayerController extends Notifier<PlayerState> {
       final raw = await ref.read(keyValueStoreProvider).read(_storeKey);
       if (raw == null || _queue.current != null || !ref.mounted) return;
       final json = jsonDecode(raw) as Map<String, dynamic>;
-      _queue.restore(json['queue'] as Map<String, dynamic>);
+      _restoreFrom(json);
       if (_queue.current == null) return;
-      _context = json['context'] as String?;
-      _playlistId = json['playlist_id'] as String?;
-      _playlistTracks = _playlistId == null
-          ? const {}
-          : {
-              for (final t in json['playlist_tracks'] as List? ?? const [])
-                '$t',
-            };
       final ms = json['position_ms'] as int? ?? 0;
       _resumeAt = ms > 0 ? Duration(milliseconds: ms) : null;
       _needsLoad = true;
@@ -406,6 +656,28 @@ class PlayerController extends Notifier<PlayerState> {
     } on Object catch (e) {
       debugPrint('Não restaurou o player: $e');
     }
+  }
+
+  /// Fila, origem e posição (o que se guarda e o que vai para outro
+  /// aparelho).
+  Map<String, Object?> _snapshot({Duration? position}) {
+    final at = _needsLoad ? _resumeAt : (position ?? _engine.position);
+    return {
+      'queue': _queue.toJson(),
+      'context': _context,
+      'playlist_id': _playlistId,
+      'playlist_tracks': _playlistTracks.toList(),
+      'position_ms': at?.inMilliseconds ?? 0,
+    };
+  }
+
+  void _restoreFrom(Map<String, dynamic> json) {
+    _queue.restore(json['queue'] as Map<String, dynamic>);
+    _context = json['context'] as String?;
+    _playlistId = json['playlist_id'] as String?;
+    _playlistTracks = _playlistId == null
+        ? const {}
+        : {for (final t in json['playlist_tracks'] as List? ?? const []) '$t'};
   }
 
   /// Guarda o que está tocando (fila, posição). Sem timers: uma gravação
@@ -423,16 +695,9 @@ class PlayerController extends Notifier<PlayerState> {
         if (_queue.current == null) {
           await store.delete(_storeKey);
         } else {
-          final at = _needsLoad ? _resumeAt : (position ?? _engine.position);
           await store.write(
             _storeKey,
-            jsonEncode({
-              'queue': _queue.toJson(),
-              'context': _context,
-              'playlist_id': _playlistId,
-              'playlist_tracks': _playlistTracks.toList(),
-              'position_ms': at?.inMilliseconds ?? 0,
-            }),
+            jsonEncode(_snapshot(position: position)),
           );
         }
       } while (_saveAgain && ref.mounted);
@@ -445,6 +710,10 @@ class PlayerController extends Notifier<PlayerState> {
 
   /// "Adicionar à fila". Se nada estiver tocando, começa por ela.
   Future<void> addToQueue(SearchResult track) async {
+    if (_remote case final remote?) {
+      remote.command({'action': 'add', 'track': track.toJson()});
+      return;
+    }
     if (_group case final group?) {
       group.act({'action': 'add', 'track': track.toJson()});
       return;
@@ -460,6 +729,10 @@ class PlayerController extends Notifier<PlayerState> {
   }
 
   Future<void> togglePlay() async {
+    if (_remote case final remote?) {
+      remote.command({'action': 'toggle'});
+      return;
+    }
     if (_group case final group?) return group.togglePlay();
     switch (state.status) {
       case PlaybackStatus.tocando:
@@ -482,6 +755,10 @@ class PlayerController extends Notifier<PlayerState> {
   }
 
   Future<void> next() async {
+    if (_remote case final remote?) {
+      remote.command({'action': 'next'});
+      return;
+    }
     if (_group case final group?) return group.act({'action': 'next'});
     await _advance(ended: false);
   }
@@ -489,6 +766,10 @@ class PlayerController extends Notifier<PlayerState> {
   /// "Anterior". Com [track] (arrastar o mini player), sempre volta para a
   /// música anterior, sem só recomeçar a atual.
   Future<void> previous({bool track = false}) async {
+    if (_remote case final remote?) {
+      remote.command({'action': 'previous', 'track': track});
+      return;
+    }
     if (_group case final group?) {
       if (track && _sharedIndex > 0) {
         group.act({'action': 'jump', 'uid': _sharedOrder[_sharedIndex - 1]});
@@ -506,6 +787,30 @@ class PlayerController extends Notifier<PlayerState> {
   }
 
   Future<void> seek(Duration position) async {
+    if (_remote case final remote?) {
+      remote.command({
+        'action': 'seek',
+        'position_ms': position.inMilliseconds,
+      });
+      final r = _remoteState;
+      if (r != null) {
+        // Mostra já no ponto novo; o aparelho que toca confirma em seguida.
+        _remoteState = RemotePlayerState(
+          current: r.current,
+          status: r.status,
+          positionMs: position.inMilliseconds,
+          durationMs: r.durationMs,
+          context: r.context,
+          shuffle: r.shuffle,
+          repeat: r.repeat,
+          manual: r.manual,
+          upNext: r.upNext,
+          receivedAt: DateTime.now().millisecondsSinceEpoch,
+        );
+        _emitRemotePosition();
+      }
+      return;
+    }
     if (_group case final group?) {
       group.act({'action': 'seek', 'position_ms': position.inMilliseconds});
       // Já pula aqui; a confirmação da sessão chega em seguida.
@@ -529,9 +834,14 @@ class PlayerController extends Notifier<PlayerState> {
 
   /// Botão "Aleatório" do player. Tocando uma playlist, a escolha fica
   /// guardada nela.
-  void toggleShuffle() => setShuffle(!_queue.shuffle);
+  void toggleShuffle() =>
+      setShuffle(!(_remote != null ? state.shuffle : _queue.shuffle));
 
   void setShuffle(bool value) {
+    if (_remote case final remote?) {
+      remote.command({'action': 'shuffle', 'value': value});
+      return;
+    }
     if (_group != null) {
       if (value) showMessage(sharedQueue);
       return;
@@ -548,6 +858,10 @@ class PlayerController extends Notifier<PlayerState> {
   }
 
   void cycleRepeat() {
+    if (_remote case final remote?) {
+      remote.command({'action': 'repeat'});
+      return;
+    }
     if (_group != null) return showMessage(sharedQueue);
     _queue.repeat = _queue.repeat.next;
     _publish(
@@ -560,6 +874,10 @@ class PlayerController extends Notifier<PlayerState> {
   }
 
   void removeFromQueue(int uid) {
+    if (_remote case final remote?) {
+      remote.command({'action': 'remove', 'uid': uid});
+      return;
+    }
     if (_group case final group?) {
       final shared = _sharedUidOf(uid);
       if (shared != null) group.act({'action': 'remove', 'uid': shared});
@@ -572,29 +890,53 @@ class PlayerController extends Notifier<PlayerState> {
   }
 
   void clearQueue() {
-    if (_group != null) return;
+    if (_remote case final remote?) {
+      remote.command({'action': 'clear'});
+      return;
+    }
+    if (_group case final group?) {
+      group.act({'action': 'clear_manual'});
+      return;
+    }
     _queue.clearManual();
     _publish();
   }
 
   void reorderQueue(int oldIndex, int newIndex) {
-    if (_group != null) return;
+    if (_remote case final remote?) {
+      remote.command({
+        'action': 'reorder_manual',
+        'from': oldIndex,
+        'to': newIndex,
+      });
+      return;
+    }
+    if (_group != null) {
+      _reorderShared(_queue.manual, oldIndex, newIndex, offset: 0);
+      _queue.reorderManual(oldIndex, newIndex);
+      _publish();
+      return;
+    }
     _queue.reorderManual(oldIndex, newIndex);
     _publish();
   }
 
   void reorderUpNext(int oldIndex, int newIndex) {
-    if (_group case final group?) {
-      final upNext = _queue.upNext;
-      if (oldIndex < 0 || oldIndex >= upNext.length) return;
-      final shared = _sharedUidOf(upNext[oldIndex].uid);
-      if (shared == null) return;
-      // Mesma conta do servidor: posição final na fila inteira.
-      group.act({
-        'action': 'move',
-        'uid': shared,
-        'to': _sharedIndex + 1 + newIndex,
+    if (_remote case final remote?) {
+      remote.command({
+        'action': 'reorder_next',
+        'from': oldIndex,
+        'to': newIndex,
       });
+      return;
+    }
+    if (_group != null) {
+      _reorderShared(
+        _queue.upNext,
+        oldIndex,
+        newIndex,
+        offset: _queue.manual.length,
+      );
       // Mostra já na nova ordem; a sessão confirma em seguida.
       _queue.reorderUpNext(oldIndex, newIndex);
       _publish();
@@ -624,6 +966,7 @@ class PlayerController extends Notifier<PlayerState> {
   }
 
   void _onCompleted() {
+    if (_remote != null) return;
     if (_group case final group?) {
       // Na sessão quem avança é o servidor (o primeiro aviso vale).
       final uid = state.current == null
@@ -753,6 +1096,8 @@ class PlayerController extends Notifier<PlayerState> {
 
   /// Conta a reprodução no histórico ao passar de 30 s ou da metade.
   void _onPosition(Duration position) {
+    if (_remote != null) return;
+    _positions.add(position);
     // Posição guardada a cada 10 s (para continuar ao reabrir o app).
     if (state.isPlaying &&
         DateTime.now().difference(_lastPositionSave) >
@@ -828,6 +1173,24 @@ class PlayerController extends Notifier<PlayerState> {
   }
 
   void _publish({PlaybackStatus? status, PlayerMessage? message}) {
+    if (_remote case final remote?) {
+      // Mostra o aparelho que toca; o status daqui fica guardado.
+      if (status != null) _localStatus = status;
+      final r = _remoteState;
+      state = PlayerState(
+        current: r?.current,
+        status: r?.status ?? PlaybackStatus.parado,
+        shuffle: r?.shuffle ?? false,
+        repeat: r?.repeat ?? PlayerRepeat.desligado,
+        manual: r?.manual ?? const [],
+        upNext: r?.upNext ?? const [],
+        context: r?.context,
+        duration: r?.duration,
+        message: message,
+        playingOn: remote.deviceName,
+      );
+      return;
+    }
     final changed =
         state.current?.uid != _queue.current?.uid ||
         state.upNext.length != _queue.upNext.length ||
@@ -846,6 +1209,7 @@ class PlayerController extends Notifier<PlayerState> {
       context: _context,
       duration: _duration,
       message: message,
+      playingOn: _playingOn,
     );
     _notification?.showState(
       // Preparando a próxima conta como "tocando" para o Android: o serviço

@@ -1,7 +1,9 @@
 """Estado compartilhado da sessão e as ações sobre ele (sem banco nem rede).
 
 A reprodução é uma fila única com a faixa atual em `index` (as anteriores
-ficam para "voltar"). A posição é uma âncora: `position_ms` valia no
+ficam para "voltar"). Logo depois da atual vem a fila manual ("Adicionar à
+fila", `manual`), em ordem de chegada, e depois o resto da lista que está
+tocando — como no modo normal do app. A posição é uma âncora: `position_ms` valia no
 instante `anchor_at` (relógio do servidor, ms); tocando, a posição agora é
 `position_ms + (agora - anchor_at)`. Cada aparelho calcula o mesmo valor e
 toca o áudio por conta própria — só "o quê" e "de onde" são compartilhados.
@@ -32,6 +34,7 @@ class QueueEntry(BaseModel):
     uid: str
     track: SessionTrack
     added_by: str | None = None  # username
+    manual: bool = False          # "Adicionar à fila" (e não da lista tocada)
 
 
 class Playback(BaseModel):
@@ -63,8 +66,17 @@ def _uid() -> str:
     return secrets.token_hex(6)
 
 
-def _entry(track: dict, by: str | None) -> QueueEntry:
-    return QueueEntry(uid=_uid(), track=SessionTrack.model_validate(track), added_by=by)
+def _entry(track: dict, by: str | None, manual: bool = False) -> QueueEntry:
+    return QueueEntry(uid=_uid(), track=SessionTrack.model_validate(track), added_by=by,
+                      manual=manual)
+
+
+def manual_end(pb: Playback) -> int:
+    """Posição logo depois da fila manual que vem após a atual."""
+    i = pb.index + 1
+    while i < len(pb.queue) and pb.queue[i].manual:
+        i += 1
+    return i
 
 
 def _index_of(pb: Playback, uid: Any) -> int:
@@ -95,20 +107,28 @@ def apply(pb: Playback, action: dict, now: int, by: str | None,
         index = int(action.get("index") or 0)
         if not 0 <= index < len(tracks):
             raise ActionError("Posição inválida")
-        pb.queue = [_entry(t, by) for t in tracks[:MAX_QUEUE]]
+        # A fila manual continua: toca logo depois da nova atual.
+        pending = pb.queue[pb.index + 1:manual_end(pb)] if pb.current() else []
+        entries = [_entry(t, by) for t in tracks[:MAX_QUEUE - len(pending)]]
+        index = min(index, len(entries) - 1)
+        pb.queue = entries[:index + 1] + pending + entries[index + 1:]
         _start(pb, index, now)
 
     elif kind in ("add", "add_next"):
         if len(pb.queue) >= MAX_QUEUE:
             raise ActionError("Fila cheia")
-        entry = _entry(action.get("track") or {}, by)
-        if kind == "add_next" and pb.current() is not None:
-            pb.queue.insert(pb.index + 1, entry)
-        else:
-            pb.queue.append(entry)
+        entry = _entry(action.get("track") or {}, by, manual=True)
         if pb.current() is None:
             # Nada tocando: a primeira adicionada começa.
+            pb.queue.append(entry)
             _start(pb, len(pb.queue) - 1, now)
+        else:
+            # "Adicionar à fila": depois da atual, no fim da fila manual
+            # (ordem de chegada); "tocar em seguida": no topo dela.
+            pb.queue.insert(pb.index + 1 if kind == "add_next" else manual_end(pb), entry)
+
+    elif kind == "clear_manual":
+        del pb.queue[pb.index + 1:manual_end(pb)]
 
     elif kind == "remove":
         i = _index_of(pb, action.get("uid"))
@@ -119,12 +139,15 @@ def apply(pb: Playback, action: dict, now: int, by: str | None,
             pb.index -= 1
 
     elif kind == "move":
-        # Só entre as próximas (as já tocadas ficam onde estão).
+        # Só entre as próximas (as já tocadas ficam onde estão), e cada uma
+        # dentro do seu grupo: a fila manual ou o resto da lista.
         i = _index_of(pb, action.get("uid"))
         to = int(action.get("to", -1))
         if i <= pb.index or not pb.index < to < len(pb.queue):
             raise ActionError("Só dá para mover as próximas")
-        pb.queue.insert(to, pb.queue.pop(i))
+        end = manual_end(pb)
+        low, high = (pb.index + 1, end - 1) if i < end else (end, len(pb.queue) - 1)
+        pb.queue.insert(max(low, min(to, high)), pb.queue.pop(i))
 
     elif kind == "jump":
         _start(pb, _index_of(pb, action.get("uid")), now, playing=True)

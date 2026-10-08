@@ -381,6 +381,21 @@ Rodado na imagem `ghcr.io/cirruslabs/flutter:stable` (Flutter 3.44.0 / Dart 3.12
 - Deploy de produção: compose com `${STORAGE_PATH}`, `container_name`, redes
   `bergastream-internal` (sem internet) e `bergastream-egress`, labels do modelo B.
 
+### Versão 0.2.1 — "Tocar em…" e fila da sessão como a normal
+- **Tocar em…** (como o Spotify Connect): cada app logado (navegador, Android, Windows, Linux)
+  aparece numa lista com nome e ícone; só um toca por vez. Tocar algo num aparelho faz dele o
+  ativo e os outros param. Os outros viram controle remoto: mostram "Tocando em …", a música, a
+  posição e a fila do ativo, e play/pausa, próxima, voltar, buscar, aleatório, repetir, fila e
+  tocar listas comandam o ativo. Escolher outro aparelho na lista leva a fila e o ponto da
+  música para lá.
+- Backend: `app/devices/routes.py` (WebSocket `/api/devices/ws`, estado em memória). App:
+  `features/devices/` (identidade com `device_info_plus`, controlador, lista).
+- Na sessão "ouvir junto" só o aparelho ativo de cada pessoa sai som.
+- Fila da sessão igual à do modo normal (fila manual logo depois da atual, antes da lista).
+- Web: trocar de música tocava a primeira de novo (cache do `just_audio` web) e a sessão
+  reiniciava a música a cada 5 s (`1 << 40` vira 0 na web) — corrigidos.
+- Testes: backend `test_devices` 15, `test_session_playback` 28, `test_sessions` 38; app 342.
+
 ### Versão 0.2.0 — ouvir junto (sessão compartilhada)
 - **Sessão compartilhada:** botão **Ouvir junto** (ícone de pessoas) no player grande, na barra
   do computador e em Ajustes. Quem cria escolhe o **modo de pausa**: *Pausar para todos* ou
@@ -515,10 +530,10 @@ conferidas com ffprobe (título diferente → descarta e baixa do YouTube).
 | Suíte | Resultado |
 |---|---|
 | Flutter `flutter analyze` | ✅ sem problemas |
-| Flutter `flutter test` | ✅ 330 |
+| Flutter `flutter test` | ✅ 342 |
 | Flutter `integration_test` (flutter-tester) | ✅ 2 |
 | Backend auth / playlists / history / resolve / catalog / downloads / images | ✅ 38 / 32 / 12 / 17 / 11 / 13 / 12 |
-| Backend sessões (estado / REST + WebSocket) | ✅ 23 / 38 |
+| Backend sessões (estado / REST + WebSocket) / aparelhos | ✅ 28 / 38 / 15 |
 | E2E no Chrome (8080): sem sessão → login; busca; capas pelo proxy; recarregar mantém sessão | ✅ |
 | APK release, AAB, Linux release | ✅ compilam |
 | Windows | ⏳ compila só no CI (windows-latest) |

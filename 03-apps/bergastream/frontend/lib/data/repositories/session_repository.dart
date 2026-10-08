@@ -33,12 +33,18 @@ enum PauseMode {
 }
 
 class SessionEntry {
-  const SessionEntry({required this.uid, required this.track, this.addedBy});
+  const SessionEntry({
+    required this.uid,
+    required this.track,
+    this.addedBy,
+    this.manual = false,
+  });
 
   factory SessionEntry.fromJson(Map<String, dynamic> json) => SessionEntry(
     uid: json['uid'] as String,
     track: SearchResult.fromJson(json['track'] as Map<String, dynamic>),
     addedBy: json['added_by'] as String?,
+    manual: json['manual'] as bool? ?? false,
   );
 
   final String uid;
@@ -46,6 +52,9 @@ class SessionEntry {
 
   /// Username de quem pôs na fila.
   final String? addedBy;
+
+  /// Veio de "Adicionar à fila" (e não da lista que está tocando).
+  final bool manual;
 }
 
 /// Reprodução compartilhada. A posição é uma âncora: [positionMs] valia
@@ -82,6 +91,16 @@ class SessionPlayback {
 
   SessionEntry? get current =>
       index >= 0 && index < queue.length ? queue[index] : null;
+
+  /// Tamanho da fila manual logo depois da atual (toca antes do resto da
+  /// lista, como "Sua fila" no modo normal).
+  int get manualCount {
+    var n = 0;
+    for (var i = index + 1; i < queue.length && queue[i].manual; i++) {
+      n++;
+    }
+    return n;
+  }
 
   /// Onde a música deveria estar agora (relógio do servidor em ms).
   /// (Sem `1 << n` como limite: na web o deslocamento é de 32 bits e

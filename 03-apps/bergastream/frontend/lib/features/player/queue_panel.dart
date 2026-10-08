@@ -35,51 +35,23 @@ class _QueuePanelState extends ConsumerState<QueuePanel> {
         ? state.upNext
         : state.upNext.take(QueuePanel.preview).toList();
 
-    if (state.shared) {
-      // Sessão compartilhada: uma fila só, a mesma para todos.
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const _Header(title: 'Fila da sessão'),
-          if (state.upNext.isEmpty)
-            Text(
-              'Nada a seguir. Use "Adicionar à fila": entra para todos.',
-              style: mu,
-            )
-          else ...[
-            _ReorderableItems(
-              items: upNext,
-              onReorder: controller.reorderUpNext,
-              onRemove: controller.removeFromQueue,
-            ),
-            if (state.upNext.length > QueuePanel.preview)
-              Padding(
-                padding: const EdgeInsets.only(top: 8),
-                child: AppChip(
-                  label: _showAll
-                      ? 'Ver menos'
-                      : 'Ver todas (${state.upNext.length})',
-                  onTap: () => setState(() => _showAll = !_showAll),
-                ),
-              ),
-          ],
-        ],
-      );
-    }
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _Header(
-          title: 'Sua fila',
+          // Na sessão a fila é de todos (mesma regra: toca depois da atual).
+          title: state.shared ? 'Fila da sessão' : 'Sua fila',
           action: state.manual.isEmpty
               ? null
               : AppChip(label: 'Limpar fila', onTap: controller.clearQueue),
         ),
         if (state.manual.isEmpty)
           Text(
-            'Vazia. Use "Adicionar à fila" e a música toca logo depois da '
-            'atual.',
+            state.shared
+                ? 'Vazia. Use "Adicionar à fila" e a música toca logo depois '
+                      'da atual, para todos.'
+                : 'Vazia. Use "Adicionar à fila" e a música toca logo depois '
+                      'da atual.',
             style: mu,
           )
         else
@@ -89,7 +61,10 @@ class _QueuePanelState extends ConsumerState<QueuePanel> {
             onRemove: controller.removeFromQueue,
           ),
         _Header(
-          title: state.context == 'Busca' || state.context == 'Sua fila'
+          title:
+              state.shared ||
+                  state.context == 'Busca' ||
+                  state.context == 'Sua fila'
               ? 'A seguir'
               : 'A seguir da playlist',
         ),

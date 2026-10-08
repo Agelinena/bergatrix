@@ -27,6 +27,8 @@ import 'package:bergastream/data/repositories/fake_catalog.dart';
 import 'package:bergastream/data/repositories/lyrics_repository.dart';
 import 'package:bergastream/data/repositories/session_repository.dart';
 import 'package:bergastream/features/session/group_session.dart';
+import 'package:bergastream/features/devices/device_controller.dart';
+import 'package:bergastream/features/devices/device_identity.dart';
 import 'package:bergastream/data/repositories/server_status_repository.dart';
 import 'package:bergastream/features/update/update_service.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -43,6 +45,20 @@ const loggedIn = SessionState(
 );
 
 const noServer = SessionState(status: SessionStatus.semServidorConfigurado);
+
+/// Este aparelho nos testes ("Tocar em…").
+const testDevice = DeviceIdentity(
+  id: 'dev-test',
+  name: 'Teste',
+  platform: 'android',
+);
+
+/// Aparelhos sem timers.
+const noDeviceTimers = DeviceTimings(
+  stateInterval: null,
+  keepAlive: null,
+  reconnectDelays: [],
+);
 
 /// Sessão compartilhada sem timers (os testes de tela não aceitam timers
 /// pendentes no fim).
@@ -96,6 +112,11 @@ Future<ProviderContainer> pumpBergastream(
         ({required server, required sessionId}) => FakeSessionSocket(),
       ),
       groupTimingsProvider.overrideWithValue(noGroupTimers),
+      deviceIdentityProvider.overrideWith((ref) async => testDevice),
+      deviceSocketFactoryProvider.overrideWithValue(
+        ({required server}) => FakeSessionSocket(),
+      ),
+      deviceTimingsProvider.overrideWithValue(noDeviceTimers),
       updateTargetProvider.overrideWithValue(updateTarget),
       updateRepositoryProvider.overrideWithValue(
         updates ?? FakeUpdateRepository(),
