@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:audio_session/audio_session.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:just_audio/just_audio.dart' as ja;
 
@@ -53,7 +54,15 @@ class JustAudioEngine implements AudioEngine {
   Duration get position => _player.position;
 
   @override
-  Future<void> setUrl(Uri url) => _player.setUrl(url.toString());
+  Future<void> setUrl(Uri url) async {
+    // Navegador: o just_audio 0.10 guarda a fonte anterior em cache no
+    // player web (a playlist interna tem id fixo) e a troca de música tocava
+    // de novo a primeira. Parar descarta esse player e a próxima carga cria
+    // um novo. Só na web: no Android o "stop" tiraria o serviço de mídia do
+    // primeiro plano (tela bloqueada).
+    if (kIsWeb) await _player.stop();
+    await _player.setUrl(url.toString());
+  }
 
   @override
   Future<void> setFile(String path) => _player.setFilePath(path);
