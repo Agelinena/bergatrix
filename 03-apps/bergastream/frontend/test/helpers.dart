@@ -18,6 +18,7 @@ import 'package:bergastream/data/repositories/search_repository.dart';
 import 'package:bergastream/features/player/audio_engine.dart';
 import 'package:bergastream/features/player/player_controller.dart';
 import 'package:bergastream/features/auth/session.dart';
+import 'package:bergastream/data/repositories/lyrics_repository.dart';
 import 'package:bergastream/data/repositories/server_status_repository.dart';
 import 'package:bergastream/features/update/update_service.dart';
 import 'package:flutter/material.dart';
@@ -58,6 +59,7 @@ Widget wrap(
         FakeServerStatusRepository(),
       ),
       serverStatusRefreshProvider.overrideWithValue(null),
+      lyricsRepositoryProvider.overrideWithValue(FakeLyricsRepository()),
       updateTargetProvider.overrideWithValue(updateTarget),
       updateRepositoryProvider.overrideWithValue(
         updates ?? FakeUpdateRepository(),

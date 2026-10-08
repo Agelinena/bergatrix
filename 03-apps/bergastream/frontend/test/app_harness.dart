@@ -24,6 +24,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:bergastream/data/models/stats.dart';
 import 'package:bergastream/data/repositories/fake_catalog.dart';
+import 'package:bergastream/data/repositories/lyrics_repository.dart';
 import 'package:bergastream/data/repositories/server_status_repository.dart';
 import 'package:bergastream/features/update/update_service.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -75,6 +76,7 @@ Future<ProviderContainer> pumpBergastream(
         FakeServerStatusRepository(),
       ),
       serverStatusRefreshProvider.overrideWithValue(null),
+      lyricsRepositoryProvider.overrideWithValue(FakeLyricsRepository()),
       updateTargetProvider.overrideWithValue(updateTarget),
       updateRepositoryProvider.overrideWithValue(
         updates ?? FakeUpdateRepository(),

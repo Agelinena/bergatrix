@@ -8,6 +8,7 @@ import '../../core/theme/berga_text.dart';
 import '../../core/widgets/widgets.dart';
 import '../../app/catalog_navigation.dart';
 import 'play_queue.dart';
+import 'lyrics.dart';
 import 'player_controller.dart';
 import 'player_texts.dart';
 import 'queue_panel.dart';
@@ -182,6 +183,8 @@ class _FullPlayerState extends ConsumerState<FullPlayer> {
               ),
             ),
             if (_showQueue) const QueuePanel(),
+            // Letra abaixo dos controles (como no Spotify); some sem letra.
+            if (!_showQueue) LyricsCard(track: track),
           ],
         ),
       ),

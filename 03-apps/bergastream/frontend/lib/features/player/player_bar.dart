@@ -18,7 +18,29 @@ class DesktopQueueOpen extends Notifier<bool> {
   @override
   bool build() => false;
 
-  void toggle() => state = !state;
+  void toggle() {
+    state = !state;
+    if (state) ref.read(desktopLyricsOpenProvider.notifier).close();
+  }
+
+  void close() => state = false;
+}
+
+/// Painel da letra aberto no layout de navegador (um painel por vez).
+final desktopLyricsOpenProvider = NotifierProvider<DesktopLyricsOpen, bool>(
+  DesktopLyricsOpen.new,
+);
+
+class DesktopLyricsOpen extends Notifier<bool> {
+  @override
+  bool build() => false;
+
+  void toggle() {
+    state = !state;
+    if (state) ref.read(desktopQueueOpenProvider.notifier).close();
+  }
+
+  void close() => state = false;
 }
 
 /// Barra do player no layout de navegador (Seção 6.8): faixa à esquerda,
@@ -37,6 +59,7 @@ class PlayerBar extends ConsumerWidget {
     final track = item.track;
     final controller = ref.read(playerProvider.notifier);
     final queueOpen = ref.watch(desktopQueueOpenProvider);
+    final lyricsOpen = ref.watch(desktopLyricsOpenProvider);
 
     Widget control(
       IconData icon,
@@ -137,11 +160,22 @@ class PlayerBar extends ConsumerWidget {
           Expanded(
             child: Align(
               alignment: Alignment.centerRight,
-              child: control(
-                Icons.queue_music,
-                'Fila',
-                ref.read(desktopQueueOpenProvider.notifier).toggle,
-                active: queueOpen,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  control(
+                    Icons.lyrics_outlined,
+                    'Letra',
+                    ref.read(desktopLyricsOpenProvider.notifier).toggle,
+                    active: lyricsOpen,
+                  ),
+                  control(
+                    Icons.queue_music,
+                    'Fila',
+                    ref.read(desktopQueueOpenProvider.notifier).toggle,
+                    active: queueOpen,
+                  ),
+                ],
               ),
             ),
           ),

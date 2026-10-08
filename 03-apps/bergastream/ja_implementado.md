@@ -381,6 +381,17 @@ Rodado na imagem `ghcr.io/cirruslabs/flutter:stable` (Flutter 3.44.0 / Dart 3.12
 - Deploy de produção: compose com `${STORAGE_PATH}`, `container_name`, redes
   `bergastream-internal` (sem internet) e `bergastream-egress`, labels do modelo B.
 
+### Versão 0.1.9 — letra sincronizada
+- Letra das músicas pelo **LRCLIB** (lrclib.net, aberto e gratuito, sem chave): `POST /api/lyrics`
+  com a faixa; busca exata (artista, título, álbum, duração) e, se não achar, pela busca com o
+  título limpo ("Remastered 2011", "feat.", "Ao Vivo" saem). Guardada na tabela `lyrics`
+  (migração `0011_lyrics.sql`), inclusive "não achou" (tenta de novo após 7 dias).
+- Player grande: cartão **Letra** abaixo dos controles com a linha atual destacada e as próximas;
+  tocar abre a letra inteira, que rola sozinha com a música (rolar com o dedo pausa por 4 s) e
+  tocar numa linha pula para ela. Sem tempo: texto simples. Sem letra: o cartão não aparece.
+- Navegador: botão **Letra** na barra do player abre o painel lateral (no lugar da fila).
+- A letra fica guardada no aparelho depois de vista: aparece também offline.
+
 ### Versão 0.1.8 — troca de música com a tela bloqueada
 - Na troca de faixa o app continua "tocando" para o Android (estado "carregando"): o serviço de
   mídia segue em primeiro plano com a trava de CPU. Antes a próxima música não começava com a

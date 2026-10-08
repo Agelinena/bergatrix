@@ -1,7 +1,7 @@
 name: bergastream
 description: Bergastream, app de streaming musical self-hosted.
 publish_to: none
-version: 0.1.8+108
+version: 0.1.9+109
 
 environment:
   sdk: ^3.12.0

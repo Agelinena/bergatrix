@@ -48,6 +48,13 @@ O `<audio>` do navegador não envia `Authorization`: a web pede o token e toca `
 
 ---
 
+### `POST /api/lyrics`
+
+Corpo `SearchResult` (como o `/api/play`) → `{"found", "synced": [{"time_ms", "text"}], "plain", "source": "lrclib"}`.
+Busca no LRCLIB uma vez por faixa e guarda no servidor (tabela `lyrics`).
+
+---
+
 ## 4. Playlists
 
 | Endpoint | Quem | Corpo / resposta |

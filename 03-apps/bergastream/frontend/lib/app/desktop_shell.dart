@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../core/theme/berga_colors.dart';
 import '../core/theme/berga_text.dart';
 import '../core/widgets/widgets.dart';
+import '../data/models/search_result.dart';
 import '../data/repositories/local_playlists.dart';
 import '../features/auth/session_banner.dart';
 import '../features/library/library_providers.dart';
@@ -13,6 +14,7 @@ import 'routes.dart';
 import '../features/player/player_bar.dart';
 import '../features/player/player_controller.dart';
 import '../features/player/player_messages.dart';
+import '../features/player/lyrics.dart';
 import '../features/player/queue_panel.dart';
 import 'app_shell.dart';
 
@@ -28,6 +30,8 @@ class DesktopShell extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final queueOpen = ref.watch(desktopQueueOpenProvider);
+    final lyricsOpen = ref.watch(desktopLyricsOpenProvider);
+    final track = ref.watch(playerProvider.select((s) => s.current?.track));
     final hasTrack = ref.watch(playerProvider.select((s) => s.current != null));
     return PlayerMessages(
       child: Scaffold(
@@ -54,12 +58,53 @@ class DesktopShell extends ConsumerWidget {
                     ),
                   ),
                   if (queueOpen && hasTrack) const _QueueSidePanel(),
+                  if (lyricsOpen && track != null)
+                    _LyricsSidePanel(track: track),
                 ],
               ),
             ),
             const PlayerBar(),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Letra à direita (botão Letra da barra do player), rolando com a música.
+class _LyricsSidePanel extends StatelessWidget {
+  const _LyricsSidePanel({required this.track});
+
+  final SearchResult track;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = BergaColors.of(context);
+    return Container(
+      width: 400,
+      margin: const EdgeInsets.fromLTRB(0, 8, 8, 8),
+      decoration: BoxDecoration(
+        color: c.bg,
+        border: Border.all(color: c.card),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 4),
+            child: Text(
+              LyricsCard.title,
+              style: BergaText.h2.copyWith(color: c.tx),
+            ),
+          ),
+          Expanded(
+            child: LyricsView(
+              track: track,
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 40),
+            ),
+          ),
+        ],
       ),
     );
   }

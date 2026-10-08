@@ -119,6 +119,15 @@ async def album_page(provider: str = Path_(pattern=_PROVIDER), album_id: str = P
 
 # Play
 
+@router.post("/lyrics")
+async def lyrics(body: PlayRequest, pool=Depends(_get_pool), user: CurrentUser = Depends(current_user)):
+    """Letra da faixa (LRCLIB), sincronizada quando existir. A faixa é
+    identificada como no /play; a letra fica guardada no servidor."""
+    from app.lyrics.service import lyrics_for
+    result = await tracks_service.resolve_and_register(pool, body)
+    return await lyrics_for(pool, result.track_id)
+
+
 @router.post("/play", response_model=PlayResponse)
 async def play(body: PlayRequest, pool=Depends(_get_pool), user: CurrentUser = Depends(current_user)):
     result = await tracks_service.resolve_and_register(pool, body)
