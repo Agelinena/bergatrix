@@ -128,6 +128,34 @@ def test_refine_file_apply_keeps_backup_and_text(tmp_path):
     assert not list(tmp_path.glob("*.tmp"))
 
 
+def test_refine_file_keeps_first_backup(tmp_path):
+    reference, subtitle, _ = build()
+    pt_path = tmp_path / "Filme.por.srt"
+    en_path = tmp_path / "ref.srt"
+    backup = tmp_path / "Filme.por.srt.pre-refine"
+    pt_path.write_text(render_srt(subtitle), encoding="utf-8")
+    en_path.write_text(render_srt(reference), encoding="utf-8")
+    backup.write_text("original do Bazarr", encoding="utf-8")
+
+    report = refine_file(str(pt_path), str(en_path), embedder=ConceptEmbedder(), apply=True)
+
+    assert report["veredito"] == "corrigida"
+    assert backup.read_text(encoding="utf-8") == "original do Bazarr"
+
+
+def test_rejected_refine_reports_zero_changes(tmp_path):
+    reference, subtitle, _ = build()
+    pt_path = tmp_path / "Filme.por.srt"
+    en_path = tmp_path / "ref.srt"
+    pt_path.write_text(render_srt(subtitle), encoding="utf-8")
+    en_path.write_text(render_srt(reference), encoding="utf-8")
+
+    report = refine_file(str(pt_path), str(en_path), embedder=UnrelatedEmbedder(), apply=True)
+
+    assert report["veredito"] == "baixa_confianca"
+    assert report["alteradas"] == 0
+
+
 def test_refine_file_audit_does_not_write(tmp_path):
     reference, subtitle, _ = build()
     pt_path = tmp_path / "Filme.por.srt"

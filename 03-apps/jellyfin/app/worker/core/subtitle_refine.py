@@ -402,7 +402,7 @@ def refine_cues(target: list[Cue], reference: list[Cue], embedder, window: float
         "grupos": kinds,
         "offset_antes": _offset_stats(deltas_before),
         "offset_depois": _offset_stats(deltas_after),
-        "alteradas": changed,
+        "propostas": changed,  # antes dos portões; "alteradas" = o que foi gravado
         "deslocamento_max": round(max_shift, 3),
         "piores": [
             {
@@ -451,8 +451,10 @@ def refine_file(subtitle_path: str, reference_path: str, embedder=None, apply: b
     verdict = result.verdict
     if apply and verdict == "corrigivel":
         backup = f"{subtitle_path}.pre-refine"
-        with open(subtitle_path, "rb") as src, open(backup, "wb") as dst:
-            dst.write(src.read())
+        # Guarda só a PRIMEIRA versão: refinos repetidos não sobrescrevem o original do Bazarr.
+        if not os.path.exists(backup):
+            with open(subtitle_path, "rb") as src, open(backup, "wb") as dst:
+                dst.write(src.read())
         # .tmp não termina em .srt → o watchdog de legendas não reage ao arquivo temporário.
         tmp = f"{subtitle_path}.refine.tmp"
         with open(tmp, "w", encoding="utf-8") as f:
@@ -464,6 +466,7 @@ def refine_file(subtitle_path: str, reference_path: str, embedder=None, apply: b
         "veredito": verdict,
         "segundos": round(time.monotonic() - started, 1),
         **result.report,
+        "alteradas": result.changed if verdict == "corrigida" else 0,
     }
     if os.path.exists(subtitle_path):
         stat = os.stat(subtitle_path)
@@ -537,7 +540,7 @@ def format_report(report: dict) -> str:
         f"máx {before.get('max_abs', 0)}s  fora do tempo={before.get('fora_do_tempo', 0)}",
         f"Offset depois: mediana {after.get('mediana_abs', 0)}s  p90 {after.get('p90_abs', 0)}s  "
         f"máx {after.get('max_abs', 0)}s  fora do tempo={after.get('fora_do_tempo', 0)}",
-        f"Alteradas: {report.get('alteradas', 0)}  deslocamento máx: {report.get('deslocamento_max', 0)}s  "
+        f"Alteradas: {report.get('alteradas', 0)} (propostas: {report.get('propostas', 0)})  deslocamento máx: {report.get('deslocamento_max', 0)}s  "
         f"({report.get('segundos', 0)}s)",
     ]
     for item in report.get("piores", []):
