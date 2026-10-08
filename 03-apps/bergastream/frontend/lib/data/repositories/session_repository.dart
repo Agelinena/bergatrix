@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -83,9 +84,11 @@ class SessionPlayback {
       index >= 0 && index < queue.length ? queue[index] : null;
 
   /// Onde a música deveria estar agora (relógio do servidor em ms).
+  /// (Sem `1 << n` como limite: na web o deslocamento é de 32 bits e
+  /// `1 << 40` vira 0, o que prendia a posição no começo.)
   Duration positionAt(int serverNowMs) => Duration(
     milliseconds: playing
-        ? positionMs + (serverNowMs - anchorAt).clamp(0, 1 << 40)
+        ? positionMs + math.max(0, serverNowMs - anchorAt)
         : positionMs,
   );
 }
