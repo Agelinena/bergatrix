@@ -215,6 +215,19 @@ async function connectSenderManual() {
     await setupSender(code);
 }
 
+async function copyConnectionCode() {
+    try {
+        await navigator.clipboard.writeText(appState.code);
+        const button = document.querySelector('[data-action="copyConnectionCode"]');
+        button.innerHTML = '<span aria-hidden="true">✓</span> Código copiado';
+        setTimeout(() => {
+            button.innerHTML = '<span aria-hidden="true">▣</span> Copiar código';
+        }, 1600);
+    } catch (error) {
+        alert('Não foi possível copiar o código neste navegador.');
+    }
+}
+
 async function setupSender(code) {
     const derived = await deriveKeyAndId(code);
     cryptoKey = derived.key;
@@ -340,6 +353,7 @@ async function clearClipboard() {
 const actions = {
     initReceiver,
     initSender,
+    copyConnectionCode,
     toggleVisibility,
     copyToClipboard,
     clearClipboard,
@@ -352,6 +366,11 @@ const actions = {
 document.addEventListener('click', event => {
     const button = event.target.closest('[data-action]');
     if (button) actions[button.dataset.action]?.();
+});
+
+document.getElementById('manual-code-form').addEventListener('submit', event => {
+    event.preventDefault();
+    connectSenderManual();
 });
 
 init();

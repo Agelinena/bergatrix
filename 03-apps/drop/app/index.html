@@ -4,138 +4,141 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Drop - Transferência Segura</title>
+    <title>Drop | Transferência privada</title>
+    <meta name="theme-color" content="#eef2ec">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/app.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js" integrity="sha384-3zSEDfvllQohrq0PHL1fOXJuC/jSOO34H46t6UQfobFOmxE5BpjjaIJY5F2/bMnU" crossorigin="anonymous"></script>
     <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js" integrity="sha384-c9d8RFSL+u3exBOJ4Yp3HUJXS4znl9f+z66d1y54ig+ea249SpqR+w1wyvXz/lk+" crossorigin="anonymous" type="text/javascript"></script>
-    <script src="https://cdn.tailwindcss.com/3.4.17" integrity="sha384-igm5BeiBt36UU4gqwWS7imYmelpTsZlQ45FZf+XBn9MuJbn4nQr7yx1yFydocC/K" crossorigin="anonymous"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
-    <style type="text/tailwindcss">
-        body {
-            font-family: 'Inter', sans-serif;
-            background-color: #0f172a;
-            color: #e2e8f0;
-        }
-
-        .hidden {
-            display: none;
-        }
-
-        .btn-primary {
-            @apply w-full py-4 rounded-xl font-bold text-lg transition transform hover:scale-105 shadow-lg;
-        }
-    </style>
 </head>
 
-<body class="flex items-center justify-center min-h-screen p-4">
-    <div
-        class="w-full max-w-md p-6 bg-slate-800 rounded-2xl shadow-xl border border-slate-700 relative overflow-hidden">
+<body>
+    <div class="app-shell">
+        <header class="topbar">
+            <a class="brand" href="/" aria-label="Drop, início">
+                <span class="brand-mark" aria-hidden="true"><span></span><span></span></span>
+                <span class="brand-name">drop</span>
+                <span class="brand-divider"></span>
+                <span class="brand-caption">PRIVATE HANDOFF</span>
+            </a>
+            <div class="topbar-status"><span class="live-dot"></span><span>CANAL PRIVADO</span></div>
+        </header>
 
-        <!-- HEADER -->
-        <div class="text-center mb-8">
-            <h1
-                class="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 to-emerald-400">
-                Drop</h1>
-            <p class="text-slate-400 text-sm">Transferência Segura & Efêmera</p>
-        </div>
+        <main class="workspace">
+            <section class="intro-panel" aria-labelledby="page-title">
+                <p class="eyebrow"><span>01</span> TRANSFERÊNCIA PESSOAL</p>
+                <h1 id="page-title">Entre seus<br><em>dispositivos.</em></h1>
+                <p class="intro-caption">Senhas, tokens e mensagens curtas.</p>
 
-        <!-- SELEÇÃO DE MODO -->
-        <div id="mode-selection" class="space-y-4">
-            <button data-action="initReceiver" class="btn-primary bg-indigo-600 hover:bg-indigo-500 text-white">
-                📥 Receber
-            </button>
-            <button data-action="initSender" class="btn-primary bg-emerald-600 hover:bg-emerald-500 text-white">
-                📤 Enviar
-            </button>
-        </div>
+                <div class="handoff-visual" aria-hidden="true">
+                    <div class="handoff-track">
+                        <span class="track-node track-node--origin"><span></span></span>
+                        <span class="track-line"><i></i></span>
+                        <span class="track-node track-node--relay"><span></span></span>
+                        <span class="track-line"><i></i></span>
+                        <span class="track-node track-node--destination"><span></span></span>
+                    </div>
+                    <div class="track-labels"><span>ESTE DISPOSITIVO</span><span>OUTRO DISPOSITIVO</span></div>
+                </div>
 
-        <!-- MODO RECEPTOR -->
-        <div id="receiver-mode" class="hidden text-center space-y-6">
-            <div class="bg-slate-900/50 p-4 rounded-xl border border-slate-700">
-                <p class="text-xs text-slate-400 uppercase tracking-wider mb-2">Seu Código de Conexão</p>
-                <div id="display-code" class="text-lg sm:text-2xl font-mono font-bold text-white break-all select-all"></div>
-            </div>
+                <div class="intro-footer">
+                    <span><b>01</b> CRIPTOGRAFIA NO NAVEGADOR</span>
+                    <span class="footer-divider"></span>
+                    <span>SESSÃO EFÊMERA</span>
+                </div>
+            </section>
 
-            <div class="flex justify-center p-4 bg-white rounded-xl mx-auto w-fit shadow-inner">
-                <div id="qrcode"></div>
-            </div>
-
-            <div id="status" class="text-sm font-mono text-yellow-500 animate-pulse">Aguardando conexão...</div>
-
-            <div id="received-area"
-                class="hidden mt-6 p-4 bg-slate-900 rounded-lg border border-indigo-500/30 text-left space-y-3">
-                <label class="text-xs text-indigo-400 font-semibold">MENSAGEM RECEBIDA:</label>
-
-                <div class="relative">
-                    <input type="password" id="decrypted-content" readonly
-                        class="w-full bg-slate-800/50 rounded-lg px-4 py-3 outline-none font-mono text-white text-lg pr-24 transition focus:bg-slate-800">
-
-                    <div class="absolute right-2 top-1/2 -translate-y-1/2 flex gap-1">
-                        <button data-action="toggleVisibility"
-                            class="p-2 text-slate-400 hover:text-white rounded-lg hover:bg-slate-700 transition"
-                            title="Mostrar/Esconder">
-                            👁️
+            <section class="transfer-panel" aria-label="Transferência">
+                <div id="mode-selection" class="mode-selection">
+                    <div class="panel-heading">
+                        <p class="panel-kicker">COMEÇAR</p>
+                        <span class="panel-index">01 / 02</span>
+                    </div>
+                    <h2>Escolha uma direção</h2>
+                    <div class="mode-list">
+                        <button data-action="initReceiver" class="mode-button mode-button--receive">
+                            <span class="mode-symbol" aria-hidden="true">↓</span>
+                            <span class="mode-name">Receber</span>
+                            <span class="mode-arrow" aria-hidden="true">↗</span>
                         </button>
-                        <button data-action="copyToClipboard"
-                            class="p-2 text-indigo-400 hover:text-indigo-300 rounded-lg hover:bg-slate-700 transition"
-                            title="Copiar">
-                            📋
+                        <button data-action="initSender" class="mode-button mode-button--send">
+                            <span class="mode-symbol" aria-hidden="true">↑</span>
+                            <span class="mode-name">Enviar</span>
+                            <span class="mode-arrow" aria-hidden="true">↗</span>
                         </button>
                     </div>
+                    <div class="panel-footnote"><span class="footnote-mark">+</span> TEXTO E CREDENCIAIS</div>
                 </div>
 
-                <button data-action="clearClipboard"
-                    class="w-full py-2 text-xs font-bold text-red-400 hover:text-red-300 border border-red-900/30 hover:bg-red-900/20 rounded-lg transition flex items-center justify-center gap-2">
-                    🗑️ Limpar Área de Transferência
-                </button>
-            </div>
+                <section id="receiver-mode" class="flow-mode hidden" aria-labelledby="receiver-title">
+                    <div class="panel-heading">
+                        <p class="panel-kicker">RECEBER</p>
+                        <button data-action="resetApp" class="text-button">Cancelar <span aria-hidden="true">×</span></button>
+                    </div>
+                    <h2 id="receiver-title">Código de pareamento</h2>
+                    <div class="receive-layout">
+                        <div class="code-column">
+                            <p class="field-label">COMPARTILHE ESTE CÓDIGO</p>
+                            <div class="code-display"><span id="display-code"></span></div>
+                            <button data-action="copyConnectionCode" class="secondary-button code-copy">
+                                <span aria-hidden="true">▣</span> Copiar código
+                            </button>
+                        </div>
+                        <div class="qr-column">
+                            <p class="field-label">OU LEIA COM A CÂMERA</p>
+                            <div class="qr-frame"><div id="qrcode"></div></div>
+                        </div>
+                    </div>
+                    <p id="status" class="status status--waiting" role="status" aria-live="polite">Aguardando conexão...</p>
+                    <div id="received-area" class="received-area hidden">
+                        <label for="decrypted-content" class="field-label">MENSAGEM RECEBIDA</label>
+                        <div class="received-input-row">
+                            <input type="password" id="decrypted-content" readonly autocomplete="off">
+                            <button data-action="toggleVisibility" class="icon-button" title="Mostrar ou ocultar" aria-label="Mostrar ou ocultar mensagem">◉</button>
+                            <button data-action="copyToClipboard" class="icon-button" title="Copiar mensagem" aria-label="Copiar mensagem">▣</button>
+                        </div>
+                        <button data-action="clearClipboard" class="text-button clipboard-button">Limpar área de transferência</button>
+                    </div>
+                </section>
 
-            <button data-action="resetApp" class="text-xs text-slate-500 hover:text-slate-300 underline">Sair /
-                Novo</button>
-        </div>
+                <section id="sender-mode" class="flow-mode hidden" aria-labelledby="sender-title">
+                    <div class="panel-heading">
+                        <p class="panel-kicker">ENVIAR</p>
+                        <button data-action="resetApp" class="text-button">Cancelar <span aria-hidden="true">×</span></button>
+                    </div>
+                    <div id="sender-connect-step">
+                        <h2 id="sender-title">Conectar ao receptor</h2>
+                        <button id="start-scan-btn" data-action="startScanner" class="scanner-button">
+                            <span class="scanner-symbol" aria-hidden="true">⌗</span>
+                            <span>Ler código QR</span>
+                            <span class="mode-arrow" aria-hidden="true">↗</span>
+                        </button>
+                        <div id="reader" class="scanner-surface"></div>
+                        <div class="form-separator"><span></span><b>OU DIGITE O CÓDIGO</b><span></span></div>
+                        <form id="manual-code-form" class="manual-code-form">
+                            <label class="field-label" for="sender-code-input">CÓDIGO DE 20 CARACTERES</label>
+                            <input type="text" id="sender-code-input" maxlength="20" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="•••• •••• •••• •••• ••••">
+                            <button type="submit" class="primary-button">Conectar <span aria-hidden="true">→</span></button>
+                        </form>
+                    </div>
 
-        <!-- MODO EMISSOR -->
-        <div id="sender-mode" class="hidden space-y-6">
-            <div id="sender-connect-step">
-                <h2 class="text-xl font-bold text-center mb-4">Conectar ao Receptor</h2>
+                    <div id="sender-message-step" class="sender-message-step hidden">
+                        <div class="connected-label"><span class="live-dot"></span> CONECTADO <span id="connected-code"></span></div>
+                        <label for="secret-input" class="field-label">TEXTO, SENHA OU TOKEN</label>
+                        <textarea id="secret-input" rows="5" maxlength="16384" autocomplete="off" placeholder="Cole ou digite aqui"></textarea>
+                        <button id="send-btn" data-action="encryptAndSend" class="primary-button">Enviar agora <span aria-hidden="true">→</span></button>
+                        <p id="sender-status" class="form-status" role="status" aria-live="polite"></p>
+                    </div>
+                </section>
+            </section>
+        </main>
 
-                <div id="reader" class="rounded-lg overflow-hidden mb-4"></div>
-
-                <button id="start-scan-btn" data-action="startScanner"
-                    class="w-full py-3 bg-slate-700 hover:bg-slate-600 rounded-lg font-bold mb-4">
-                    📷 Ler QR Code
-                </button>
-
-                <p class="text-center text-xs text-slate-500 mb-2">- OU -</p>
-
-                <input type="text" id="sender-code-input" placeholder="Código de 20 caracteres" maxlength="20" autocomplete="off" autocapitalize="characters" spellcheck="false"
-                    class="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-3 text-center font-mono uppercase tracking-widest focus:border-emerald-500 outline-none transition mb-4">
-
-                <button data-action="connectSenderManual"
-                    class="w-full py-3 bg-emerald-600 hover:bg-emerald-500 rounded-lg font-bold text-white">
-                    Conectar
-                </button>
-            </div>
-
-            <div id="sender-message-step" class="hidden space-y-4">
-                <div class="flex justify-between items-center">
-                    <span class="text-xs font-mono text-emerald-400">🟢 Conectado: <span
-                            id="connected-code"></span></span>
-                </div>
-
-                <textarea id="secret-input" rows="5"
-                    class="w-full p-4 bg-slate-900 rounded-lg border border-slate-700 focus:border-emerald-500 focus:outline-none transition text-white font-mono"
-                    placeholder="Digite sua mensagem aqui..."></textarea>
-
-                <button id="send-btn" data-action="encryptAndSend"
-                    class="w-full py-4 bg-emerald-600 hover:bg-emerald-700 rounded-lg font-bold transition text-white shadow-lg shadow-emerald-900/20">
-                    🔒 Enviar Agora
-                </button>
-                <div id="sender-status" class="text-center text-sm h-6 font-bold"></div>
-            </div>
-
-            <button data-action="resetApp"
-                class="block w-full text-center text-xs text-slate-500 hover:text-slate-300 underline mt-4">Cancelar</button>
-        </div>
+        <footer class="page-footer">
+            <span>DROP <b>·</b> PRIVATE HANDOFF</span>
+            <span>SESSÕES COM EXPIRAÇÃO AUTOMÁTICA <b>·</b> 10 MIN</span>
+        </footer>
     </div>
 
     <script src="/app.js" defer></script>

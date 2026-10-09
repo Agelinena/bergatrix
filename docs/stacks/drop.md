@@ -13,9 +13,9 @@ O navegador cifra o texto com AES-256-GCM e deriva a chave e o `session_id` a pa
 
 ## 🧱 Stack tecnológica
 - **Backend:** Python 3.11 (imagem `python:3.11-slim`), **FastAPI**, **Uvicorn** (`uvicorn[standard]`), biblioteca **websockets**.
-- **Frontend:** HTML (`index.html`) e JavaScript (`app.js`) vanilla, **Tailwind CSS** via Play CDN, **Web Crypto API** (SubtleCrypto: PBKDF2, AES-GCM, SHA-256).
+- **Frontend:** HTML (`index.html`), CSS (`app.css`) e JavaScript (`app.js`) vanilla, **Web Crypto API** (SubtleCrypto: PBKDF2, AES-GCM, SHA-256).
 - **Libs de QR (CDN):** `qrcodejs` 1.0.0 e `html5-qrcode` 2.3.8, com versão fixada e SRI.
-- **Fontes:** Google Fonts (Inter).
+- **Fontes:** Google Fonts (Manrope e Space Mono).
 - **Infra:** Docker (build local), Traefik para TLS/roteamento.
 
 ## 📦 Serviços / Containers
@@ -71,6 +71,7 @@ Session = {websocket, created_at, sent_at, send_lock}
 ## 🔌 Endpoints / API
 - **`GET /`** — retorna o `index.html` com CSP, `no-store`, anti-frame e `nosniff`.
 - **`GET /app.js`** — serve o JavaScript same-origin, sem handlers inline.
+- **`GET /app.css`** — serve os estilos locais da aplicação.
 - **`GET /healthz`** — healthcheck do container.
 - **`WebSocket /ws/{session_id}`** — canal do Receptor. Aplica Single Listener e expiração absoluta da sessão.
 - **`POST /api/send/{session_id}`** — valida ID, Base64 e tamanho antes de encaminhar. Retorna `409` sem receptor, `413` para payload grande, `422` inválido ou `429` por excesso de mensagens.
@@ -79,8 +80,7 @@ Session = {websocket, created_at, sent_at, send_lock}
 Dependências de **runtime no navegador** (CDNs de terceiros), nenhuma no backend; scripts têm versão fixada e integridade SRI:
 - `cdnjs.cloudflare.com` — qrcodejs 1.0.0
 - `unpkg.com` — html5-qrcode 2.3.8
-- `cdn.tailwindcss.com` — Tailwind Play CDN 3.4.17
-- `fonts.googleapis.com` — fonte Inter
+- `fonts.googleapis.com` — fontes Manrope e Space Mono
 
 ## 🧩 Dependências internas (Bergatrix)
 - **traefik** — reverse proxy e terminação TLS servindo o wildcard `*.daberga.com` compartilhado via `tls=true` (CA Let's Encrypt; o cert é emitido uma única vez pela stack do Traefik, este app só o consome); roteia `drop.${DOMAIN}` (HTTPS/WSS).
@@ -101,7 +101,7 @@ Stack mínima e autocontida:
 - `Dockerfile` — Python 3.11-slim, instala `app/requirements.txt`, copia `app/`, expõe 8000, roda uvicorn.
 - `.env.example` — somente `DOMAIN=example.com` (placeholder).
 - `app/server.py` — backend FastAPI, validação e limites de sessão/payload.
-- `app/index.html` e `app/app.js` — UI e lógica do navegador, sem JavaScript inline.
+- `app/index.html`, `app/app.css` e `app/app.js` — UI e lógica do navegador, sem JavaScript inline ou framework CSS remoto.
 - `app/requirements.txt` — `fastapi`, `uvicorn[standard]`, `websockets` (sem versões fixadas).
 - `tests/test_server.py` — testes para expiração, capacidade, rate limit e validação do envio.
 
@@ -113,7 +113,7 @@ Sem banco, migrations ou integração com IA/LLM.
 - A página e o JavaScript são servidos pelo mesmo host público que opera o relay. Um origin comprometido pode alterar `app.js` para capturar código, chave ou texto em claro; E2EE não protege contra o próprio origin que entrega o cliente.
 - O código é uma credencial bearer: compartilhe-o apenas com o destinatário e não o reutilize.
 - O texto descriptografado é apagado da tela após 60 segundos, mas navegador, sistema operacional, clipboard e extensões podem manter cópias.
-- A política CSP bloqueia scripts e handlers inline; estilos inline continuam permitidos para o Tailwind Play CDN.
+- A política CSP bloqueia scripts e handlers inline; `unsafe-inline` em estilos permanece para compatibilidade com o QRCode gerado pelo cliente.
 
 ## 🚧 Limites conhecidos
 - Não há autenticação de usuário nem fila de mensagens; o código é a credencial da sessão e o receptor precisa estar conectado.

@@ -136,9 +136,8 @@ async def add_security_headers(request, call_next):
     response.headers["Content-Security-Policy"] = (
         "default-src 'self'; "
         "script-src 'self' https://cdnjs.cloudflare.com "
-        "https://unpkg.com https://cdn.tailwindcss.com; "
-        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com "
-        "https://cdn.tailwindcss.com; "
+        "https://unpkg.com; "
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
         "font-src 'self' https://fonts.gstatic.com; "
         "img-src 'self' data: blob:; connect-src 'self' wss:; "
         "media-src 'self' blob:; frame-ancestors 'none'; base-uri 'none'; "
@@ -154,6 +153,11 @@ async def get():
 @app.get("/app.js")
 async def get_app_script():
     return FileResponse(APP_DIRECTORY / "app.js", media_type="application/javascript")
+
+
+@app.get("/app.css")
+async def get_app_styles():
+    return FileResponse(APP_DIRECTORY / "app.css", media_type="text/css")
 
 
 @app.get("/healthz")
