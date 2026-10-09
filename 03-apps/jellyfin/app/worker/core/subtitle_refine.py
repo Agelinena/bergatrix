@@ -1,20 +1,26 @@
 """
 Refino de sincronia por CONTEÚDO.
 
-Casa cada fala da legenda PT (Bazarr) com a(s) fala(s) da legenda embutida
-(referência, já sincronizada com o vídeo) usando embeddings multilíngues, e
-corrige SÓ os tempos. O texto nunca é alterado — a invariante é verificada antes
-de gravar.
+Caso típico: a legenda PT veio de OUTRO release (HDTV × WEB-DL, cortes de comercial
+diferentes, velocidade levemente diferente). O tempo interno dela está bom — o tradutor
+cronometrou cada fala para o seu texto —, mas o deslocamento em relação ao vídeo varia ao
+longo do episódio (deriva gradual + saltos nos cortes). Copiar o tempo da legenda embutida
+fala a fala destrói essa precisão quando o tradutor quebrou as frases em outro ponto.
 
-Fluxo:
+Por isso o refino estima uma CURVA de deslocamento e a aplica a todas as falas:
   1. Limpa os textos (tags, [SDH], ♪, "NOME:") e gera um embedding por fala (Ollama).
-  2. Programação dinâmica monotônica numa janela de ±REFINE_WINDOW_SECONDS:
-     casamentos 1:1, 1:2, 2:1 e 2:2 (frases quebradas de outro jeito), pulos
-     permitidos (falas omitidas de um dos lados).
-  3. Falas casadas com confiança recebem o tempo da referência; as demais são
-     deslocadas pelo offset mediano dos vizinhos confiáveis.
-  4. Portões: cobertura mínima de casamento, texto idêntico, ordem preservada,
-     deslocamento limitado. Reprovou → a legenda não é tocada.
+  2. Pré-alinhamento: reta offset(t) = a + b·t a partir de falas longas e distintivas
+     (cobre deslocamentos grandes e diferença de velocidade entre releases).
+  3. Alinhamento fino (programação dinâmica monotônica, ±REFINE_WINDOW_SECONDS) só para
+     achar ÂNCORAS: pares 1:1 com similaridade alta, tamanhos compatíveis e sem sinal de
+     que a fala PT contém também a fala vizinha da referência.
+  4. Curva: saltos detectados nas âncoras (cortes) + mediana local dentro de cada trecho.
+     Cada fala é deslocada pela curva — duração e quebra de frases do tradutor intactas.
+  5. Ajuste individual só para âncoras inequívocas que fogem da curva (fala isolada
+     adiantada/atrasada).
+  6. Tempo de leitura: o fim de falas rápidas demais pode se estender só em silêncio real.
+  7. Portões: casamento mínimo, âncoras suficientes, curva consistente, texto idêntico.
+     Reprovou → a legenda não é tocada.
 
 Uso manual (dentro do container):
   python -m core.subtitle_refine --video /media/filmes/X/X.mkv            (só relatório)
@@ -27,6 +33,7 @@ import json
 import logging
 import math
 import operator
+from itertools import combinations
 import os
 import re
 import statistics
@@ -43,11 +50,11 @@ logger = logging.getLogger(__name__)
 # off = desligado | audit = só mede e grava relatório | fix = corrige quando passa nos portões
 REFINE_MODE = os.environ.get("SUBTITLE_REFINE", "audit").strip().lower()
 EMBED_MODEL = os.environ.get("REFINE_EMBED_MODEL", "bge-m3").strip()
-# Distância máxima (s) entre a fala PT e a fala de referência candidata. Legendas
-# "quase certas" erram por poucos segundos; janela curta evita casamentos espúrios.
+# Distância máxima (s) entre a fala PT (já pré-alinhada) e a candidata da referência.
 REFINE_WINDOW = float(os.environ.get("REFINE_WINDOW_SECONDS", "12"))
-# Diferenças menores que isto não são tocadas (evita reescrever o que já está bom).
-REFINE_TOLERANCE = float(os.environ.get("REFINE_TOLERANCE_SECONDS", "0.3"))
+# Deslocamento perceptível: a curva só é aplicada se mover ao menos MIN_PERCEPTIBLE falas
+# por pelo menos isto (abaixo disso é ruído das âncoras e reescrever não ajuda).
+REFINE_TOLERANCE = float(os.environ.get("REFINE_TOLERANCE_SECONDS", "0.25"))
 # Fração mínima das falas PT casadas com confiança para aplicar a correção.
 REFINE_MIN_MATCH = float(os.environ.get("REFINE_MIN_MATCH", "0.6"))
 # Velocidade máxima de leitura (caracteres/s). 17 é a referência para PT-BR adulto.
@@ -56,21 +63,43 @@ REPORT_FILE = "/app/stats/subtitle_refine.json"
 
 # Calibrados com bge-m3 em pares EN↔PT: traduções ficam em 0,75–0,98; frases sem
 # relação, em 0,40–0,65. Interjeições curtas enganam ("Yes." × "Não." = 0,83), por
-# isso falas curtas só viram âncora se concordarem com o offset dos vizinhos longos.
+# isso âncoras exigem texto longo.
 MATCH_THRESHOLD = 0.6        # ponto zero do ganho: abaixo disso, pular é melhor que casar
-CONFIDENT_SIMILARITY = 0.72  # casamento usado para corrigir tempo
-SHORT_TEXT = 12              # caracteres (texto limpo) abaixo dos quais a fala é "curta"
-SHORT_MAX_DEVIATION = 1.5    # s: desvio máximo de uma fala curta em relação aos vizinhos
+CONFIDENT_SIMILARITY = 0.72  # casamento conta como "casado" (cobertura/qualidade)
 MERGE_PENALTY = 0.12         # custo extra por fala adicional num grupo (evita fusões gulosas)
 TIME_WEIGHT = 0.1            # leve preferência pela candidata mais próxima no tempo
-NEIGHBOR_SPAN = 60.0         # vizinhança (s) para o offset das falas não casadas
 OFF_THRESHOLD = 0.5          # fala com |delta| acima disto conta como "fora do tempo"
-# Tempo de leitura: o início vem da referência (é o que se percebe na sincronia); o fim
-# pode se estender para dar tempo de ler o português, que costuma ser mais longo.
+# Pré-alinhamento (releases diferentes: deslocamento grande e diferença de velocidade).
+COARSE_WINDOW = 180.0        # s: busca de cada fala amostrada na referência
+COARSE_SAMPLES = 80          # falas longas amostradas ao longo do episódio
+COARSE_MIN_POINTS = 8        # mínimo de casamentos inequívocos para confiar na reta
+COARSE_MARGIN = 0.04         # melhor candidata precisa superar a 2ª por esta margem
+MAX_DRIFT = 0.05             # inclinação máxima aceita (5% ≈ 25 × 23,976 fps)
+# Âncoras da curva: pares 1:1 que com certeza são a MESMA frase.
+ANCHOR_SIMILARITY = 0.8
+ANCHOR_MIN_TEXT = 15         # caracteres (texto limpo) dos dois lados
+ANCHOR_LENGTH_RATIO = (0.55, 1.8)  # tamanho PT ÷ EN plausível para a mesma frase
+NEIGHBOR_GAP = 1.5           # s: fala vizinha da referência "colada" (mesmo diálogo)
+OUTLIER_DEVIATION = 0.8      # s: âncora fora disto dos dois lados vira suspeita
+MIN_ANCHORS = 12
+MAX_ANCHOR_RESIDUAL = 0.6    # s: resíduo mediano máximo das âncoras em relação à curva
+# Curva: saltos (cortes) + mediana local.
+JUMP_SPAN = 5                # âncoras de cada lado para detectar um salto
+JUMP_MIN = 0.7               # s: salto mínimo considerado corte (validação cruzada)
+CURVE_NEIGHBORS = 9          # âncoras na mediana local
+MICRO_SHIFT = 0.05           # s: deslocamentos menores que isto não são aplicados
+MIN_PERCEPTIBLE = 5          # falas com |curva| >= REFINE_TOLERANCE para aplicar a curva
+# Ajuste individual de âncora inequívoca que foge da curva.
+SNAP_SIMILARITY = 0.85
+# Empurrar uma fala para DEPOIS é a direção arriscada: quase sempre é o tradutor que
+# começou a fala com o fim da frase anterior. Exige mais certeza.
+SNAP_SIMILARITY_LATER = 0.9
+SNAP_MIN = 0.6               # s: desvio mínimo em relação à curva
+# Tempo de leitura: o fim pode se estender para dar tempo de ler o português, mas só
+# em silêncio real (sem fala da referência começando) e sem invadir a próxima fala.
 MIN_GAP = 0.083              # s: intervalo mínimo até a próxima fala (~2 quadros)
 MIN_DURATION = 5 / 6         # s: duração mínima de uma fala
 MAX_DURATION = 7.0           # s: duração máxima ao estender
-MAX_LEAD_IN = 0.2            # s: quanto o início pode ser adiantado se o fim não tiver espaço
 MOVES = ((1, 1), (1, 2), (2, 1), (2, 2))
 
 _TAGS = re.compile(r"<[^>]+>|\{[^}]*\}")
@@ -253,16 +282,8 @@ def align(target: list[Cue], reference: list[Cue], target_vecs: dict, ref_vecs: 
 
 
 # ------------------------------------------------------------------ #
-# Correção + métricas                                                  #
+# Métricas e tempo de leitura                                          #
 # ------------------------------------------------------------------ #
-@dataclass
-class RefineResult:
-    cues: list[Cue]
-    verdict: str
-    changed: int
-    report: dict
-
-
 def _percentile(values: list[float], fraction: float) -> float:
     if not values:
         return 0.0
@@ -289,36 +310,171 @@ def reading_cps(cue: Cue) -> float:
     return visible_chars(cue.text) / max(0.001, cue.end - cue.start)
 
 
-def fit_reading_time(cues: list[Cue], original: list[Cue], moved_start: list[bool]) -> int:
+def fit_reading_time(cues: list[Cue], speech_starts: list[float]) -> int:
     """
-    Dá tempo de leitura sem invadir a próxima fala. O fim passa a ser o maior entre o
-    fim atual, a duração que a fala tinha no arquivo de entrada (escolha do tradutor) e
-    o mínimo para ler a REFINE_MAX_CPS. Se ainda faltar espaço e o início acabou de ser
-    movido para o da referência, ele pode ser adiantado em até MAX_LEAD_IN. Falas cujo
-    início não mudou nunca recuam (senão recuariam a cada nova passada).
-
-    Retorna quantas falas foram estendidas.
+    Dá tempo de leitura a falas rápidas demais estendendo só o FIM, e só em silêncio
+    real: nunca passa do início da próxima fala PT nem do início da próxima fala da
+    referência (outra pessoa falando). O início nunca se move. Retorna quantas estendeu.
     """
     extended = 0
     for k, cue in enumerate(cues):
-        needed = max(MIN_DURATION, visible_chars(cue.text) / REFINE_MAX_CPS)
-        duration = min(MAX_DURATION, max(needed, original[k].end - original[k].start))
-        limit = cues[k + 1].start - MIN_GAP if k + 1 < len(cues) else cue.start + duration
-        new_end = max(cue.end, min(cue.start + duration, limit))
-        new_start = cue.start
-        missing = needed - (new_end - new_start)
-        if missing > 0 and moved_start[k]:
-            floor = cues[k - 1].end + MIN_GAP if k else 0.0
-            new_start = min(cue.start, max(cue.start - min(MAX_LEAD_IN, missing), floor, 0.0))
-        if new_end > cue.end + 0.001 or new_start < cue.start - 0.001:
+        needed = min(MAX_DURATION, max(MIN_DURATION, visible_chars(cue.text) / REFINE_MAX_CPS))
+        if cue.end - cue.start >= needed:
+            continue
+        limit = cues[k + 1].start - MIN_GAP if k + 1 < len(cues) else cue.start + needed
+        nxt = bisect.bisect_right(speech_starts, cue.end + 0.001)
+        if nxt < len(speech_starts):
+            limit = min(limit, speech_starts[nxt] - MIN_GAP)
+        new_end = max(cue.end, min(cue.start + needed, limit))
+        if new_end > cue.end + 0.001:
             extended += 1
-        cue.start, cue.end = new_start, new_end
+            cue.end = new_end
     return extended
 
 
 def _short(text: str, limit: int = 70) -> str:
-    value = re.sub(r"\s+", " ", text).strip()
+    value = re.sub(r"\s+", " ", _TAGS.sub("", text)).strip()
     return value if len(value) <= limit else value[:limit - 1] + "…"
+
+
+# ------------------------------------------------------------------ #
+# Curva de deslocamento                                                #
+# ------------------------------------------------------------------ #
+@dataclass
+class Anchor:
+    target: int      # índice da fala PT
+    ref: int         # índice da fala de referência
+    offset: float    # início da referência − início da PT (s)
+    similarity: float
+
+
+def estimate_coarse_offset(target: list[Cue], reference: list[Cue], t_vecs: dict, r_vecs: dict,
+                           t_clean: dict) -> tuple[float, float, int]:
+    """
+    Pré-alinhamento offset(t) = a + b·t. Amostra falas PT longas ao longo do episódio,
+    procura a melhor candidata da referência em ±COARSE_WINDOW e só aceita casamentos
+    inequívocos; a reta sai de Theil–Sen (mediana das inclinações), robusta a erros.
+    Retorna (a, b, pontos usados).
+    """
+    r_order = sorted(r_vecs, key=lambda k: reference[k].start)
+    r_starts = [reference[k].start for k in r_order]
+    long_targets = [k for k in sorted(t_vecs) if len(t_clean[k]) >= 20]
+    step = max(1, len(long_targets) // COARSE_SAMPLES)
+    points = []
+    for k in long_targets[::step]:
+        t = target[k].start
+        lo = bisect.bisect_left(r_starts, t - COARSE_WINDOW)
+        hi = bisect.bisect_right(r_starts, t + COARSE_WINDOW)
+        ranked = sorted(((_dot(t_vecs[k], r_vecs[r_order[j]]), j) for j in range(lo, hi)), reverse=True)
+        if not ranked or ranked[0][0] < ANCHOR_SIMILARITY:
+            continue
+        if len(ranked) > 1 and ranked[0][0] - ranked[1][0] < COARSE_MARGIN:
+            continue
+        points.append((t, r_starts[ranked[0][1]] - t))
+    if len(points) < COARSE_MIN_POINTS:
+        return 0.0, 0.0, len(points)
+    slopes = [(d2 - d1) / (t2 - t1) for (t1, d1), (t2, d2) in combinations(points, 2) if t2 - t1 >= 60]
+    slope = max(-MAX_DRIFT, min(MAX_DRIFT, statistics.median(slopes))) if slopes else 0.0
+    intercept = statistics.median(d - slope * t for t, d in points)
+    return intercept, slope, len(points)
+
+
+def _contains_neighbor(k: int, r: int, base: float, reference: list[Cue], t_vecs: dict, r_vecs: dict,
+                       r_order: list[int], r_pos: dict) -> bool:
+    """
+    True se a fala PT parece conter também a fala da referência vizinha (antes ou depois,
+    colada): juntar a vizinha não reduz a similaridade. É o caso do tradutor que juntou
+    duas falas em uma — o início da fala PT NÃO é o início desta fala da referência.
+    """
+    pos = r_pos[r]
+    for other in (pos - 1, pos + 1):
+        if not 0 <= other < len(r_order):
+            continue
+        nb = r_order[other]
+        first, second = (nb, r) if other < pos else (r, nb)
+        if reference[second].start - reference[first].end > NEIGHBOR_GAP:
+            continue
+        if _dot(t_vecs[k], _combine([r_vecs[first], r_vecs[second]])) >= base - 0.01:
+            return True
+    return False
+
+
+def split_outliers(anchors: list[Anchor]) -> tuple[list[Anchor], list[Anchor]]:
+    """Âncora que destoa das vizinhas dos DOIS lados (num salto, concorda com um lado)."""
+    offsets = [a.offset for a in anchors]
+    good, suspects = [], []
+    for i, anchor in enumerate(anchors):
+        left, right = offsets[max(0, i - 5):i], offsets[i + 1:i + 6]
+        deviations = [abs(anchor.offset - statistics.median(side)) for side in (left, right) if side]
+        if deviations and min(deviations) > OUTLIER_DEVIATION:
+            suspects.append(anchor)
+        else:
+            good.append(anchor)
+    return good, suspects
+
+
+def fit_offset_curve(target: list[Cue], anchors: list[Anchor]) -> tuple[list[float], list[tuple[int, float]]]:
+    """
+    Deslocamento de cada fala PT. Saltos (cortes) são detectados comparando a mediana
+    das JUMP_SPAN âncoras antes e depois; a fronteira fica no maior intervalo entre falas
+    PT naquele ponto (cortes caem em pausas). Dentro de cada trecho, a mediana das
+    CURVE_NEIGHBORS âncoras mais próximas acompanha a deriva gradual.
+    Retorna (deslocamento por fala, [(índice da fala onde começa o trecho, salto)]).
+    """
+    n = len(anchors)
+    offsets = [a.offset for a in anchors]
+    scored = []
+    for i in range(JUMP_SPAN, n - JUMP_SPAN + 1):
+        delta = statistics.median(offsets[i:i + JUMP_SPAN]) - statistics.median(offsets[i - JUMP_SPAN:i])
+        scored.append((abs(delta), i, delta))
+    # Um salto real aparece como um PLATÔ de posições com o mesmo delta (a mediana tolera
+    # algumas âncoras do outro lado). A fronteira é procurada ao longo do platô inteiro.
+    by_position = {i: abs(delta) for _, i, delta in scored}
+    cuts = []
+    for score, i, delta in sorted(scored, key=lambda item: (-item[0], item[1])):
+        if score < JUMP_MIN:
+            break
+        if any(lo - JUMP_SPAN < i < hi + JUMP_SPAN for lo, hi, _ in cuts):
+            continue
+        lo = hi = i
+        while by_position.get(lo - 1, 0.0) >= score - 0.1:
+            lo -= 1
+        while by_position.get(hi + 1, 0.0) >= score - 0.1:
+            hi += 1
+        cuts.append((lo, hi, delta))
+    cuts.sort()
+
+    boundaries, jumps = [], []
+    for lo, hi, delta in cuts:
+        first, last = anchors[lo - 1].target + 1, anchors[hi].target
+        k = max(range(first, last + 1), key=lambda j: target[j].start - target[j - 1].end)
+        boundaries.append(k)
+        jumps.append((k, delta))
+
+    segments: list[list[Anchor]] = [[] for _ in range(len(boundaries) + 1)]
+    for anchor in anchors:
+        segments[bisect.bisect_right(boundaries, anchor.target)].append(anchor)
+
+    curve = []
+    for k, cue in enumerate(target):
+        segment = segments[bisect.bisect_right(boundaries, k)] or anchors
+        times = [target[a.target].start for a in segment]
+        pos = bisect.bisect_left(times, cue.start)
+        window = segment[max(0, pos - CURVE_NEIGHBORS):pos + CURVE_NEIGHBORS]
+        nearest = sorted(window, key=lambda a: abs(target[a.target].start - cue.start))[:CURVE_NEIGHBORS]
+        curve.append(statistics.median(a.offset for a in nearest))
+    return curve, jumps
+
+
+# ------------------------------------------------------------------ #
+# Correção + métricas                                                  #
+# ------------------------------------------------------------------ #
+@dataclass
+class RefineResult:
+    cues: list[Cue]
+    verdict: str
+    changed: int
+    report: dict
 
 
 def refine_cues(target: list[Cue], reference: list[Cue], embedder, window: float = REFINE_WINDOW) -> RefineResult:
@@ -337,104 +493,108 @@ def refine_cues(target: list[Cue], reference: list[Cue], embedder, window: float
     vectors = embedder.embed([t_clean[k] for k in t_idx] + [r_clean[k] for k in r_idx])
     t_vecs = dict(zip(t_idx, vectors[:len(t_idx)]))
     r_vecs = dict(zip(r_idx, vectors[len(t_idx):]))
-    groups = align(target, reference, t_vecs, r_vecs, window)
 
-    def group_offset(g):
-        return reference[g.refs[0]].start - target[g.targets[0]].start
-
-    def is_short(g):
-        return (
-            sum(len(t_clean[k]) for k in g.targets) < SHORT_TEXT
-            or sum(len(r_clean[k]) for k in g.refs) < SHORT_TEXT
-        )
-
-    candidates = [g for g in groups if g.similarity >= CONFIDENT_SIMILARITY]
-    long_anchors = sorted((target[g.targets[0]].start, group_offset(g)) for g in candidates if not is_short(g))
-    long_times = [t for t, _ in long_anchors]
-
-    def consistent_with_neighbors(g):
-        start = target[g.targets[0]].start
-        pos = bisect.bisect_left(long_times, start)
-        near = [d for t, d in long_anchors[max(0, pos - 3):pos + 3] if abs(t - start) <= NEIGHBOR_SPAN]
-        return bool(near) and abs(group_offset(g) - statistics.median(near)) <= SHORT_MAX_DEVIATION
-
-    confident = [g for g in candidates if not is_short(g) or consistent_with_neighbors(g)]
-    confident_targets = {k for g in confident for k in g.targets}
-    matched_ratio = len(confident_targets) / len(t_idx)
+    # 1. Pré-alinhamento + alinhamento fino sobre a PT pré-alinhada.
+    intercept, slope, coarse_points = estimate_coarse_offset(target, reference, t_vecs, r_vecs, t_clean)
+    shifted = [
+        Cue(c.start + intercept + slope * c.start, c.end + intercept + slope * c.start, c.text)
+        for c in target
+    ]
+    groups = align(shifted, reference, t_vecs, r_vecs, window)
+    confident = [g for g in groups if g.similarity >= CONFIDENT_SIMILARITY]
+    matched_ratio = len({k for g in confident for k in g.targets}) / len(t_idx)
     matched_refs = {k for g in confident for k in g.refs}
     similarities = [g.similarity for g in confident]
 
-    # Novo tempo das falas casadas com confiança: herdam o tempo da referência.
-    proposed: dict[int, tuple[float, float]] = {}
-    for g in confident:
-        refs = [reference[k] for k in g.refs]
-        if len(g.targets) == len(refs):
-            for k, ref in zip(g.targets, refs):
-                proposed[k] = (ref.start, ref.end)
-        elif len(g.targets) == 1:
-            proposed[g.targets[0]] = (refs[0].start, refs[-1].end)
-        else:  # 2 falas PT para 1 da referência: divide o tempo pelo tamanho do texto
-            span_start, span_end = refs[0].start, refs[-1].end
-            weights = [max(1, len(t_clean[k])) for k in g.targets]
-            cursor = span_start
-            for k, weight in zip(g.targets, weights):
-                length = (span_end - span_start) * weight / sum(weights)
-                proposed[k] = (cursor, cursor + length)
-                cursor += length
-
-    # Falas sem casamento confiável: deslocadas pelo offset mediano dos vizinhos confiáveis.
-    anchors = sorted((target[k].start, proposed[k][0] - target[k].start) for k in proposed)
-    anchor_times = [t for t, _ in anchors]
-    for k, cue in enumerate(target):
-        if k in proposed:
+    # 2. Âncoras: pares 1:1 que com certeza são a mesma frase.
+    r_order = sorted(r_idx, key=lambda k: reference[k].start)
+    r_pos = {r: i for i, r in enumerate(r_order)}
+    anchors = []
+    for g in groups:
+        if len(g.targets) != 1 or len(g.refs) != 1 or g.similarity < ANCHOR_SIMILARITY:
             continue
-        pos = bisect.bisect_left(anchor_times, cue.start)
-        near = [
-            delta for t, delta in anchors[max(0, pos - 4):pos + 4]
-            if abs(t - cue.start) <= NEIGHBOR_SPAN
-        ]
-        if near:
-            shift = statistics.median(near)
-            proposed[k] = (cue.start + shift, cue.end + shift)
+        k, r = g.targets[0], g.refs[0]
+        t_len, r_len = len(t_clean[k]), len(r_clean[r])
+        if min(t_len, r_len) < ANCHOR_MIN_TEXT:
+            continue
+        if not ANCHOR_LENGTH_RATIO[0] <= t_len / r_len <= ANCHOR_LENGTH_RATIO[1]:
+            continue
+        if _contains_neighbor(k, r, g.similarity, reference, t_vecs, r_vecs, r_order, r_pos):
+            continue
+        anchors.append(Anchor(k, r, reference[r].start - target[k].start, g.similarity))
+    good, suspects = split_outliers(anchors)
 
+    # 3. Curva aplicada a todas as falas (duração e quebra de frases intactas).
+    if good:
+        curve, jumps = fit_offset_curve(target, good)
+    else:
+        curve, jumps = [0.0] * len(target), []
+    # Só aplica se o deslocamento for perceptível em várias falas: numa legenda já
+    # refinada, a curva é ruído de ±0,2 s e reaplicá-la reescreveria tudo a cada passada.
+    perceptible = sum(1 for shift in curve if abs(shift) >= REFINE_TOLERANCE)
+    apply_curve = perceptible >= MIN_PERCEPTIBLE
     new_cues = []
-    for k, cue in enumerate(target):
-        start, end = proposed.get(k, (cue.start, cue.end))
-        if abs(start - cue.start) < REFINE_TOLERANCE:
-            start = cue.start
-        if abs(end - cue.end) < REFINE_TOLERANCE:
-            end = cue.end
-        new_cues.append(Cue(start, max(end, start + 0.001), cue.text))
+    for cue, shift in zip(target, curve):
+        shift = shift if apply_curve and abs(shift) >= MICRO_SHIFT else 0.0
+        new_cues.append(Cue(cue.start + shift, cue.end + shift, cue.text))
 
-    # Ordem, tempo de leitura (só nas falas retemporizadas) e sobreposição.
-    for k in range(1, len(new_cues)):
-        if new_cues[k].start < new_cues[k - 1].start:
-            new_cues[k].start = new_cues[k - 1].start + 0.001
-    moved_start = [abs(old.start - new.start) >= 0.001 for old, new in zip(target, new_cues)]
-    extended = fit_reading_time(new_cues, target, moved_start)
+    # 4. Ajuste individual: âncora inequívoca que foge da curva. As falas da referência
+    # coladas a ela precisam estar casadas com OUTRAS falas PT: se a vizinha ficou sem
+    # par, a fala PT provavelmente a contém (tradutor juntou as duas) e o início dela
+    # não é o desta fala da referência.
+    covered = {r for g in groups for r in g.refs}
+
+    def neighbors_covered(r: int) -> bool:
+        pos = r_pos[r]
+        for other in (pos - 1, pos + 1):
+            if 0 <= other < len(r_order):
+                nb = r_order[other]
+                first, second = sorted((nb, r), key=lambda x: reference[x].start)
+                if reference[second].start - reference[first].end <= NEIGHBOR_GAP and nb not in covered:
+                    return False
+        return True
+
+    snapped = []
+    for a in suspects:
+        k, ref = a.target, reference[a.ref]
+        residual = a.offset - curve[k]
+        required = SNAP_SIMILARITY_LATER if residual > 0 else SNAP_SIMILARITY
+        if a.similarity < required or not SNAP_MIN <= abs(residual) <= window:
+            continue
+        if not neighbors_covered(a.ref):
+            continue
+        duration = target[k].end - target[k].start
+        lower = new_cues[k - 1].end + MIN_GAP if k else 0.0
+        upper = new_cues[k + 1].start - MIN_GAP if k + 1 < len(new_cues) else math.inf
+        start, end = ref.start, min(ref.start + duration, upper)
+        if start < lower or end - start < MIN_DURATION:
+            continue  # não cabe sem atropelar as vizinhas: fica com a curva
+        new_cues[k] = Cue(start, end, target[k].text)
+        snapped.append((a, residual))
+
+    # 5. Ordem, sobreposição e tempo de leitura.
     for k in range(1, len(new_cues)):
         previous, current = new_cues[k - 1], new_cues[k]
+        if current.start < previous.start:
+            current.start = previous.start + 0.001
         if previous.end > current.start and current.start - previous.start >= 0.5:
-            previous.end = current.start - 0.001
+            previous.end = current.start  # só sobreposição real; falas coladas são normais
     for cue in new_cues:
-        if cue.end < cue.start + 0.3:
-            cue.end = cue.start + 0.3
+        cue.end = max(cue.end, cue.start + 0.3)
+    extended = fit_reading_time(new_cues, [reference[r].start for r in r_order])
 
-    deltas_before, deltas_after, worst = [], [], []
-    for g in confident:
-        for k in g.targets:
-            ref_start = proposed[k][0]
-            before = target[k].start - ref_start
-            deltas_before.append(before)
-            deltas_after.append(new_cues[k].start - ref_start)
-            worst.append((abs(before), k, g))
-    worst.sort(key=lambda item: item[0], reverse=True)
-
+    # Métricas: deslocamento das âncoras antes/depois.
+    anchor_set = good + [a for a, _ in snapped]
+    deltas_before = [a.offset for a in anchor_set]
+    deltas_after = [reference[a.ref].start - new_cues[a.target].start for a in anchor_set]
+    residuals = [abs(a.offset - curve[a.target]) for a in good]
+    residual = statistics.median(residuals) if residuals else 0.0
     changed = sum(
         1 for old, new in zip(target, new_cues)
         if abs(old.start - new.start) >= 0.001 or abs(old.end - new.end) >= 0.001
     )
-    max_shift = max((abs(o.start - n.start) for o, n in zip(target, new_cues)), default=0.0)
+    shifts = [new.start - old.start for old, new in zip(target, new_cues)]
+    max_shift = max((abs(s) for s in shifts), default=0.0)
     kinds: dict[str, int] = {}
     for g in groups:
         kind = f"{len(g.targets)}:{len(g.refs)}"
@@ -449,6 +609,19 @@ def refine_cues(target: list[Cue], reference: list[Cue], embedder, window: float
         "similaridade_mediana": round(median_sim, 3),
         "qualidade": round(quality),
         "grupos": kinds,
+        "ancoras": len(good),
+        "ancoras_suspeitas": len(suspects),
+        "residuo_ancoras": round(residual, 3),
+        "curva": {
+            "pre_alinhamento": round(intercept, 3),
+            "deriva_s_por_min": round(slope * 60, 4),
+            "pontos_pre_alinhamento": coarse_points,
+            "min": round(min(curve, default=0.0), 3),
+            "max": round(max(curve, default=0.0), 3),
+            "saltos": [{"tempo": format_timestamp(target[k].start), "delta": round(d, 2)} for k, d in jumps],
+            "falas_perceptiveis": perceptible,
+            "aplicada": apply_curve,
+        },
         "offset_antes": _offset_stats(deltas_before),
         "offset_depois": _offset_stats(deltas_after),
         "propostas": changed,  # antes dos portões; "alteradas" = o que foi gravado
@@ -459,24 +632,25 @@ def refine_cues(target: list[Cue], reference: list[Cue], embedder, window: float
             "rapidas_depois": sum(1 for c in new_cues if reading_cps(c) > REFINE_MAX_CPS),
             "estendidas": extended,
         },
-        "piores": [
+        "ajustes_individuais_total": len(snapped),
+        "ajustes_individuais": [
             {
-                "tempo": format_timestamp(target[k].start),
-                "delta": round(target[k].start - proposed[k][0], 2),
-                "pt": _short(target[k].text),
-                "ref": _short(" / ".join(reference[r].text for r in g.refs)),
-                "similaridade": g.similarity,
+                "tempo": format_timestamp(new_cues[a.target].start),
+                "delta": round(res, 2),
+                "pt": _short(target[a.target].text),
+                "ref": _short(reference[a.ref].text),
+                "similaridade": a.similarity,
             }
-            for delta, k, g in worst[:8] if delta > OFF_THRESHOLD
+            for a, res in sorted(snapped, key=lambda item: -abs(item[1]))[:8]
         ],
     }
 
     # Portões de segurança.
     if [c.text for c in new_cues] != [c.text for c in target]:
         raise RefineError("invariante violada: texto alterado")  # nunca deveria ocorrer
-    if matched_ratio < REFINE_MIN_MATCH:
+    if matched_ratio < REFINE_MIN_MATCH or len(good) < MIN_ANCHORS or residual > MAX_ANCHOR_RESIDUAL:
         return RefineResult(target, "baixa_confianca", 0, report)
-    if max_shift > window + 1:
+    if max_shift > COARSE_WINDOW + window:
         return RefineResult(target, "deslocamento_excessivo", 0, report)
     if changed == 0:
         return RefineResult(target, "sincronizada", 0, report)
@@ -585,25 +759,32 @@ def save_report(media_path: str, report: dict):
 
 def format_report(report: dict) -> str:
     before, after = report.get("offset_antes", {}), report.get("offset_depois", {})
+    curve, reading = report.get("curva", {}), report.get("leitura", {})
+    jumps = ", ".join(f"{j['tempo'][3:8]} {j['delta']:+.2f}s" for j in curve.get("saltos", [])) or "nenhum"
     lines = [
         f"Veredito: {report.get('veredito')}  |  qualidade {report.get('qualidade', '-')}/100",
         f"Falas: PT={report.get('falas_pt')} referência={report.get('falas_referencia')}  "
         f"casadas={report.get('casadas_pct', 0)}%  ref coberta={report.get('referencia_coberta_pct', 0)}%  "
         f"similaridade mediana={report.get('similaridade_mediana', 0)}",
-        f"Grupos: {report.get('grupos', {})}",
-        f"Offset antes:  mediana {before.get('mediana_abs', 0)}s  p90 {before.get('p90_abs', 0)}s  "
+        f"Âncoras: {report.get('ancoras', 0)} (suspeitas {report.get('ancoras_suspeitas', 0)})  "
+        f"resíduo mediano {report.get('residuo_ancoras', 0)}s",
+        f"Curva: pré-alinhamento {curve.get('pre_alinhamento', 0):+.2f}s  "
+        f"deriva {curve.get('deriva_s_por_min', 0):+.3f}s/min  "
+        f"de {curve.get('min', 0):+.2f}s a {curve.get('max', 0):+.2f}s  "
+        f"{'aplicada' if curve.get('aplicada') else 'NÃO aplicada (imperceptível)'}",
+        f"Saltos (cortes): {jumps}",
+        f"Âncoras antes:  mediana {before.get('mediana_abs', 0)}s  p90 {before.get('p90_abs', 0)}s  "
         f"máx {before.get('max_abs', 0)}s  fora do tempo={before.get('fora_do_tempo', 0)}",
-        f"Offset depois: mediana {after.get('mediana_abs', 0)}s  p90 {after.get('p90_abs', 0)}s  "
+        f"Âncoras depois: mediana {after.get('mediana_abs', 0)}s  p90 {after.get('p90_abs', 0)}s  "
         f"máx {after.get('max_abs', 0)}s  fora do tempo={after.get('fora_do_tempo', 0)}",
-        f"Alteradas: {report.get('alteradas', 0)} (propostas: {report.get('propostas', 0)})  deslocamento máx: {report.get('deslocamento_max', 0)}s  "
-        f"({report.get('segundos', 0)}s)",
-        f"Leitura (> {report.get('leitura', {}).get('limite_cps', REFINE_MAX_CPS):g} car/s): "
-        f"rápidas antes={report.get('leitura', {}).get('rapidas_antes', 0)} "
-        f"depois={report.get('leitura', {}).get('rapidas_depois', 0)} "
-        f"estendidas={report.get('leitura', {}).get('estendidas', 0)}",
+        f"Alteradas: {report.get('alteradas', 0)} (propostas: {report.get('propostas', 0)})  "
+        f"ajustes individuais: {report.get('ajustes_individuais_total', 0)}  ({report.get('segundos', 0)}s)",
+        f"Leitura (> {reading.get('limite_cps', REFINE_MAX_CPS):g} car/s): "
+        f"rápidas antes={reading.get('rapidas_antes', 0)} depois={reading.get('rapidas_depois', 0)} "
+        f"estendidas={reading.get('estendidas', 0)}",
     ]
-    for item in report.get("piores", []):
-        lines.append(f"  {item['tempo']}  {item['delta']:+.2f}s  PT: {item['pt']}  |  REF: {item['ref']}")
+    for item in report.get("ajustes_individuais", []):
+        lines.append(f"  ajuste {item['tempo']}  {item['delta']:+.2f}s  PT: {item['pt']}  |  REF: {item['ref']}")
     return "\n".join(lines)
 
 
