@@ -1,4 +1,5 @@
 const STATE_KEY = 'drop_app_state';
+const THEME_STORAGE_KEY = 'drop_theme';
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const CODE_LENGTH = 20;
 const CODE_PATTERN = /^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{20}$/;
@@ -11,6 +12,41 @@ let ws = null;
 let html5QrCode = null;
 let keepAliveTimer = null;
 let clearMessageTimer = null;
+
+function applyTheme(theme, persist = false) {
+    const isDark = theme === 'dark';
+    document.documentElement.dataset.theme = isDark ? 'dark' : 'light';
+    document.getElementById('theme-toggle').setAttribute('aria-pressed', String(isDark));
+    document.getElementById('theme-toggle').setAttribute(
+        'aria-label', isDark ? 'Ativar tema claro' : 'Ativar tema escuro'
+    );
+    document.getElementById('theme-icon').textContent = isDark ? '☀' : '☾';
+    document.querySelector('meta[name="theme-color"]').content = isDark ? '#101c19' : '#eef2ec';
+    if (persist) {
+        try {
+            localStorage.setItem(THEME_STORAGE_KEY, isDark ? 'dark' : 'light');
+        } catch (error) {
+            console.warn('Não foi possível salvar a preferência de tema.');
+        }
+    }
+}
+
+function initializeTheme() {
+    let savedTheme = null;
+    try {
+        savedTheme = localStorage.getItem(THEME_STORAGE_KEY);
+    } catch (error) {
+        console.warn('Não foi possível ler a preferência de tema.');
+    }
+    const prefersDark = typeof window.matchMedia === 'function' &&
+        window.matchMedia('(prefers-color-scheme: dark)').matches;
+    applyTheme(savedTheme === 'dark' || savedTheme === 'light' ? savedTheme : prefersDark ? 'dark' : 'light');
+}
+
+function toggleTheme() {
+    const currentTheme = document.documentElement.dataset.theme;
+    applyTheme(currentTheme === 'dark' ? 'light' : 'dark', true);
+}
 
 async function deriveKeyAndId(code) {
     if (!CODE_PATTERN.test(code)) throw new Error('Código inválido');
@@ -351,6 +387,7 @@ async function clearClipboard() {
 }
 
 const actions = {
+    toggleTheme,
     initReceiver,
     initSender,
     copyConnectionCode,
@@ -373,4 +410,5 @@ document.getElementById('manual-code-form').addEventListener('submit', event => 
     connectSenderManual();
 });
 
+initializeTheme();
 init();

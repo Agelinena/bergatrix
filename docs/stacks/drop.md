@@ -56,6 +56,7 @@ Como o WebSocket usa o mesmo host, o tráfego WSS também passa pelo Traefik e p
 - **Keep-alive:** o cliente Receptor envia `"ping"` a cada 30s para manter o WebSocket ativo; frames maiores que 1 KiB são rejeitados e o ping não estende a validade absoluta de 10 minutos.
 - **Persistência de UX no cliente:** `sessionStorage['drop_app_state']` guarda `{mode, code, sessionId, timestamp}` para restaurar a sessão na aba atual (dentro de 10 min). A chave não é exportada nem persistida; é derivada novamente do código e mantida não extraível em memória.
 - **Entradas do Emissor:** código digitado (20 chars, convertido para upper-case), QR pela câmera (html5-qrcode) ou deep link `#code=` (o QR aponta para `origin + '/#code=' + code`).
+- **Interface:** alternância claro/escuro persistida no navegador; na primeira visita segue a preferência de aparência do sistema.
 - **Conveniências do Receptor:** mostrar/ocultar conteúdo, copiar para clipboard e "Limpar Área de Transferência" (exige `window.isSecureContext` / HTTPS).
 
 ## 🗄️ Modelo de dados
