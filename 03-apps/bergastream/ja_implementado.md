@@ -381,7 +381,7 @@ Rodado na imagem `ghcr.io/cirruslabs/flutter:stable` (Flutter 3.44.0 / Dart 3.12
 - Deploy de produção: compose com `${STORAGE_PATH}`, `container_name`, redes
   `bergastream-internal` (sem internet) e `bergastream-egress`, labels do modelo B.
 
-### Spotify sem conta, qualidade real e FLAC das playlists (servidor)
+### Versão 0.3.0 — Spotify sem conta, qualidade real e FLAC das playlists (servidor)
 - **Spotify sem conta:** desde fev/2026 a Web API exige Premium do dono do app (sem ele, a aba
   Spotify ficava vazia). Agora: biblioteca **SpotifyScraper** (token anônimo do web player) para
   busca, faixas, álbuns, artistas (com discografia completa) e playlists — inclusive as editoriais
@@ -415,7 +415,7 @@ Rodado na imagem `ghcr.io/cirruslabs/flutter:stable` (Flutter 3.44.0 / Dart 3.12
 - Testes: `test_quality` 37 (novo), `test_permanence_dirs` 13 (upgrade troca o arquivo),
   `test_catalog`/`test_playlist_search`/`test_history` atualizados.
 
-### Qualidade escolhida por aparelho e cópias offline que se atualizam
+### Versão 0.3.0 — qualidade escolhida por aparelho e cópias offline que se atualizam
 - **Lidarr só de passagem:** copiada a música, o álbum deixa de ser monitorado e os arquivos são
   apagados do Lidarr quando nenhuma outra faixa de playlist espera aquele álbum
   (`LIDARR_KEEP_ALBUMS=true` mantém). A pasta de música do Lidarr fica nos dados do Bergastream
