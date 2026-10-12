@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -45,7 +46,7 @@ dup = [t(1, "ISRC1"), t(2), t(1, "ISRC1", "Deluxe"), t(2)]
 ok([x.external_id for x in service.dedupe(dup)], ["id1", "id2"], "mesma música em vários álbuns aparece uma vez")
 
 print("=== todas as faixas do Spotify (álbum por álbum) ===")
-albums = [{"id": f"al{i}", "total_tracks": 30} for i in range(5)]  # 150 faixas
+albums = [SimpleNamespace(id=f"al{i}") for i in range(5)]  # discografia da SpotifyScraper; 150 faixas
 tracks_by_album = {f"al{i}": [t(i * 30 + j, f"I{i * 30 + j}") for j in range(30)] for i in range(5)}
 loaded: list[str] = []
 

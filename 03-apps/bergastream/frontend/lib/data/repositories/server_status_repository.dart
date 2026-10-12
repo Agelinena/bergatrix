@@ -23,6 +23,8 @@ class ServerStatus {
     this.deemixFailed = 0,
     this.deemixItems = const [],
     this.deemixFailures = const [],
+    this.quality,
+    this.spotify,
   });
 
   factory ServerStatus.fromJson(Map<String, dynamic> json) {
@@ -52,6 +54,14 @@ class ServerStatus {
         for (final f in d['recent_failures'] as List<dynamic>? ?? const [])
           DeemixFailure.fromJson(f as Map<String, dynamic>),
       ],
+      quality: switch (json['quality']) {
+        final Map<String, dynamic> q => QualitySummary.fromJson(q),
+        _ => null,
+      },
+      spotify: switch (json['spotify']) {
+        final Map<String, dynamic> sp => SpotifyHealth.fromJson(sp),
+        _ => null,
+      },
     );
   }
 
@@ -81,6 +91,95 @@ class ServerStatus {
 
   /// Falhas recentes do Deemix e se o YouTube baixou no lugar.
   final List<DeemixFailure> deemixFailures;
+
+  /// Músicas por qualidade e a fila de melhoria das playlists (servidores
+  /// antigos não informam).
+  final QualitySummary? quality;
+
+  /// Último teste diário do Spotify.
+  final SpotifyHealth? spotify;
+}
+
+/// Músicas do servidor por qualidade e a melhoria das playlists (Deemix e
+/// FLAC pela Usenet).
+class QualitySummary {
+  const QualitySummary({
+    this.lossless = 0,
+    this.high = 0,
+    this.medium = 0,
+    this.low = 0,
+    this.unknown = 0,
+    this.upgradesPending = 0,
+    this.upgradesWaiting = 0,
+    this.upgradesDone = 0,
+    this.lidarr = false,
+  });
+
+  factory QualitySummary.fromJson(Map<String, dynamic> j) => QualitySummary(
+    lossless: j['lossless'] as int? ?? 0,
+    high: j['high'] as int? ?? 0,
+    medium: j['medium'] as int? ?? 0,
+    low: j['low'] as int? ?? 0,
+    unknown: j['unknown'] as int? ?? 0,
+    upgradesPending: j['upgrades_pending'] as int? ?? 0,
+    upgradesWaiting: j['upgrades_waiting'] as int? ?? 0,
+    upgradesDone: j['upgrades_done'] as int? ?? 0,
+    lidarr: j['lidarr'] as bool? ?? false,
+  );
+
+  /// FLAC (16 ou 24 bits).
+  final int lossless;
+
+  /// MP3 320.
+  final int high;
+
+  /// MP3 192 / Opus do YouTube.
+  final int medium;
+
+  /// MP3 128.
+  final int low;
+  final int unknown;
+
+  /// Faixas de playlist ainda buscando qualidade melhor.
+  final int upgradesPending;
+
+  /// Esperando o Lidarr achar o álbum na Usenet.
+  final int upgradesWaiting;
+  final int upgradesDone;
+  final bool lidarr;
+}
+
+/// Teste diário do Spotify (busca, faixa, álbum, playlist e ISRC).
+class SpotifyHealth {
+  const SpotifyHealth({
+    required this.ok,
+    this.libraryVersion,
+    this.checkedAt,
+    this.failures = const {},
+    this.update,
+  });
+
+  factory SpotifyHealth.fromJson(Map<String, dynamic> j) => SpotifyHealth(
+    ok: j['ok'] as bool? ?? false,
+    libraryVersion: j['library_version'] as String?,
+    checkedAt: DateTime.tryParse(j['checked_at'] as String? ?? '')?.toLocal(),
+    failures: {
+      for (final MapEntry(:key, :value)
+          in (j['failures'] as Map<String, dynamic>? ?? const {}).entries)
+        key: '$value',
+    },
+    update: j['update'] as String?,
+  );
+
+  final bool ok;
+  final String? libraryVersion;
+  final DateTime? checkedAt;
+
+  /// Teste que falhou → motivo.
+  final Map<String, String> failures;
+
+  /// O que a autocorreção fez (ou por que não fez).
+  final String? update;
 }
 
 class DeemixFailure {
@@ -186,6 +285,17 @@ class FakeServerStatusRepository implements ServerStatusRepository {
       ),
       DeemixItem(title: 'Levitating', artist: 'Dua Lipa', status: 'inQueue'),
     ],
+    quality: QualitySummary(
+      lossless: 420,
+      high: 610,
+      medium: 150,
+      low: 20,
+      upgradesPending: 35,
+      upgradesWaiting: 12,
+      upgradesDone: 880,
+      lidarr: true,
+    ),
+    spotify: SpotifyHealth(ok: true, libraryVersion: '3.9.2'),
     deemixFailures: [
       DeemixFailure(
         title: 'Redbone',

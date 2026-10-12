@@ -125,54 +125,39 @@ async def _follow_redirects(url: str) -> str:
         return str(r.url)
 
 
-# ── Spotify ──────────────────────────────────────────────────────
+# ── Spotify (SpotifyScraper, sem conta) ─────────────────────────
 
 def _resolve_spotify(link: ParsedLink) -> ResolvedLink:
+    from spotify_scraper.errors import NotFoundError
+
     sp = spotify.client()
-    if sp is None:
-        raise LinkNotFound("Spotify sem credenciais")
     external = f"https://open.spotify.com/{link.kind}/{link.id}"
+    try:
+        if link.kind == "track":
+            t = spotify.track_from(sp.get_track(link.id))
+            return ResolvedLink(source="spotify", kind="track", title=t.title, subtitle=t.artist,
+                                cover_url=t.cover_url, total=1, tracks=[t], external_url=external)
 
-    if link.kind == "track":
-        t = spotify.track_from(sp.track(link.id))
-        return ResolvedLink(source="spotify", kind="track", title=t.title, subtitle=t.artist,
-                            cover_url=t.cover_url, total=1, tracks=[t], external_url=external)
+        if link.kind == "album":
+            album = sp.get_album(link.id)
+            tracks = [spotify.track_from(t, album) for t in album.tracks if t.id][:MAX_TRACKS]
+            return ResolvedLink(
+                source="spotify", kind="album", title=album.name or "",
+                subtitle=", ".join(a.name for a in album.artists if a.name),
+                cover_url=spotify.best_image(album.images),
+                total=album.total_tracks or len(tracks), tracks=tracks, external_url=external)
 
-    if link.kind == "album":
-        album = sp.album(link.id)
-        ids: list[str] = []
-        page = album["tracks"]
-        while page and len(ids) < MAX_TRACKS:
-            ids += [i["id"] for i in page["items"] if i and i.get("id")]
-            page = sp.next(page) if page.get("next") else None
-        # Faixas de álbum vêm sem ISRC; busca as completas em lotes de 50.
-        tracks: list[SearchResult] = []
-        for start in range(0, len(ids), 50):
-            for full in sp.tracks(ids[start:start + 50])["tracks"]:
-                if full:
-                    tracks.append(spotify.track_from(full, album))
-        return ResolvedLink(
-            source="spotify", kind="album", title=album.get("name", ""),
-            subtitle=", ".join(a["name"] for a in album.get("artists", [])),
-            cover_url=spotify._image(album.get("images")),
-            total=album.get("total_tracks", len(tracks)), tracks=tracks, external_url=external)
-
-    playlist = sp.playlist(link.id, fields="name,description,owner(display_name),images,tracks(total)")
-    tracks = []
-    page = sp.playlist_items(link.id, limit=100, additional_types=("track",))
-    while page and len(tracks) < MAX_TRACKS:
-        for item in page["items"]:
-            t = (item or {}).get("track")
-            if t and t.get("id") and t.get("type") == "track":
-                tracks.append(spotify.track_from(t))
-        page = sp.next(page) if page.get("next") else None
+        playlist = sp.get_playlist(link.id, max_tracks=MAX_TRACKS)
+    except NotFoundError as exc:
+        raise LinkNotFound(external) from exc
+    tracks = [spotify.track_from(item.track) for item in playlist.tracks
+              if item.track and item.track.id][:MAX_TRACKS]
     return ResolvedLink(
-        source="spotify", kind="playlist", title=playlist.get("name", ""),
-        subtitle=(playlist.get("owner") or {}).get("display_name") or "",
-        cover_url=spotify._image(playlist.get("images")),
-        description=clean_description(playlist.get("description")),
-        total=(playlist.get("tracks") or {}).get("total", len(tracks)),
-        tracks=tracks[:MAX_TRACKS], external_url=external)
+        source="spotify", kind="playlist", title=playlist.name or "",
+        subtitle=playlist.owner.name if playlist.owner else "",
+        cover_url=spotify.best_image(playlist.images),
+        description=clean_description(playlist.description),
+        total=playlist.total_tracks or len(tracks), tracks=tracks, external_url=external)
 
 
 # ── Deezer (API pública) ─────────────────────────────────────────

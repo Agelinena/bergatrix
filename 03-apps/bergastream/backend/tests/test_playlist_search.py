@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import sys
+from types import SimpleNamespace
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -33,13 +34,16 @@ def item(provider, n, kind="playlist"):
 
 
 class FakeSpotify:
-    def search(self, q, type, limit):
-        return {"playlists": {"items": [
-            None,
-            {"id": "ed1", "name": "This Is Scorpions", "owner": {"id": "spotify"}, "images": []},
-            {"id": "u1", "name": "Rock do Fulano", "owner": {"id": "fulano", "display_name": "Fulano"},
-             "tracks": {"total": 50}, "images": [{"url": "https://i.scdn.co/a"}]},
-        ]}}
+    """Imita a SpotifyScraper (search devolve objetos com .playlists)."""
+    def search(self, q, types, limit):
+        img = SimpleNamespace(url="https://i.scdn.co/a", width=640, height=640)
+        return SimpleNamespace(playlists=[
+            SimpleNamespace(id="ed1", name="This Is Scorpions", owner=SimpleNamespace(name="Spotify"),
+                            total_tracks=None, images=()),
+            SimpleNamespace(id="", name="sem id", owner=None, total_tracks=None, images=()),
+            SimpleNamespace(id="u1", name="Rock do Fulano", owner=SimpleNamespace(name="Fulano"),
+                            total_tracks=50, images=(img,)),
+        ])
 
 
 async def main():
@@ -104,9 +108,10 @@ async def main():
         res = fresh._spotify("scorpions")
     finally:
         fresh.spotify.client = original
-    ok([r.title for r in res], ["Rock do Fulano"], "editorial (dono spotify) descartada")
-    ok((res[0].owner, res[0].track_count, res[0].url),
-       ("Fulano", 50, "https://open.spotify.com/playlist/u1"), "dados da playlist")
+    ok([r.title for r in res], ["This Is Scorpions", "Rock do Fulano"],
+       "editoriais do Spotify entram (o caminho anônimo abre); sem id fica de fora")
+    ok((res[1].owner, res[1].track_count, res[1].url, res[1].image_url),
+       ("Fulano", 50, "https://open.spotify.com/playlist/u1", "https://i.scdn.co/a"), "dados da playlist")
 
     print(f"\n{P}/{P + F} verificações passaram")
     sys.exit(1 if F else 0)

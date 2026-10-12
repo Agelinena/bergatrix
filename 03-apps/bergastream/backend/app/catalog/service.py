@@ -42,89 +42,69 @@ def dedupe(tracks: list[SearchResult]) -> list[SearchResult]:
     return result
 
 
-# ── Spotify ──────────────────────────────────────────────────────
+# ── Spotify (SpotifyScraper, sem conta) ─────────────────────────
 
-def _sp():
-    sp = spotify.client()
-    if sp is None:
-        raise NotFound("Spotify sem credenciais")
-    return sp
+def _sp_call(fn, *args, **kwargs):
+    from spotify_scraper.errors import NotFoundError
+    try:
+        return fn(*args, **kwargs)
+    except NotFoundError as exc:
+        raise NotFound(str(args[0]) if args else "spotify") from exc
 
 
-def _spotify_albums(artist_id: str) -> list[dict]:
-    def load():
-        sp = _sp()
-        albums, page = [], sp.artist_albums(artist_id, include_groups="album,single", limit=50)
-        while page and len(albums) < 200:
-            albums += [a for a in page["items"] if a]
-            page = sp.next(page) if page.get("next") else None
-        return albums
-    return cached(f"sp:albums:{artist_id}", _TTL, load)
+def _spotify_albums(artist_id: str) -> list:
+    """Discografia completa (álbuns, singles e coletâneas), até 200."""
+    return cached(f"sp:albums:{artist_id}", _TTL,
+                  lambda: list(_sp_call(spotify.client().get_discography, artist_id, max_releases=200)))
 
 
 def spotify_artist(artist_id: str) -> ArtistPage:
     def load():
-        sp = _sp()
-        artist = sp.artist(artist_id)
-        top = sp.artist_top_tracks(artist_id, country="BR").get("tracks") or []
+        artist = _sp_call(spotify.client().get_artist, artist_id)
         return ArtistPage(
-            provider="spotify", external_id=artist_id, name=artist.get("name", ""),
-            image_url=spotify._image(artist.get("images")),
-            followers=(artist.get("followers") or {}).get("total"),
-            top_tracks=[spotify.track_from(t) for t in top],
-            albums=[_spotify_album_result(a) for a in _spotify_albums(artist_id)],
+            provider="spotify", external_id=artist_id, name=artist.name or "",
+            image_url=spotify.best_image(artist.images),
+            followers=artist.followers,
+            top_tracks=[spotify.track_from(t) for t in artist.top_tracks if t.id],
+            albums=[spotify.album_result(a, artist.name or "") for a in _spotify_albums(artist_id)],
         )
     return cached(f"sp:artist:{artist_id}", _TTL, load)
 
 
-def _spotify_album_result(a: dict) -> AlbumResult:
-    return AlbumResult(provider="spotify", external_id=a["id"], title=a.get("name", ""),
-                       artist=", ".join(x["name"] for x in a.get("artists", [])),
-                       year=(a.get("release_date") or "")[:4] or None,
-                       image_url=spotify._image(a.get("images")))
-
-
-def _spotify_album_full(album_id: str) -> tuple[dict, list[SearchResult]]:
-    """Álbum e suas faixas completas (com ISRC; as do álbum vêm sem)."""
+def _spotify_album_full(album_id: str) -> tuple[object, list[SearchResult]]:
+    """Álbum e suas faixas (o ISRC é buscado quando a faixa é registrada)."""
     def load():
-        sp = _sp()
-        album = sp.album(album_id)
-        ids, page = [], album["tracks"]
-        while page:
-            ids += [i["id"] for i in page["items"] if i and i.get("id")]
-            page = sp.next(page) if page.get("next") else None
-        tracks = []
-        for start in range(0, len(ids), 50):
-            tracks += [spotify.track_from(t, album) for t in sp.tracks(ids[start:start + 50])["tracks"] if t]
-        return album, tracks
+        album = _sp_call(spotify.client().get_album, album_id)
+        return album, [spotify.track_from(t, album) for t in album.tracks if t.id]
     return cached(f"sp:album:{album_id}", _TTL, load)
 
 
 def spotify_artist_tracks(artist_id: str, offset: int, limit: int) -> TrackPage:
-    """Todas as faixas do artista, álbum por álbum (o Spotify não tem um
-    endpoint único). Carrega só os álbuns necessários para a página pedida;
+    """Todas as faixas do artista, álbum por álbum (o Spotify não tem uma
+    lista única). Carrega só os álbuns necessários para a página pedida;
     se parou antes do fim, ainda há próxima página."""
     albums = _spotify_albums(artist_id)
     collected: list[SearchResult] = []
     loaded_all = True
     for album in albums:
-        collected = dedupe(collected + _spotify_album_full(album["id"])[1])
+        collected = dedupe(collected + _spotify_album_full(album.id)[1])
         if len(collected) > offset + limit:
             loaded_all = False
             break
-    estimated = sum(a.get("total_tracks", 0) for a in albums)
-    total = len(collected) if loaded_all else max(estimated, len(collected))
+    # A discografia não traz o número de faixas: estima ~10 por lançamento.
+    total = len(collected) if loaded_all else max(len(albums) * 10, len(collected))
     return page_of(collected, offset, limit, total)
 
 
 def spotify_album(album_id: str) -> AlbumPage:
     album, tracks = _spotify_album_full(album_id)
-    artists = album.get("artists") or []
+    artists = album.artists or ()
     return AlbumPage(
-        provider="spotify", external_id=album_id, title=album.get("name", ""),
-        artist=", ".join(a["name"] for a in artists), artist_id=artists[0]["id"] if artists else None,
-        year=(album.get("release_date") or "")[:4] or None,
-        image_url=spotify._image(album.get("images")), tracks=tracks)
+        provider="spotify", external_id=album_id, title=album.name or "",
+        artist=", ".join(a.name for a in artists if a.name),
+        artist_id=spotify.entity_id(artists[0]) if artists else None,
+        year=str(album.release_date.year) if album.release_date else None,
+        image_url=spotify.best_image(album.images), tracks=tracks)
 
 
 # ── YT Music ─────────────────────────────────────────────────────

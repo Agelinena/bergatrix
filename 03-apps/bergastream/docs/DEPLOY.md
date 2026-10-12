@@ -33,7 +33,7 @@ Traefik (bergatrix-proxy) ──► bergastream-web (nginx: app web + /api/ → 
   cd ~/bergatrix/03-apps/bergastream02 && docker compose down   # os dados dela ficam onde estão
   ```
 
-  A versão nova usa outra pasta de dados (`/mnt/storage/docker_data/bergastream`) e outro banco:
+  A versão nova usa outra pasta de dados (`/mnt/storage/docker_volumes/bergastream`) e outro banco:
   nada da antiga é reaproveitado nem apagado.
 
 ## 1. Código e pastas
@@ -42,8 +42,8 @@ Traefik (bergatrix-proxy) ──► bergastream-web (nginx: app web + /api/ → 
 cd ~/bergatrix && git pull
 cd 03-apps/bergastream
 
-sudo mkdir -p /mnt/storage/docker_data/bergastream/{db,redis,music,deemix/config,deemix/downloads}
-sudo chown -R 1000:1000 /mnt/storage/docker_data/bergastream/{music,deemix}
+sudo mkdir -p /mnt/storage/docker_volumes/bergastream/{db,redis,music,pydeps,lidarr,deemix/config,deemix/downloads}
+sudo chown -R 1000:1000 /mnt/storage/docker_volumes/bergastream/{music,pydeps,lidarr,deemix}
 ```
 
 ## 2. `.env`
@@ -55,13 +55,15 @@ nano .env
 
 | Variável | O que pôr |
 |---|---|
-| `STORAGE_PATH` | `/mnt/storage/docker_data/bergastream` (já vem assim) |
+| `STORAGE_PATH` | `/mnt/storage/docker_volumes/bergastream` (já vem assim) |
 | `DOMAIN` | `daberga.com` (já vem assim) |
 | `POSTGRES_PASSWORD` | senha nova (gere abaixo) |
 | `DATABASE_URL` | a mesma senha no lugar de `troque_esta_senha` |
 | `JWT_SECRET` | segredo novo (gere abaixo) |
-| `DEEMIX_ARL` | cookie `arl` do deezer.com logado |
-| `SPOTIFY_CLIENT_ID/SECRET` | opcional (sem eles a busca usa só o YouTube Music) |
+| `DEEMIX_ARL` | cookie `arl` do deezer.com logado — conta **Premium** para MP3 320/FLAC (grátis = 128) |
+| `LIDARR_*` | opcional: FLAC das playlists pela Usenet (passo 7) |
+
+O Spotify não precisa de conta nem de chave (as antigas `SPOTIFY_CLIENT_ID/SECRET` podem sair do `.env`).
 
 ```bash
 openssl rand -base64 36 | tr -d '/+=' | cut -c1-40   # rode duas vezes: senha do banco e JWT_SECRET
@@ -118,9 +120,78 @@ cd ~/bergatrix && git pull && cd 03-apps/bergastream
 docker compose up -d --build      # as migrações novas rodam sozinhas (serviço migrate)
 ```
 
-## 7. Backup
+## 7. Qualidade: Deezer Premium e FLAC pela Usenet (Lidarr)
 
-Tudo está em `/mnt/storage/docker_data/bergastream`. O banco é pequeno; as músicas podem ser
+**Deezer Premium.** Depois de assinar, pegue o cookie `arl` de novo no deezer.com logado
+(DevTools → Application → Cookies), troque `DEEMIX_ARL` no `.env` e:
+
+```bash
+docker compose up -d deemix api worker
+```
+
+Sob demanda as músicas passam a vir em MP3 320. As faixas de playlist tentam FLAC: se o plano
+incluir (no Brasil o Premium costuma incluir; via operadora, como TIM, fica em 320), já resolve
+pelo próprio Deemix. Se o log do worker disser "a conta do ARL não tem FLAC", fica o 320 e o
+Lidarr cuida do FLAC.
+
+**Lidarr** (stack do Jellyfin; baixa pela Usenet com o SABnzbd e os indexadores do Prowlarr):
+
+1. Pastas com o dono certo **antes** de subir (senão o Docker cria como root e o Lidarr
+   acusa "Folder '/music' is not writable"). A pasta de música fica dentro dos dados do
+   Bergastream: é só passagem (copiada a música, o resto do álbum é apagado).
+
+   ```bash
+   sudo mkdir -p /mnt/storage/docker_volumes/bergastream/lidarr /mnt/storage/docker_volumes/jellyflix/config/lidarr
+   sudo chown -R 1000:1000 /mnt/storage/docker_volumes/bergastream/lidarr /mnt/storage/docker_volumes/jellyflix/config/lidarr
+   ```
+
+   No `.env` do jellyfin: `LIDARR_MUSIC_DIR=/mnt/storage/docker_volumes/bergastream/lidarr`.
+
+   ```bash
+   cd ~/bergatrix/03-apps/jellyfin && docker compose up -d lidarr
+   ```
+
+2. Em `https://lidarr.daberga.com` (rede local/Tailscale):
+   - **Settings → Media Management → Root Folders:** adicionar `/music` (perfil de qualidade
+     **Lossless**, metadados **Standard**).
+   - **Settings → Download Clients:** SABnzbd (host `sabnzbd`, porta `8080`, API key do SABnzbd,
+     categoria `music`). No SABnzbd, crie a categoria `music`.
+   - **Prowlarr → Settings → Apps:** adicionar o Lidarr (`http://lidarr:8686` + API key) para
+     sincronizar os indexadores Usenet com categoria de música.
+   - **Settings → General:** copie a API key.
+
+3. No `.env` do Bergastream:
+
+   ```
+   LIDARR_URL=http://lidarr:8686
+   LIDARR_API_KEY=<a chave>
+   LIDARR_MUSIC_DIR=/mnt/storage/docker_volumes/bergastream/lidarr
+   ```
+
+   ```bash
+   cd ~/bergatrix/03-apps/bergastream && docker compose up -d worker
+   docker compose logs worker | grep upgrade    # "[upgrade] iniciado (Lidarr ligado)"
+   ```
+
+Como funciona: faixa que entra numa playlist ganha uma fila de melhoria. O worker tenta o Deemix
+no melhor formato e, sem FLAC, pede ao Lidarr o **álbum** da faixa (o Lidarr só baixa por álbum),
+monitorando só esse álbum do artista. Busca todo dia nos primeiros 14 dias
+(`UPGRADE_DAILY_DAYS`) e depois toda semana; o Lidarr também vigia a Usenet sozinho. Quando o
+álbum chega, o FLAC da faixa é copiado e substitui o arquivo; quando nenhuma outra faixa de
+playlist espera aquele álbum, ele deixa de ser monitorado e os arquivos são apagados do Lidarr
+(só a música fica, ~30 MB em FLAC). `LIDARR_KEEP_ALBUMS=true` mantém os álbuns. Situação:
+`GET /api/server/status` → `quality`.
+
+**O que cada aparelho recebe:** o servidor guarda um arquivo por música (o melhor que conseguiu)
+e entrega no nível escolhido no app (Ajustes → Qualidade: Wi-Fi, dados móveis e downloads):
+Original (o arquivo como está, FLAC quando houver), Alta (MP3 320), Normal (AAC 160) ou
+Econômica (AAC 96). Versões menores são convertidas uma vez e guardadas em `music/variants`
+(apagadas depois de 7 dias sem uso). Nunca aumenta: pedindo FLAC de uma música que só existe em
+320, vai o 320 — e as cópias offline são trocadas sozinhas quando o servidor melhora a música.
+
+## 8. Backup
+
+Tudo está em `/mnt/storage/docker_volumes/bergastream`. O banco é pequeno; as músicas podem ser
 baixadas de novo, mas as playlists, o histórico e os usuários não:
 
 ```bash
@@ -143,4 +214,7 @@ gunzip -c bergastream-AAAA-MM-DD.sql.gz | docker compose exec -T db psql -U berg
 | Músicas não baixam do Deezer | ARL vencido: pegue o cookie de novo, troque no `.env`, `docker compose up -d deemix api worker`. O YouTube segue como alternativa. |
 | Música falha no Deemix e também no YouTube; log do worker: "bloqueado pelo Modo Restrito" | O DNS da rede (AdGuard → "pesquisa segura") força o Modo Restrito do YouTube e barra músicas explícitas. No AdGuard Home: **Configurações → Configurações do cliente → Adicionar cliente** com o IP do servidor, desmarque "Usar configurações globais" e desligue a pesquisa segura só para ele. |
 | Log do worker: "Sign in to confirm you're not a bot" em todos os clientes | O YouTube está bloqueando o IP. Confira se o `bergastream-pot` está de pé (`docker compose ps`); se persistir, use cookies de uma conta **secundária** (`YT_COOKIES_FILE`, ver `.env.example`). Muitos pedidos seguidos geram HTTP 429 por um tempo. |
+| Aba Spotify da busca dá "O Spotify não respondeu" | O Spotify mudou o web player. O worker testa todo dia e instala a versão nova da biblioteca sozinho quando sai; para ver agora: `docker compose exec worker python -m app.search.spotify_health` e `GET /api/server/status` → `spotify`. |
+| Log do worker: "álbum … não encontrado no MusicBrainz" | O Lidarr não achou o álbum (nome diferente no MusicBrainz ou lançamento só digital). A faixa fica em 320 e o worker tenta de novo em 7 dias. |
+| Log do worker: "arquivo do Lidarr não visível aqui" | `LIDARR_MUSIC_DIR` não é a mesma pasta montada como `/music` no Lidarr. |
 | "Muitas tentativas" no login | 5 senhas erradas em 15 min para aquele usuário e IP: espere ou troque a senha (USUARIOS.md). |

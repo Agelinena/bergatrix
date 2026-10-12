@@ -270,7 +270,7 @@ De cima para baixo:
 `h1` **Ajustes** (mesmo nome da aba). Cartões (raio 14):
 - **Servidor:** endereço atual (`mu`) e "Conectado como {usuário}" em `gr` (ou "Não conectado" + botão **Entrar**). Botão **Sair**.
 - **Offline:** "Músicas baixadas no aparelho: N (X GB). Sem servidor, a biblioteca local continua funcionando." com **Gerenciar downloads** e **Apagar todos os downloads**.
-- **Qualidade de streaming:** valor atual (ex.: "Alta (320 kbps)"), seletor.
+- **Qualidade do áudio:** níveis Original (o arquivo do servidor, FLAC quando houver), Alta (320 kbps), Normal (160 kbps) e Econômica (96 kbps), escolhidos separadamente para streaming no Wi-Fi (padrão Original), streaming em dados móveis (padrão Normal; só no Android) e músicas baixadas (padrão Alta). O servidor nunca entrega acima do que tem. Mudar a de músicas baixadas troca as cópias do aparelho; elas também são trocadas sozinhas quando o servidor melhora a música.
 - Opções de download: **Baixar só no Wi-Fi** (liga/desliga, padrão ligado) e **Baixar novas músicas das playlists automaticamente** (padrão desligado).
 
 ### 6.6 Player

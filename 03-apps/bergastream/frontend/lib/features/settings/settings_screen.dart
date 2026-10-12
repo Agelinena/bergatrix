@@ -73,7 +73,6 @@ class SettingsScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final c = BergaColors.of(context);
     final session = ref.watch(sessionProvider);
-    final prefs = ref.watch(preferencesProvider);
     // Mantém a fila de playlists carregada (aviso ao sair).
     ref.watch(pendingPlaylistOpsProvider);
     final downloadsAvailable = ref
@@ -121,29 +120,7 @@ class SettingsScreen extends ConsumerWidget {
           ),
         ),
         if (downloadsAvailable) const _OfflineCard(),
-        AppCard(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Qualidade de streaming', style: title),
-              Text(prefs.quality.label, style: mu),
-              const SizedBox(height: 12),
-              Wrap(
-                spacing: BergaSizes.chipGap,
-                runSpacing: 8,
-                children: [
-                  for (final q in StreamQuality.values)
-                    AppChip(
-                      label: q.label.split(' ').first,
-                      active: prefs.quality == q,
-                      onTap: () =>
-                          ref.read(preferencesProvider.notifier).setQuality(q),
-                    ),
-                ],
-              ),
-            ],
-          ),
-        ),
+        _QualityCard(downloadsAvailable: downloadsAvailable),
         if (session.isLoggedIn) const SessionSettingsCard(),
         const _AppearanceCard(),
         if (session.canUseServer) const _ServerStatusCard(),
@@ -155,6 +132,92 @@ class SettingsScreen extends ConsumerWidget {
 }
 
 /// Tema: sistema, claro ou escuro.
+/// Qualidade do áudio (Seção 6.5): o servidor entrega no nível escolhido,
+/// nunca acima do que tem. Wi-Fi e dados móveis valem para o streaming; a
+/// de músicas baixadas troca as cópias do aparelho quando muda.
+class _QualityCard extends ConsumerWidget {
+  const _QualityCard({required this.downloadsAvailable});
+
+  final bool downloadsAvailable;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final c = BergaColors.of(context);
+    final prefs = ref.watch(preferencesProvider);
+    final notifier = ref.read(preferencesProvider.notifier);
+    final platform = ref.read(appPlatformProvider);
+    final mobile = platform.isApp && !platform.isDesktop;
+    final label = BergaText.body.copyWith(fontSize: 14, color: c.tx);
+    final mu = BergaText.secondary.copyWith(color: c.mu);
+
+    Widget choice(
+      String name,
+      AudioQuality current,
+      void Function(AudioQuality) onPick,
+    ) => Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('$name · ${current.label} (${current.detail})', style: label),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: BergaSizes.chipGap,
+            runSpacing: 8,
+            children: [
+              for (final q in AudioQuality.values)
+                AppChip(
+                  label: q.label,
+                  active: q == current,
+                  onTap: () => onPick(q),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+
+    return AppCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Qualidade do áudio',
+            style: BergaText.trackTitle.copyWith(color: c.tx),
+          ),
+          Text(
+            'Original é o arquivo do servidor (FLAC quando houver). Nunca '
+            'vem acima do que o servidor tem.',
+            style: mu,
+          ),
+          choice(
+            mobile ? 'Streaming no Wi-Fi' : 'Streaming',
+            prefs.wifiQuality,
+            notifier.setWifiQuality,
+          ),
+          if (mobile)
+            choice(
+              'Streaming em dados móveis',
+              prefs.mobileQuality,
+              notifier.setMobileQuality,
+            ),
+          if (downloadsAvailable)
+            choice('Músicas baixadas', prefs.offlineQuality, (q) async {
+              await notifier.setOfflineQuality(q);
+              try {
+                await ref
+                    .read(downloadManagerProvider.notifier)
+                    .refreshQuality();
+              } on ApiException catch (e) {
+                debugPrint('Troca das cópias fica para depois: ${e.message}');
+              }
+            }),
+        ],
+      ),
+    );
+  }
+}
+
 class _AppearanceCard extends ConsumerWidget {
   const _AppearanceCard();
 
@@ -277,6 +340,29 @@ class _ServerStatusCardState extends ConsumerState<_ServerStatusCard> {
                     'Disco livre',
                     '${formatBytes(value.diskFree!)} de '
                         '${formatBytes(value.diskTotal!)}',
+                  ),
+                if (value.quality case final q?) ...[
+                  line(
+                    'Qualidade das músicas',
+                    '${q.lossless} FLAC · ${q.high} MP3 320 · '
+                        '${q.medium} médias · ${q.low} baixas',
+                  ),
+                  line(
+                    'Melhorando as playlists',
+                    q.upgradesPending + q.upgradesWaiting == 0
+                        ? 'nada pendente'
+                        : '${q.upgradesPending} na fila · '
+                              '${q.upgradesWaiting} aguardando a Usenet'
+                              '${q.lidarr ? '' : ' (Lidarr desligado)'}',
+                  ),
+                ],
+                if (value.spotify case final sp?)
+                  line(
+                    'Spotify',
+                    sp.ok
+                        ? 'funcionando'
+                              '${sp.libraryVersion == null ? '' : ' (biblioteca ${sp.libraryVersion})'}'
+                        : 'com problema: ${sp.failures.keys.join(', ')}',
                   ),
                 line(
                   'Downloads do servidor',

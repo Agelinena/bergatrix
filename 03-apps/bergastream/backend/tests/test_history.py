@@ -108,7 +108,9 @@ async def main():
             r = await c.get("/api/server/status", headers=h)
             ok(r.status_code, 200, "status do servidor")
             st = r.json()
-            ok(set(st), {"storage", "queue", "deemix"}, "seções")
+            ok(set(st), {"storage", "queue", "deemix", "quality", "spotify"}, "seções")
+            ok(all(isinstance(st["quality"][k], int) for k in ("lossless", "high", "medium", "low")),
+               True, "qualidade das faixas por nível")
             ok(st["storage"]["tracks"] >= 0 and st["storage"]["disk_free"] is not None, True,
                "músicas e disco")
             ok(isinstance(st["deemix"]["available"], bool), True, "fila do Deemix (ou indisponível)")

@@ -115,13 +115,37 @@ class FakePlaybackRepository implements PlaybackRepository {
     return statuses[i];
   }
 
-  @override
-  Future<Uri> streamUrl(String trackId) async =>
-      Uri.parse('https://s.com/api/tracks/$trackId/stream?t=x');
+  /// Níveis pedidos (`AudioQuality.api`), na ordem.
+  final streamQualities = <String>[];
+  final downloadQualities = <String>[];
+
+  /// O que o servidor entrega por faixa ("provider:externalId") e nível.
+  Map<String, Map<String, TrackQuality>> serverQualities = {};
+  int qualityCalls = 0;
 
   @override
-  Future<Uri> downloadUrl(String trackId) async =>
-      Uri.parse('https://s.com/api/tracks/$trackId/download?t=x');
+  Future<Uri> streamUrl(String trackId, {String quality = 'original'}) async {
+    streamQualities.add(quality);
+    return Uri.parse(
+      'https://s.com/api/tracks/$trackId/stream?t=x&quality=$quality',
+    );
+  }
+
+  @override
+  Future<Uri> downloadUrl(String trackId, {String quality = 'original'}) async {
+    downloadQualities.add(quality);
+    return Uri.parse(
+      'https://s.com/api/tracks/$trackId/download?t=x&quality=$quality',
+    );
+  }
+
+  @override
+  Future<Map<String, Map<String, TrackQuality>>> qualities(
+    List<String> refs,
+  ) async {
+    qualityCalls++;
+    return {for (final r in refs) r: ?serverQualities[r]};
+  }
 }
 
 SearchResult song(String name) => SearchResult(

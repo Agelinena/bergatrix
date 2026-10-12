@@ -1,81 +1,131 @@
-"""Busca no Spotify via Client Credentials (spotipy)."""
+"""Spotify sem a Web API oficial.
+
+Desde fevereiro de 2026 a Web API exige que o dono do app tenha Premium ativo
+(sem ele as chamadas falham). O app passou a ler o Spotify como o próprio web
+player faz, com um token anônimo das páginas públicas:
+
+- busca, faixas, álbuns, artistas e playlists: biblioteca SpotifyScraper;
+- ISRC, álbum e capa de uma faixa: endpoint interno de metadados
+  (`app.search.spotify_meta`), que a SpotifyScraper não usa.
+
+Não precisa de conta nem de chave. Pode quebrar quando o Spotify muda o web
+player: o teste diário (`app.search.spotify_health`) detecta e atualiza a
+biblioteca sozinho.
+"""
 
 from __future__ import annotations
 
 import logging
+import threading
 
-import spotipy
-from spotipy.oauth2 import SpotifyClientCredentials
+from spotify_scraper import SpotifyClient
 
-from app.config import settings
 from app.search.models import AlbumResult, ArtistResult, FullSearch, SearchResult
 
 logger = logging.getLogger("bergastream.search.spotify")
 
+_client: SpotifyClient | None = None
+_client_lock = threading.Lock()
 
-def client() -> spotipy.Spotify | None:
-    """Cliente do Spotify, ou None sem credenciais."""
-    if not settings.spotify_client_id or not settings.spotify_client_secret:
-        logger.info("Spotify credenciais não configuradas — pulando")
+# Hashes das capas do Spotify por tamanho (quando a resposta não informa a
+# largura): 640 px, 300 px, 64 px.
+_COVER_SIZES = ("ab67616d0000b273", "ab67616d00001e02", "ab67616d00004851")
+
+
+def client() -> SpotifyClient:
+    """Cliente compartilhado (um token anônimo para todas as chamadas)."""
+    global _client
+    with _client_lock:
+        if _client is None:
+            _client = SpotifyClient(timeout=15)
+        return _client
+
+
+def reset_client() -> None:
+    """Descarta o cliente (depois de atualizar a biblioteca ou de erros)."""
+    global _client
+    with _client_lock:
+        if _client is not None:
+            try:
+                _client.close()
+            except Exception:
+                pass
+        _client = None
+
+
+def best_image(images) -> str | None:
+    """A maior imagem. Sem largura informada, escolhe pelo hash da capa."""
+    images = [i for i in images or () if getattr(i, "url", None)]
+    if not images:
         return None
-    auth = SpotifyClientCredentials(
-        client_id=settings.spotify_client_id,
-        client_secret=settings.spotify_client_secret,
-    )
-    return spotipy.Spotify(auth_manager=auth, requests_timeout=15)
+    sized = [i for i in images if i.width]
+    if sized:
+        return max(sized, key=lambda i: i.width).url
+    for size in _COVER_SIZES:
+        for image in images:
+            if size in image.url:
+                return image.url
+    return images[0].url
 
 
-def _image(images: list | None) -> str | None:
-    return images[0]["url"] if images else None
+def entity_id(ref) -> str | None:
+    """Id de uma referência (a busca às vezes só traz o `uri`)."""
+    if ref is None:
+        return None
+    if getattr(ref, "id", ""):
+        return ref.id
+    uri = getattr(ref, "uri", "") or ""
+    return uri.rsplit(":", 1)[-1] or None
 
 
-def track_from(item: dict, album: dict | None = None) -> SearchResult:
-    """Converte uma faixa da API do Spotify. [album] para faixas de álbum,
-    que vêm sem o álbum dentro."""
-    album_data = item.get("album") or album or {}
+def track_from(track, album=None) -> SearchResult:
+    """Converte uma faixa da SpotifyScraper. [album] para faixas de álbum,
+    que vêm sem o álbum dentro. O ISRC fica vazio: é buscado quando a faixa
+    é registrada (ver app.tracks.service)."""
+    album_ref = track.album or album
+    artists = track.artists or ()
     return SearchResult(
         provider="spotify",
-        external_id=item["id"],
-        title=item.get("name", ""),
-        artist=", ".join(a["name"] for a in item.get("artists", [])),
-        album=album_data.get("name", ""),
-        duration_seconds=int((item.get("duration_ms") or 0) / 1000),
-        isrc=(item.get("external_ids") or {}).get("isrc"),
-        cover_url=_image(album_data.get("images")),
-        artist_id=(item.get("artists") or [{}])[0].get("id"),
-        album_id=album_data.get("id"),
+        external_id=track.id,
+        title=track.name or "",
+        artist=", ".join(a.name for a in artists if a.name),
+        album=getattr(album_ref, "name", "") or "",
+        duration_seconds=int((track.duration_ms or 0) / 1000),
+        isrc=None,
+        cover_url=best_image(getattr(album_ref, "images", None)) or best_image(track.images),
+        artist_id=entity_id(artists[0]) if artists else None,
+        album_id=entity_id(album_ref),
     )
+
+
+def album_result(album, artist_name: str = "") -> AlbumResult:
+    """Álbum (Album ou AlbumRef) como resultado de busca/discografia."""
+    artists = getattr(album, "artists", None) or ()
+    release = getattr(album, "release_date", None)
+    return AlbumResult(
+        provider="spotify", external_id=album.id, title=album.name or "",
+        artist=", ".join(a.name for a in artists if a.name) or artist_name,
+        year=str(release.year) if release else None,
+        image_url=best_image(album.images))
 
 
 def search(query: str, limit: int = 10) -> list[SearchResult]:
-    """Busca faixas no Spotify. Retorna lista vazia se sem credenciais."""
+    """Busca faixas no Spotify."""
     return search_full(query, limit=limit, only_tracks=True).tracks
 
 
 def search_full(query: str, limit: int = 10, only_tracks: bool = False) -> FullSearch:
-    """Busca faixas, artistas e álbuns numa chamada só."""
-    sp = client()
-    if sp is None:
-        return FullSearch()
-    try:
-        raw = sp.search(q=query, type="track" if only_tracks else "track,artist,album", limit=limit)
-    except Exception as exc:
-        logger.warning("Erro ao buscar no Spotify: %s", exc)
-        return FullSearch()
-
-    tracks = [track_from(i) for i in (raw.get("tracks") or {}).get("items", []) if i]
+    """Busca faixas, artistas e álbuns numa chamada só. Erros sobem para a
+    rota, que responde "a origem não respondeu" em vez de uma lista vazia."""
+    types = ("track",) if only_tracks else ("track", "artist", "album")
+    raw = client().search(query, types=types, limit=limit)
+    tracks = [track_from(t) for t in raw.tracks if t.id]
     artists = [
-        ArtistResult(provider="spotify", external_id=a["id"], name=a.get("name", ""),
-                     image_url=_image(a.get("images")))
-        for a in (raw.get("artists") or {}).get("items", []) if a
+        ArtistResult(provider="spotify", external_id=a.id, name=a.name or "",
+                     image_url=best_image(a.images))
+        for a in raw.artists if a.id
     ]
-    albums = [
-        AlbumResult(provider="spotify", external_id=a["id"], title=a.get("name", ""),
-                    artist=", ".join(x["name"] for x in a.get("artists", [])),
-                    year=(a.get("release_date") or "")[:4] or None,
-                    image_url=_image(a.get("images")))
-        for a in (raw.get("albums") or {}).get("items", []) if a
-    ]
+    albums = [album_result(a) for a in raw.albums if a.id]
     logger.info("Spotify: %d faixas, %d artistas, %d álbuns para %r",
                 len(tracks), len(artists), len(albums), query)
     return FullSearch(tracks=tracks, artists=artists, albums=albums)

@@ -23,6 +23,18 @@ class PreparedTrack {
   final TrackReadiness readiness;
 }
 
+/// O que o servidor entrega num nível de qualidade ("FLAC 16/44.1", "MP3
+/// 320", "AAC 160"); [rank] ordena (10 baixa … 50 hi-res).
+class TrackQuality {
+  const TrackQuality(this.label, this.rank);
+
+  factory TrackQuality.fromJson(Map<String, dynamic> json) =>
+      TrackQuality(json['label'] as String? ?? '', json['rank'] as int? ?? 0);
+
+  final String label;
+  final int rank;
+}
+
 /// Reprodução no servidor (Seção 9, área "Reprodução").
 abstract interface class PlaybackRepository {
   /// `POST /api/play`: registra a faixa e enfileira o download.
@@ -32,11 +44,17 @@ abstract interface class PlaybackRepository {
   Future<TrackReadiness> status(String trackId);
 
   /// URL de stream com token curto (`?t=`), que funciona igual em todas as
-  /// plataformas (o `<audio>` da web não envia cabeçalhos).
-  Future<Uri> streamUrl(String trackId);
+  /// plataformas (o `<audio>` da web não envia cabeçalhos). [quality] é o
+  /// nível pedido (`AudioQuality.api`: original, high, normal, low).
+  Future<Uri> streamUrl(String trackId, {String quality = 'original'});
 
   /// URL do arquivo completo (modo offline), com o mesmo token curto.
-  Future<Uri> downloadUrl(String trackId);
+  Future<Uri> downloadUrl(String trackId, {String quality = 'original'});
+
+  /// `POST /api/tracks/qualities`: para cada faixa (chave `SearchResult.id`,
+  /// "provider:externalId"), o que cada nível entrega hoje. Faixa sem
+  /// arquivo no servidor não vem.
+  Future<Map<String, Map<String, TrackQuality>>> qualities(List<String> refs);
 }
 
 class HttpPlaybackRepository implements PlaybackRepository {
@@ -65,21 +83,43 @@ class HttpPlaybackRepository implements PlaybackRepository {
   });
 
   @override
-  Future<Uri> streamUrl(String trackId) => _tokenUrl(trackId, 'stream');
+  Future<Uri> streamUrl(String trackId, {String quality = 'original'}) =>
+      _tokenUrl(trackId, 'stream', quality);
 
   @override
-  Future<Uri> downloadUrl(String trackId) => _tokenUrl(trackId, 'download');
+  Future<Uri> downloadUrl(String trackId, {String quality = 'original'}) =>
+      _tokenUrl(trackId, 'download', quality);
 
-  Future<Uri> _tokenUrl(String trackId, String kind) => _call(() async {
-    final r = await _dio.post<Map<String, dynamic>>(
-      '/api/tracks/$trackId/stream-token',
-    );
-    final base = Uri.parse(_dio.options.baseUrl);
-    return base.replace(
-      path: '${base.path}/api/tracks/$trackId/$kind'.replaceAll('//', '/'),
-      queryParameters: {'t': r.data!['token'] as String},
-    );
-  });
+  @override
+  Future<Map<String, Map<String, TrackQuality>>> qualities(List<String> refs) =>
+      _call(() async {
+        if (refs.isEmpty) return const {};
+        final r = await _dio.post<Map<String, dynamic>>(
+          '/api/tracks/qualities',
+          data: {'refs': refs},
+        );
+        return {
+          for (final MapEntry(:key, :value) in (r.data ?? const {}).entries)
+            key: {
+              for (final MapEntry(key: level, value: q)
+                  in (value as Map<String, dynamic>).entries)
+                level: TrackQuality.fromJson(q as Map<String, dynamic>),
+            },
+        };
+      });
+
+  Future<Uri> _tokenUrl(String trackId, String kind, String quality) => _call(
+    () async {
+      final r = await _dio.post<Map<String, dynamic>>(
+        '/api/tracks/$trackId/stream-token',
+      );
+      final base = Uri.parse(_dio.options.baseUrl);
+      return base.replace(
+        path: '${base.path}/api/tracks/$trackId/$kind'.replaceAll('//', '/'),
+        queryParameters: {'t': r.data!['token'] as String, 'quality': quality},
+      );
+    },
+  );
 
   static Future<T> _call<T>(Future<T> Function() body) async {
     try {

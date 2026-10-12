@@ -176,6 +176,43 @@ class $LocalTracksTable extends LocalTracks
     type: DriftSqlType.dateTime,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _qualityLevelMeta = const VerificationMeta(
+    'qualityLevel',
+  );
+  @override
+  late final GeneratedColumn<String> qualityLevel = GeneratedColumn<String>(
+    'quality_level',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _qualityLabelMeta = const VerificationMeta(
+    'qualityLabel',
+  );
+  @override
+  late final GeneratedColumn<String> qualityLabel = GeneratedColumn<String>(
+    'quality_label',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _needsReplaceMeta = const VerificationMeta(
+    'needsReplace',
+  );
+  @override
+  late final GeneratedColumn<bool> needsReplace = GeneratedColumn<bool>(
+    'needs_replace',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("needs_replace" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -194,6 +231,9 @@ class $LocalTracksTable extends LocalTracks
     attempts,
     downloadedAt,
     lastPlayedAt,
+    qualityLevel,
+    qualityLabel,
+    needsReplace,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -313,6 +353,33 @@ class $LocalTracksTable extends LocalTracks
         ),
       );
     }
+    if (data.containsKey('quality_level')) {
+      context.handle(
+        _qualityLevelMeta,
+        qualityLevel.isAcceptableOrUnknown(
+          data['quality_level']!,
+          _qualityLevelMeta,
+        ),
+      );
+    }
+    if (data.containsKey('quality_label')) {
+      context.handle(
+        _qualityLabelMeta,
+        qualityLabel.isAcceptableOrUnknown(
+          data['quality_label']!,
+          _qualityLabelMeta,
+        ),
+      );
+    }
+    if (data.containsKey('needs_replace')) {
+      context.handle(
+        _needsReplaceMeta,
+        needsReplace.isAcceptableOrUnknown(
+          data['needs_replace']!,
+          _needsReplaceMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -388,6 +455,18 @@ class $LocalTracksTable extends LocalTracks
         DriftSqlType.dateTime,
         data['${effectivePrefix}last_played_at'],
       ),
+      qualityLevel: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}quality_level'],
+      ),
+      qualityLabel: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}quality_label'],
+      ),
+      needsReplace: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}needs_replace'],
+      )!,
     );
   }
 
@@ -418,6 +497,15 @@ class LocalTrack extends DataClass implements Insertable<LocalTrack> {
   final int attempts;
   final DateTime? downloadedAt;
   final DateTime? lastPlayedAt;
+
+  /// Nível pedido ao baixar (`AudioQuality.api`) e o que o servidor
+  /// entregou ("FLAC 16/44.1", "MP3 320"). Nulos = baixada antes da v3.
+  final String? qualityLevel;
+  final String? qualityLabel;
+
+  /// A cópia baixada vai ser trocada (qualidade escolhida mudou ou o
+  /// servidor melhorou a música). Até lá a cópia atual continua tocando.
+  final bool needsReplace;
   const LocalTrack({
     required this.id,
     required this.provider,
@@ -435,6 +523,9 @@ class LocalTrack extends DataClass implements Insertable<LocalTrack> {
     required this.attempts,
     this.downloadedAt,
     this.lastPlayedAt,
+    this.qualityLevel,
+    this.qualityLabel,
+    required this.needsReplace,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -473,6 +564,13 @@ class LocalTrack extends DataClass implements Insertable<LocalTrack> {
     if (!nullToAbsent || lastPlayedAt != null) {
       map['last_played_at'] = Variable<DateTime>(lastPlayedAt);
     }
+    if (!nullToAbsent || qualityLevel != null) {
+      map['quality_level'] = Variable<String>(qualityLevel);
+    }
+    if (!nullToAbsent || qualityLabel != null) {
+      map['quality_label'] = Variable<String>(qualityLabel);
+    }
+    map['needs_replace'] = Variable<bool>(needsReplace);
     return map;
   }
 
@@ -506,6 +604,13 @@ class LocalTrack extends DataClass implements Insertable<LocalTrack> {
       lastPlayedAt: lastPlayedAt == null && nullToAbsent
           ? const Value.absent()
           : Value(lastPlayedAt),
+      qualityLevel: qualityLevel == null && nullToAbsent
+          ? const Value.absent()
+          : Value(qualityLevel),
+      qualityLabel: qualityLabel == null && nullToAbsent
+          ? const Value.absent()
+          : Value(qualityLabel),
+      needsReplace: Value(needsReplace),
     );
   }
 
@@ -533,6 +638,9 @@ class LocalTrack extends DataClass implements Insertable<LocalTrack> {
       attempts: serializer.fromJson<int>(json['attempts']),
       downloadedAt: serializer.fromJson<DateTime?>(json['downloadedAt']),
       lastPlayedAt: serializer.fromJson<DateTime?>(json['lastPlayedAt']),
+      qualityLevel: serializer.fromJson<String?>(json['qualityLevel']),
+      qualityLabel: serializer.fromJson<String?>(json['qualityLabel']),
+      needsReplace: serializer.fromJson<bool>(json['needsReplace']),
     );
   }
   @override
@@ -557,6 +665,9 @@ class LocalTrack extends DataClass implements Insertable<LocalTrack> {
       'attempts': serializer.toJson<int>(attempts),
       'downloadedAt': serializer.toJson<DateTime?>(downloadedAt),
       'lastPlayedAt': serializer.toJson<DateTime?>(lastPlayedAt),
+      'qualityLevel': serializer.toJson<String?>(qualityLevel),
+      'qualityLabel': serializer.toJson<String?>(qualityLabel),
+      'needsReplace': serializer.toJson<bool>(needsReplace),
     };
   }
 
@@ -577,6 +688,9 @@ class LocalTrack extends DataClass implements Insertable<LocalTrack> {
     int? attempts,
     Value<DateTime?> downloadedAt = const Value.absent(),
     Value<DateTime?> lastPlayedAt = const Value.absent(),
+    Value<String?> qualityLevel = const Value.absent(),
+    Value<String?> qualityLabel = const Value.absent(),
+    bool? needsReplace,
   }) => LocalTrack(
     id: id ?? this.id,
     provider: provider ?? this.provider,
@@ -594,6 +708,9 @@ class LocalTrack extends DataClass implements Insertable<LocalTrack> {
     attempts: attempts ?? this.attempts,
     downloadedAt: downloadedAt.present ? downloadedAt.value : this.downloadedAt,
     lastPlayedAt: lastPlayedAt.present ? lastPlayedAt.value : this.lastPlayedAt,
+    qualityLevel: qualityLevel.present ? qualityLevel.value : this.qualityLevel,
+    qualityLabel: qualityLabel.present ? qualityLabel.value : this.qualityLabel,
+    needsReplace: needsReplace ?? this.needsReplace,
   );
   LocalTrack copyWithCompanion(LocalTracksCompanion data) {
     return LocalTrack(
@@ -623,6 +740,15 @@ class LocalTrack extends DataClass implements Insertable<LocalTrack> {
       lastPlayedAt: data.lastPlayedAt.present
           ? data.lastPlayedAt.value
           : this.lastPlayedAt,
+      qualityLevel: data.qualityLevel.present
+          ? data.qualityLevel.value
+          : this.qualityLevel,
+      qualityLabel: data.qualityLabel.present
+          ? data.qualityLabel.value
+          : this.qualityLabel,
+      needsReplace: data.needsReplace.present
+          ? data.needsReplace.value
+          : this.needsReplace,
     );
   }
 
@@ -644,7 +770,10 @@ class LocalTrack extends DataClass implements Insertable<LocalTrack> {
           ..write('downloadState: $downloadState, ')
           ..write('attempts: $attempts, ')
           ..write('downloadedAt: $downloadedAt, ')
-          ..write('lastPlayedAt: $lastPlayedAt')
+          ..write('lastPlayedAt: $lastPlayedAt, ')
+          ..write('qualityLevel: $qualityLevel, ')
+          ..write('qualityLabel: $qualityLabel, ')
+          ..write('needsReplace: $needsReplace')
           ..write(')'))
         .toString();
   }
@@ -667,6 +796,9 @@ class LocalTrack extends DataClass implements Insertable<LocalTrack> {
     attempts,
     downloadedAt,
     lastPlayedAt,
+    qualityLevel,
+    qualityLabel,
+    needsReplace,
   );
   @override
   bool operator ==(Object other) =>
@@ -687,7 +819,10 @@ class LocalTrack extends DataClass implements Insertable<LocalTrack> {
           other.downloadState == this.downloadState &&
           other.attempts == this.attempts &&
           other.downloadedAt == this.downloadedAt &&
-          other.lastPlayedAt == this.lastPlayedAt);
+          other.lastPlayedAt == this.lastPlayedAt &&
+          other.qualityLevel == this.qualityLevel &&
+          other.qualityLabel == this.qualityLabel &&
+          other.needsReplace == this.needsReplace);
 }
 
 class LocalTracksCompanion extends UpdateCompanion<LocalTrack> {
@@ -707,6 +842,9 @@ class LocalTracksCompanion extends UpdateCompanion<LocalTrack> {
   final Value<int> attempts;
   final Value<DateTime?> downloadedAt;
   final Value<DateTime?> lastPlayedAt;
+  final Value<String?> qualityLevel;
+  final Value<String?> qualityLabel;
+  final Value<bool> needsReplace;
   final Value<int> rowid;
   const LocalTracksCompanion({
     this.id = const Value.absent(),
@@ -725,6 +863,9 @@ class LocalTracksCompanion extends UpdateCompanion<LocalTrack> {
     this.attempts = const Value.absent(),
     this.downloadedAt = const Value.absent(),
     this.lastPlayedAt = const Value.absent(),
+    this.qualityLevel = const Value.absent(),
+    this.qualityLabel = const Value.absent(),
+    this.needsReplace = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   LocalTracksCompanion.insert({
@@ -744,6 +885,9 @@ class LocalTracksCompanion extends UpdateCompanion<LocalTrack> {
     this.attempts = const Value.absent(),
     this.downloadedAt = const Value.absent(),
     this.lastPlayedAt = const Value.absent(),
+    this.qualityLevel = const Value.absent(),
+    this.qualityLabel = const Value.absent(),
+    this.needsReplace = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        provider = Value(provider),
@@ -768,6 +912,9 @@ class LocalTracksCompanion extends UpdateCompanion<LocalTrack> {
     Expression<int>? attempts,
     Expression<DateTime>? downloadedAt,
     Expression<DateTime>? lastPlayedAt,
+    Expression<String>? qualityLevel,
+    Expression<String>? qualityLabel,
+    Expression<bool>? needsReplace,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -787,6 +934,9 @@ class LocalTracksCompanion extends UpdateCompanion<LocalTrack> {
       if (attempts != null) 'attempts': attempts,
       if (downloadedAt != null) 'downloaded_at': downloadedAt,
       if (lastPlayedAt != null) 'last_played_at': lastPlayedAt,
+      if (qualityLevel != null) 'quality_level': qualityLevel,
+      if (qualityLabel != null) 'quality_label': qualityLabel,
+      if (needsReplace != null) 'needs_replace': needsReplace,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -808,6 +958,9 @@ class LocalTracksCompanion extends UpdateCompanion<LocalTrack> {
     Value<int>? attempts,
     Value<DateTime?>? downloadedAt,
     Value<DateTime?>? lastPlayedAt,
+    Value<String?>? qualityLevel,
+    Value<String?>? qualityLabel,
+    Value<bool>? needsReplace,
     Value<int>? rowid,
   }) {
     return LocalTracksCompanion(
@@ -827,6 +980,9 @@ class LocalTracksCompanion extends UpdateCompanion<LocalTrack> {
       attempts: attempts ?? this.attempts,
       downloadedAt: downloadedAt ?? this.downloadedAt,
       lastPlayedAt: lastPlayedAt ?? this.lastPlayedAt,
+      qualityLevel: qualityLevel ?? this.qualityLevel,
+      qualityLabel: qualityLabel ?? this.qualityLabel,
+      needsReplace: needsReplace ?? this.needsReplace,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -884,6 +1040,15 @@ class LocalTracksCompanion extends UpdateCompanion<LocalTrack> {
     if (lastPlayedAt.present) {
       map['last_played_at'] = Variable<DateTime>(lastPlayedAt.value);
     }
+    if (qualityLevel.present) {
+      map['quality_level'] = Variable<String>(qualityLevel.value);
+    }
+    if (qualityLabel.present) {
+      map['quality_label'] = Variable<String>(qualityLabel.value);
+    }
+    if (needsReplace.present) {
+      map['needs_replace'] = Variable<bool>(needsReplace.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -909,6 +1074,9 @@ class LocalTracksCompanion extends UpdateCompanion<LocalTrack> {
           ..write('attempts: $attempts, ')
           ..write('downloadedAt: $downloadedAt, ')
           ..write('lastPlayedAt: $lastPlayedAt, ')
+          ..write('qualityLevel: $qualityLevel, ')
+          ..write('qualityLabel: $qualityLabel, ')
+          ..write('needsReplace: $needsReplace, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -3292,6 +3460,9 @@ typedef $$LocalTracksTableCreateCompanionBuilder =
       Value<int> attempts,
       Value<DateTime?> downloadedAt,
       Value<DateTime?> lastPlayedAt,
+      Value<String?> qualityLevel,
+      Value<String?> qualityLabel,
+      Value<bool> needsReplace,
       Value<int> rowid,
     });
 typedef $$LocalTracksTableUpdateCompanionBuilder =
@@ -3312,6 +3483,9 @@ typedef $$LocalTracksTableUpdateCompanionBuilder =
       Value<int> attempts,
       Value<DateTime?> downloadedAt,
       Value<DateTime?> lastPlayedAt,
+      Value<String?> qualityLevel,
+      Value<String?> qualityLabel,
+      Value<bool> needsReplace,
       Value<int> rowid,
     });
 
@@ -3404,6 +3578,21 @@ class $$LocalTracksTableFilterComposer
     column: $table.lastPlayedAt,
     builder: (column) => ColumnFilters(column),
   );
+
+  ColumnFilters<String> get qualityLevel => $composableBuilder(
+    column: $table.qualityLevel,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get qualityLabel => $composableBuilder(
+    column: $table.qualityLabel,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get needsReplace => $composableBuilder(
+    column: $table.needsReplace,
+    builder: (column) => ColumnFilters(column),
+  );
 }
 
 class $$LocalTracksTableOrderingComposer
@@ -3494,6 +3683,21 @@ class $$LocalTracksTableOrderingComposer
     column: $table.lastPlayedAt,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get qualityLevel => $composableBuilder(
+    column: $table.qualityLevel,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get qualityLabel => $composableBuilder(
+    column: $table.qualityLabel,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get needsReplace => $composableBuilder(
+    column: $table.needsReplace,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$LocalTracksTableAnnotationComposer
@@ -3563,6 +3767,21 @@ class $$LocalTracksTableAnnotationComposer
     column: $table.lastPlayedAt,
     builder: (column) => column,
   );
+
+  GeneratedColumn<String> get qualityLevel => $composableBuilder(
+    column: $table.qualityLevel,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get qualityLabel => $composableBuilder(
+    column: $table.qualityLabel,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get needsReplace => $composableBuilder(
+    column: $table.needsReplace,
+    builder: (column) => column,
+  );
 }
 
 class $$LocalTracksTableTableManager
@@ -3612,6 +3831,9 @@ class $$LocalTracksTableTableManager
                 Value<int> attempts = const Value.absent(),
                 Value<DateTime?> downloadedAt = const Value.absent(),
                 Value<DateTime?> lastPlayedAt = const Value.absent(),
+                Value<String?> qualityLevel = const Value.absent(),
+                Value<String?> qualityLabel = const Value.absent(),
+                Value<bool> needsReplace = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => LocalTracksCompanion(
                 id: id,
@@ -3630,6 +3852,9 @@ class $$LocalTracksTableTableManager
                 attempts: attempts,
                 downloadedAt: downloadedAt,
                 lastPlayedAt: lastPlayedAt,
+                qualityLevel: qualityLevel,
+                qualityLabel: qualityLabel,
+                needsReplace: needsReplace,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -3650,6 +3875,9 @@ class $$LocalTracksTableTableManager
                 Value<int> attempts = const Value.absent(),
                 Value<DateTime?> downloadedAt = const Value.absent(),
                 Value<DateTime?> lastPlayedAt = const Value.absent(),
+                Value<String?> qualityLevel = const Value.absent(),
+                Value<String?> qualityLabel = const Value.absent(),
+                Value<bool> needsReplace = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => LocalTracksCompanion.insert(
                 id: id,
@@ -3668,6 +3896,9 @@ class $$LocalTracksTableTableManager
                 attempts: attempts,
                 downloadedAt: downloadedAt,
                 lastPlayedAt: lastPlayedAt,
+                qualityLevel: qualityLevel,
+                qualityLabel: qualityLabel,
+                needsReplace: needsReplace,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0

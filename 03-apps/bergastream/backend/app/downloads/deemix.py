@@ -4,7 +4,13 @@ Protocolo:
   1. GET  /api/connect        -> cria sessão express, devolve status login
   2. POST /api/loginArl       -> {"arl": "<token>"} — autentica
   3. POST /api/addToQueue     -> {"url": "https://www.deezer.com/track/<id>",
-                                  "bitrate": null}
+                                  "bitrate": <formato>}
+
+Formato por pedido (sobrepõe o maxBitrate do config do Deemix): 9 = FLAC,
+3 = MP3 320, 1 = MP3 128. Se a conta não tem o formato, o Deemix recusa na
+hora (`errid: CantStream`); se a faixa não existe nele, o item falha com
+"wrongBitrate". `download_best` tenta os formatos em ordem, do melhor para o
+pior.
 """
 
 from __future__ import annotations
@@ -21,12 +27,22 @@ from app.config import settings
 logger = logging.getLogger("bergastream.downloads.deemix")
 
 _DEEMIX_DL_DIR = Path(settings.music_dir) / "deemix_dl"
+
+FLAC, MP3_320, MP3_128 = 9, 3, 1
+FORMAT_NAMES = {FLAC: "FLAC", MP3_320: "MP3 320", MP3_128: "MP3 128"}
+# Sob demanda: MP3 320 (Premium); faixas de playlist tentam FLAC primeiro.
+ON_DEMAND = (MP3_320, MP3_128)
+BEST = (FLAC, MP3_320, MP3_128)
+# Qualidade que cada formato entrega (audio_info.rank), para o upgrade não
+# baixar o que não pode ser melhor que o arquivo atual.
+EXPECTED_RANK = {FLAC: 40, MP3_320: 30, MP3_128: 10}
 _POLL_INTERVAL = 2.0
 _DOWNLOAD_TIMEOUT = 180
 
 
-async def emit_download(deezer_track_id: str) -> bool:
-    """Enfileira um download no Deemix. Retorna True se conseguiu enviar."""
+async def emit_download(deezer_track_id: str, bitrate: int = MP3_320) -> bool:
+    """Enfileira um download no Deemix no formato [bitrate]. Retorna True se
+    conseguiu enviar (False também quando a conta não tem o formato)."""
     if not settings.deemix_arl:
         logger.warning("[deemix] DEEMIX_ARL não configurado — pulando")
         return False
@@ -62,13 +78,19 @@ async def emit_download(deezer_track_id: str) -> bool:
         await clear_stale(cli, deezer_track_id)
         url = f"https://www.deezer.com/track/{deezer_track_id}"
         try:
-            r = await cli.post("/api/addToQueue", json={"url": url, "bitrate": None})
+            r = await cli.post("/api/addToQueue", json={"url": url, "bitrate": bitrate})
             r.raise_for_status()
             data = r.json()
             if data.get("result") is False:
-                logger.warning("[deemix] addToQueue erro: %s", data.get("errid", "??"))
+                errid = data.get("errid", "??")
+                _errors[str(deezer_track_id)] = (
+                    f"a conta do ARL não tem {FORMAT_NAMES.get(bitrate, bitrate)}"
+                    if errid == "CantStream" else f"addToQueue: {errid}")
+                logger.warning("[deemix] addToQueue %s em %s: %s", deezer_track_id,
+                               FORMAT_NAMES.get(bitrate, bitrate), errid)
                 return False
-            logger.info("[deemix] download enfileirado: %s", deezer_track_id)
+            logger.info("[deemix] download enfileirado: %s (%s)", deezer_track_id,
+                        FORMAT_NAMES.get(bitrate, bitrate))
             return True
         except httpx.HTTPError as exc:
             logger.warning("[deemix] addToQueue falhou: %s", exc)
@@ -204,18 +226,21 @@ async def _wait_for_file(deezer_track_id: str, timeout: float = _DOWNLOAD_TIMEOU
     return None
 
 
-async def download_track(deezer_track_id: str) -> tuple[bool, Path | None, str | None]:
-    """Faz o download completo via Deemix. Retorna (ok, caminho, formato)."""
-    ok = await emit_download(deezer_track_id)
-    if not ok:
-        return False, None, None
-
+async def download_track(deezer_track_id: str, bitrate: int = MP3_320) -> tuple[bool, Path | None]:
+    """Faz o download completo via Deemix num formato. Retorna (ok, caminho);
+    a qualidade real é lida do arquivo (audio_info), não do nome."""
+    if not await emit_download(deezer_track_id, bitrate):
+        return False, None
     file_path = await _wait_for_file(deezer_track_id)
-    if file_path is None:
-        return False, None, None
+    return (True, file_path) if file_path else (False, None)
 
-    ext = file_path.suffix.lower()
-    fmt_map = {".mp3": "mp3_320" if "320" in str(file_path) else "mp3_128",
-               ".flac": "flac", ".m4a": "aac", ".ogg": "vorbis"}
-    fmt = fmt_map.get(ext, "mp3_128")
-    return True, file_path, fmt
+
+async def download_best(deezer_track_id: str, formats=ON_DEMAND) -> tuple[bool, Path | None]:
+    """Tenta os [formats] em ordem (o melhor primeiro) até um baixar."""
+    for bitrate in formats:
+        ok, path = await download_track(deezer_track_id, bitrate)
+        if ok:
+            return True, path
+        logger.info("[deemix] %s sem %s; tentando o próximo formato", deezer_track_id,
+                    FORMAT_NAMES.get(bitrate, bitrate))
+    return False, None

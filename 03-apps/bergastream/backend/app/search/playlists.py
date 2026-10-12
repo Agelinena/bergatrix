@@ -4,9 +4,9 @@ YouTube Music, mais a rádio de um artista ("rádio scorpions").
 Cada resultado traz a `url` da playlist: o app abre pelo mesmo caminho dos
 links colados (resolve → "Importar").
 
-Spotify: desde 27/11/2024, apps de desenvolvedor novos não leem as faixas
-das playlists do próprio Spotify ("This Is…", "Rock Classics"); a busca já
-as omite e, por garantia, as de dono "spotify" são descartadas.
+Spotify: lido pelo caminho anônimo (SpotifyScraper), que abre também as
+playlists do próprio Spotify ("This Is…", "Rock Classics") — a Web API
+oficial deixou de abri-las em 27/11/2024.
 """
 from __future__ import annotations
 
@@ -26,21 +26,14 @@ _RADIO_RE = re.compile(r"^\s*r[aá]dio\s+(.+)$", re.IGNORECASE)
 
 
 def _spotify(query: str) -> list[PlaylistResult]:
-    sp = spotify.client()
-    if sp is None:
-        return []
-    raw = sp.search(q=query, type="playlist", limit=_PER_SOURCE + 4)
-    out = []
-    for p in (raw.get("playlists") or {}).get("items") or []:
-        if not p or (p.get("owner") or {}).get("id") == "spotify":
-            continue
-        out.append(PlaylistResult(
-            provider="spotify", external_id=p["id"], title=p.get("name") or "",
-            owner=(p.get("owner") or {}).get("display_name") or "",
-            track_count=(p.get("tracks") or {}).get("total"),
-            image_url=spotify._image(p.get("images")),
-            url=f"https://open.spotify.com/playlist/{p['id']}"))
-    return out[:_PER_SOURCE]
+    raw = spotify.client().search(query, types=("playlist",), limit=_PER_SOURCE)
+    return [PlaylistResult(
+        provider="spotify", external_id=p.id, title=p.name or "",
+        owner=p.owner.name if p.owner else "",
+        track_count=p.total_tracks,
+        image_url=spotify.best_image(p.images),
+        url=f"https://open.spotify.com/playlist/{p.id}")
+        for p in raw.playlists if p.id][:_PER_SOURCE]
 
 
 async def _deezer(query: str) -> list[PlaylistResult]:

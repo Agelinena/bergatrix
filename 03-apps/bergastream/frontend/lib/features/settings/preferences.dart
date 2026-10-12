@@ -4,15 +4,23 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/platform/app_platform.dart';
 import '../../core/storage/key_value_store.dart';
 
-/// Qualidade de streaming (Seção 6.5).
-enum StreamQuality {
-  alta('Alta (320 kbps)'),
-  normal('Normal (160 kbps)'),
-  baixa('Baixa (96 kbps)');
+/// Qualidade do áudio pedida ao servidor (Seção 6.5). O servidor guarda um
+/// arquivo por música (o melhor que conseguiu) e entrega neste nível — nunca
+/// acima do que tem: pedindo Original de uma música que só existe em 320,
+/// vem o 320.
+enum AudioQuality {
+  original('Original', 'FLAC quando houver', 'original'),
+  alta('Alta', '320 kbps', 'high'),
+  normal('Normal', '160 kbps', 'normal'),
+  economica('Econômica', '96 kbps', 'low');
 
-  const StreamQuality(this.label);
+  const AudioQuality(this.label, this.detail, this.api);
 
   final String label;
+  final String detail;
+
+  /// Valor de `?quality=` na API.
+  final String api;
 }
 
 /// Aparência: seguir o sistema, sempre claro ou sempre escuro.
@@ -29,23 +37,36 @@ enum AppTheme {
 
 class Preferences {
   const Preferences({
-    this.quality = StreamQuality.alta,
+    this.wifiQuality = AudioQuality.original,
+    this.mobileQuality = AudioQuality.normal,
+    this.offlineQuality = AudioQuality.alta,
     this.autoDownloadNew = false,
     this.theme = AppTheme.sistema,
   });
 
-  final StreamQuality quality;
+  /// Streaming no Wi-Fi (ou cabo) e na web.
+  final AudioQuality wifiQuality;
+
+  /// Streaming em dados móveis.
+  final AudioQuality mobileQuality;
+
+  /// Músicas baixadas no aparelho; mudar troca as cópias já baixadas.
+  final AudioQuality offlineQuality;
 
   /// "Baixar novas músicas das playlists automaticamente" (padrão: não).
   final bool autoDownloadNew;
   final AppTheme theme;
 
   Preferences copyWith({
-    StreamQuality? quality,
+    AudioQuality? wifiQuality,
+    AudioQuality? mobileQuality,
+    AudioQuality? offlineQuality,
     bool? autoDownloadNew,
     AppTheme? theme,
   }) => Preferences(
-    quality: quality ?? this.quality,
+    wifiQuality: wifiQuality ?? this.wifiQuality,
+    mobileQuality: mobileQuality ?? this.mobileQuality,
+    offlineQuality: offlineQuality ?? this.offlineQuality,
     autoDownloadNew: autoDownloadNew ?? this.autoDownloadNew,
     theme: theme ?? this.theme,
   );
@@ -58,21 +79,32 @@ class PreferencesNotifier extends Notifier<Preferences> {
 
   KeyValueStore get _store => ref.read(keyValueStoreProvider);
 
+  /// Completa quando o que estava guardado foi lido (antes disso o estado
+  /// é o padrão). Quem compara com a preferência salva espera por ele.
+  late Future<void> ready;
+
   @override
   Preferences build() {
-    _load();
+    ready = _load();
     return const Preferences();
   }
 
   Future<void> _load() async {
-    final quality = await _store.read(_key('quality'));
+    final wifi = await _store.read(_key('quality_wifi'));
+    final mobile = await _store.read(_key('quality_mobile'));
+    final offline = await _store.read(_key('quality_offline'));
+    // Versões antigas tinham uma "qualidade de streaming" só (alta/normal/
+    // baixa): vira a de dados móveis.
+    final legacy = await _store.read(_key('quality'));
     final auto = await _store.read(_key('auto_download_new'));
     final theme = await _store.read(_key('theme'));
     state = Preferences(
-      quality: StreamQuality.values.firstWhere(
-        (q) => q.name == quality,
-        orElse: () => StreamQuality.alta,
+      wifiQuality: _quality(wifi, AudioQuality.original),
+      mobileQuality: _quality(
+        mobile ?? (legacy == 'baixa' ? 'economica' : legacy),
+        AudioQuality.normal,
       ),
+      offlineQuality: _quality(offline, AudioQuality.alta),
       autoDownloadNew: auto == 'true',
       theme: AppTheme.values.firstWhere(
         (t) => t.name == theme,
@@ -81,9 +113,27 @@ class PreferencesNotifier extends Notifier<Preferences> {
     );
   }
 
-  Future<void> setQuality(StreamQuality quality) async {
-    state = state.copyWith(quality: quality);
-    await _store.write(_key('quality'), quality.name);
+  static AudioQuality _quality(String? name, AudioQuality fallback) =>
+      AudioQuality.values.firstWhere(
+        (q) => q.name == name,
+        orElse: () => fallback,
+      );
+
+  Future<void> setWifiQuality(AudioQuality quality) async {
+    state = state.copyWith(wifiQuality: quality);
+    await _store.write(_key('quality_wifi'), quality.name);
+  }
+
+  Future<void> setMobileQuality(AudioQuality quality) async {
+    state = state.copyWith(mobileQuality: quality);
+    await _store.write(_key('quality_mobile'), quality.name);
+  }
+
+  /// Muda a qualidade das músicas baixadas; quem chama pede ao gerenciador
+  /// de downloads para trocar as cópias (ver DownloadManager.refreshQuality).
+  Future<void> setOfflineQuality(AudioQuality quality) async {
+    state = state.copyWith(offlineQuality: quality);
+    await _store.write(_key('quality_offline'), quality.name);
   }
 
   Future<void> setAutoDownloadNew(bool value) async {

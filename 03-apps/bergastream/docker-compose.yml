@@ -46,8 +46,10 @@ services:
       db:
         condition: service_healthy
 
+  # Fork mantido do deemix (bambanah/deemix); a imagem antiga (bockiii) parou
+  # em 2022. Mesma API (/api/addToQueue etc.), mesmas pastas /config e /downloads.
   deemix:
-    image: registry.gitlab.com/bockiii/deemix-docker:latest
+    image: ghcr.io/bambanah/deemix:latest
     container_name: bergastream-deemix
     restart: unless-stopped
     environment:
@@ -61,7 +63,7 @@ services:
       - bergastream-internal
       - bergastream-egress
     healthcheck:
-      test: wget -qO- http://localhost:6595/api/connect >/dev/null 2>&1 || exit 1
+      test: wget -qO- http://127.0.0.1:6595/api/connect >/dev/null 2>&1 || exit 1
       interval: 30s
       timeout: 5s
       retries: 5
@@ -99,9 +101,16 @@ services:
       - ${STORAGE_PATH}/deemix/downloads:/data/music/deemix_dl
       # Cookies opcionais do YouTube (YT_COOKIES_FILE no .env), só leitura.
       - ${STORAGE_PATH}/youtube:/data/youtube:ro
+      # Versões novas da SpotifyScraper instaladas pelo teste diário do Spotify.
+      - ${STORAGE_PATH}/pydeps:/data/pydeps
+      # Pasta de música do Lidarr (stack do Jellyfin), só leitura: o FLAC da
+      # faixa é copiado daqui. Sem Lidarr, fica uma pasta vazia.
+      - ${LIDARR_MUSIC_DIR:-${STORAGE_PATH}/lidarr}:/data/lidarr:ro
     networks:
       - bergastream-internal
       - bergastream-egress
+      # Só para falar com o Lidarr (LIDARR_URL), que fica na rede do Traefik.
+      - bergatrix-proxy
     depends_on:
       db:
         condition: service_healthy

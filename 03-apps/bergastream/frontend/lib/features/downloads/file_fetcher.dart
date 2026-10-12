@@ -7,7 +7,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 /// Resultado de um download de arquivo.
 class FetchResult {
-  const FetchResult({required this.bytes, this.expectedBytes, this.format});
+  const FetchResult({
+    required this.bytes,
+    this.expectedBytes,
+    this.format,
+    this.quality,
+  });
 
   final int bytes;
 
@@ -16,6 +21,9 @@ class FetchResult {
 
   /// Extensão do áudio informada pelo servidor (`X-Track-Format`).
   final String? format;
+
+  /// Qualidade entregue pelo servidor (`X-Track-Quality`: "MP3 320").
+  final String? quality;
 }
 
 /// Baixa um arquivo para [path]. Lança em erro de rede ou HTTP.
@@ -54,6 +62,7 @@ class DioFileFetcher implements FileFetcher {
         response.headers.value(Headers.contentLengthHeader) ?? '',
       ),
       format: response.headers.value('x-track-format'),
+      quality: response.headers.value('x-track-quality'),
     );
   }
 }
@@ -98,6 +107,7 @@ class BackgroundFileFetcher implements FileFetcher {
       bytes: await file.length(),
       expectedBytes: int.tryParse(headers['content-length'] ?? ''),
       format: headers['x-track-format'],
+      quality: headers['x-track-quality'],
     );
   }
 }

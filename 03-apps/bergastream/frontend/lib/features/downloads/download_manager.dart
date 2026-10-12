@@ -15,6 +15,7 @@ import '../../data/models/playlist_models.dart';
 import '../../data/repositories/playback_repository.dart';
 import '../auth/session.dart';
 import '../player/player_controller.dart';
+import '../settings/preferences.dart';
 import 'file_fetcher.dart';
 
 /// Pastas dos downloads (áudio e capas).
@@ -199,19 +200,66 @@ class DownloadManager extends Notifier<DownloadsStatus> {
     );
   }
 
+  /// Confere com o servidor a qualidade das cópias baixadas e marca para
+  /// trocar as que mudaram: a qualidade escolhida para downloads mudou, ou o
+  /// servidor melhorou a música (ex.: ganhou o FLAC). Compara o que o
+  /// servidor entrega no nível escolhido ("MP3 320"), então mudar de nível
+  /// sem mudar o resultado não baixa nada. Cópias antigas (sem qualidade
+  /// registrada) são trocadas uma vez. Devolve quantas vão ser trocadas.
+  Future<int> refreshQuality() async {
+    if (!available || !ref.read(sessionProvider).canUseServer) return 0;
+    await ref.read(preferencesProvider.notifier).ready;
+    final level = ref.read(preferencesProvider).offlineQuality.api;
+    final playback = ref.read(playbackRepositoryProvider);
+    final tracks = await _db.downloadedTracks();
+    final stale = <String>[];
+    for (var start = 0; start < tracks.length; start += 500) {
+      final chunk = tracks.skip(start).take(500).toList();
+      final server = await playback.qualities([
+        for (final t in chunk) '${t.provider}:${t.externalId}',
+      ]);
+      for (final t in chunk) {
+        final expected = server['${t.provider}:${t.externalId}']?[level];
+        if (expected == null) continue; // sem arquivo no servidor: fica a cópia
+        if (t.qualityLabel != expected.label) {
+          stale.add(t.id);
+        } else if (t.qualityLevel != level) {
+          // Mesmo resultado no nível novo: só anota.
+          await _db.updateTrack(
+            t.id,
+            LocalTracksCompanion(qualityLevel: Value(level)),
+          );
+        }
+      }
+    }
+    await _db.markForReplace(stale);
+    if (stale.isNotEmpty) await pump();
+    return stale.length;
+  }
+
   Future<void> _download(LocalTrack t) async {
     final dirs = await paths;
     final playback = ref.read(playbackRepositoryProvider);
     final fetcher = ref.read(fileFetcherProvider);
     final timings = ref.read(playerTimingsProvider);
     final partial = '${dirs.audio}/${t.id}.part';
+    // Troca de qualidade: a cópia atual segue tocando até a nova chegar e
+    // fica se a troca falhar.
+    final replacing =
+        t.downloadState == DownloadState.baixada && t.needsReplace;
     String? audioPath;
     String? coverPath;
-    await _db.updateTrack(
-      t.id,
-      const LocalTracksCompanion(downloadState: Value(DownloadState.baixando)),
-    );
+    if (!replacing) {
+      await _db.updateTrack(
+        t.id,
+        const LocalTracksCompanion(
+          downloadState: Value(DownloadState.baixando),
+        ),
+      );
+    }
     try {
+      await ref.read(preferencesProvider.notifier).ready;
+      final level = ref.read(preferencesProvider).offlineQuality.api;
       // 1. A faixa precisa estar pronta no servidor.
       final prepared = await playback.prepare(t.asResult);
       var readiness = prepared.readiness;
@@ -227,7 +275,7 @@ class DownloadManager extends Notifier<DownloadsStatus> {
 
       // 2. Áudio, validado pelo tamanho.
       final audio = await fetcher.fetch(
-        await playback.downloadUrl(prepared.trackId),
+        await playback.downloadUrl(prepared.trackId, quality: level),
         partial,
         label: '${t.title} · ${t.artist}',
       );
@@ -236,10 +284,20 @@ class DownloadManager extends Notifier<DownloadsStatus> {
         throw FileSystemException('Arquivo incompleto', partial);
       }
       audioPath = '${dirs.audio}/${t.id}.${audio.format ?? 'mp3'}';
+      final previous = t.audioPath;
+      // O rename não substitui arquivo existente em todas as plataformas.
+      if (await File(audioPath).exists()) await File(audioPath).delete();
       await File(partial).rename(audioPath);
+      // Formato mudou (ex.: flac → m4a): a cópia antiga tem outro nome.
+      if (previous != null && previous != audioPath) {
+        await _deleteQuietly(previous);
+      }
 
-      // 3. Capa (a UI usa o arquivo local antes da URL).
-      if (t.coverUrl != null) {
+      // 3. Capa (a UI usa o arquivo local antes da URL); na troca de
+      // qualidade, a que já está no aparelho serve.
+      if (replacing && t.coverPath != null && File(t.coverPath!).existsSync()) {
+        coverPath = t.coverPath;
+      } else if (t.coverUrl != null) {
         coverPath = '${dirs.covers}/${t.id}.img';
         final cover = await fetcher.fetch(Uri.parse(t.coverUrl!), coverPath);
         if (cover.bytes <= 0) {
@@ -257,11 +315,25 @@ class DownloadManager extends Notifier<DownloadsStatus> {
           downloadState: const Value(DownloadState.baixada),
           downloadedAt: Value(DateTime.now()),
           attempts: const Value(0),
+          qualityLevel: Value(level),
+          qualityLabel: Value(audio.quality),
+          needsReplace: const Value(false),
         ),
       );
       _retryAt.remove(t.id);
     } on Object catch (e) {
       debugPrint('Download falhou (${t.title}): $e');
+      if (replacing) {
+        // A cópia atual fica; tenta de novo na próxima conferência.
+        await _deleteQuietly(partial);
+        if (await _db.track(t.id) != null) {
+          await _db.updateTrack(
+            t.id,
+            const LocalTracksCompanion(needsReplace: Value(false)),
+          );
+        }
+        return;
+      }
       for (final path in [partial, ?audioPath, ?coverPath]) {
         await _deleteQuietly(path);
       }

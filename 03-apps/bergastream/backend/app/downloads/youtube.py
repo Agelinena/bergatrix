@@ -69,11 +69,15 @@ class _YtLogger:
     error = debug
 
 
+# Áudio original, sem converter: o Opus (formato 251, ~130–160 kbps) quando
+# existe, senão o AAC (140, 128 kbps). Antes virava MP3 192 — conversão com
+# perda sobre um arquivo que já tinha perda, pior que o original.
+# "preferredcodec: best" só tira o áudio do contêiner de vídeo (-acodec copy).
 _YDL_DOWNLOAD_OPTS = {
-    "format": "bestaudio/best",
+    "format": "bestaudio[acodec=opus]/bestaudio[ext=m4a]/bestaudio/best",
     "quiet": True, "no_warnings": True, "noprogress": True, "logger": _YtLogger(),
     "overwrites": True, "noplaylist": True,
-    "postprocessors": [{"key": "FFmpegExtractAudio", "preferredcodec": "mp3", "preferredquality": "192"}],
+    "postprocessors": [{"key": "FFmpegExtractAudio", "preferredcodec": "best"}],
 }
 
 
@@ -306,12 +310,13 @@ async def download_video(video_id: str, output_dir: Path | None = None):
     return False, None, None
 
 
+_AUDIO_SUFFIXES = {".opus": "opus", ".m4a": "aac", ".ogg": "vorbis", ".webm": "opus", ".mp3": "mp3"}
+
+
 def _downloaded(dest: Path, video_id: str):
-    mp3 = dest / f"{video_id}.mp3"
-    if mp3.exists():
-        return True, mp3, "mp3_192"
-    for f in dest.iterdir():
-        if f.stem == video_id and f.suffix in (".mp3", ".m4a", ".webm", ".opus"):
-            fmt = {".mp3": "mp3_192", ".m4a": "aac", ".webm": "opus", ".opus": "opus"}.get(f.suffix, "mp3_192")
+    """Arquivo baixado (o formato real é lido depois, pelo audio_info)."""
+    for suffix, fmt in _AUDIO_SUFFIXES.items():
+        f = dest / f"{video_id}{suffix}"
+        if f.exists() and f.stat().st_size > 0:
             return True, f, fmt
     return None

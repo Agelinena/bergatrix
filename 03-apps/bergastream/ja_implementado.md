@@ -381,6 +381,70 @@ Rodado na imagem `ghcr.io/cirruslabs/flutter:stable` (Flutter 3.44.0 / Dart 3.12
 - Deploy de produção: compose com `${STORAGE_PATH}`, `container_name`, redes
   `bergastream-internal` (sem internet) e `bergastream-egress`, labels do modelo B.
 
+### Spotify sem conta, qualidade real e FLAC das playlists (servidor)
+- **Spotify sem conta:** desde fev/2026 a Web API exige Premium do dono do app (sem ele, a aba
+  Spotify ficava vazia). Agora: biblioteca **SpotifyScraper** (token anônimo do web player) para
+  busca, faixas, álbuns, artistas (com discografia completa) e playlists — inclusive as editoriais
+  do Spotify, que a API oficial bloqueava desde 2024. O **ISRC** (que acha a mesma gravação no
+  Deezer) vem do endpoint interno de metadados do web player (`app/search/spotify_meta.py`), ao
+  registrar a faixa; ele também completa álbum e capa. Sem resposta, o download busca no Deezer
+  por artista + título + duração. Spotify continua sendo a aba principal.
+- **Teste diário com autocorreção** (`app/search/spotify_health.py`, no worker): busca, faixa,
+  álbum, playlist editorial e ISRC. Se a biblioteca falhar e houver versão nova no PyPI: instala
+  em `${STORAGE_PATH}/pydeps` (só o pacote), testa num processo separado, ativa (troca atômica do
+  link) e reinicia o worker; a API vê no Redis e reinicia também. Resultado em
+  `GET /api/server/status` → `spotify`. Manual: `python -m app.search.spotify_health`.
+- **Qualidade lida do arquivo** (`app/downloads/audio_info.py`, ffprobe): codec, bitrate, taxa,
+  bits e `quality_rank` (10 MP3 128 · 20 MP3 192/Opus · 30 MP3 320 · 40 FLAC · 50 FLAC 24 bits),
+  gravados em `files` (`0013_audio_quality.sql`); antes o formato era adivinhado pelo nome.
+- **YouTube sem conversão:** guarda o Opus/AAC original (antes virava MP3 192, perda sobre perda).
+- **Deemix:** formato por pedido (sob demanda MP3 320, 128 se a faixa não tiver 320) e imagem
+  trocada pelo fork mantido (`ghcr.io/bambanah/deemix`; a `bockiii` parou em 2022). Healthcheck
+  corrigido (`127.0.0.1`: `localhost` resolvia para IPv6).
+- **Melhoria das playlists** (`app/quality/upgrader.py`, no worker): faixa que entra numa
+  playlist ganha linha em `quality_upgrades`; o worker tenta o Deemix em FLAC → 320 (a cada 30
+  dias) e, sem FLAC, pede ao **Lidarr** (stack do Jellyfin, Usenet) o álbum da faixa, monitorando
+  só esse álbum; busca todo dia nos primeiros `UPGRADE_DAILY_DAYS` (14) e depois toda semana.
+  Quando o Lidarr baixa, o FLAC da faixa é copiado e substitui o arquivo. Só troca por qualidade
+  maior; faixa que sai das playlists sai da fila (e o álbum deixa de ser monitorado).
+- Validado no ambiente local: teste diário ok; busca/artista/álbum/playlist editorial; tocar faixa
+  do Spotify (ISRC pelos metadados → Deemix) e do YouTube Music (Opus 140 original); instalação e
+  ativação de versão nova da biblioteca; fluxo real contra um Lidarr 3.1.0 temporário (lookup no
+  MusicBrainz, artista com só o álbum certo monitorado, álbum resolvido em 10 s, busca disparada,
+  faixa achada no álbum, importação de FLAC substituindo o MP3).
+- Testes: `test_quality` 37 (novo), `test_permanence_dirs` 13 (upgrade troca o arquivo),
+  `test_catalog`/`test_playlist_search`/`test_history` atualizados.
+
+### Qualidade escolhida por aparelho e cópias offline que se atualizam
+- **Lidarr só de passagem:** copiada a música, o álbum deixa de ser monitorado e os arquivos são
+  apagados do Lidarr quando nenhuma outra faixa de playlist espera aquele álbum
+  (`LIDARR_KEEP_ALBUMS=true` mantém). A pasta de música do Lidarr fica nos dados do Bergastream
+  (`/mnt/storage/docker_volumes/bergastream/lidarr`).
+- **Níveis de entrega** (`app/downloads/variants.py`): o servidor guarda um arquivo por música
+  (o mestre) e `stream`/`download` aceitam `?quality=original|high|normal|low` (Original, MP3
+  320, AAC 160, AAC 96). Nunca aumenta (pedindo 320 de um MP3 128, vai o 128; Opus do YouTube só
+  é reduzido no econômico). A versão menor é convertida uma vez (ffmpeg) e guardada em
+  `music/variants` (aceita Range; apagada depois de 7 dias sem uso ou quando o mestre muda).
+  Cabeçalhos `X-Track-Quality`/`X-Track-Quality-Rank`. `GET /api/tracks/{id}/status` traz
+  `qualities` (o que cada nível entrega) e `POST /api/tracks/qualities` faz o mesmo em lote,
+  pelas chaves `provider:external_id` das cópias offline.
+- **App — Ajustes → Qualidade do áudio:** streaming no Wi-Fi (padrão Original), em dados móveis
+  (padrão Normal; só no Android) e músicas baixadas (padrão Alta). A antiga "Qualidade de
+  streaming" (só visual) vira a de dados móveis.
+- **App — player:** pede o nível conforme a rede (web conta como Wi-Fi) e mostra a qualidade
+  do que toca ("FLAC 16/44.1", "AAC 160") abaixo do artista.
+- **App — cópias offline:** guardam o nível pedido e o que o servidor entregou (banco local v3:
+  `quality_level`, `quality_label`, `needs_replace`). Ao abrir o app, ao reconectar e ao mudar a
+  preferência, `refreshQuality` compara com o que o servidor entrega hoje e troca as cópias
+  diferentes (preferência mudou ou o servidor melhorou a música, ex.: ganhou o FLAC); mudar de
+  nível sem mudar o resultado não baixa nada. Durante a troca a cópia antiga continua tocando e
+  fica se a troca falhar; formato novo apaga o arquivo antigo. Cópias de antes desta versão são
+  trocadas uma vez.
+- **App — Ajustes → No servidor:** qualidade das músicas, fila de melhoria das playlists e teste
+  do Spotify.
+- Testes: backend `test_variants` 18 (novo, com áudio real), `test_quality` 42; Flutter
+  `stream_quality_test` (novo), downloads +8, HTTP +4.
+
 ### Plano B do YouTube mais forte (servidor)
 - Quando o Deemix falha: busca no **YouTube Music** (ytmusicapi, com duração — a busca antiga
   do YT Music vinha sem duração e era sempre descartada) e no YouTube; tolerância de duração
@@ -543,9 +607,10 @@ conferidas com ffprobe (título diferente → descarta e baixa do YouTube).
 | Suíte | Resultado |
 |---|---|
 | Flutter `flutter analyze` | ✅ sem problemas |
-| Flutter `flutter test` | ✅ 342 |
+| Flutter `flutter test` | ✅ 363 |
 | Flutter `integration_test` (flutter-tester) | ✅ 2 |
-| Backend auth / playlists / history / resolve / catalog / downloads / images | ✅ 38 / 32 / 12 / 17 / 11 / 13 / 12 |
+| Backend auth / playlists / history / resolve / catalog / downloads / images | ✅ 38 / 32 / 27 / 17 / 18 / 13 / 12 |
+| Backend qualidade / versões por nível / permanência (pastas) / busca de playlists | ✅ 42 / 18 / 13 / 13 |
 | Backend sessões (estado / REST + WebSocket) / aparelhos | ✅ 28 / 38 / 15 |
 | E2E no Chrome (8080): sem sessão → login; busca; capas pelo proxy; recarregar mantém sessão | ✅ |
 | APK release, AAB, Linux release | ✅ compilam |
@@ -558,8 +623,8 @@ conferidas com ffprobe (título diferente → descarta e baixa do YouTube).
 
 | # | Pendência |
 |---|---|
-| 1 | Deemix falha em algumas faixas (ARL/versão); o YouTube cobre. |
-| 2 | Qualidade de streaming escolhida no app não converte o bitrate no servidor. |
+| 1 | Deemix trocado pelo fork mantido (out/2026): acompanhar se as falhas antigas somem; o YouTube cobre. |
+| 2 | Busca de qualidade nas cópias offline usa a rede de dados se "Baixar só no Wi-Fi" estiver desligado (FLAC ~30 MB/música). |
 | 3 | Horas ouvidas são aproximadas (duração das faixas, não tempo real tocado). |
 | 4 | Teste em aparelho Android físico (segundo plano, bateria, notificação, tela de bloqueio). |
 | 5 | Proposta 8.7 da Documentação adotada em parte: Drift só nos apps; a web não guarda dados locais. |

@@ -37,7 +37,7 @@ async def _get_pool():
 async def search(q: str = Query(min_length=1), source: str = Query("all", pattern="^(spotify|ytmusic|youtube|all)$"), user: CurrentUser = Depends(current_user)):
     tasks = []
     if source in ("spotify", "all"):
-        tasks.append(asyncio.to_thread(spotify_search.search, q))
+        tasks.append(asyncio.to_thread(_spotify_or_empty, q))
     if source in ("youtube", "all"):
         tasks.append(asyncio.to_thread(youtube_search.search, q))
     if source in ("ytmusic", "all"):
@@ -51,11 +51,23 @@ async def search(q: str = Query(min_length=1), source: str = Query("all", patter
         combined.extend(r)
     return combined
 
+def _spotify_or_empty(query: str) -> list[SearchResult]:
+    """Na busca combinada, o Spotify fora do ar não derruba as outras origens."""
+    try:
+        return spotify_search.search(query)
+    except Exception as exc:
+        logger.warning("[search] spotify falhou: %s", exc)
+        return []
+
 @router.get("/search/full", response_model=FullSearch)
 async def search_full(q: str = Query(min_length=1), source: str = Query("spotify", pattern="^(spotify|ytmusic|deezer)$"), user: CurrentUser = Depends(current_user)):
     """Faixas, artistas e álbuns de uma origem (Seção 6.3 do app)."""
     if source == "spotify":
-        return await asyncio.to_thread(spotify_search.search_full, q)
+        try:
+            return await asyncio.to_thread(spotify_search.search_full, q)
+        except Exception as exc:
+            logger.warning("[search] spotify falhou: %s", exc)
+            raise HTTPException(502, detail="O Spotify não respondeu")
     if source == "deezer":
         from app.search import deezer as deezer_search
         try:
@@ -139,6 +151,28 @@ async def play(body: PlayRequest, pool=Depends(_get_pool), user: CurrentUser = D
 
 # Status
 
+class QualitiesRequest(BaseModel):
+    # Mesma chave das cópias offline no app: "<provider>:<external_id>".
+    refs: list[str] = Field(max_length=5000)
+
+
+@router.post("/tracks/qualities")
+async def track_qualities(body: QualitiesRequest, user: CurrentUser = Depends(current_user)):
+    """Em lote, para o app conferir as cópias offline: {ref: {nível: {label,
+    rank}}}. Ref sem arquivo no servidor fica de fora (o app mantém a cópia)."""
+    from app.downloads import variants
+    pairs = [ref.split(":", 1) for ref in body.refs if ":" in ref]
+    if not pairs:
+        return {}
+    rows = await get_pool().fetch(
+        """SELECT e.provider, e.external_id, f.codec, f.bitrate_kbps, f.sample_rate, f.bit_depth
+           FROM unnest($1::text[], $2::text[]) AS r(provider, external_id)
+           JOIN external_ids e ON e.provider = r.provider AND e.external_id = r.external_id
+           JOIN files f ON f.track_id = e.track_id""",
+        [p for p, _ in pairs], [x for _, x in pairs])
+    return {f"{r['provider']}:{r['external_id']}": variants.qualities(r) for r in rows if r["codec"]}
+
+
 @router.get("/tracks/{track_id}/status")
 async def track_status(track_id: str, user: CurrentUser = Depends(current_user)):
     r = await get_redis()
@@ -146,10 +180,13 @@ async def track_status(track_id: str, user: CurrentUser = Depends(current_user))
     if await r.sismember(_ACTIVE_SET, track_id):
         return {"track_id": track_id, "status": "downloading"}
     pool = get_pool()
-    has = await pool.fetchval("SELECT 1 FROM files WHERE track_id=$1", track_id)
-    if has:
-        row = await pool.fetchrow("SELECT kind, last_played_at FROM files WHERE track_id=$1", track_id)
-        return {"track_id": track_id, "status": "ready", "kind": row["kind"] if row else "cache"}
+    row = await pool.fetchrow(
+        "SELECT kind, codec, bitrate_kbps, sample_rate, bit_depth FROM files WHERE track_id=$1", track_id)
+    if row:
+        from app.downloads import variants
+        # qualities: o que cada nível (original/high/normal/low) entrega desta faixa.
+        return {"track_id": track_id, "status": "ready", "kind": row["kind"],
+                "qualities": variants.qualities(row)}
     keys = await r.keys("bergastream:job:*")
     for k in keys:
         j = await r.hgetall(k)
@@ -159,7 +196,7 @@ async def track_status(track_id: str, user: CurrentUser = Depends(current_user))
 
 # Stream
 
-_MEDIA_TYPES = {".mp3": "audio/mpeg", ".flac": "audio/flac", ".m4a": "audio/mp4", ".ogg": "audio/ogg", ".opus": "audio/opus", ".webm": "audio/webm"}
+_MEDIA_TYPES = {".mp3": "audio/mpeg", ".flac": "audio/flac", ".m4a": "audio/mp4", ".ogg": "audio/ogg", ".opus": "audio/ogg", ".webm": "audio/webm"}
 
 _TRACK_ID = r"^[0-9a-fA-F\-]{32,36}$"
 
@@ -171,28 +208,51 @@ async def stream_token(track_id: str, user: CurrentUser = Depends(current_user))
         raise HTTPException(404, detail="ID invalido")
     return StreamToken(token=create_stream_token(user.id, track_id), expires_in=settings.stream_token_hours * 3600)
 
-@router.get("/tracks/{track_id}/stream")
-async def stream_track(track_id: str, request: Request, user: CurrentUser = Depends(stream_user)):
+_QUALITY = Query("original", pattern="^(original|high|normal|low)$",
+                 description="original (o arquivo do servidor) | high (MP3 320) | normal (AAC 160) | low (AAC 96)")
+
+
+async def _file_for(track_id: str, quality: str) -> tuple[Path, "object"]:
+    """Arquivo da faixa no nível pedido (o mestre ou a versão convertida)."""
     import re as _re
+    from app.downloads import variants
     if not _re.match(_TRACK_ID, track_id):
         raise HTTPException(404, detail="ID invalido")
     pool = get_pool()
-    row = await pool.fetchrow("SELECT path, format FROM files WHERE track_id=$1", track_id)
+    row = await pool.fetchrow(
+        "SELECT path, codec, bitrate_kbps, sample_rate, bit_depth FROM files WHERE track_id=$1", track_id)
     if not row:
-        t = await pool.fetchrow("SELECT 1 FROM tracks WHERE id=$1", track_id)
-        if not t:
+        if not await pool.fetchval("SELECT 1 FROM tracks WHERE id=$1", track_id):
             raise HTTPException(404, detail="Faixa nao encontrada")
         raise HTTPException(503, detail="Ainda baixando")
-    file_path = Path(row["path"])
-    if not file_path.exists():
+    master = Path(row["path"])
+    if not master.exists():
         raise HTTPException(404, detail="Arquivo nao encontrado em disco")
-    await pool.execute("UPDATE files SET last_played_at = now() WHERE track_id=$1", track_id)
-    ext = file_path.suffix.lower()
-    media_type = _MEDIA_TYPES.get(ext, "application/octet-stream")
+    try:
+        return await variants.path_for(track_id, master, variants.master_info(row), quality)
+    except RuntimeError as exc:
+        logger.warning("[stream] %s em %s: %s — vai o original", track_id[:8], quality, exc)
+        return master, variants.delivered(variants.master_info(row), "original")
+
+
+def _quality_headers(path: Path, delivery) -> dict:
+    """Formato (extensão) e qualidade entregues: o app guarda nas cópias offline."""
+    return {"X-Track-Format": path.suffix.lower().lstrip("."),
+            "X-Track-Quality": delivery.label, "X-Track-Quality-Rank": str(delivery.rank)}
+
+
+@router.get("/tracks/{track_id}/stream")
+async def stream_track(track_id: str, request: Request, quality: str = _QUALITY,
+                       user: CurrentUser = Depends(stream_user)):
+    import re as _re
+    file_path, delivery = await _file_for(track_id, quality)
+    await get_pool().execute("UPDATE files SET last_played_at = now() WHERE track_id=$1", track_id)
+    media_type = _MEDIA_TYPES.get(file_path.suffix.lower(), "application/octet-stream")
     file_size = file_path.stat().st_size
+    headers = {"Accept-Ranges": "bytes", **_quality_headers(file_path, delivery)}
     range_hdr = request.headers.get("range")
     if not range_hdr:
-        return FileResponse(path=str(file_path), media_type=media_type, filename=file_path.name, headers={"Accept-Ranges": "bytes"})
+        return FileResponse(path=str(file_path), media_type=media_type, filename=file_path.name, headers=headers)
     m = _re.match(r"bytes=(\d*)-(\d*)", range_hdr)
     if not m:
         raise HTTPException(416, detail="Range mal formatado")
@@ -214,29 +274,20 @@ async def stream_track(track_id: str, request: Request, user: CurrentUser = Depe
                     break
                 yield data
                 left -= len(data)
-    return StreamingResponse(_chunk(file_path, start, cl), status_code=206, media_type=media_type, headers={"Accept-Ranges": "bytes", "Content-Range": f"bytes {start}-{end}/{file_size}", "Content-Length": str(cl)})
+    return StreamingResponse(_chunk(file_path, start, cl), status_code=206, media_type=media_type,
+                             headers={**headers, "Content-Range": f"bytes {start}-{end}/{file_size}",
+                                      "Content-Length": str(cl)})
 
 @router.get("/tracks/{track_id}/download")
-async def download_track(track_id: str, user: CurrentUser = Depends(stream_user)):
-    """Arquivo completo para o modo offline (Seção 8 do app). Mesma
+async def download_track(track_id: str, quality: str = _QUALITY, user: CurrentUser = Depends(stream_user)):
+    """Arquivo completo para o modo offline, no nível pedido. Mesma
     autenticação do stream (Bearer ou ?t=). O tamanho vai em Content-Length
-    para o app validar o arquivo baixado."""
-    import re as _re
-    if not _re.match(_TRACK_ID, track_id):
-        raise HTTPException(404, detail="ID invalido")
-    pool = get_pool()
-    row = await pool.fetchrow("SELECT path, size_bytes FROM files WHERE track_id=$1", track_id)
-    if not row:
-        if not await pool.fetchval("SELECT 1 FROM tracks WHERE id=$1", track_id):
-            raise HTTPException(404, detail="Faixa nao encontrada")
-        raise HTTPException(503, detail="Ainda baixando")
-    file_path = Path(row["path"])
-    if not file_path.exists():
-        raise HTTPException(404, detail="Arquivo nao encontrado em disco")
+    para o app validar o arquivo; X-Track-Quality diz o que foi entregue."""
+    file_path, delivery = await _file_for(track_id, quality)
     media_type = _MEDIA_TYPES.get(file_path.suffix.lower(), "application/octet-stream")
     return FileResponse(path=str(file_path), media_type=media_type,
                         filename=f"{track_id}{file_path.suffix.lower()}",
-                        headers={"X-Track-Format": file_path.suffix.lower().lstrip(".")})
+                        headers=_quality_headers(file_path, delivery))
 
 # Admin
 

@@ -41,7 +41,7 @@ void main() {
 
     await tester.tap(find.text('Ajustes'));
     await tester.pumpAndSettle();
-    expect(find.text('Qualidade de streaming'), findsOneWidget);
+    expect(find.text('Qualidade do áudio'), findsOneWidget);
     // Web não tem downloads.
     expect(find.text('Offline'), findsNothing);
   });

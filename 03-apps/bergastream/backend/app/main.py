@@ -56,11 +56,15 @@ async def lifespan(app: FastAPI):
     # Sessões compartilhadas: avança a faixa se nenhum aparelho avisar o fim.
     from app.sessions.service import watchdog
     session_watchdog = asyncio.create_task(watchdog(pool))
+    # O worker pode ativar uma SpotifyScraper nova (teste diário): reinicia junto.
+    from app.search.spotify_health import api_restart_watch
+    spotify_watch = asyncio.create_task(api_restart_watch(await get_redis()))
     logger.info("Limpeza agendada (1h)")
     logger.info("API pronta")
     yield
     t.cancel()
     session_watchdog.cancel()
+    spotify_watch.cancel()
     logger.info("Encerrando...")
     await close_pool()
 

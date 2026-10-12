@@ -2,7 +2,8 @@
 
 Fluxo completo (Etapa 2):
 1. Busca exata por (provider, external_id)
-2. Se tem ISRC, busca por ISRC
+2. Se tem ISRC, busca por ISRC (faixa do Spotify sem ISRC: busca antes nos
+   metadados do Spotify, que também completam álbum e capa)
 3. Busca heurística (fuzzy): artista + título + duração ±3s
 4. Se YouTube, extrai ISRC do vídeo via yt-dlp antes de decidir
 5. Se match em qualquer passo: vincula external_id + retorna track existente
@@ -35,7 +36,10 @@ async def resolve_and_register(
     if track:
         logger.info("[resolve] %s encontrada por (%s, %s)", track.id[:8], req.provider, req.external_id)
 
-    # 2. Se não achou e tem ISRC, busca por ISRC
+    # 2. Se não achou e tem ISRC, busca por ISRC. A busca anônima do Spotify
+    # não traz o ISRC: vem dos metadados da faixa, junto com álbum e capa.
+    if track is None and req.provider == "spotify" and not req.isrc:
+        await enrich_from_spotify(req)
     if track is None and req.isrc:
         track = await repo.get_track_by_isrc(pool, req.isrc)
         if track:
@@ -83,6 +87,20 @@ async def resolve_and_register(
     await repo.link_external_id(pool, track.id, req.provider, req.external_id)
     logger.info("[resolve] %s criada (%s)", track.id[:8], req.provider)
     return PlayResponse(track_id=track.id, status="registered")
+
+
+async def enrich_from_spotify(req: PlayRequest) -> None:
+    """Completa ISRC, álbum e capa de uma faixa do Spotify (sem conta). Sem
+    resposta do Spotify, segue sem eles (o download acha a faixa no Deezer
+    por artista + título + duração)."""
+    from app.search.spotify_meta import track_details
+
+    details = await track_details(req.external_id)
+    if details is None:
+        return
+    req.isrc = req.isrc or details.isrc
+    req.album = req.album or details.album or ""
+    req.cover_url = req.cover_url or details.cover_url
 
 
 async def _extract_isrc(video_id: str) -> str | None:

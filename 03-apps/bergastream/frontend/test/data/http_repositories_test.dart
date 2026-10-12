@@ -2,7 +2,9 @@ import 'package:bergastream/core/network/api_client.dart';
 import 'package:bergastream/core/network/api_error.dart';
 import 'package:bergastream/data/models/auth.dart';
 import 'package:bergastream/data/repositories/http_auth_repository.dart';
+import 'package:bergastream/data/repositories/playback_repository.dart';
 import 'package:bergastream/data/repositories/search_repository.dart';
+import 'package:bergastream/data/repositories/server_status_repository.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -297,6 +299,100 @@ void main() {
         ApiErrorKind.semConexao.message,
         'Não foi possível conectar. Verifique sua internet.',
       );
+    });
+  });
+
+  group('HttpPlaybackRepository (qualidade)', () {
+    PlaybackRepository repoWith(FakeAdapter adapter) => HttpPlaybackRepository(
+      createDio(baseUrl: 'https://s.com')..httpClientAdapter = adapter,
+    );
+
+    test('stream e download levam o token e o nível pedido', () async {
+      final adapter = FakeAdapter((_) async => jsonBody({'token': 'tk'}));
+      final repo = repoWith(adapter);
+      final stream = await repo.streamUrl('t1', quality: 'normal');
+      expect(stream.path, '/api/tracks/t1/stream');
+      expect(stream.queryParameters, {'t': 'tk', 'quality': 'normal'});
+      final download = await repo.downloadUrl('t1');
+      expect(download.queryParameters['quality'], 'original');
+    });
+
+    test('lote de qualidades: resposta real do servidor', () async {
+      final adapter = FakeAdapter(
+        (_) async => jsonBody({
+          'spotify:abc': {
+            'original': {'label': 'FLAC 16/44.1', 'rank': 40},
+            'high': {'label': 'MP3 320', 'rank': 30},
+            'normal': {'label': 'AAC 160', 'rank': 20},
+            'low': {'label': 'AAC 96', 'rank': 10},
+          },
+        }),
+      );
+      final q = await repoWith(adapter).qualities(['spotify:abc', 'deezer:1']);
+      expect(q.keys, ['spotify:abc']);
+      expect(q['spotify:abc']!['normal']!.label, 'AAC 160');
+      expect(q['spotify:abc']!['original']!.rank, 40);
+      expect(adapter.requests.single.uri.path, '/api/tracks/qualities');
+      expect(adapter.requests.single.data, {
+        'refs': ['spotify:abc', 'deezer:1'],
+      });
+      expect(await repoWith(adapter).qualities(const []), isEmpty);
+    });
+  });
+
+  group('ServerStatus', () {
+    Map<String, dynamic> base() => {
+      'storage': {
+        'tracks': 2,
+        'permanent': 1,
+        'cache': 1,
+        'bytes': 10,
+        'bytes_permanent': 5,
+        'bytes_cache': 5,
+      },
+      'queue': {'waiting': 0, 'active': 0},
+      'deemix': {'available': true},
+    };
+
+    test('servidor antigo: sem qualidade nem Spotify', () {
+      final s = ServerStatus.fromJson(base());
+      expect(s.quality, isNull);
+      expect(s.spotify, isNull);
+    });
+
+    test('lê a qualidade e o teste do Spotify', () {
+      final s = ServerStatus.fromJson({
+        ...base(),
+        'quality': {
+          'lossless': 3,
+          'high': 4,
+          'medium': 1,
+          'low': 2,
+          'unknown': 0,
+          'upgrades_pending': 5,
+          'upgrades_waiting': 6,
+          'upgrades_done': 7,
+          'lidarr': true,
+        },
+        'spotify': {
+          'checked_at': '2026-10-12T13:49:22.514675+00:00',
+          'library_version': '3.9.2',
+          'library_ok': false,
+          'isrc_ok': true,
+          'ok': false,
+          'failures': {'busca': 'HTTP 400'},
+          'update': 'nenhuma versão mais nova',
+        },
+      });
+      final q = s.quality!;
+      expect([q.lossless, q.high, q.medium, q.low], [3, 4, 1, 2]);
+      expect([q.upgradesPending, q.upgradesWaiting, q.upgradesDone], [5, 6, 7]);
+      expect(q.lidarr, isTrue);
+      final sp = s.spotify!;
+      expect(sp.ok, isFalse);
+      expect(sp.libraryVersion, '3.9.2');
+      expect(sp.failures, {'busca': 'HTTP 400'});
+      expect(sp.checkedAt, isNotNull);
     });
   });
 }

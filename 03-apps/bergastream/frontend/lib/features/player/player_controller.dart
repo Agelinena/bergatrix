@@ -14,9 +14,11 @@ import '../../data/models/search_result.dart';
 import '../../data/repositories/playback_repository.dart';
 import '../../data/repositories/session_repository.dart';
 import '../auth/session.dart';
+import '../downloads/download_manager.dart';
 import '../home/home_providers.dart';
 import '../playlists/last_played.dart';
 import '../playlists/playlist_shuffle.dart';
+import '../settings/preferences.dart';
 import 'audio_engine.dart';
 import 'media_notification.dart';
 import 'play_queue.dart';
@@ -37,6 +39,7 @@ class PlayerState {
     this.message,
     this.shared = false,
     this.playingOn,
+    this.quality,
   });
 
   final QueueItem? current;
@@ -65,6 +68,11 @@ class PlayerState {
   /// Outro aparelho da pessoa é o que está tocando ("Tocando em …"). Os
   /// controles daqui comandam aquele aparelho.
   final String? playingOn;
+
+  /// Qualidade do que está tocando ("FLAC 16/44.1", "MP3 320"), da cópia
+  /// baixada ou do que o servidor entrega no nível escolhido. Nula enquanto
+  /// não se sabe (ou em outro aparelho).
+  final String? quality;
 
   bool get isPlaying => status == PlaybackStatus.tocando;
   bool get isPreparing => status == PlaybackStatus.preparando;
@@ -390,6 +398,9 @@ class PlayerController extends Notifier<PlayerState> {
 
   /// Faixa que está (ou ficou) carregada no motor.
   String? _loadedTrackId;
+
+  /// Qualidade do que está tocando (ver PlayerState.quality).
+  String? _quality;
 
   bool get inSession => _group != null;
 
@@ -980,6 +991,35 @@ class PlayerController extends Notifier<PlayerState> {
     }
   }
 
+  /// Nível pedido ao servidor para tocar: o do Wi-Fi (ou cabo, ou web) ou o
+  /// de dados móveis (Ajustes → Qualidade).
+  Future<AudioQuality> _streamQuality() async {
+    final notifier = ref.read(preferencesProvider.notifier);
+    await notifier.ready;
+    final prefs = ref.read(preferencesProvider);
+    if (kIsWeb) return prefs.wifiQuality;
+    final wifi = await ref.read(networkCheckProvider).onWifi();
+    return wifi ? prefs.wifiQuality : prefs.mobileQuality;
+  }
+
+  /// O que o servidor entrega no nível (para mostrar no player).
+  Future<void> _loadQualityLabel(
+    String trackRef,
+    String level,
+    int generation,
+  ) async {
+    try {
+      final label = (await _repository.qualities([
+        trackRef,
+      ]))[trackRef]?[level]?.label;
+      if (generation != _generation || label == null || label.isEmpty) return;
+      _quality = label;
+      _publish();
+    } on Object catch (e) {
+      debugPrint('Qualidade não informada: $e');
+    }
+  }
+
   /// Prepara no servidor, espera ficar pronta e toca (Seção 7.3, item 2).
   /// Trocar de faixa no meio cancela a anterior ([_generation]).
   Future<void> _loadCurrent({Duration? startAt}) async {
@@ -990,6 +1030,7 @@ class PlayerController extends Notifier<PlayerState> {
     final generation = ++_generation;
     _counted = false;
     _duration = null;
+    _quality = null;
     _loadedTrackId = item.track.id;
     _publish(status: PlaybackStatus.preparando);
     _prefetchedFor = null;
@@ -1013,6 +1054,7 @@ class PlayerController extends Notifier<PlayerState> {
     if (generation != _generation) return;
     final path = local?.audioPath;
     if (path != null && File(path).existsSync()) {
+      _quality = local?.qualityLabel;
       await _engine.setFile(path);
       if (generation != _generation) return;
       await _start(startAt);
@@ -1055,8 +1097,13 @@ class PlayerController extends Notifier<PlayerState> {
             ? unknownInARow + 1
             : 0;
       }
-      final url = await _repository.streamUrl(prepared.trackId);
+      final level = await _streamQuality();
+      final url = await _repository.streamUrl(
+        prepared.trackId,
+        quality: level.api,
+      );
       if (generation != _generation) return;
+      unawaited(_loadQualityLabel(item.track.id, level.api, generation));
       await _engine.setUrl(url);
       if (generation != _generation) return;
       await _start(startAt);
@@ -1210,6 +1257,7 @@ class PlayerController extends Notifier<PlayerState> {
       duration: _duration,
       message: message,
       playingOn: _playingOn,
+      quality: _quality,
     );
     _notification?.showState(
       // Preparando a próxima conta como "tocando" para o Android: o serviço

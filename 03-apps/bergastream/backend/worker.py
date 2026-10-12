@@ -1,4 +1,6 @@
-"""Worker de downloads — processo isolado."""
+"""Worker — processo isolado: fila de downloads, melhoria de qualidade das
+faixas de playlist (app.quality.upgrader) e teste diário do Spotify
+(app.search.spotify_health), que pode atualizar a biblioteca e reiniciar."""
 from __future__ import annotations
 import asyncio
 import logging
@@ -15,6 +17,25 @@ from app.tracks import repository as track_repo
 logging.basicConfig(level=getattr(logging, settings.log_level.upper(), logging.INFO), format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger("bergastream.worker")
 MAX_CONCURRENT = 2; _POLL_TIMEOUT = 3
+SPOTIFY_FIRST_CHECK = 120          # s depois de subir
+SPOTIFY_CHECK_HOURS = 24
+SPOTIFY_RETRY_HOURS = 6            # quando falhou e ainda não há versão nova
+_restart = asyncio.Event()         # biblioteca nova ativada: sair e o Docker sobe de novo
+
+
+async def spotify_watch(redis) -> None:
+    from app.search.spotify_health import check_and_heal
+    await asyncio.sleep(SPOTIFY_FIRST_CHECK)
+    while not _restart.is_set():
+        try:
+            result = await check_and_heal(redis)
+        except Exception as exc:
+            logger.exception("[spotify-health] verificação falhou: %s", exc)
+            result = {"ok": False}
+        if result.get("restart"):
+            _restart.set()
+            return
+        await asyncio.sleep(3600 * (SPOTIFY_CHECK_HOURS if result.get("ok") else SPOTIFY_RETRY_HOURS))
 
 
 async def process_job(redis, pool, job_id: str) -> None:
@@ -57,9 +78,12 @@ async def main_loop() -> None:
     redis = await get_redis()
     pool = await create_pool()
     logger.info("[worker] iniciado (max_concurrent=%d)", MAX_CONCURRENT)
+    from app.quality.upgrader import run_forever as upgrade_forever
+    background = [asyncio.create_task(upgrade_forever(pool, redis)),
+                  asyncio.create_task(spotify_watch(redis))]
     active_tasks = set()
     def _clean(t): active_tasks.discard(t)
-    while True:
+    while not _restart.is_set():
         while len(active_tasks) < MAX_CONCURRENT:
             job_id = await q.dequeue(redis, timeout=_POLL_TIMEOUT)
             if not job_id:
@@ -67,6 +91,12 @@ async def main_loop() -> None:
             t = asyncio.create_task(process_job(redis, pool, job_id))
             active_tasks.add(t); t.add_done_callback(_clean)
         await asyncio.sleep(0.1)
+    logger.warning("[worker] reiniciando para carregar a biblioteca nova (esperando %d download(s))",
+                   len(active_tasks))
+    if active_tasks:
+        await asyncio.wait(active_tasks, timeout=300)
+    for task in background:
+        task.cancel()
 
 
 async def main():

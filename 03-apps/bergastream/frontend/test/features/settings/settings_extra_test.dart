@@ -66,6 +66,15 @@ void main() {
     await tester.pumpAndSettle();
     await openSettings(tester);
     expect(find.text('No servidor'), findsNothing);
+    // O cartão de qualidade empurra o resto para baixo da tela.
+    await tester.scrollUntilVisible(
+      find.text('Aparência'),
+      200,
+      scrollable: find.descendant(
+        of: find.byKey(const PageStorageKey('settings')),
+        matching: find.byType(Scrollable),
+      ),
+    );
     expect(find.text('Aparência'), findsOneWidget);
   });
 }

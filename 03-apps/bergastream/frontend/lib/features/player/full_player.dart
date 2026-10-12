@@ -160,6 +160,19 @@ class _FullPlayerState extends ConsumerState<FullPlayer> {
                 color: state.isPreparing ? c.gr : c.mu,
               ),
             ),
+            // Qualidade do que está tocando ("FLAC 16/44.1", "AAC 160").
+            if (!state.isPreparing && state.quality != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(
+                  state.quality!,
+                  key: const Key('player-quality'),
+                  style: BergaText.secondary.copyWith(
+                    fontSize: 12,
+                    color: c.gr,
+                  ),
+                ),
+              ),
             const SizedBox(height: 10),
             const SeekBar(),
             Padding(

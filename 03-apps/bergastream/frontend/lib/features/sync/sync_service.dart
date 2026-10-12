@@ -67,6 +67,13 @@ class SyncService extends Notifier<void> {
       if (ref.read(preferencesProvider).autoDownloadNew) {
         await updateDownloadedPlaylists();
       }
+      // Cópias offline na qualidade escolhida (e trocadas quando o servidor
+      // melhora a música).
+      try {
+        await ref.read(downloadManagerProvider.notifier).refreshQuality();
+      } on ApiException catch (e) {
+        debugPrint('Conferência da qualidade fica para depois: ${e.message}');
+      }
     } finally {
       _running = false;
     }

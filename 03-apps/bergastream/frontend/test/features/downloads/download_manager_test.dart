@@ -11,6 +11,7 @@ import 'package:bergastream/data/repositories/playback_repository.dart';
 import 'package:bergastream/features/downloads/download_manager.dart';
 import 'package:bergastream/features/downloads/file_fetcher.dart';
 import 'package:bergastream/features/player/player_controller.dart';
+import 'package:bergastream/features/settings/preferences.dart';
 import 'package:drift/drift.dart' show Value;
 import 'package:drift/native.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -29,6 +30,10 @@ class FakeFetcher implements FileFetcher {
   int concurrent = 0;
   int maxConcurrent = 0;
   final fetched = <String>[];
+
+  /// O que o "servidor" entrega (cabeçalhos X-Track-Format/X-Track-Quality).
+  String format = 'mp3';
+  String quality = 'MP3 320';
 
   @override
   Future<FetchResult> fetch(
@@ -49,7 +54,12 @@ class FakeFetcher implements FileFetcher {
       }
       final bytes = truncated.contains(key) ? size ~/ 2 : size;
       await File(path).writeAsBytes(List.filled(bytes, 1));
-      return FetchResult(bytes: bytes, expectedBytes: size, format: 'mp3');
+      return FetchResult(
+        bytes: bytes,
+        expectedBytes: size,
+        format: format,
+        quality: quality,
+      );
     } finally {
       concurrent--;
     }
@@ -96,10 +106,14 @@ void main() {
   DownloadManager manager() => c.read(downloadManagerProvider.notifier);
   Future<LocalTrack?> track(String id) => db.track(id);
 
+  /// Espera os downloads terminarem. Arquivos são gravados de verdade: com
+  /// a máquina carregada (suíte inteira) leva mais que algumas voltas da
+  /// fila de eventos, então espera também tempo real (até ~3 s).
   Future<void> settle() async {
-    for (var i = 0; i < 30; i++) {
+    for (var i = 0; i < 300; i++) {
       await pumpEventQueue();
       if (c.read(downloadManagerProvider).active == 0) break;
+      await Future<void>.delayed(const Duration(milliseconds: 10));
     }
   }
 
@@ -298,5 +312,151 @@ void main() {
     c.read(sessionProvider.notifier).setServerAvailable(true);
     await settle();
     expect((await track('a'))!.downloadState, DownloadState.baixada);
+  });
+
+  group('qualidade das cópias', () {
+    Map<String, TrackQuality> levels(String label, int rank) => {
+      for (final level in ['original', 'high', 'normal', 'low'])
+        level: TrackQuality(label, rank),
+    };
+
+    Future<LocalTrack> downloaded(
+      String id, {
+      String quality = 'MP3 128',
+    }) async {
+      fetcher.quality = quality;
+      await manager().downloadPlaylist(playlist('p1', [id]));
+      await settle();
+      return (await track(id))!;
+    }
+
+    test(
+      'baixa no nível escolhido e guarda o que o servidor entregou',
+      () async {
+        final a = await downloaded('a', quality: 'MP3 320');
+        expect(server.downloadQualities, ['high']); // padrão: Alta
+        expect(
+          (a.qualityLevel, a.qualityLabel, a.needsReplace),
+          ('high', 'MP3 320', false),
+        );
+      },
+    );
+
+    test(
+      'servidor melhorou a música: troca a cópia, e a antiga toca até lá',
+      () async {
+        final before = await downloaded('a');
+        server.serverQualities = {'spotify:a': levels('MP3 320', 30)};
+        fetcher
+          ..quality = 'MP3 320'
+          ..gate = Completer<void>();
+        expect(await manager().refreshQuality(), 1);
+        await pumpEventQueue();
+        final during = (await track('a'))!;
+        expect(
+          during.downloadState,
+          DownloadState.baixada,
+          reason: 'continua tocável',
+        );
+        expect(File(before.audioPath!).existsSync(), isTrue);
+        fetcher.gate!.complete();
+        await settle();
+        final after = (await track('a'))!;
+        expect((after.qualityLabel, after.needsReplace), ('MP3 320', false));
+        expect(File(after.audioPath!).existsSync(), isTrue);
+        expect(server.downloadQualities, ['high', 'high']);
+        expect(
+          await manager().refreshQuality(),
+          0,
+          reason: 'já está atualizada',
+        );
+      },
+    );
+
+    test('mudar o nível só baixa de novo se o resultado mudar', () async {
+      await downloaded('a'); // MP3 128 em Alta
+      // O mestre é MP3 128: qualquer nível entrega o mesmo.
+      server.serverQualities = {'spotify:a': levels('MP3 128', 10)};
+      await c
+          .read(preferencesProvider.notifier)
+          .setOfflineQuality(AudioQuality.economica);
+      expect(await manager().refreshQuality(), 0);
+      expect((await track('a'))!.qualityLevel, 'low');
+      expect(server.downloadQualities, ['high']);
+    });
+
+    test('nível menor troca por uma cópia menor', () async {
+      await downloaded('a', quality: 'FLAC 16/44.1');
+      server.serverQualities = {
+        'spotify:a': {
+          'high': const TrackQuality('FLAC 16/44.1', 40),
+          'low': const TrackQuality('AAC 96', 10),
+        },
+      };
+      await c
+          .read(preferencesProvider.notifier)
+          .setOfflineQuality(AudioQuality.economica);
+      fetcher
+        ..quality = 'AAC 96'
+        ..format = 'm4a';
+      expect(await manager().refreshQuality(), 1);
+      await settle();
+      final a = (await track('a'))!;
+      expect((a.qualityLevel, a.qualityLabel), ('low', 'AAC 96'));
+      expect(server.downloadQualities.last, 'low');
+    });
+
+    test('formato novo: a cópia antiga (outra extensão) é apagada', () async {
+      final before = await downloaded('a');
+      expect(before.audioPath, endsWith('a.mp3'));
+      server.serverQualities = {'spotify:a': levels('AAC 160', 20)};
+      fetcher
+        ..quality = 'AAC 160'
+        ..format = 'm4a';
+      await manager().refreshQuality();
+      await settle();
+      final after = (await track('a'))!;
+      expect(after.audioPath, endsWith('a.m4a'));
+      expect(File(before.audioPath!).existsSync(), isFalse);
+      expect(File(after.audioPath!).existsSync(), isTrue);
+    });
+
+    test('falha na troca mantém a cópia atual', () async {
+      final before = await downloaded('a');
+      server.serverQualities = {'spotify:a': levels('MP3 320', 30)};
+      fetcher.failures['id-a'] = 5;
+      await manager().refreshQuality();
+      await settle();
+      final after = (await track('a'))!;
+      expect(after.downloadState, DownloadState.baixada);
+      expect(after.audioPath, before.audioPath);
+      expect(File(before.audioPath!).existsSync(), isTrue);
+      expect((after.qualityLabel, after.needsReplace), ('MP3 128', false));
+    });
+
+    test(
+      'cópias de antes da v3 (sem qualidade registrada) são trocadas',
+      () async {
+        await downloaded('a');
+        await db.updateTrack(
+          'a',
+          const LocalTracksCompanion(
+            qualityLabel: Value(null),
+            qualityLevel: Value(null),
+          ),
+        );
+        server.serverQualities = {'spotify:a': levels('MP3 128', 10)};
+        expect(await manager().refreshQuality(), 1);
+        await settle();
+        expect((await track('a'))!.qualityLabel, 'MP3 128');
+      },
+    );
+
+    test('sem o arquivo no servidor, a cópia fica como está', () async {
+      await downloaded('a');
+      server.serverQualities = {};
+      expect(await manager().refreshQuality(), 0);
+      expect(server.qualityCalls, 1);
+    });
   });
 }

@@ -30,6 +30,15 @@ class LocalTracks extends Table {
   DateTimeColumn get downloadedAt => dateTime().nullable()();
   DateTimeColumn get lastPlayedAt => dateTime().nullable()();
 
+  /// Nível pedido ao baixar (`AudioQuality.api`) e o que o servidor
+  /// entregou ("FLAC 16/44.1", "MP3 320"). Nulos = baixada antes da v3.
+  TextColumn get qualityLevel => text().nullable()();
+  TextColumn get qualityLabel => text().nullable()();
+
+  /// A cópia baixada vai ser trocada (qualidade escolhida mudou ou o
+  /// servidor melhorou a música). Até lá a cópia atual continua tocando.
+  BoolColumn get needsReplace => boolean().withDefault(const Constant(false))();
+
   @override
   Set<Column> get primaryKey => {id};
 }
@@ -168,7 +177,7 @@ class AppDatabase extends _$AppDatabase {
 
   /// Versões e migrações desde o início (Seção 10).
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -179,6 +188,12 @@ class AppDatabase extends _$AppDatabase {
         // Edição de playlists offline e conflitos.
         await m.createTable(pendingPlaylistOps);
         await m.createTable(syncNotices);
+      }
+      if (from < 3) {
+        // Qualidade das cópias offline (troca automática).
+        await m.addColumn(localTracks, localTracks.qualityLevel);
+        await m.addColumn(localTracks, localTracks.qualityLabel);
+        await m.addColumn(localTracks, localTracks.needsReplace);
       }
     },
   );
@@ -385,8 +400,8 @@ class AppDatabase extends _$AppDatabase {
 
   // ── Faixas ────────────────────────────────────────────────────
 
-  /// Próximas faixas a baixar (na fila ou interrompidas), de playlists que
-  /// não estão pausadas.
+  /// Próximas faixas a baixar (na fila, interrompidas ou baixadas com troca
+  /// de qualidade pendente), de playlists que não estão pausadas.
   Future<List<LocalTrack>> queuedTracks() {
     final query =
         select(localTracks).join([
@@ -400,10 +415,14 @@ class AppDatabase extends _$AppDatabase {
             ),
           ])
           ..where(
-            localTracks.downloadState.isInValues([
-                  DownloadState.naFila,
-                  DownloadState.baixando,
-                ]) &
+            (localTracks.downloadState.isInValues([
+                      DownloadState.naFila,
+                      DownloadState.baixando,
+                    ]) |
+                    (localTracks.downloadState.equalsValue(
+                          DownloadState.baixada,
+                        ) &
+                        localTracks.needsReplace.equals(true))) &
                 localPlaylists.paused.equals(false),
           )
           ..orderBy([OrderingTerm.asc(localPlaylistItems.position)]);
@@ -411,6 +430,19 @@ class AppDatabase extends _$AppDatabase {
         .map((r) => r.readTable(localTracks))
         .get()
         .then((list) => {for (final t in list) t.id: t}.values.toList());
+  }
+
+  /// Faixas baixadas (para conferir a qualidade com o servidor).
+  Future<List<LocalTrack>> downloadedTracks() => (select(
+    localTracks,
+  )..where((t) => t.downloadState.equalsValue(DownloadState.baixada))).get();
+
+  /// Marca cópias para trocar (o gerenciador baixa a nova em segundo plano).
+  Future<void> markForReplace(List<String> ids) async {
+    if (ids.isEmpty) return;
+    await (update(localTracks)..where((t) => t.id.isIn(ids))).write(
+      const LocalTracksCompanion(needsReplace: Value(true)),
+    );
   }
 
   Future<void> updateTrack(String id, LocalTracksCompanion changes) =>

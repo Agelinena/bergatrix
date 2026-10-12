@@ -16,7 +16,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from app.core.db import close_pool, create_pool
-from app.downloads.service import _register_in_db
+from app.downloads.service import store_file
 from app.playlists import repository as repo
 from app.storage.permanence import CACHE_DIR, PERMANENT_DIR, reconcile
 
@@ -60,7 +60,7 @@ async def main():
 
         print("=== baixada antes, depois entra na playlist ===")
         a = await new_track("a")
-        await _register_in_db(a, new_file(a), "mp3_320")
+        await store_file(a, new_file(a), "deemix")
         ok(await state(pool, a), ("cache", "cache", True), "baixada solta: cache")
         await repo.add_track_to_playlist(pool, playlist, a, user)
         ok(await state(pool, a), ("permanent", "permanent", True), "na playlist: permanente, na pasta permanent/")
@@ -69,8 +69,17 @@ async def main():
         print("=== entra na playlist antes de o download terminar (caso relatado) ===")
         b = await new_track("b")
         await repo.add_track_to_playlist(pool, playlist, b, user)
-        await _register_in_db(b, new_file(b), "mp3_320")
+        await store_file(b, new_file(b), "deemix")
         ok(await state(pool, b), ("permanent", "permanent", True), "arquivo chega e nasce permanente")
+
+        print("=== upgrade de qualidade troca o arquivo (outra extensão) ===")
+        better = CACHE_DIR / f"{b}-novo.flac"
+        better.write_bytes(b"fLaC" + b"\0" * 100)
+        await store_file(b, better, "lidarr")
+        row = await pool.fetchrow("SELECT path, source FROM files WHERE track_id = $1", b)
+        ok((Path(row["path"]).name, row["source"]), (f"{b}.flac", "lidarr"), "arquivo novo registrado")
+        ok(await state(pool, b), ("permanent", "permanent", True), "continua permanente")
+        ok((PERMANENT_DIR / f"{b}.mp3").exists(), False, "arquivo antigo apagado")
 
         print("=== sai da última playlist ===")
         await repo.remove_track_from_playlist(pool, playlist, a)
@@ -94,7 +103,8 @@ async def main():
     finally:
         for t in tracks:
             for d in (CACHE_DIR, PERMANENT_DIR):
-                (d / f"{t}.mp3").unlink(missing_ok=True)
+                for ext in (".mp3", ".flac"):
+                    (d / f"{t}{ext}").unlink(missing_ok=True)
             await pool.execute("DELETE FROM tracks WHERE id = $1", t)
         await pool.execute("DELETE FROM users WHERE id = $1", user)
         await close_pool()

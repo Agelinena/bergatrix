@@ -2,7 +2,9 @@ fastapi==0.115.0
 uvicorn==0.30.1
 pydantic-settings==2.5.2
 asyncpg==0.29.0
-spotipy==2.24.0
+# Spotify sem conta (token anônimo do web player). O teste diário instala
+# versões novas sozinho quando o Spotify muda algo (app/search/spotify_health.py).
+spotifyscraper==3.9.2
 yt-dlp[default]>=2025.11.12
 # Plugin do yt-dlp: busca PO Tokens no serviço pot-provider (mesma versão da imagem).
 bgutil-ytdlp-pot-provider==2.0.2

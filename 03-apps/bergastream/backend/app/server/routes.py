@@ -1,7 +1,8 @@
 """Situação do servidor para Ajustes: GET /api/server/status.
 
 Quantas músicas estão baixadas, quanto espaço ocupam, espaço livre no disco,
-fila de downloads do Bergastream e a fila do Deemix.
+fila de downloads do Bergastream, a fila do Deemix, a qualidade das faixas
+(e a fila de melhoria das playlists) e o último teste do Spotify.
 """
 from __future__ import annotations
 
@@ -68,10 +69,27 @@ class DeemixQueue(BaseModel):
     recent_failures: list[DeemixFailure] = []
 
 
+class QualityStatus(BaseModel):
+    # Faixas baixadas por qualidade (audio_info.rank).
+    lossless: int = 0     # FLAC (16 ou 24 bits)
+    high: int = 0         # MP3 320
+    medium: int = 0       # MP3 192 / Opus do YouTube
+    low: int = 0          # MP3 128
+    unknown: int = 0      # ainda não medidas
+    # Faixas de playlist buscando qualidade melhor.
+    upgrades_pending: int = 0
+    upgrades_waiting: int = 0   # aguardando o Lidarr achar na Usenet
+    upgrades_done: int = 0
+    lidarr: bool = False
+
+
 class ServerStatus(BaseModel):
     storage: Storage
     queue: DownloadQueue
     deemix: DeemixQueue
+    quality: QualityStatus | None = None
+    # Último teste diário do Spotify (ver app.search.spotify_health).
+    spotify: dict | None = None
 
 
 async def _storage() -> Storage:
@@ -133,9 +151,35 @@ async def _failures() -> list[DeemixFailure]:
     return out
 
 
+async def _quality() -> QualityStatus:
+    from app.quality.lidarr import enabled
+    pool = get_pool()
+    ranks = await pool.fetchrow(
+        """SELECT count(*) FILTER (WHERE quality_rank >= 40) AS lossless,
+                  count(*) FILTER (WHERE quality_rank = 30) AS high,
+                  count(*) FILTER (WHERE quality_rank = 20) AS medium,
+                  count(*) FILTER (WHERE quality_rank = 10) AS low,
+                  count(*) FILTER (WHERE quality_rank = 0) AS unknown
+           FROM files""")
+    upgrades = {r["status"]: r["n"] for r in await pool.fetch(
+        "SELECT status, count(*) AS n FROM quality_upgrades GROUP BY status")}
+    return QualityStatus(
+        **{k: int(ranks[k]) for k in ranks.keys()},
+        upgrades_pending=upgrades.get("pending", 0), upgrades_waiting=upgrades.get("waiting", 0),
+        upgrades_done=upgrades.get("done", 0), lidarr=enabled())
+
+
+async def _spotify() -> dict | None:
+    from app.search.spotify_health import read_health
+    try:
+        return await read_health(await get_redis())
+    except Exception:
+        return None
+
+
 @router.get("/server/status", response_model=ServerStatus)
 async def server_status(user: CurrentUser = Depends(current_user)):
-    storage, queue, deemix, failures = await asyncio.gather(
-        _storage(), _queue(), _deemix(), _failures())
+    storage, queue, deemix, failures, quality, spotify = await asyncio.gather(
+        _storage(), _queue(), _deemix(), _failures(), _quality(), _spotify())
     deemix.recent_failures = failures
-    return ServerStatus(storage=storage, queue=queue, deemix=deemix)
+    return ServerStatus(storage=storage, queue=queue, deemix=deemix, quality=quality, spotify=spotify)

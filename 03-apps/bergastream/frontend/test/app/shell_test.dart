@@ -44,7 +44,7 @@ void main() {
     expect(find.text('Nova playlist'), findsOneWidget);
 
     await goTo(tester, 'Ajustes');
-    expect(find.text('Qualidade de streaming'), findsOneWidget);
+    expect(find.text('Qualidade do áudio'), findsOneWidget);
 
     await goTo(tester, 'Início');
     expect(find.text('Seu som'), findsOneWidget);

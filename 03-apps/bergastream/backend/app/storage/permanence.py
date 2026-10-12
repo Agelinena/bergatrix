@@ -8,6 +8,10 @@ depois de `CACHE_TTL_HOURS` sem tocar.
 A marcação e a pasta mudam juntas, sempre por [sync_permanence]: ao
 adicionar/remover de playlist e ao terminar um download (a faixa pode ter
 entrado na playlist antes de o arquivo existir).
+
+Faixa de playlist também entra na fila de melhoria de qualidade
+(`quality_upgrades`, processada pelo worker em app.quality.upgrader) e sai
+dela quando deixa todas as playlists.
 """
 from __future__ import annotations
 
@@ -33,13 +37,35 @@ async def in_any_playlist(pool: "asyncpg.Pool", track_id: str) -> bool:
         "SELECT EXISTS (SELECT 1 FROM playlist_tracks WHERE track_id = $1)", track_id))
 
 
+RELEASE_KEY = "bergastream:lidarr:release"  # lido pelo upgrader
+
+
+async def sync_upgrade(pool: "asyncpg.Pool", track_id: str, permanent: bool) -> None:
+    """Faixa de playlist na fila de melhoria; fora de todas, sai dela. O
+    álbum que ninguém mais espera deixa de ser monitorado no Lidarr."""
+    if permanent:
+        await pool.execute(
+            "INSERT INTO quality_upgrades (track_id) VALUES ($1) ON CONFLICT DO NOTHING", track_id)
+        return
+    album_id = await pool.fetchval(
+        "DELETE FROM quality_upgrades WHERE track_id = $1 RETURNING lidarr_album_id", track_id)
+    if album_id and not await pool.fetchval(
+            "SELECT EXISTS (SELECT 1 FROM quality_upgrades WHERE lidarr_album_id = $1)", album_id):
+        try:
+            from app.core.redis import get_redis
+            await (await get_redis()).sadd(RELEASE_KEY, album_id)
+        except Exception as exc:  # Redis fora não atrapalha a playlist
+            logger.warning("[permanência] não avisou o Lidarr do álbum %s: %s", album_id, exc)
+
+
 async def sync_permanence(pool: "asyncpg.Pool", track_id: str) -> str | None:
     """Ajusta marcação e pasta do arquivo da faixa conforme as playlists.
     Devolve o `kind` resultante (nulo se a faixa ainda não tem arquivo)."""
+    permanent = await in_any_playlist(pool, track_id)
+    await sync_upgrade(pool, track_id, permanent)
     row = await pool.fetchrow("SELECT path, kind FROM files WHERE track_id = $1", track_id)
     if row is None:
         return None
-    permanent = await in_any_playlist(pool, track_id)
     kind = "permanent" if permanent else "cache"
     path = Path(row["path"])
     target = PERMANENT_DIR if permanent else CACHE_DIR
