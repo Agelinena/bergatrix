@@ -54,7 +54,7 @@ O nginx confia no `X-Forwarded-For` vindo de redes privadas (`set_real_ip_from`)
 - **Cadastro:** desligado (`ALLOW_REGISTRATION=false`); contas pela CLI (`docs/USUARIOS.md`).
 - **Download de faixa:** Deemix primeiro (sob demanda MP3 320, 128 só se a faixa não tiver 320); faixa do Spotify sem ISRC: ISRC pelos metadados do Spotify ou busca no Deezer por artista + título + duração; o arquivo é identificado pelo item da fila do Deemix (não pelo "mais novo da pasta") e as tags são conferidas com ffprobe — título errado é descartado e cai no YouTube. `python -m app.downloads.verify [--fix]` audita/repara a base.
 - **Qualidade:** lida do arquivo com ffprobe (`files.codec/bitrate_kbps/bit_depth/quality_rank`: 10 MP3 128, 20 MP3 192/Opus do YouTube, 30 MP3 320, 40 FLAC, 50 FLAC 24 bits). YouTube guarda o áudio original (Opus/AAC), sem converter.
-- **Melhoria das playlists** (`app/quality/upgrader.py`, no worker): faixa em playlist entra em `quality_upgrades`; Deemix FLAC → 320 (a cada 30 dias) e, sem FLAC, o álbum no Lidarr (monitora só aquele álbum, busca todo dia nos primeiros `UPGRADE_DAILY_DAYS` e depois toda semana; o FLAC é copiado da pasta do Lidarr). Só troca o arquivo por um melhor.
+- **Melhoria das playlists** (`app/quality/upgrader.py`, no worker): faixa em playlist entra em `quality_upgrades`; Deemix FLAC → 320 (a cada 30 dias) e, sem FLAC, o álbum de estúdio no Lidarr (ISRC → MusicBrainz; monitora só aquele álbum, busca todo dia nos primeiros `UPGRADE_DAILY_DAYS` e depois toda semana, dentro de `LIDARR_MAX_ACTIVE`/`LIDARR_DAILY_SEARCHES`; confere a cada 30 min numa fila própria; o FLAC é copiado da pasta do Lidarr, medleys "A / B" viram um FLAC só). Só troca o arquivo por um melhor.
 - **Spotify sem conta:** teste diário no worker (`app/search/spotify_health.py`); se a biblioteca quebrar e houver versão nova no PyPI, instala em `pydeps`, testa num processo separado, ativa e reinicia worker e API.
 - **Arquivos:** referência contada (playlist/uso); cache de faixas soltas por `CACHE_TTL_HOURS` (48 h); limpeza manual por admin (`POST /api/admin/cleanup`).
 - **Playlists:** dono, editores e leitores (`playlist_members`), ordem manual, capa própria (JPEG/PNG/WebP até 5 MB), "adicionado por".
@@ -74,7 +74,7 @@ Spotify (caminho anônimo: SpotifyScraper + `spclient` para ISRC; PyPI para a at
 Traefik (`bergatrix-proxy`, wildcard `*.daberga.com`), Authentik (`public-auth@file`), CrowdSec (`crowdsec-bouncer@file`), middleware `api-access-bypass@file` do `dynamic.yml`.
 
 ## 🔑 Variáveis de ambiente necessárias
-`STORAGE_PATH` (`/mnt/storage/docker_volumes/bergastream`), `DOMAIN`, `PUID`/`PGID`, `POSTGRES_DB/USER/PASSWORD`, `DATABASE_URL`, `DEEMIX_ARL` (conta Premium para 320/FLAC), `LIDARR_API_KEY`/`USENET_DOWNLOADS_DIR`/`LIDARR_KEEP_ALBUMS`/`LIDARR_QUALITY_PROFILE`/`LIDARR_METADATA_PROFILE`/`UPGRADE_DAILY_DAYS` (opcionais), `TZ`, `JWT_SECRET`, `ALLOW_REGISTRATION`, `CACHE_TTL_HOURS`, `LOG_LEVEL`. Ver `.env.example`.
+`STORAGE_PATH` (`/mnt/storage/docker_volumes/bergastream`), `DOMAIN`, `PUID`/`PGID`, `POSTGRES_DB/USER/PASSWORD`, `DATABASE_URL`, `DEEMIX_ARL` (conta Premium para 320/FLAC), `LIDARR_API_KEY`/`USENET_DOWNLOADS_DIR`/`LIDARR_KEEP_ALBUMS`/`LIDARR_QUALITY_PROFILE`/`LIDARR_METADATA_PROFILE`/`UPGRADE_DAILY_DAYS`/`LIDARR_MAX_ACTIVE`/`LIDARR_DAILY_SEARCHES` (opcionais), `TZ`, `JWT_SECRET`, `ALLOW_REGISTRATION`, `CACHE_TTL_HOURS`, `LOG_LEVEL`. Ver `.env.example`.
 
 ## 🗂️ Estrutura de código
 ```

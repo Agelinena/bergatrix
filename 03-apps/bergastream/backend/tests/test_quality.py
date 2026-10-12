@@ -103,13 +103,70 @@ ok(lidarr.pick_album(cands, "Djavan", "Luz"), None, "álbum inexistente")
 tracks = [{"title": "Curumim", "duration": 200000}, {"title": "Oceano", "duration": 297000, "hasFile": True}]
 ok(lidarr.pick_track(tracks, "Oceano", 296)["duration"], 297000, "título + duração (ms)")
 ok(lidarr.pick_track(tracks, "Oceano", 250), None, "duração muito diferente = outra versão")
+arctic = [{"title": "Fluorescent Adolescent", "duration": 173000}, {"title": "Old Yellow Bricks", "duration": 187000}]
+ok(lidarr.pick_track(arctic, "Fluorescent Adolescent", 183)["title"], "Fluorescent Adolescent",
+   "10 s a mais no Spotify ainda é a mesma faixa")
+ok(lidarr.pick_track(arctic, "Old Yellow Bricks", 193)["title"], "Old Yellow Bricks", "6 s de diferença")
+fases = [{"title": "Mulher de Fases", "duration": 213000, "id": 1},
+         {"title": "Mulher de Fases (A Linda)", "duration": 382000, "id": 2}]
+ok(lidarr.pick_track(fases, "Mulher de fases", 213)["id"], 1, "duas com o mesmo nome: a de duração certa")
+ok(lidarr.pick_track(fases, "Mulher de Fases (A Linda)", 380)["id"], 2, "e a versão longa pela duração")
+idiot = [{"title": "Jesus of Suburbia", "duration": 549000, "absoluteTrackNumber": 2},
+         {"title": "Holiday", "duration": 233000, "absoluteTrackNumber": 3},
+         {"title": "Boulevard of Broken Dreams", "duration": 261000, "absoluteTrackNumber": 4}]
+medley = "Holiday / Boulevard of Broken Dreams"
+ok(lidarr.pick_track(idiot, medley, 493), None, "medley não casa com uma faixa só")
+ok([t["absoluteTrackNumber"] for t in lidarr.pick_medley(idiot, medley, 493)], [3, 4],
+   "medley = as duas faixas em sequência")
+ok(lidarr.pick_medley(idiot, "Boulevard of Broken Dreams / Holiday", 493), None, "fora de ordem não junta")
+ok(lidarr.pick_medley(idiot, medley, 300), None, "soma das durações não bate")
+ok(lidarr.pick_medley(idiot, "Holiday", 233), None, "sem barra não é medley")
+ok([t["absoluteTrackNumber"] for t in lidarr.pick_parts(idiot, medley, 493)], [3, 4], "pick_parts prefere o medley")
+gabriel = [{"title": "Festa da Música / Bye Bye Tristeza / Devagar, Devagarinho", "duration": 300000,
+            "absoluteTrackNumber": 1}, {"title": "Outra", "duration": 200000, "absoluteTrackNumber": 2}]
+ok(len(lidarr.pick_parts(gabriel, gabriel[0]["title"], 300)), 1, "álbum com o medley numa faixa só: a própria")
+ok(lidarr.pick_parts(arctic, "Brianstorm", 170), [], "faixa que não está no álbum")
 ok(lidarr.local_path("/music/Djavan/Djavan (1989)/05 - Oceano.flac"),
    "/data/lidarr/Djavan/Djavan (1989)/05 - Oceano.flac", "caminho do Lidarr → montagem local")
 
+print("=== álbum de estúdio pelo ISRC (MusicBrainz) ===")
+from app.quality import musicbrainz
+
+
+def rel(rg_id, title, primary="Album", secondary=None, date=None, status="Official"):
+    return {"title": title, "date": date, "status": status,
+            "release-group": {"id": rg_id, "title": title, "primary-type": primary,
+                              "secondary-types": secondary}}
+
+recs = [{"releases": [
+    rel("hits", "Greatest Hits", secondary=["Compilation"], date="1981"),
+    rel("opera", "A Night at the Opera", date="2011-03-14"),
+    rel("opera", "A Night at the Opera", date="1975-11-21"),
+    rel("single", "Bohemian Rhapsody", primary="Single", date="1975-10-31"),
+    rel("live", "Live Killers", secondary=["Live"], date="1979"),
+    rel("boot", "Bootleg", date="1970", status="Bootleg"),
+]}]
+picked = musicbrainz.pick_release_group(recs)
+ok((picked["id"], picked["date"]), ("opera", "1975-11-21"), "álbum de estúdio, não coletânea/single/ao vivo")
+ok(musicbrainz.pick_release_group([{"releases": [rel("hits", "100% Charlie Brown Jr", secondary=["Compilation"])]}]),
+   None, "só coletâneas: fica o álbum do Spotify")
+ok(musicbrainz.pick_release_group([{"releases": [rel("s", "Single", primary="Single", date="2020"),
+                                                 rel("e", "EP", primary="EP", date="2021")]}])["id"],
+   "e", "sem álbum: EP antes de single")
+ok(asyncio.run(musicbrainz.studio_album(None)), None, "sem ISRC: nem consulta")
+
 print("=== busca na Usenet: diária, depois semanal ===")
 t0 = datetime(2026, 10, 1, tzinfo=timezone.utc)
-ok(search_interval(t0, t0 + timedelta(days=3)), timedelta(days=1), "primeiros dias: todo dia")
+ok(search_interval(t0, t0 + timedelta(days=1)), timedelta(days=1), "primeiros dias: todo dia")
 ok(search_interval(t0, t0 + timedelta(days=30)), timedelta(days=7), "depois: toda semana")
+
+print("=== orçamento do Lidarr ===")
+from app.quality.upgrader import Budget
+b = Budget(searches=2, slots=1)
+ok((b.search(10), b.search(10), b.search(11), b.search(12)), (True, False, True, None),
+   "uma busca por álbum por rodada; para no teto")
+ok(Budget(5, 0).can_request(), False, "sem vaga: não pede álbum novo")
+ok(Budget(0, 5).can_request(), False, "sem busca no orçamento: não pede")
 
 print("=== Deemix: do melhor formato para o pior ===")
 tried = []

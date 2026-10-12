@@ -71,17 +71,61 @@ def pick_album(candidates: list[dict], artist: str, album: str) -> dict | None:
     return min(loose, key=lambda c: len(_plain(c.get("title", "")))) if loose else None
 
 
+def _tolerance(seconds: float) -> float:
+    """Durações do MusicBrainz e do Spotify diferem uns segundos (silêncio no
+    fim, edição): até 15 s ou 10%."""
+    return max(15.0, seconds * 0.10)
+
+
 def pick_track(tracks: list[dict], title: str, duration_seconds: int) -> dict | None:
-    """A faixa no álbum do Lidarr: título igual (normalizado) e duração até
-    5 s de diferença (o Lidarr informa em milissegundos)."""
-    for t in tracks:
-        if not names_match(title, t.get("title", "")):
-            continue
+    """A faixa no álbum do Lidarr: título igual (normalizado) e, entre as que
+    casam ("Mulher de Fases" e "Mulher de Fases (A Linda)"), a de duração
+    mais próxima, se ficar dentro da tolerância (o Lidarr informa em ms)."""
+    same = [t for t in tracks if names_match(title, t.get("title", ""))]
+    if not same or not duration_seconds:
+        return same[0] if same else None
+    exact = [t for t in same if _plain(t.get("title", "")) == _plain(title)]
+
+    def gap(t: dict) -> float:
         seconds = (t.get("duration") or 0) / 1000
-        if duration_seconds and seconds and abs(seconds - duration_seconds) > 5:
-            continue
-        return t
-    return None
+        return abs(seconds - duration_seconds) if seconds else 0.0
+
+    best = min(same, key=lambda t: (gap(t), t not in exact))
+    return best if gap(best) <= _tolerance(duration_seconds) else None
+
+
+def pick_medley(tracks: list[dict], title: str, duration_seconds: int) -> list[dict] | None:
+    """Faixa do Spotify que junta duas ou mais do álbum ("Holiday / Boulevard
+    of Broken Dreams"): as partes, na ordem do álbum, em sequência e com a
+    soma das durações batendo."""
+    parts = [p for p in re.split(r"\s+/\s+", title or "") if p.strip()]
+    if len(parts) < 2:
+        return None
+    ordered = sorted(tracks, key=lambda t: t.get("absoluteTrackNumber") or 0)
+    found: list[dict] = []
+    for part in parts:
+        hit = next((t for t in ordered if t not in found and names_match(part, t.get("title", ""))), None)
+        if hit is None:
+            return None
+        found.append(hit)
+    numbers = [t.get("absoluteTrackNumber") or 0 for t in found]
+    if numbers != list(range(numbers[0], numbers[0] + len(numbers))):
+        return None
+    total = sum((t.get("duration") or 0) for t in found) / 1000
+    if duration_seconds and total and abs(total - duration_seconds) > _tolerance(duration_seconds):
+        return None
+    return found
+
+
+def pick_parts(tracks: list[dict], title: str, duration_seconds: int) -> list[dict]:
+    """As faixas do álbum que formam a do Spotify: o medley ("A / B") quando
+    o álbum tem as partes separadas; senão, a faixa de mesmo título."""
+    if " / " in (title or ""):
+        medley = pick_medley(tracks, title, duration_seconds)
+        if medley:
+            return medley
+    match = pick_track(tracks, title, duration_seconds)
+    return [match] if match else []
 
 
 def local_path(remote: str) -> str:
@@ -106,7 +150,7 @@ class Lidarr:
         try:
             r = await self._cli.request(method, path, **kwargs)
         except httpx.HTTPError as exc:
-            raise LidarrError(f"Lidarr fora do ar: {exc}") from exc
+            raise LidarrError(f"Lidarr fora do ar: {type(exc).__name__} {exc}".strip()) from exc
         if r.status_code >= 400:
             raise LidarrError(f"{method} {path}: HTTP {r.status_code} {r.text[:200]}")
         return r.json() if r.content else None
@@ -139,7 +183,20 @@ class Lidarr:
         return self._defaults
 
     async def lookup_album(self, artist: str, album: str) -> list[dict]:
-        return await self._req("GET", "/album/lookup", params={"term": f"{artist} {album}"}) or []
+        term = f"{artist} {album}".strip()
+        return await self._req("GET", "/album/lookup", params={"term": term}) or []
+
+    async def album_by_mbid(self, release_group: str) -> dict | None:
+        """O álbum (com o artista) pelo id do release group do MusicBrainz."""
+        for prefix in ("lidarr:", "mbid:"):
+            try:
+                found = await self.lookup_album(prefix + release_group, "")
+            except LidarrError:
+                continue
+            match = next((a for a in found if a.get("foreignAlbumId") == release_group), None)
+            if match:
+                return match
+        return None
 
     async def artist_by_mbid(self, mbid: str) -> dict | None:
         found = await self._req("GET", "/artist", params={"mbId": mbid}) or []

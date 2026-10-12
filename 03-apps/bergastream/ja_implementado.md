@@ -381,6 +381,30 @@ Rodado na imagem `ghcr.io/cirruslabs/flutter:stable` (Flutter 3.44.0 / Dart 3.12
 - Deploy de produção: compose com `${STORAGE_PATH}`, `container_name`, redes
   `bergastream-internal` (sem internet) e `bergastream-egress`, labels do modelo B.
 
+### Melhoria das playlists: filas separadas e orçamento do Lidarr (servidor)
+- **Três filas por rodada** (`app/quality/upgrader.py`), uma não espera a outra: conferência
+  do Lidarr (todas as faixas com álbum pedido, a cada 30 min; antes ficavam atrás de milhares de
+  pendentes do Deemix e conferiam a cada 6 h), Deemix (30 por rodada; antes 5) e pedidos ao
+  Lidarr (em ordem de chegada).
+- **Orçamento do indexador:** no máximo `LIDARR_MAX_ACTIVE` (30) álbuns na fase de busca diária
+  (`UPGRADE_DAILY_DAYS`, agora 3 dias; depois semanal, com o RSS do Lidarr no meio) e
+  `LIDARR_DAILY_SEARCHES` (100) buscas por 24 h. Faixa de álbum já pedido entra junto, sem gastar.
+  Coluna `lidarr_requested_at` (`0014_lidarr_budget.sql`).
+- **Álbum de estúdio pelo ISRC** (`app/quality/musicbrainz.py`): o MusicBrainz lista os
+  lançamentos da gravação e o pedido vai para o álbum original (álbum → EP → single, sem
+  coletânea/ao vivo), não para a coletânea do Spotify. Sem ISRC no MusicBrainz, vale o álbum do
+  Spotify como antes.
+- **Faixa certa no álbum:** duração com tolerância de 15 s ou 10% (o Arctic Monkeys tinha 10 s
+  de diferença entre Spotify e MusicBrainz e era dado como ausente); entre títulos iguais, a de
+  duração mais próxima. **Medleys** do Spotify ("Holiday / Boulevard of Broken Dreams") juntam as
+  faixas do álbum em um FLAC só (ffmpeg, sem perda).
+- A migração reabre as faixas encerradas pela comparação antiga, as coletâneas fora do perfil de
+  metadados e as que ficaram para 30 dias com o Lidarr desligado.
+- Timeout do Lidarr aparece com o tipo do erro ("Lidarr fora do ar: ReadTimeout") e tenta de
+  novo em 1 h (antes, 1 dia).
+- Testes: `test_quality` 61, `test_upgrade_flow` 10 (novo; banco real e Lidarr falso). Validado
+  contra o MusicBrainz e um Lidarr local (ISRC → álbum de estúdio → `album/lookup` por MBID).
+
 ### Versão 0.3.0 — Spotify sem conta, qualidade real e FLAC das playlists (servidor)
 - **Spotify sem conta:** desde fev/2026 a Web API exige Premium do dono do app (sem ele, a aba
   Spotify ficava vazia). Agora: biblioteca **SpotifyScraper** (token anônimo do web player) para
@@ -404,7 +428,7 @@ Rodado na imagem `ghcr.io/cirruslabs/flutter:stable` (Flutter 3.44.0 / Dart 3.12
 - **Melhoria das playlists** (`app/quality/upgrader.py`, no worker): faixa que entra numa
   playlist ganha linha em `quality_upgrades`; o worker tenta o Deemix em FLAC → 320 (a cada 30
   dias) e, sem FLAC, pede ao **Lidarr** (Usenet) o álbum da faixa, monitorando
-  só esse álbum; busca todo dia nos primeiros `UPGRADE_DAILY_DAYS` (14) e depois toda semana.
+  só esse álbum; busca todo dia nos primeiros `UPGRADE_DAILY_DAYS` e depois toda semana.
   Quando o Lidarr baixa, o FLAC da faixa é copiado e substitui o arquivo. Só troca por qualidade
   maior; faixa que sai das playlists sai da fila (e o álbum deixa de ser monitorado).
 - Validado no ambiente local: teste diário ok; busca/artista/álbum/playlist editorial; tocar faixa

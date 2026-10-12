@@ -171,8 +171,13 @@ indexadores do Prowlarr do servidor, que ele alcança pela rede do Traefik):
 
 Como funciona: faixa que entra numa playlist ganha uma fila de melhoria. O worker tenta o Deemix
 no melhor formato e, sem FLAC, pede ao Lidarr o **álbum** da faixa (o Lidarr só baixa por álbum),
-monitorando só esse álbum do artista. Busca todo dia nos primeiros 14 dias
-(`UPGRADE_DAILY_DAYS`) e depois toda semana; o Lidarr também vigia a Usenet sozinho. Quando o
+monitorando só esse álbum do artista. O álbum é o de estúdio da gravação (ISRC → MusicBrainz),
+não a coletânea do Spotify. Busca na hora, todo dia nos primeiros 3 dias (`UPGRADE_DAILY_DAYS`)
+e depois toda semana; entre uma e outra, o Lidarr vigia a Usenet sozinho (RSS). Para não estourar
+o limite do indexador, no máximo 30 álbuns ficam na fase diária (`LIDARR_MAX_ACTIVE`) e são no
+máximo 100 buscas por dia (`LIDARR_DAILY_SEARCHES`); as outras faixas esperam a vez. Ajuste ao
+limite de API do seu indexador (Prowlarr → Indexers → o indexador → *Query Limit*). O worker
+confere a cada 30 min se o Lidarr já baixou (isso não gasta o indexador). Quando o
 álbum chega, o FLAC da faixa é copiado e substitui o arquivo; quando nenhuma outra faixa de
 playlist espera aquele álbum, ele deixa de ser monitorado e os arquivos são apagados do Lidarr
 (só a música fica, ~30 MB em FLAC). `LIDARR_KEEP_ALBUMS=true` mantém os álbuns. Situação:
@@ -211,6 +216,7 @@ gunzip -c bergastream-AAAA-MM-DD.sql.gz | docker compose exec -T db psql -U berg
 | Música falha no Deemix e também no YouTube; log do worker: "bloqueado pelo Modo Restrito" | O DNS da rede (AdGuard → "pesquisa segura") força o Modo Restrito do YouTube e barra músicas explícitas. No AdGuard Home: **Configurações → Configurações do cliente → Adicionar cliente** com o IP do servidor, desmarque "Usar configurações globais" e desligue a pesquisa segura só para ele. |
 | Log do worker: "Sign in to confirm you're not a bot" em todos os clientes | O YouTube está bloqueando o IP. Confira se o `bergastream-pot` está de pé (`docker compose ps`); se persistir, use cookies de uma conta **secundária** (`YT_COOKIES_FILE`, ver `.env.example`). Muitos pedidos seguidos geram HTTP 429 por um tempo. |
 | Aba Spotify da busca dá "O Spotify não respondeu" | O Spotify mudou o web player. O worker testa todo dia e instala a versão nova da biblioteca sozinho quando sai; para ver agora: `docker compose exec worker python -m app.search.spotify_health` e `GET /api/server/status` → `spotify`. |
+| Log do worker: "Lidarr fora do ar: ReadTimeout" | O Lidarr demorou mais de 30 s (normal enquanto carrega discografias de artistas novos). A faixa é conferida de novo em 1 h. |
 | Log do worker: "álbum … não encontrado no MusicBrainz" | O Lidarr não achou o álbum (nome diferente no MusicBrainz ou lançamento só digital). A faixa fica em 320 e o worker tenta de novo em 7 dias. |
 | Log do worker: "arquivo do Lidarr não visível aqui" | O worker não vê `${STORAGE_PATH}/lidarr/music` (volume do compose alterado?). |
 | Lidarr não importa o que o SABnzbd baixou ("No files found" / caminho inexistente) | `USENET_DOWNLOADS_DIR` não é a pasta que o SABnzbd monta como `/downloads`. |

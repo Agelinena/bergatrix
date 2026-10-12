@@ -52,8 +52,14 @@ class Settings(BaseSettings):
     # onde ela está montada aqui (só leitura).
     lidarr_remote_root: str = "/music"
     lidarr_local_root: str = "/data/lidarr"
-    # Busca na Usenet todo dia nos primeiros N dias; depois, toda semana.
-    upgrade_daily_days: int = 14
+    # Busca na Usenet todo dia nos primeiros N dias do álbum no Lidarr;
+    # depois, toda semana (entre uma e outra, o RSS do Lidarr pega o que sair).
+    upgrade_daily_days: int = 3
+    # No máximo N álbuns na fase de busca diária; as outras faixas esperam vaga
+    # (o Lidarr carrega a discografia de cada artista novo).
+    lidarr_max_active: int = 30
+    # Teto de buscas no indexador por 24 h (pedidos novos + repetições).
+    lidarr_daily_searches: int = 100
     # Depois de copiar a música, apaga o resto do álbum do Lidarr (o Lidarr só
     # baixa álbuns inteiros). true = mantém o álbum na biblioteca do Lidarr.
     lidarr_keep_albums: bool = False
