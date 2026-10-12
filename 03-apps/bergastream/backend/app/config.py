@@ -38,9 +38,10 @@ class Settings(BaseSettings):
     pot_provider_url: str = "http://bergastream-pot:4416"
 
     # ── Melhoria de qualidade (faixas de playlist) ────────────
-    # Lidarr (stack do Jellyfin) baixa o álbum em FLAC pela Usenet. Vazio =
-    # sem Lidarr (as playlists melhoram só pelo Deemix).
-    lidarr_url: str = ""
+    # Lidarr (serviço `lidarr` deste compose) baixa o álbum em FLAC pela
+    # Usenet. Sem LIDARR_API_KEY = desligado (as playlists melhoram só pelo
+    # Deemix).
+    lidarr_url: str = "http://bergastream-lidarr:8686"
     lidarr_api_key: str = ""
     # Perfis do Lidarr por nome (vazio = o de nome com "lossless"/"flac", ou
     # o primeiro) e pasta raiz (vazio = a primeira cadastrada).

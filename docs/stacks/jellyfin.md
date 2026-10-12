@@ -33,7 +33,6 @@ Um **dashboard web** (FastAPI) expõe o acervo, status de legenda/otimização, 
 | sonarr | `lscr.io/linuxserver/sonarr` | `sonarr.${DOMAIN}` (8989) | Local | — | Séries |
 | radarr | `lscr.io/linuxserver/radarr` | `radarr.${DOMAIN}` (7878) | Local | — | Filmes |
 | prowlarr | `lscr.io/linuxserver/prowlarr` | `prowlarr.${DOMAIN}` (9696) | Local | — | Indexers |
-| lidarr | `lscr.io/linuxserver/lidarr` | `lidarr.${DOMAIN}` (8686) | Local | — | Música em FLAC pela Usenet; usado pelo Bergastream para as faixas de playlist. `/music` = `LIDARR_MUSIC_DIR` (`/mnt/storage/docker_volumes/bergastream/lidarr`), só passagem: copiada a música, o resto do álbum é apagado |
 | bazarr | `lscr.io/linuxserver/bazarr` | `bazarr.${DOMAIN}` (6767) | Local | — | Legendas (etapa 1 do pipeline) |
 | qbittorrent | `lscr.io/.../qbittorrent:version-4.6.0-r0` | `qbittorrent.${DOMAIN}` (8080) | Local | — | Cliente torrent (versão fixada) |
 | sabnzbd | `lscr.io/linuxserver/sabnzbd` | `sabnzbd.${DOMAIN}` (8080) | Local | — | Cliente Usenet |

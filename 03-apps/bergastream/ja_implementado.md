@@ -403,7 +403,7 @@ Rodado na imagem `ghcr.io/cirruslabs/flutter:stable` (Flutter 3.44.0 / Dart 3.12
   corrigido (`127.0.0.1`: `localhost` resolvia para IPv6).
 - **Melhoria das playlists** (`app/quality/upgrader.py`, no worker): faixa que entra numa
   playlist ganha linha em `quality_upgrades`; o worker tenta o Deemix em FLAC → 320 (a cada 30
-  dias) e, sem FLAC, pede ao **Lidarr** (stack do Jellyfin, Usenet) o álbum da faixa, monitorando
+  dias) e, sem FLAC, pede ao **Lidarr** (Usenet) o álbum da faixa, monitorando
   só esse álbum; busca todo dia nos primeiros `UPGRADE_DAILY_DAYS` (14) e depois toda semana.
   Quando o Lidarr baixa, o FLAC da faixa é copiado e substitui o arquivo. Só troca por qualidade
   maior; faixa que sai das playlists sai da fila (e o álbum deixa de ser monitorado).
@@ -418,8 +418,9 @@ Rodado na imagem `ghcr.io/cirruslabs/flutter:stable` (Flutter 3.44.0 / Dart 3.12
 ### Versão 0.3.0 — qualidade escolhida por aparelho e cópias offline que se atualizam
 - **Lidarr só de passagem:** copiada a música, o álbum deixa de ser monitorado e os arquivos são
   apagados do Lidarr quando nenhuma outra faixa de playlist espera aquele álbum
-  (`LIDARR_KEEP_ALBUMS=true` mantém). A pasta de música do Lidarr fica nos dados do Bergastream
-  (`/mnt/storage/docker_volumes/bergastream/lidarr`).
+  (`LIDARR_KEEP_ALBUMS=true` mantém). O Lidarr é serviço próprio do compose do Bergastream
+  (`bergastream-lidarr`, dados em `${STORAGE_PATH}/lidarr/{config,music}`), usando o SABnzbd e o
+  Prowlarr do servidor pela rede do Traefik; o worker fala com ele pela rede interna.
 - **Níveis de entrega** (`app/downloads/variants.py`): o servidor guarda um arquivo por música
   (o mestre) e `stream`/`download` aceitam `?quality=original|high|normal|low` (Original, MP3
   320, AAC 160, AAC 96). Nunca aumenta (pedindo 320 de um MP3 128, vai o 128; Opus do YouTube só

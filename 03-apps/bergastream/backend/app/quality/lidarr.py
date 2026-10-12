@@ -1,4 +1,5 @@
-"""Cliente mínimo da API v1 do Lidarr (FLAC pela Usenet).
+"""Cliente mínimo da API v1 do Lidarr (FLAC pela Usenet; serviço `lidarr`
+do compose do Bergastream).
 
 O Lidarr trabalha por ÁLBUM (lançamentos na Usenet são álbuns ou singles):
 para uma faixa de playlist, o Bergastream acha o álbum dela no MusicBrainz

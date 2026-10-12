@@ -125,38 +125,6 @@ services:
       - "traefik.http.routers.sonarr-router.middlewares=internal-only@file"
       - "traefik.http.services.sonarr-service.loadbalancer.server.port=8989"
 
-  # Música em FLAC pela Usenet (SABnzbd + Prowlarr). O Bergastream pede ao
-  # Lidarr o álbum das faixas de playlist, copia o FLAC da música e apaga o
-  # resto do álbum: a pasta de música é só passagem, dentro dos dados do
-  # Bergastream (LIDARR_MUSIC_DIR, a mesma do .env dele).
-  lidarr:
-    image: lscr.io/linuxserver/lidarr:latest
-    container_name: lidarr
-    restart: unless-stopped
-    dns:
-      - 8.8.8.8
-      - 1.1.1.1
-    environment:
-      - PUID=${PUID}
-      - PGID=${PGID}
-      - TZ=${TZ}
-    volumes:
-      - ${STORAGE_PATH}/config/lidarr:/config
-      - ${LIDARR_MUSIC_DIR:-/mnt/storage/docker_volumes/bergastream/lidarr}:/music
-      - ${STORAGE_PATH}/downloads:/downloads
-    networks:
-      - bergatrix-proxy
-      - media-network
-    labels:
-      - "traefik.enable=true"
-      - "traefik.docker.network=bergatrix-proxy"
-      - "traefik.http.routers.lidarr-router.rule=Host(`lidarr.${DOMAIN}`)"
-      - "traefik.http.routers.lidarr-router.entrypoints=websecure"
-      - "traefik.http.routers.lidarr-router.tls=true"
-      - "traefik.http.routers.lidarr-router.service=lidarr-service"
-      - "traefik.http.routers.lidarr-router.middlewares=internal-only@file"
-      - "traefik.http.services.lidarr-service.loadbalancer.server.port=8686"
-
   radarr:
     image: lscr.io/linuxserver/radarr
     container_name: radarr

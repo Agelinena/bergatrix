@@ -103,14 +103,12 @@ services:
       - ${STORAGE_PATH}/youtube:/data/youtube:ro
       # Versões novas da SpotifyScraper instaladas pelo teste diário do Spotify.
       - ${STORAGE_PATH}/pydeps:/data/pydeps
-      # Pasta de música do Lidarr (stack do Jellyfin), só leitura: o FLAC da
-      # faixa é copiado daqui. Sem Lidarr, fica uma pasta vazia.
-      - ${LIDARR_MUSIC_DIR:-${STORAGE_PATH}/lidarr}:/data/lidarr:ro
+      # Músicas baixadas pelo Lidarr, só leitura: o FLAC da faixa é copiado
+      # daqui (e o resto do álbum é apagado pelo próprio Lidarr).
+      - ${STORAGE_PATH}/lidarr/music:/data/lidarr:ro
     networks:
       - bergastream-internal
       - bergastream-egress
-      # Só para falar com o Lidarr (LIDARR_URL), que fica na rede do Traefik.
-      - bergatrix-proxy
     depends_on:
       db:
         condition: service_healthy
@@ -119,6 +117,38 @@ services:
       migrate:
         condition: service_completed_successfully
     command: python worker.py
+
+  # FLAC das faixas de playlist pela Usenet. O worker pede o álbum da faixa,
+  # copia a música e manda apagar o resto (a pasta de música é só passagem).
+  # Usa o SABnzbd e o Prowlarr do servidor pela rede do Traefik
+  # (http://sabnzbd:8080, http://prowlarr:9696) e precisa ver a pasta de
+  # downloads do SABnzbd no mesmo caminho (/downloads) para importar.
+  # Interface só na rede local/Tailscale: lidarr.${DOMAIN}.
+  lidarr:
+    image: lscr.io/linuxserver/lidarr:latest
+    container_name: bergastream-lidarr
+    restart: unless-stopped
+    environment:
+      PUID: ${PUID:-1000}
+      PGID: ${PGID:-1000}
+      TZ: ${TZ:-America/Sao_Paulo}
+    volumes:
+      - ${STORAGE_PATH}/lidarr/config:/config
+      - ${STORAGE_PATH}/lidarr/music:/music
+      - ${USENET_DOWNLOADS_DIR:-${STORAGE_PATH}/usenet-downloads}:/downloads
+    networks:
+      - bergastream-internal   # o worker fala com ele aqui
+      - bergastream-egress     # servidor de metadados (MusicBrainz)
+      - bergatrix-proxy        # Traefik, SABnzbd e Prowlarr
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=bergatrix-proxy"
+      - "traefik.http.routers.bergastream-lidarr.rule=Host(`lidarr.${DOMAIN}`)"
+      - "traefik.http.routers.bergastream-lidarr.entrypoints=websecure"
+      - "traefik.http.routers.bergastream-lidarr.tls=true"
+      - "traefik.http.routers.bergastream-lidarr.service=bergastream-lidarr"
+      - "traefik.http.routers.bergastream-lidarr.middlewares=internal-only@file"
+      - "traefik.http.services.bergastream-lidarr.loadbalancer.server.port=8686"
 
   # Gera PO Tokens para o yt-dlp (o YouTube bloqueia menos o servidor no
   # plano B do download). Sem autenticação: fica só na rede interna (nenhuma

@@ -42,7 +42,7 @@ Traefik (bergatrix-proxy) ──► bergastream-web (nginx: app web + /api/ → 
 cd ~/bergatrix && git pull
 cd 03-apps/bergastream
 
-sudo mkdir -p /mnt/storage/docker_volumes/bergastream/{db,redis,music,pydeps,lidarr,deemix/config,deemix/downloads}
+sudo mkdir -p /mnt/storage/docker_volumes/bergastream/{db,redis,music,pydeps,lidarr/config,lidarr/music,deemix/config,deemix/downloads}
 sudo chown -R 1000:1000 /mnt/storage/docker_volumes/bergastream/{music,pydeps,lidarr,deemix}
 ```
 
@@ -61,7 +61,7 @@ nano .env
 | `DATABASE_URL` | a mesma senha no lugar de `troque_esta_senha` |
 | `JWT_SECRET` | segredo novo (gere abaixo) |
 | `DEEMIX_ARL` | cookie `arl` do deezer.com logado — conta **Premium** para MP3 320/FLAC (grátis = 128) |
-| `LIDARR_*` | opcional: FLAC das playlists pela Usenet (passo 7) |
+| `LIDARR_API_KEY`, `USENET_DOWNLOADS_DIR` | FLAC das playlists pela Usenet (passo 7); sem a chave o Lidarr fica de fora |
 
 O Spotify não precisa de conta nem de chave (as antigas `SPOTIFY_CLIENT_ID/SECRET` podem sair do `.env`).
 
@@ -134,42 +134,38 @@ incluir (no Brasil o Premium costuma incluir; via operadora, como TIM, fica em 3
 pelo próprio Deemix. Se o log do worker disser "a conta do ARL não tem FLAC", fica o 320 e o
 Lidarr cuida do FLAC.
 
-**Lidarr** (stack do Jellyfin; baixa pela Usenet com o SABnzbd e os indexadores do Prowlarr):
+**Lidarr** (serviço `bergastream-lidarr` deste compose; baixa pela Usenet com o SABnzbd e os
+indexadores do Prowlarr do servidor, que ele alcança pela rede do Traefik):
 
-1. Pastas com o dono certo **antes** de subir (senão o Docker cria como root e o Lidarr
-   acusa "Folder '/music' is not writable"). A pasta de música fica dentro dos dados do
-   Bergastream: é só passagem (copiada a música, o resto do álbum é apagado).
-
-   ```bash
-   sudo mkdir -p /mnt/storage/docker_volumes/bergastream/lidarr /mnt/storage/docker_volumes/jellyflix/config/lidarr
-   sudo chown -R 1000:1000 /mnt/storage/docker_volumes/bergastream/lidarr /mnt/storage/docker_volumes/jellyflix/config/lidarr
-   ```
-
-   No `.env` do jellyfin: `LIDARR_MUSIC_DIR=/mnt/storage/docker_volumes/bergastream/lidarr`.
+1. Pastas com o dono certo **antes** de subir (senão o Docker cria como root e o Lidarr acusa
+   "Folder '/music' is not writable"). Já estão no passo 1; se o servidor já existia:
 
    ```bash
-   cd ~/bergatrix/03-apps/jellyfin && docker compose up -d lidarr
+   sudo mkdir -p /mnt/storage/docker_volumes/bergastream/lidarr/{config,music}
+   sudo chown -R 1000:1000 /mnt/storage/docker_volumes/bergastream/lidarr
    ```
 
-2. Em `https://lidarr.daberga.com` (rede local/Tailscale):
-   - **Settings → Media Management → Root Folders:** adicionar `/music` (perfil de qualidade
-     **Lossless**, metadados **Standard**).
-   - **Settings → Download Clients:** SABnzbd (host `sabnzbd`, porta `8080`, API key do SABnzbd,
-     categoria `music`). No SABnzbd, crie a categoria `music`.
-   - **Prowlarr → Settings → Apps:** adicionar o Lidarr (`http://lidarr:8686` + API key) para
-     sincronizar os indexadores Usenet com categoria de música.
-   - **Settings → General:** copie a API key.
+   No `.env`: `USENET_DOWNLOADS_DIR=/mnt/storage/docker_volumes/jellyflix/downloads` (a pasta que
+   o SABnzbd monta como `/downloads`: o Lidarr precisa ver os downloads no mesmo caminho).
+   `docker compose up -d` sobe o Lidarr junto.
 
-3. No `.env` do Bergastream:
+2. Em `https://lidarr.daberga.com` (rede local/Tailscale), na primeira vez:
+   - **Settings → General → Security:** crie usuário e senha (método "Forms").
+   - **Settings → Media Management → Root Folders:** adicionar `/music`, perfil de qualidade
+     **Lossless**, metadados **Standard**.
+   - **Settings → Profiles → Metadata Profiles → Standard:** marcar **Album**, **EP** e **Single**.
+   - **Settings → Download Clients → + → SABnzbd:** host `sabnzbd`, porta `8080`, API key do
+     SABnzbd (SABnzbd → Config → General), categoria `music`. No SABnzbd: Config → Categories →
+     criar `music`.
+   - **Prowlarr → Settings → Apps → + → Lidarr:** Prowlarr Server `http://prowlarr:9696`,
+     Lidarr Server `http://bergastream-lidarr:8686`, API key do Lidarr → Test → Save. Depois
+     **Sync App Indexers**. Os indexadores precisam ter a categoria de música (3000).
+   - **Settings → General → API Key:** copie.
 
-   ```
-   LIDARR_URL=http://lidarr:8686
-   LIDARR_API_KEY=<a chave>
-   LIDARR_MUSIC_DIR=/mnt/storage/docker_volumes/bergastream/lidarr
-   ```
+3. No `.env` do Bergastream: `LIDARR_API_KEY=<a chave>` e:
 
    ```bash
-   cd ~/bergatrix/03-apps/bergastream && docker compose up -d worker
+   docker compose up -d worker
    docker compose logs worker | grep upgrade    # "[upgrade] iniciado (Lidarr ligado)"
    ```
 
@@ -216,5 +212,6 @@ gunzip -c bergastream-AAAA-MM-DD.sql.gz | docker compose exec -T db psql -U berg
 | Log do worker: "Sign in to confirm you're not a bot" em todos os clientes | O YouTube está bloqueando o IP. Confira se o `bergastream-pot` está de pé (`docker compose ps`); se persistir, use cookies de uma conta **secundária** (`YT_COOKIES_FILE`, ver `.env.example`). Muitos pedidos seguidos geram HTTP 429 por um tempo. |
 | Aba Spotify da busca dá "O Spotify não respondeu" | O Spotify mudou o web player. O worker testa todo dia e instala a versão nova da biblioteca sozinho quando sai; para ver agora: `docker compose exec worker python -m app.search.spotify_health` e `GET /api/server/status` → `spotify`. |
 | Log do worker: "álbum … não encontrado no MusicBrainz" | O Lidarr não achou o álbum (nome diferente no MusicBrainz ou lançamento só digital). A faixa fica em 320 e o worker tenta de novo em 7 dias. |
-| Log do worker: "arquivo do Lidarr não visível aqui" | `LIDARR_MUSIC_DIR` não é a mesma pasta montada como `/music` no Lidarr. |
+| Log do worker: "arquivo do Lidarr não visível aqui" | O worker não vê `${STORAGE_PATH}/lidarr/music` (volume do compose alterado?). |
+| Lidarr não importa o que o SABnzbd baixou ("No files found" / caminho inexistente) | `USENET_DOWNLOADS_DIR` não é a pasta que o SABnzbd monta como `/downloads`. |
 | "Muitas tentativas" no login | 5 senhas erradas em 15 min para aquele usuário e IP: espere ou troque a senha (USUARIOS.md). |

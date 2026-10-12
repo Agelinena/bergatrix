@@ -23,7 +23,8 @@ Documentação detalhada no próprio stack: `03-apps/bergastream/Documentação.
 |---|---|---|---|---|
 | `bergastream-web` | build `./frontend` (Flutter web → nginx) | 80 | — | internal, **bergatrix-proxy** |
 | `bergastream-api` | build `./backend` (uvicorn) | 8000 | `music`, `deemix/downloads`, `pydeps` | internal, egress |
-| `bergastream-worker` | build `./backend` (`python worker.py`) | — | `music`, `deemix/downloads`, `pydeps`, música do Lidarr (ro) | internal, egress, bergatrix-proxy (só para o Lidarr) |
+| `bergastream-worker` | build `./backend` (`python worker.py`) | — | `music`, `deemix/downloads`, `pydeps`, `lidarr/music` (ro) | internal, egress |
+| `bergastream-lidarr` | `lscr.io/linuxserver/lidarr` | 8686 (`lidarr.${DOMAIN}`, internal-only) | `lidarr/config`, `lidarr/music`, downloads do SABnzbd (`USENET_DOWNLOADS_DIR`) | internal, egress, bergatrix-proxy (Traefik, SABnzbd, Prowlarr) |
 | `bergastream-deemix` | `ghcr.io/bambanah/deemix` | 6595 | `deemix/config`, `deemix/downloads` | internal, egress |
 | `bergastream-db` | `postgres:16-alpine` | 5432 | `db` | internal |
 | `bergastream-redis` | `redis:7-alpine` (appendonly) | 6379 | `redis` | internal |
@@ -67,13 +68,13 @@ Migrações dbmate `0001`–`0013`: `tracks`, `external_ids`, `files` (+ qualida
 Mapa completo em `03-apps/bergastream/docs/API_MAP.md`. Grupos: `/api/auth/*`, `/api/search` e `/api/search/full`, `/api/resolve`, `/api/artists/*`, `/api/albums/*`, `/api/play` + `/api/tracks/{id}/{status,stream,stream-token,download}`, `/api/playlists/*` e `/api/me/playlists`, `/api/users/directory`, `/api/history`, `/api/me/stats`, `/api/images`, `/api/admin/cleanup`.
 
 ## 🔗 Integrações externas
-Spotify (caminho anônimo: SpotifyScraper + `spclient` para ISRC; PyPI para a atualização automática), Deezer (API pública), Lidarr (stack do Jellyfin, opcional), YouTube Music (ytmusicapi), YouTube (yt-dlp), Deezer (Deemix com ARL), CDNs de capas (via proxy), GitHub Releases (os apps consultam `api.github.com/repos/Agelinena/bergatrix/releases`).
+Spotify (caminho anônimo: SpotifyScraper + `spclient` para ISRC; PyPI para a atualização automática), Deezer (API pública), Lidarr (serviço próprio; usa o SABnzbd e o Prowlarr do servidor), YouTube Music (ytmusicapi), YouTube (yt-dlp), Deezer (Deemix com ARL), CDNs de capas (via proxy), GitHub Releases (os apps consultam `api.github.com/repos/Agelinena/bergatrix/releases`).
 
 ## 🧩 Dependências internas (Bergatrix)
 Traefik (`bergatrix-proxy`, wildcard `*.daberga.com`), Authentik (`public-auth@file`), CrowdSec (`crowdsec-bouncer@file`), middleware `api-access-bypass@file` do `dynamic.yml`.
 
 ## 🔑 Variáveis de ambiente necessárias
-`STORAGE_PATH` (`/mnt/storage/docker_volumes/bergastream`), `DOMAIN`, `PUID`/`PGID`, `POSTGRES_DB/USER/PASSWORD`, `DATABASE_URL`, `DEEMIX_ARL` (conta Premium para 320/FLAC), `LIDARR_URL`/`LIDARR_API_KEY`/`LIDARR_MUSIC_DIR`/`LIDARR_QUALITY_PROFILE`/`LIDARR_METADATA_PROFILE`/`UPGRADE_DAILY_DAYS` (opcionais), `JWT_SECRET`, `ALLOW_REGISTRATION`, `CACHE_TTL_HOURS`, `LOG_LEVEL`. Ver `.env.example`.
+`STORAGE_PATH` (`/mnt/storage/docker_volumes/bergastream`), `DOMAIN`, `PUID`/`PGID`, `POSTGRES_DB/USER/PASSWORD`, `DATABASE_URL`, `DEEMIX_ARL` (conta Premium para 320/FLAC), `LIDARR_API_KEY`/`USENET_DOWNLOADS_DIR`/`LIDARR_KEEP_ALBUMS`/`LIDARR_QUALITY_PROFILE`/`LIDARR_METADATA_PROFILE`/`UPGRADE_DAILY_DAYS` (opcionais), `TZ`, `JWT_SECRET`, `ALLOW_REGISTRATION`, `CACHE_TTL_HOURS`, `LOG_LEVEL`. Ver `.env.example`.
 
 ## 🗂️ Estrutura de código
 ```
