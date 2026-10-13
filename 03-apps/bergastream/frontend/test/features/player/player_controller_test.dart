@@ -42,6 +42,7 @@ void main() {
           const PlayerTimings(
             pollInterval: Duration.zero,
             rapidChangeDelay: Duration.zero,
+            autoSkipDelay: Duration.zero,
           ),
         ),
         playRecorderProvider.overrideWithValue((
@@ -62,6 +63,13 @@ void main() {
   });
 
   final abc = [song('A'), song('B'), song('C')];
+
+  /// A faixa toca até perto do fim e acaba (sem a posição, "acabou" no
+  /// começo é stream cortado, não fim de música).
+  void finish() {
+    engine.emitPosition(const Duration(seconds: 199));
+    engine.complete();
+  }
 
   test('tocar: prepara no servidor, pega o stream com token e toca', () async {
     await controller().playList(abc, 0, context: 'Busca');
@@ -111,17 +119,17 @@ void main() {
   test('ao acabar, toca a sua fila antes da automática', () async {
     await controller().playList(abc, 0, context: 'Busca');
     await controller().addToQueue(song('X'));
-    engine.complete();
+    finish();
     await pumpEventQueue();
     expect(state().current!.track.title, 'X');
-    engine.complete();
+    finish();
     await pumpEventQueue();
     expect(state().current!.track.title, 'B');
   });
 
   test('fim de tudo: para (repetir desligado)', () async {
     await controller().playList([song('A')], 0, context: 'Busca');
-    engine.complete();
+    finish();
     await pumpEventQueue();
     expect(state().status, PlaybackStatus.parado);
     expect(state().current!.track.title, 'A');
@@ -134,7 +142,7 @@ void main() {
       ..cycleRepeat();
     expect(state().repeat, PlayerRepeat.umaFaixa);
     expect(state().message!.text, 'Repetindo esta música');
-    engine.complete();
+    finish();
     await pumpEventQueue();
     expect(state().current!.track.title, 'A');
     expect(engine.log.last, 'play');
@@ -259,6 +267,7 @@ void main() {
           const PlayerTimings(
             pollInterval: Duration.zero,
             rapidChangeDelay: Duration.zero,
+            autoSkipDelay: Duration.zero,
           ),
         ),
         playRecorderProvider.overrideWithValue(
@@ -320,6 +329,7 @@ void main() {
             const PlayerTimings(
               pollInterval: Duration.zero,
               rapidChangeDelay: Duration.zero,
+              autoSkipDelay: Duration.zero,
             ),
           ),
           playRecorderProvider.overrideWithValue(
@@ -352,17 +362,34 @@ void main() {
       expect(handler.playbackState.value.playing, isFalse);
     });
 
-    test('depois de 20 s pede ao servidor só a próxima', () async {
+    test('depois de 8 s pede ao servidor só a próxima', () async {
       await controller().playList(abc, 0, context: 'Busca');
       engine.emitDuration(const Duration(minutes: 4));
       repo.prepared.clear();
-      engine.emitPosition(const Duration(seconds: 10));
+      engine.emitPosition(const Duration(seconds: 5));
       await pumpEventQueue();
       expect(repo.prepared, isEmpty);
-      engine.emitPosition(const Duration(seconds: 21));
+      engine.emitPosition(const Duration(seconds: 9));
       engine.emitPosition(const Duration(seconds: 40));
       await pumpEventQueue();
       expect(repo.prepared, ['B']); // só a próxima, uma vez
+    });
+
+    test('pedido da próxima falhou: tenta de novo', () async {
+      await controller().playList(abc, 0, context: 'Busca');
+      engine.emitDuration(const Duration(minutes: 4));
+      repo
+        ..prepared.clear()
+        ..failPrepare = true;
+      engine.emitPosition(const Duration(seconds: 9));
+      await pumpEventQueue();
+      expect(repo.prepared, ['B']);
+      repo.failPrepare = false;
+      engine.emitPosition(const Duration(seconds: 10));
+      await pumpEventQueue();
+      expect(repo.prepared, [
+        'B',
+      ], reason: 'espera o intervalo de nova tentativa');
     });
 
     test('faixa curta: pede a próxima na metade', () async {
@@ -396,6 +423,83 @@ void main() {
       // A primeira foi direto (nada antes); B foi "passada" e não baixou.
       expect(repo.prepared, ['A', 'C']);
       expect(c.read(playerProvider).current!.track.title, 'C');
+    });
+  });
+
+  group('stream cortado e pausas do sistema', () {
+    test('"acabou" longe do fim: retoma do ponto, não pula a música', () async {
+      await controller().playList(abc, 0, context: 'Busca');
+      engine
+        ..emitDuration(const Duration(seconds: 200))
+        ..emitPosition(const Duration(seconds: 73));
+      engine.log.clear();
+      engine.complete();
+      await pumpEventQueue();
+      expect(state().current!.track.title, 'A');
+      expect(engine.log, ['setUrl', 'seek 73', 'play']);
+      expect(engine.urls, hasLength(2), reason: 'URL nova (token novo)');
+    });
+
+    test(
+      'cortou de novo e de novo: depois de 2 retomadas, segue a fila',
+      () async {
+        await controller().playList(abc, 0, context: 'Busca');
+        engine.emitPosition(const Duration(seconds: 50));
+        for (var i = 0; i < 3; i++) {
+          engine.complete();
+          await pumpEventQueue();
+        }
+        expect(state().current!.track.title, 'B');
+      },
+    );
+
+    test('acabou perto do fim: segue a fila', () async {
+      await controller().playList(abc, 0, context: 'Busca');
+      engine.emitPosition(const Duration(seconds: 199));
+      engine.complete();
+      await pumpEventQueue();
+      expect(state().current!.track.title, 'B');
+    });
+
+    test('erro no meio da faixa: retoma do ponto', () async {
+      await controller().playList(abc, 0, context: 'Busca');
+      engine.emitPosition(const Duration(seconds: 30));
+      engine.log.clear();
+      engine.emitError(Exception('conexão caiu'));
+      await pumpEventQueue();
+      expect(engine.log, ['setUrl', 'seek 30', 'play']);
+      expect(state().status, PlaybackStatus.tocando);
+    });
+
+    test('Bluetooth desconectou (sistema pausou): mostra pausado', () async {
+      await controller().playList(abc, 0, context: 'Busca');
+      expect(state().status, PlaybackStatus.tocando);
+      engine.systemPause();
+      await pumpEventQueue();
+      expect(state().status, PlaybackStatus.pausado);
+      // Um toque no play volta a tocar (antes precisava de dois).
+      await controller().togglePlay();
+      expect(engine.playing, isTrue);
+      expect(state().status, PlaybackStatus.tocando);
+    });
+
+    test('fila tocando sozinha: música que não toca é pulada', () async {
+      await controller().playList(abc, 0, context: 'Busca');
+      repo.failTitles.add('B');
+      finish(); // A acabou; B não toca
+      for (var i = 0; i < 4; i++) {
+        await pumpEventQueue();
+      }
+      expect(state().current!.track.title, 'C');
+      expect(state().status, PlaybackStatus.tocando);
+    });
+
+    test('música escolhida que não toca: não pula sozinha', () async {
+      repo.failPrepare = true;
+      await controller().playList(abc, 1, context: 'Busca');
+      await pumpEventQueue();
+      expect(state().current!.track.title, 'B');
+      expect(state().status, PlaybackStatus.erro);
     });
   });
 }

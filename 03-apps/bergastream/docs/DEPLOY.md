@@ -175,7 +175,11 @@ monitorando só esse álbum do artista. O álbum é o de estúdio da gravação 
 não a coletânea do Spotify. Busca na hora, todo dia nos primeiros 3 dias (`UPGRADE_DAILY_DAYS`)
 e depois toda semana; entre uma e outra, o Lidarr vigia a Usenet sozinho (RSS). Para não estourar
 o limite do indexador, no máximo 30 álbuns ficam na fase diária (`LIDARR_MAX_ACTIVE`) e são no
-máximo 100 buscas por dia (`LIDARR_DAILY_SEARCHES`); as outras faixas esperam a vez. Ajuste ao
+máximo 100 buscas por dia (`LIDARR_DAILY_SEARCHES`), das quais 30 ficam para pedidos novos
+(`LIDARR_REQUEST_RESERVE`: as buscas repetidas não gastam tudo); as outras faixas esperam a vez.
+Download travado na fila do Lidarr (importação bloqueada — ex.: release com `.exe` — ou falha) há
+mais de 1 h é removido do SABnzbd, o release vai para a blocklist e o álbum é buscado de novo; a
+cada 6 h o worker confere se os artistas e álbuns ainda esperados continuam monitorados. Ajuste ao
 limite de API do seu indexador (Prowlarr → Indexers → o indexador → *Query Limit*). O worker
 confere a cada 30 min se o Lidarr já baixou (isso não gasta o indexador). Quando o
 álbum chega, o FLAC da faixa é copiado e substitui o arquivo; quando nenhuma outra faixa de

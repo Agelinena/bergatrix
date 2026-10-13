@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../app/routes.dart';
 import '../../core/platform/app_platform.dart';
 import '../../core/widgets/offline_banner.dart';
+import '../sync/server_monitor.dart';
 import 'auth_texts.dart';
 import 'session.dart';
 
@@ -19,7 +20,11 @@ class SessionBanner extends ConsumerWidget {
     if (ref.watch(appPlatformProvider).isWeb) {
       // Web: sessão expirada volta ao login; sem músicas baixadas.
       return session.isLoggedIn && !session.serverAvailable
-          ? const OfflineBanner(message: AuthTexts.serverUnavailableWeb)
+          ? OfflineBanner(
+              message: AuthTexts.serverUnavailableWeb,
+              actionLabel: 'Tentar agora',
+              onAction: () => ref.read(serverMonitorProvider.notifier).check(),
+            )
           : const SizedBox.shrink();
     }
 
@@ -31,7 +36,11 @@ class SessionBanner extends ConsumerWidget {
       );
     }
     if (session.isLoggedIn && !session.serverAvailable) {
-      return const OfflineBanner(message: AuthTexts.serverUnavailable);
+      return OfflineBanner(
+        message: AuthTexts.serverUnavailable,
+        actionLabel: 'Tentar agora',
+        onAction: () => ref.read(serverMonitorProvider.notifier).check(),
+      );
     }
     return const SizedBox.shrink();
   }

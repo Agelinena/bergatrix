@@ -57,10 +57,30 @@ class ConnectivityNetworkCheck implements NetworkCheck {
 
 /// Estado geral dos downloads (para avisos na tela).
 class DownloadsStatus {
-  const DownloadsStatus({this.active = 0, this.waitingForWifi = false});
+  const DownloadsStatus({
+    this.active = 0,
+    this.waitingForWifi = false,
+    this.upgrading = 0,
+    this.upgraded,
+  });
 
   final int active;
   final bool waitingForWifi;
+
+  /// Cópias esperando a troca por qualidade melhor (ou outra escolhida).
+  final int upgrading;
+
+  /// Lote de trocas terminado: aviso para mostrar uma vez.
+  final UpgradeNotice? upgraded;
+}
+
+/// "N músicas trocadas por qualidade melhor" (cada aviso com id novo).
+class UpgradeNotice {
+  UpgradeNotice(this.count) : id = _ids++;
+
+  static int _ids = 0;
+  final int id;
+  final int count;
 }
 
 /// Chave da preferência "Baixar só no Wi-Fi" (padrão: ligado).
@@ -82,6 +102,15 @@ class DownloadManager extends Notifier<DownloadsStatus> {
   final _running = <String>{};
   final _retryAt = <String, DateTime>{};
   Timer? _retryTimer;
+
+  /// Falha passageira (rede, servidor fora): tenta de novo depois disto,
+  /// sem contar tentativa.
+  Duration transientRetry = const Duration(seconds: 30);
+
+  /// Trocas de qualidade feitas no lote atual (para o aviso no fim).
+  int _upgradedInBatch = 0;
+  int _upgrading = 0;
+  UpgradeNotice? _lastNotice;
   StreamSubscription<void>? _network;
   Future<DownloadPaths>? _paths;
   bool _pumping = false;
@@ -116,6 +145,7 @@ class DownloadManager extends Notifier<DownloadsStatus> {
   /// "Baixar no aparelho" / "Baixar restantes" / "Atualizar download".
   /// Faixas que saíram da playlist no servidor são liberadas (Seção 8.3).
   Future<void> downloadPlaylist(PlaylistDetail playlist) async {
+    await requestDownloadNotifications();
     final gone = await _db.savePlaylist(playlist);
     await _db.setPaused(playlist.id, false);
     await _deleteFiles(await _db.releaseTracks(gone));
@@ -170,12 +200,23 @@ class DownloadManager extends Notifier<DownloadsStatus> {
         return;
       }
       final now = DateTime.now();
+      final all = await _db.queuedTracks();
+      _upgrading = all
+          .where(
+            (t) => t.downloadState == DownloadState.baixada && t.needsReplace,
+          )
+          .length;
       final queue = [
-        for (final t in await _db.queuedTracks())
+        for (final t in all)
           if (!_running.contains(t.id) &&
               !(_retryAt[t.id]?.isAfter(now) ?? false))
             t,
       ];
+      // Alguma esperando a nova tentativa: garante o timer (ele pode disparar
+      // um instante antes da hora e a faixa ficaria parada na fila).
+      if (all.any((t) => _retryAt[t.id]?.isAfter(now) ?? false)) {
+        _scheduleRetry();
+      }
       for (final t in queue.take(maxConcurrent - _running.length)) {
         _running.add(t.id);
         unawaited(
@@ -194,11 +235,34 @@ class DownloadManager extends Notifier<DownloadsStatus> {
 
   void _publish({bool waitingForWifi = false}) {
     if (!ref.mounted) return;
+    if (_upgrading == 0 && _upgradedInBatch > 0 && _running.isEmpty) {
+      // Fica no estado até o próximo lote (a tela compara pelo id).
+      _lastNotice = UpgradeNotice(_upgradedInBatch);
+      _upgradedInBatch = 0;
+    }
     state = DownloadsStatus(
       active: _running.length,
       waitingForWifi: waitingForWifi,
+      upgrading: _upgrading,
+      upgraded: _lastNotice,
     );
   }
+
+  /// Próxima nova tentativa: um timer até a mais próxima (antes um só,
+  /// sobrescrito a cada falha, deixava faixas paradas).
+  void _scheduleRetry() {
+    _retryTimer?.cancel();
+    if (_retryAt.isEmpty) return;
+    final next = _retryAt.values.reduce((a, b) => a.isBefore(b) ? a : b);
+    var wait = next.difference(DateTime.now());
+    if (wait < Duration.zero) wait = Duration.zero;
+    _retryTimer = Timer(wait + const Duration(milliseconds: 5), pump);
+  }
+
+  static bool _isTransient(Object e) =>
+      e is TransientFetchError ||
+      e is SocketException ||
+      (e is ApiException && e.isTransient);
 
   /// Confere com o servidor a qualidade das cópias baixadas e marca para
   /// trocar as que mudaram: a qualidade escolhida para downloads mudou, ou o
@@ -283,6 +347,18 @@ class DownloadManager extends Notifier<DownloadsStatus> {
           (audio.expectedBytes != null && audio.bytes != audio.expectedBytes)) {
         throw FileSystemException('Arquivo incompleto', partial);
       }
+      // Sem o cabeçalho de qualidade (alguns Android não repassam): pergunta
+      // ao servidor. Sem isso a cópia ficava sem rótulo e era baixada de
+      // novo a cada conferência.
+      var quality = audio.quality;
+      if (quality == null || quality.isEmpty) {
+        final ref_ = '${t.provider}:${t.externalId}';
+        try {
+          quality = (await playback.qualities([ref_]))[ref_]?[level]?.label;
+        } on Object catch (e) {
+          debugPrint('Qualidade não informada (${t.title}): $e');
+        }
+      }
       audioPath = '${dirs.audio}/${t.id}.${audio.format ?? 'mp3'}';
       final previous = t.audioPath;
       // O rename não substitui arquivo existente em todas as plataformas.
@@ -316,13 +392,33 @@ class DownloadManager extends Notifier<DownloadsStatus> {
           downloadedAt: Value(DateTime.now()),
           attempts: const Value(0),
           qualityLevel: Value(level),
-          qualityLabel: Value(audio.quality),
+          qualityLabel: Value(quality),
           needsReplace: const Value(false),
         ),
       );
       _retryAt.remove(t.id);
+      if (replacing) {
+        _upgradedInBatch++;
+        if (_upgrading > 0) _upgrading--;
+      }
     } on Object catch (e) {
       debugPrint('Download falhou (${t.title}): $e');
+      if (_isTransient(e)) {
+        // Rede caiu / servidor fora: não conta tentativa; volta para a fila
+        // (a cópia atual, na troca, continua) e tenta de novo depois.
+        await _deleteQuietly(partial);
+        if (!replacing && await _db.track(t.id) != null) {
+          await _db.updateTrack(
+            t.id,
+            const LocalTracksCompanion(
+              downloadState: Value(DownloadState.naFila),
+            ),
+          );
+        }
+        _retryAt[t.id] = DateTime.now().add(transientRetry);
+        _scheduleRetry();
+        return;
+      }
       if (replacing) {
         // A cópia atual fica; tenta de novo na próxima conferência.
         await _deleteQuietly(partial);
@@ -353,8 +449,7 @@ class DownloadManager extends Notifier<DownloadsStatus> {
       if (!giveUp) {
         final wait = retryBase * (1 << (attempts - 1));
         _retryAt[t.id] = DateTime.now().add(wait);
-        _retryTimer?.cancel();
-        _retryTimer = Timer(wait, pump);
+        _scheduleRetry();
       }
     }
   }

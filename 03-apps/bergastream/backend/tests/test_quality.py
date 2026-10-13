@@ -167,6 +167,24 @@ ok((b.search(10), b.search(10), b.search(11), b.search(12)), (True, False, True,
    "uma busca por álbum por rodada; para no teto")
 ok(Budget(5, 0).can_request(), False, "sem vaga: não pede álbum novo")
 ok(Budget(0, 5).can_request(), False, "sem busca no orçamento: não pede")
+b = Budget(searches=3, slots=1, reserve=2)
+ok((b.search(20, repeat=True), b.search(21, repeat=True), b.search(22)), (True, None, True),
+   "busca repetida para na reserva; pedido novo usa a reserva")
+ok(b.can_request(), True, "reserva sobrando: ainda pede álbum novo")
+
+print("=== Lidarr: fila travada ===")
+blocked = {"trackedDownloadState": "importBlocked", "trackedDownloadStatus": "warning",
+           "statusMessages": [{"title": "Album.2020.FLAC", "messages": ["Caution: Found executable file with extension: '.exe'"]}]}
+ok(lidarr.stuck_reason(blocked), "Caution: Found executable file with extension: '.exe'", "importação bloqueada (.exe)")
+ok(lidarr.stuck_reason({"trackedDownloadState": "downloading", "trackedDownloadStatus": "warning"}), None,
+   "baixando com aviso: deixa andar")
+ok(lidarr.stuck_reason({"trackedDownloadState": "importPending", "trackedDownloadStatus": "ok"}), None,
+   "importação pendente sem aviso: deixa andar")
+ok(lidarr.stuck_reason({"trackedDownloadState": "importPending", "trackedDownloadStatus": "warning",
+                        "statusMessages": [{"title": "Sem faixas que casem"}]}), "Sem faixas que casem",
+   "importação pendente com aviso: travou")
+ok(lidarr.stuck_reason({"trackedDownloadState": "downloadFailedPending"}), "downloadFailedPending",
+   "download falhou")
 
 print("=== Deemix: do melhor formato para o pior ===")
 tried = []

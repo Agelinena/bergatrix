@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import shutil
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -69,12 +70,19 @@ async def sync_permanence(pool: "asyncpg.Pool", track_id: str) -> str | None:
     kind = "permanent" if permanent else "cache"
     path = Path(row["path"])
     target = PERMANENT_DIR if permanent else CACHE_DIR
+    linked_from: Path | None = None  # origem a apagar depois de gravar o banco
     # Só move o que está nas pastas do app (cache ↔ permanent).
     if path.parent in (CACHE_DIR, PERMANENT_DIR) and path.parent != target and path.exists():
         destination = target / path.name
         try:
             target.mkdir(parents=True, exist_ok=True)
-            await asyncio.to_thread(shutil.move, str(path), str(destination))
+            try:
+                # Link no destino, banco, depois apaga a origem: o caminho
+                # gravado nunca fica sem arquivo (quem está ouvindo não cai).
+                await asyncio.to_thread(os.link, path, destination)
+                linked_from = path
+            except OSError:
+                await asyncio.to_thread(shutil.move, str(path), str(destination))
             path = destination
             logger.info("[permanência] %s → %s/", path.name, target.name)
         except OSError as exc:
@@ -89,6 +97,8 @@ async def sync_permanence(pool: "asyncpg.Pool", track_id: str) -> str | None:
         await pool.execute(
             "UPDATE files SET kind = 'cache', path = $2, last_played_at = now() WHERE track_id = $1",
             track_id, str(path))
+    if linked_from is not None:
+        linked_from.unlink(missing_ok=True)
     return kind
 
 

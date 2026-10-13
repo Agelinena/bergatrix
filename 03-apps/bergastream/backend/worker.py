@@ -17,6 +17,7 @@ from app.tracks import repository as track_repo
 logging.basicConfig(level=getattr(logging, settings.log_level.upper(), logging.INFO), format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger("bergastream.worker")
 MAX_CONCURRENT = 2; _POLL_TIMEOUT = 3
+MAX_LOW = 1                        # downloads de playlist ao mesmo tempo
 SPOTIFY_FIRST_CHECK = 120          # s depois de subir
 SPOTIFY_CHECK_HOURS = 24
 SPOTIFY_RETRY_HOURS = 6            # quando falhou e ainda não há versão nova
@@ -43,6 +44,13 @@ async def process_job(redis, pool, job_id: str) -> None:
     if not job:
         return
     track_id = job["track_id"]; provider = job.get("provider", "spotify")
+    if job.get("status") not in (None, "queued"):
+        return  # já processado (saiu de duas filas depois de promovido)
+    if await track_repo.track_has_file(pool, track_id):
+        # Já baixada (outro pedido chegou antes): baixar de novo trocaria o
+        # arquivo de quem está ouvindo.
+        await q.set_job_status(redis, job_id, "done")
+        return
     if not await q.mark_active(redis, track_id):
         return
     await q.set_job_status(redis, job_id, "downloading")
@@ -82,14 +90,20 @@ async def main_loop() -> None:
     background = [asyncio.create_task(upgrade_forever(pool, redis)),
                   asyncio.create_task(spotify_watch(redis))]
     active_tasks = set()
-    def _clean(t): active_tasks.discard(t)
+    low_tasks = set()  # downloads de playlist (prioridade 3) em andamento
+    def _clean(t): active_tasks.discard(t); low_tasks.discard(t)
     while not _restart.is_set():
         while len(active_tasks) < MAX_CONCURRENT:
-            job_id = await q.dequeue(redis, timeout=_POLL_TIMEOUT)
+            # No máximo MAX_LOW downloads de playlist ao mesmo tempo: sempre
+            # sobra vaga para a música que alguém quer ouvir agora.
+            job_id = await q.dequeue(redis, timeout=_POLL_TIMEOUT, include_low=len(low_tasks) < MAX_LOW)
             if not job_id:
                 break
+            job = await q.get_job(redis, job_id) or {}
             t = asyncio.create_task(process_job(redis, pool, job_id))
             active_tasks.add(t); t.add_done_callback(_clean)
+            if job.get("priority") == "3":
+                low_tasks.add(t)
         await asyncio.sleep(0.1)
     logger.warning("[worker] reiniciando para carregar a biblioteca nova (esperando %d download(s))",
                    len(active_tasks))

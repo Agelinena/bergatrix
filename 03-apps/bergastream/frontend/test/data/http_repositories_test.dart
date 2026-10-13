@@ -35,6 +35,44 @@ void main() {
       }
     }
 
+    Future<AuthError?> refreshError(FakeAdapter adapter) async {
+      try {
+        await repoWith(
+          adapter,
+        ).refresh(server: 'https://s.com', refreshToken: 'r');
+        return null;
+      } on AuthException catch (e) {
+        return e.error;
+      }
+    }
+
+    test('renovação: só a API recusando encerra a sessão', () async {
+      expect(
+        await refreshError(
+          FakeAdapter((_) async => jsonBody({'detail': 'x'}, status: 401)),
+        ),
+        AuthError.credenciaisInvalidas,
+      );
+      // Proxy na frente (contêiner reiniciando, Authentik): servidor fora.
+      for (final status in [403, 404, 429, 502]) {
+        expect(
+          await refreshError(
+            FakeAdapter(
+              (_) async => ResponseBody.fromString(
+                '<html>erro</html>',
+                status,
+                headers: {
+                  Headers.contentTypeHeader: ['text/html'],
+                },
+              ),
+            ),
+          ),
+          AuthError.semConexao,
+          reason: 'HTTP $status do proxy',
+        );
+      }
+    });
+
     test('login lê a resposta real do backend', () async {
       final adapter = FakeAdapter((_) async => jsonBody(fixture('login.json')));
       final response = await repoWith(

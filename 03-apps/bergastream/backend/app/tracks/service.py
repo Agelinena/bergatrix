@@ -12,6 +12,8 @@ Fluxo completo (Etapa 2):
 
 from __future__ import annotations
 
+import asyncio
+
 import logging
 from typing import TYPE_CHECKING
 
@@ -104,7 +106,12 @@ async def enrich_from_spotify(req: PlayRequest) -> None:
 
 
 async def _extract_isrc(video_id: str) -> str | None:
-    """Extrai ISRC de vídeo YouTube via yt-dlp (sem baixar áudio)."""
+    """Extrai ISRC de vídeo YouTube via yt-dlp (sem baixar áudio). Em
+    thread: o yt-dlp é síncrono e travava a API inteira por segundos."""
+    return await asyncio.to_thread(_extract_isrc_sync, video_id)
+
+
+def _extract_isrc_sync(video_id: str) -> str | None:
     import yt_dlp
     try:
         with yt_dlp.YoutubeDL({"quiet": True, "no_warnings": True, "ignoreerrors": True}) as ydl:

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:background_downloader/background_downloader.dart';
@@ -26,6 +27,17 @@ class FetchResult {
   final String? quality;
 }
 
+/// Falha passageira (sem rede, servidor fora): o download volta para a fila
+/// sem contar tentativa.
+class TransientFetchError implements Exception {
+  const TransientFetchError(this.message);
+
+  final String message;
+
+  @override
+  String toString() => 'TransientFetchError: $message';
+}
+
 /// Baixa um arquivo para [path]. Lança em erro de rede ou HTTP.
 abstract interface class FileFetcher {
   Future<FetchResult> fetch(
@@ -49,13 +61,22 @@ class DioFileFetcher implements FileFetcher {
     String? label,
     void Function(double progress)? onProgress,
   }) async {
-    final response = await _dio.downloadUri(
-      url,
-      path,
-      onReceiveProgress: (received, total) {
-        if (total > 0) onProgress?.call(received / total);
-      },
-    );
+    final Response<dynamic> response;
+    try {
+      response = await _dio.downloadUri(
+        url,
+        path,
+        onReceiveProgress: (received, total) {
+          if (total > 0) onProgress?.call(received / total);
+        },
+      );
+    } on DioException catch (e) {
+      final status = e.response?.statusCode;
+      if (status == null || status >= 500) {
+        throw TransientFetchError('${e.type.name} ${status ?? ''}'.trim());
+      }
+      rethrow;
+    }
     return FetchResult(
       bytes: await File(path).length(),
       expectedBytes: int.tryParse(
@@ -94,10 +115,12 @@ class BackgroundFileFetcher implements FileFetcher {
       },
     );
     if (update.status != TaskStatus.complete) {
-      throw HttpException(
-        'Download ${update.status.name} (${update.responseStatusCode})',
-        uri: url,
-      );
+      final status = update.responseStatusCode;
+      // Sem resposta (rede caiu, aparelho dormiu) ou servidor fora: passageiro.
+      if (status == null || status >= 500) {
+        throw TransientFetchError('${update.status.name} ($status)');
+      }
+      throw HttpException('Download ${update.status.name} ($status)', uri: url);
     }
     final headers = {
       for (final e in (update.responseHeaders ?? const {}).entries)
@@ -112,7 +135,10 @@ class BackgroundFileFetcher implements FileFetcher {
   }
 }
 
-/// Configura a notificação de progresso dos downloads (Android).
+/// Configura a notificação de progresso dos downloads (Android) e roda os
+/// downloads em primeiro plano: com a notificação ativa o Android não
+/// congela o app, e a fila continua com a tela apagada ou o app minimizado
+/// (antes só seguia enquanto tocava música).
 void configureDownloadNotifications() {
   if (kIsWeb || !Platform.isAndroid) return;
   FileDownloader().configureNotification(
@@ -120,6 +146,26 @@ void configureDownloadNotifications() {
     error: const TaskNotification('Falha no download', '{displayName}'),
     progressBar: true,
   );
+  unawaited(
+    FileDownloader().configure(
+      androidConfig: [(Config.runInForeground, Config.always)],
+    ),
+  );
+}
+
+/// Android 13+: a notificação de progresso precisa de permissão; sem ela o
+/// download não roda em primeiro plano. Pede uma vez, ao baixar.
+Future<void> requestDownloadNotifications() async {
+  if (kIsWeb || !Platform.isAndroid) return;
+  try {
+    final permissions = FileDownloader().permissions;
+    final status = await permissions.status(PermissionType.notifications);
+    if (status != PermissionStatus.granted) {
+      await permissions.request(PermissionType.notifications);
+    }
+  } on Object catch (e) {
+    debugPrint('Permissão de notificação: $e');
+  }
 }
 
 final fileFetcherProvider = Provider<FileFetcher>((ref) {

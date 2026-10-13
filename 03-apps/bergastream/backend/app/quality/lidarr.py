@@ -128,6 +128,24 @@ def pick_parts(tracks: list[dict], title: str, duration_seconds: int) -> list[di
     return [match] if match else []
 
 
+# Estados da fila do Lidarr (TrackedDownloadState) em que o download não
+# anda mais sozinho: importação bloqueada (ex.: release com .exe, faixas que
+# não casam) ou falhou, e download que falhou.
+STUCK_STATES = {"importBlocked", "importFailed", "downloadFailed", "downloadFailedPending"}
+
+
+def stuck_reason(item: dict) -> str | None:
+    """Motivo, se o item da fila travou; None se está andando. Importação
+    "pendente" só conta se o Lidarr marcou aviso ou erro."""
+    state = item.get("trackedDownloadState")
+    health = (item.get("trackedDownloadStatus") or "").lower()
+    if state not in STUCK_STATES and not (state == "importPending" and health in ("warning", "error")):
+        return None
+    messages = [m for s in item.get("statusMessages") or []
+                for m in (s.get("messages") or [s.get("title")]) if m]
+    return ("; ".join(messages) or item.get("errorMessage") or state)[:200]
+
+
 def local_path(remote: str) -> str:
     """Caminho do arquivo no container do Lidarr → caminho montado aqui."""
     root = settings.lidarr_remote_root.rstrip("/")
@@ -200,7 +218,41 @@ class Lidarr:
 
     async def artist_by_mbid(self, mbid: str) -> dict | None:
         found = await self._req("GET", "/artist", params={"mbId": mbid}) or []
-        return found[0] if found else None
+        # Confere no cliente: um Lidarr que ignore o filtro devolveria todos.
+        return next((a for a in found if a.get("foreignArtistId") == mbid), None)
+
+    async def artists(self) -> list[dict]:
+        return await self._req("GET", "/artist") or []
+
+    async def monitor_artists(self, artist_ids: list[int]) -> None:
+        """Artista monitorado: sem isso o Lidarr ignora o álbum no RSS e na
+        busca de faltantes, mesmo com o álbum monitorado."""
+        if artist_ids:
+            await self._req("PUT", "/artist/editor", json={"artistIds": artist_ids, "monitored": True})
+
+    async def albums_by_ids(self, album_ids: list[int]) -> list[dict]:
+        found: list[dict] = []
+        for i in range(0, len(album_ids), 100):
+            chunk = album_ids[i:i + 100]
+            found += await self._req("GET", "/album", params={"albumIds": chunk}) or []
+        return found
+
+    async def queue(self) -> list[dict]:
+        """Itens na fila de download do Lidarr (todas as páginas)."""
+        records: list[dict] = []
+        page = 1
+        while True:
+            data = await self._req("GET", "/queue", params={"page": page, "pageSize": 200}) or {}
+            records += data.get("records") or []
+            if len(records) >= (data.get("totalRecords") or 0) or not data.get("records"):
+                return records
+            page += 1
+
+    async def remove_queued(self, queue_id: int) -> None:
+        """Tira da fila e do SABnzbd e põe o release na blocklist (não vem de
+        novo). A nova busca é feita pelo Bergastream, dentro do orçamento."""
+        await self._req("DELETE", f"/queue/{queue_id}", params={
+            "removeFromClient": "true", "blocklist": "true", "skipRedownload": "true"})
 
     async def add_artist(self, lookup_artist: dict, foreign_album_id: str) -> dict:
         """Adiciona o artista monitorando SÓ o álbum pedido; o Lidarr busca

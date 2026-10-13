@@ -405,6 +405,39 @@ Rodado na imagem `ghcr.io/cirruslabs/flutter:stable` (Flutter 3.44.0 / Dart 3.12
 - Testes: `test_quality` 61, `test_upgrade_flow` 10 (novo; banco real e Lidarr falso). Validado
   contra o MusicBrainz e um Lidarr local (ISRC → álbum de estúdio → `album/lookup` por MBID).
 
+### Versão 0.3.1 — correções de uso (player, conexão, downloads, Lidarr)
+- **Música pulando para o fim e trocando sozinha (Busca):** o servidor baixava a mesma faixa duas
+  vezes (pré-carregamento + play) e o segundo download trocava o arquivo de quem estava ouvindo,
+  cortando o stream; o app tratava o corte como fim da música. Agora: a fila não duplica (e promove
+  o pedido de play), o worker pula faixa que já tem arquivo, o stream mede o arquivo aberto (não
+  muda no meio) e ajusta Range além do fim, a mudança cache → permanente não deixa o caminho sem
+  arquivo; no app, "acabou" longe do fim ou erro no meio retoma do ponto com URL nova (até 2 vezes).
+- **Bluetooth/fone desconectado:** o motor pausava sozinho e o app seguia "tocando" (sem som, e o
+  play precisava de dois toques); agora tela e notificação mostram pausado (na sessão "ouvir junto",
+  pausa só neste aparelho).
+- **Próxima música da fila:** pedida aos 8 s (antes 20 s), com nova tentativa se falhar; status a
+  cada 1 s; no avanço automático, música que não toca é pulada (até 3) em vez de parar a fila. No
+  servidor: no máximo 1 download de playlist por vez (sobra vaga para quem está ouvindo), a
+  melhoria pelo Deemix espera enquanto há play na fila, `/status` sem varrer o Redis (jobs expiram)
+  e o ISRC do YouTube fora do loop da API.
+- **Conexão perdida até reabrir o app:** monitor do servidor, sincronização e downloads ficam
+  vivos (o Riverpod pausava provider só "lido"); ao voltar ao app confere o servidor, retoma
+  downloads e reconecta; "Tentar agora" no aviso; renovação do login só expira a sessão com 401/
+  400/422 da API (proxy, DNS, 5xx viram "servidor fora"); WebSockets detectam conexão "meio aberta".
+- **Downloads em segundo plano (Android):** rodam em primeiro plano com a notificação (permissão
+  `FOREGROUND_SERVICE_DATA_SYNC` e pedido de notificação no Android 13+); queda de rede não gasta
+  tentativa; nova tentativa pela mais próxima (um timer que disparava um instante antes da hora
+  deixava a faixa parada).
+- **Troca de qualidade sem aviso:** "Melhorando qualidade (N)" no botão da playlist e nos
+  Downloads, qualidade de cada playlist baixada e aviso "N músicas trocadas por qualidade melhor";
+  sem o cabeçalho de qualidade, pergunta ao servidor (evita baixar de novo em loop).
+- **Lidarr:** download travado na fila (importação bloqueada — ex.: `.exe` — ou falha) há mais de
+  1 h é removido do SABnzbd, vai para a blocklist e o álbum é buscado de novo; a cada 6 h artistas
+  e álbuns ainda esperados voltam a ser monitorados (artista sem monitorar fazia o Lidarr ignorar o
+  álbum); `LIDARR_REQUEST_RESERVE` (30) guarda buscas para pedidos novos (as repetidas gastavam o
+  orçamento todo); álbum não é desmonitorado/apagado se outra faixa ainda espera.
+- Testes: backend `test_stream_queue` 11 (novo), `test_quality` 68, `test_upgrade_flow` 17; app 376.
+
 ### Versão 0.3.0 — Spotify sem conta, qualidade real e FLAC das playlists (servidor)
 - **Spotify sem conta:** desde fev/2026 a Web API exige Premium do dono do app (sem ele, a aba
   Spotify ficava vazia). Agora: biblioteca **SpotifyScraper** (token anônimo do web player) para

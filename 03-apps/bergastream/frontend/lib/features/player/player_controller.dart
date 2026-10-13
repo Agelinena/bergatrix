@@ -90,10 +90,12 @@ class PlayerMessage {
 /// Tempos do player (os testes zeram).
 class PlayerTimings {
   const PlayerTimings({
-    this.pollInterval = const Duration(milliseconds: 1500),
+    this.pollInterval = const Duration(seconds: 1),
     this.prepareTimeout = const Duration(minutes: 3),
     this.rapidChangeDelay = const Duration(milliseconds: 500),
-    this.prefetchAfter = const Duration(seconds: 20),
+    this.prefetchAfter = const Duration(seconds: 8),
+    this.prefetchRetry = const Duration(seconds: 20),
+    this.autoSkipDelay = const Duration(seconds: 2),
   });
 
   final Duration pollInterval;
@@ -106,6 +108,13 @@ class PlayerTimings {
   /// Depois de tocar isto (ou metade de uma faixa curta), pede ao servidor
   /// para preparar só a próxima: a troca fica instantânea.
   final Duration prefetchAfter;
+
+  /// O pedido da próxima falhou: tenta de novo depois disto.
+  final Duration prefetchRetry;
+
+  /// Música da fila que não tocou (avanço automático): pula para a seguinte
+  /// depois disto, em vez de parar tudo.
+  final Duration autoSkipDelay;
 }
 
 final playerTimingsProvider = Provider<PlayerTimings>(
@@ -224,6 +233,10 @@ abstract interface class SharedPlayback {
   void act(Map<String, Object?> action);
 
   Future<void> togglePlay();
+
+  /// O sistema pausou este aparelho (fone desconectado, ligação): pausa só
+  /// aqui, sem pausar a sessão.
+  void pausedHere();
 }
 
 final playerProvider = NotifierProvider<PlayerController, PlayerState>(
@@ -239,6 +252,23 @@ class PlayerController extends Notifier<PlayerState> {
 
   /// Faixa cuja próxima já foi pedida ao servidor.
   int? _prefetchedFor;
+  DateTime _prefetchRetryAt = DateTime.fromMillisecondsSinceEpoch(0);
+
+  /// Faixa atual vem do servidor (id lá), não de arquivo no aparelho.
+  String? _streamTrackId;
+
+  /// Último ponto visto da faixa (o motor zera a posição ao terminar).
+  Duration _lastPosition = Duration.zero;
+
+  /// Retomadas do stream nesta faixa (cortado no meio).
+  int _streamResumes = 0;
+  static const maxStreamResumes = 2;
+
+  /// A faixa atual entrou por avanço automático (fim da anterior): se não
+  /// tocar, pula para a seguinte. Contador evita pular a fila inteira.
+  bool _autoAdvanced = false;
+  int _autoSkips = 0;
+  static const maxAutoSkips = 3;
   Duration? _duration;
   bool _counted = false;
   final _subscriptions = <StreamSubscription<Object?>>[];
@@ -283,7 +313,7 @@ class PlayerController extends Notifier<PlayerState> {
         final other => other,
       };
       _generation++;
-      unawaited(_engine.pause());
+      unawaited(_own(_engine.pause));
     }
     _remote = remote;
     _remoteTicker ??= Timer.periodic(
@@ -357,7 +387,7 @@ class PlayerController extends Notifier<PlayerState> {
     final playing = state.isPlaying || state.isPreparing;
     final snapshot = _snapshot();
     _generation++;
-    unawaited(_engine.pause());
+    unawaited(_own(_engine.pause));
     if (_queue.current != null) _publish(status: PlaybackStatus.pausado);
     return {...snapshot, 'playing': playing};
   }
@@ -420,7 +450,7 @@ class PlayerController extends Notifier<PlayerState> {
     _sharedOrder = const [];
     _sharedIndex = -1;
     _generation++;
-    unawaited(_engine.pause());
+    unawaited(_own(_engine.pause));
     _publish(
       status: _queue.current == null
           ? PlaybackStatus.parado
@@ -486,7 +516,7 @@ class PlayerController extends Notifier<PlayerState> {
       // Sessão sem nada tocando.
       _generation++;
       _loadedTrackId = null;
-      await _engine.pause();
+      await _own(_engine.pause);
       if (!ref.mounted) return;
       _publish(status: PlaybackStatus.parado);
       return;
@@ -517,7 +547,7 @@ class PlayerController extends Notifier<PlayerState> {
       _engine.play();
       _publish(status: PlaybackStatus.tocando);
     } else if (!shouldPlay && state.isPlaying) {
-      await _engine.pause();
+      await _own(_engine.pause);
       if (!ref.mounted) return;
       _publish(status: PlaybackStatus.pausado);
     } else {
@@ -552,7 +582,9 @@ class PlayerController extends Notifier<PlayerState> {
     _subscriptions
       ..add(engine.completedStream.listen((_) => _onCompleted()))
       ..add(engine.durationStream.listen(_onDuration))
-      ..add(engine.positionStream.listen(_onPosition));
+      ..add(engine.positionStream.listen(_onPosition))
+      ..add(engine.playingStream.listen(_onEnginePlaying))
+      ..add(engine.errorStream.listen(_onEngineError));
     _notification?.onCommand = _onNotificationCommand;
     Future.microtask(_restore);
     ref.onDispose(() {
@@ -747,7 +779,7 @@ class PlayerController extends Notifier<PlayerState> {
     if (_group case final group?) return group.togglePlay();
     switch (state.status) {
       case PlaybackStatus.tocando:
-        await _engine.pause();
+        await _own(_engine.pause);
         _publish(status: PlaybackStatus.pausado);
       case PlaybackStatus.pausado:
         if (_needsLoad) {
@@ -961,7 +993,7 @@ class PlayerController extends Notifier<PlayerState> {
     final item = _queue.next(ended: ended);
     if (item == null) {
       // Acabou tudo: para no fim (Seção 7.2).
-      await _engine.pause();
+      await _own(_engine.pause);
       await _engine.seek(Duration.zero);
       _publish(status: PlaybackStatus.parado);
       return;
@@ -969,11 +1001,12 @@ class PlayerController extends Notifier<PlayerState> {
     if (ended && identical(item, state.current)) {
       // Repetir uma faixa.
       _counted = false;
+      _lastPosition = Duration.zero;
       await _engine.seek(Duration.zero);
       _engine.play();
       return;
     }
-    await _loadCurrent();
+    await _loadCurrent(auto: ended);
   }
 
   void _onCompleted() {
@@ -987,8 +1020,93 @@ class PlayerController extends Notifier<PlayerState> {
       return;
     }
     if (state.status == PlaybackStatus.tocando) {
+      if (_streamCutShort()) {
+        unawaited(_resumeStream('terminou cedo'));
+        return;
+      }
       unawaited(_advance(ended: true));
     }
+  }
+
+  /// Duração esperada da faixa atual (a do arquivo ou a dos dados).
+  Duration? get _expectedDuration {
+    final known = _duration;
+    if (known != null && known > Duration.zero) return known;
+    final seconds = state.current?.track.durationSeconds ?? 0;
+    return seconds > 0 ? Duration(seconds: seconds) : null;
+  }
+
+  /// O stream "acabou" longe do fim: foi cortado (rede, arquivo trocado no
+  /// servidor), não é o fim da música.
+  bool _streamCutShort() {
+    final expected = _expectedDuration;
+    return _streamTrackId != null &&
+        expected != null &&
+        _lastPosition < expected - const Duration(seconds: 5) &&
+        _streamResumes < maxStreamResumes;
+  }
+
+  /// Retoma o stream do ponto em que parou, com uma URL nova.
+  Future<void> _resumeStream(String why) async {
+    final trackId = _streamTrackId;
+    final at = _lastPosition;
+    if (trackId == null) return;
+    _streamResumes++;
+    final generation = _generation;
+    debugPrint('Stream $why em ${at.inSeconds}s: retomando ($_streamResumes)');
+    try {
+      final level = await _streamQuality();
+      final url = await _repository.streamUrl(trackId, quality: level.api);
+      if (generation != _generation) return;
+      await _own(() => _engine.setUrl(url));
+      if (generation != _generation) return;
+      if (at > Duration.zero) await _engine.seek(at);
+      if (generation != _generation) return;
+      if (state.isPlaying) _engine.play();
+    } on Object catch (e) {
+      if (generation != _generation) return;
+      debugPrint('Não retomou o stream: $e');
+      unawaited(_advance(ended: true));
+    }
+  }
+
+  /// Operações do próprio app no motor (pausar, trocar a fonte) em curso:
+  /// a mudança de "tocando" que elas causam não é do sistema.
+  int _ownEngineOps = 0;
+
+  Future<T> _own<T>(Future<T> Function() op) async {
+    _ownEngineOps++;
+    try {
+      return await op();
+    } finally {
+      _ownEngineOps--;
+    }
+  }
+
+  /// O motor parou ou voltou a tocar sem o app pedir (Bluetooth/fone
+  /// desconectado, ligação, outro app): a tela e a notificação acompanham.
+  void _onEnginePlaying(bool playing) {
+    if (_remote != null || _ownEngineOps > 0) return;
+    if (!playing && state.status == PlaybackStatus.tocando) {
+      _group?.pausedHere();
+      _publish(status: PlaybackStatus.pausado);
+      unawaited(_save());
+    } else if (playing &&
+        state.status == PlaybackStatus.pausado &&
+        !_needsLoad) {
+      _publish(status: PlaybackStatus.tocando);
+    }
+  }
+
+  /// Erro no meio da faixa: retoma o stream; sem como, avisa.
+  void _onEngineError(Object error) {
+    if (_remote != null || state.status != PlaybackStatus.tocando) return;
+    debugPrint('Erro no motor de áudio: $error');
+    if (_streamTrackId != null && _streamResumes < maxStreamResumes) {
+      unawaited(_resumeStream('com erro'));
+      return;
+    }
+    _publish(status: PlaybackStatus.erro, message: PlayerMessage(notPlayable));
   }
 
   /// Nível pedido ao servidor para tocar: o do Wi-Fi (ou cabo, ou web) ou o
@@ -1022,7 +1140,7 @@ class PlayerController extends Notifier<PlayerState> {
 
   /// Prepara no servidor, espera ficar pronta e toca (Seção 7.3, item 2).
   /// Trocar de faixa no meio cancela a anterior ([_generation]).
-  Future<void> _loadCurrent({Duration? startAt}) async {
+  Future<void> _loadCurrent({Duration? startAt, bool auto = false}) async {
     final item = _queue.current;
     if (item == null) return;
     _needsLoad = false;
@@ -1030,6 +1148,11 @@ class PlayerController extends Notifier<PlayerState> {
     final generation = ++_generation;
     _counted = false;
     _duration = null;
+    _streamTrackId = null;
+    _streamResumes = 0;
+    _lastPosition = startAt ?? Duration.zero;
+    _autoAdvanced = auto;
+    if (!auto) _autoSkips = 0;
     _quality = null;
     _loadedTrackId = item.track.id;
     _publish(status: PlaybackStatus.preparando);
@@ -1045,7 +1168,7 @@ class PlayerController extends Notifier<PlayerState> {
       coverUrl: item.track.coverUrl,
     );
     // Pausa (e não "stop"): o serviço de mídia continua ativo na troca.
-    await _engine.pause();
+    await _own(_engine.pause);
 
     // 1. Arquivo baixado no aparelho (funciona sem servidor) — Seção 7.3.
     final local = await ref
@@ -1055,7 +1178,7 @@ class PlayerController extends Notifier<PlayerState> {
     final path = local?.audioPath;
     if (path != null && File(path).existsSync()) {
       _quality = local?.qualityLabel;
-      await _engine.setFile(path);
+      await _own(() => _engine.setFile(path));
       if (generation != _generation) return;
       await _start(startAt);
       return;
@@ -1104,20 +1227,32 @@ class PlayerController extends Notifier<PlayerState> {
       );
       if (generation != _generation) return;
       unawaited(_loadQualityLabel(item.track.id, level.api, generation));
-      await _engine.setUrl(url);
+      await _own(() => _engine.setUrl(url));
       if (generation != _generation) return;
+      _streamTrackId = prepared.trackId;
       await _start(startAt);
+      _autoSkips = 0;
     } on Object catch (e) {
       if (generation != _generation) return;
       debugPrint('Falha ao tocar ${item.track.title}: $e');
+      final offline = e is ApiException && e.kind == ApiErrorKind.semConexao;
       _publish(
         status: PlaybackStatus.erro,
-        message: PlayerMessage(
-          e is ApiException && e.kind == ApiErrorKind.semConexao
-              ? e.message
-              : notPlayable,
-        ),
+        message: PlayerMessage(offline ? e.message : notPlayable),
       );
+      // Fila tocando sozinha: pula a que não deu, sem parar tudo.
+      if (_autoAdvanced &&
+          !offline &&
+          _autoSkips < maxAutoSkips &&
+          _queue.peekNext != null) {
+        _autoSkips++;
+        await Future<void>.delayed(
+          ref.read(playerTimingsProvider).autoSkipDelay,
+        );
+        if (generation == _generation && ref.mounted) {
+          unawaited(_advance(ended: true));
+        }
+      }
     }
   }
 
@@ -1145,6 +1280,8 @@ class PlayerController extends Notifier<PlayerState> {
   void _onPosition(Duration position) {
     if (_remote != null) return;
     _positions.add(position);
+    // O motor zera a posição ao terminar: guarda o último ponto real.
+    if (position > Duration.zero) _lastPosition = position;
     // Posição guardada a cada 10 s (para continuar ao reabrir o app).
     if (state.isPlaying &&
         DateTime.now().difference(_lastPositionSave) >
@@ -1180,16 +1317,21 @@ class PlayerController extends Notifier<PlayerState> {
   /// (quem passa músicas rápido não dispara downloads).
   void _maybePrefetch(QueueItem current, Duration position) {
     if (_prefetchedFor == current.uid ||
-        state.status != PlaybackStatus.tocando) {
+        state.status != PlaybackStatus.tocando ||
+        DateTime.now().isBefore(_prefetchRetryAt)) {
       return;
     }
-    final after = ref.read(playerTimingsProvider).prefetchAfter;
+    final timings = ref.read(playerTimingsProvider);
     final duration = _duration;
     final half = duration == null ? null : duration * 0.5;
-    if (position < after && (half == null || position < half)) return;
-    _prefetchedFor = current.uid;
+    if (position < timings.prefetchAfter && (half == null || position < half)) {
+      return;
+    }
     final next = _queue.peekNext;
     if (next == null || !ref.read(sessionProvider).canUseServer) return;
+    // Marca já (não pede duas vezes enquanto espera); se falhar, desmarca e
+    // tenta de novo depois de prefetchRetry.
+    _prefetchedFor = current.uid;
     unawaited(() async {
       try {
         final local = await ref
@@ -1199,6 +1341,8 @@ class PlayerController extends Notifier<PlayerState> {
         await _repository.prepare(next.track);
       } on Object catch (e) {
         debugPrint('Não preparou a próxima: $e');
+        if (_prefetchedFor == current.uid) _prefetchedFor = null;
+        _prefetchRetryAt = DateTime.now().add(timings.prefetchRetry);
       }
     }());
   }
@@ -1212,7 +1356,7 @@ class PlayerController extends Notifier<PlayerState> {
       case 'previous':
         unawaited(previous());
       case 'stop':
-        unawaited(_engine.pause());
+        unawaited(_own(_engine.pause));
         _publish(status: PlaybackStatus.pausado);
       case 'seek':
         if (position != null) unawaited(seek(position));

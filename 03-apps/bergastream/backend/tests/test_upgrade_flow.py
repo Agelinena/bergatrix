@@ -105,10 +105,56 @@ class FakeLidarr:
     async def albums(self, artist_id):
         return []
 
+    # Fila do Lidarr e monitoramento.
+    queued: list[dict] = []
+    removed: list[int] = []
+    album_state: dict = {}
+    artist_state: list[dict] = []
+    monitored_albums: list[int] = []
+    monitored_artists: list[int] = []
+
+    async def queue(self):
+        return self.queued
+
+    async def remove_queued(self, queue_id):
+        self.removed.append(queue_id)
+
+    async def albums_by_ids(self, ids):
+        return [self.album_state[i] for i in ids if i in self.album_state]
+
+    async def artists(self):
+        return self.artist_state
+
+    async def monitor_artists(self, ids):
+        self.monitored_artists.extend(ids)
+
 
 class FakeRedis:
+    def __init__(self):
+        self.hashes: dict = {}
+        self.values: dict = {}
+
     async def smembers(self, key):
         return set()
+
+    async def llen(self, key):
+        return 0
+
+    async def hgetall(self, key):
+        return dict(self.hashes.get(key, {}))
+
+    async def hset(self, key, field, value):
+        self.hashes.setdefault(key, {})[field] = value
+
+    async def hdel(self, key, *fields):
+        for f in fields:
+            self.hashes.get(key, {}).pop(f, None)
+
+    async def get(self, key):
+        return self.values.get(key)
+
+    async def set(self, key, value):
+        self.values[key] = value
 
 
 async def main():
@@ -218,6 +264,38 @@ async def main():
         b = upgrader.Budget(searches=1, slots=0)
         await upgrader.check_lidarr(pool, await row(flood[0]), lidarr, b)
         ok((lidarr.searched, (await row(flood[0]))["searches"]), ([901], 2), "com orçamento: busca")
+
+        print("=== download travado na fila do Lidarr ===")
+        old_grace = upgrader.STUCK_GRACE
+        fake, redis = FakeLidarr(), FakeRedis()
+        fake.removed, fake.queued = [], [
+            {"id": 5, "albumId": 901, "trackedDownloadState": "importBlocked",
+             "statusMessages": [{"title": "x", "messages": ["Found executable file .exe"]}]},
+            {"id": 6, "albumId": 999, "trackedDownloadState": "importBlocked"},  # álbum de outra pessoa
+            {"id": 7, "albumId": 901, "trackedDownloadState": "downloading"},
+        ]
+        await pool.execute("UPDATE quality_upgrades SET status = 'waiting', lidarr_searched_at = now() "
+                           "WHERE track_id = $1", flood[0])
+        ok(await upgrader.clear_stuck(pool, redis, fake), 0, "1ª vez travado: só anota (pode destravar)")
+        upgrader.STUCK_GRACE = upgrader.timedelta(0)
+        try:
+            ok(await upgrader.clear_stuck(pool, redis, fake), 1, "passou da carência: remove")
+        finally:
+            upgrader.STUCK_GRACE = old_grace
+        r = await row(flood[0])
+        ok((fake.removed, r["lidarr_searched_at"], "blocklist" in (r["last_error"] or "")), ([5], None, True),
+           "só o nosso álbum sai da fila; nova busca agendada")
+        b = upgrader.Budget(searches=1, slots=0, reserve=1)
+        await upgrader.check_lidarr(pool, await row(flood[0]), fake, b)
+        ok(fake.searched, [901], "busca de novo mesmo com a reserva (não é repetição)")
+
+        print("=== artista e álbum esperados voltam a ser monitorados ===")
+        fake.album_state = {901: {"id": 901, "artistId": 77, "monitored": False}}
+        fake.artist_state = [{"id": 77, "monitored": False}, {"id": 78, "monitored": False}]
+        fake.monitored_artists = []
+        ok(await upgrader.ensure_monitored(pool, redis, fake), 2, "álbum e artista remonitorados")
+        ok(fake.monitored_artists, [77], "só o artista do álbum esperado")
+        ok(await upgrader.ensure_monitored(pool, redis, fake), 0, "não confere de novo antes de 6 h")
     finally:
         settings.lidarr_local_root, upgrader.DEEMIX_BATCH = old_root, old_batch
         settings.lidarr_max_active, settings.lidarr_daily_searches = old_active, old_searches

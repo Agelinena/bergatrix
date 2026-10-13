@@ -164,6 +164,7 @@ Future<ProviderContainer> pumpBergastream(
         const PlayerTimings(
           pollInterval: Duration.zero,
           rapidChangeDelay: Duration.zero,
+          autoSkipDelay: Duration.zero,
         ),
       ),
     ],

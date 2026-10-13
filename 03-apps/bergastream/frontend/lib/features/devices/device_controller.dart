@@ -155,8 +155,43 @@ class DeviceController extends Notifier<DevicesState> implements RemoteControl {
     final loggedIn = ref.watch(sessionProvider.select((s) => s.isLoggedIn));
     ref.onDispose(_teardown);
     ref.listen(playerProvider, _onPlayer);
+    // Servidor voltou: reconecta na hora (sem esperar o próximo intervalo).
+    ref.listen(sessionProvider.select((s) => s.canUseServer), (before, now) {
+      if (now && before == false) reconnectNow();
+    });
     if (loggedIn) Future.microtask(_connect);
     return const DevicesState();
+  }
+
+  /// Última mensagem do servidor (conexão "meio aberta" não avisa que caiu).
+  DateTime _lastHeard = DateTime.now();
+
+  /// De volta ao app ou servidor de volta: reconecta já, se caiu.
+  void reconnectNow() {
+    if (!ref.mounted || _replaced) return;
+    if (_socket != null) {
+      _socket!.send({'type': 'ping', 't0': 0});
+      return;
+    }
+    _reconnect?.cancel();
+    _reconnect = null;
+    _attempt = 0;
+    unawaited(_connect());
+  }
+
+  /// Ping periódico; sem resposta há mais de 2 intervalos, a conexão
+  /// morreu sem avisar (troca de rede, aparelho dormiu): fecha e refaz.
+  void _keepAliveTick(Duration every) {
+    final socket = _socket;
+    if (socket == null) return;
+    if (DateTime.now().difference(_lastHeard) >
+        every * 2 + const Duration(seconds: 5)) {
+      debugPrint('Aparelhos: conexão sem resposta; reconectando');
+      unawaited(socket.close());
+      _onClosed(socket);
+      return;
+    }
+    socket.send({'type': 'ping', 't0': 0});
   }
 
   // ── RemoteControl (usado pelo player em modo remoto) ──
@@ -250,6 +285,7 @@ class DeviceController extends Notifier<DevicesState> implements RemoteControl {
       identity = await ref.read(deviceIdentityProvider.future);
     } on Object catch (e) {
       debugPrint('Aparelho sem identidade: $e');
+      _scheduleReconnect();
       return;
     }
     if (!ref.mounted || _socket != null) return;
@@ -275,6 +311,7 @@ class DeviceController extends Notifier<DevicesState> implements RemoteControl {
   ];
 
   void _onMessage(Map<String, dynamic> message) {
+    _lastHeard = DateTime.now();
     switch (message['type']) {
       case 'hello':
         _attempt = 0;
@@ -288,10 +325,7 @@ class DeviceController extends Notifier<DevicesState> implements RemoteControl {
         final every = _timings.keepAlive;
         _keepAlive?.cancel();
         if (every != null) {
-          _keepAlive = Timer.periodic(
-            every,
-            (_) => _socket?.send({'type': 'ping', 't0': 0}),
-          );
+          _keepAlive = Timer.periodic(every, (_) => _keepAliveTick(every));
         }
         sync();
         final remote = message['state'];
@@ -468,10 +502,10 @@ class DeviceController extends Notifier<DevicesState> implements RemoteControl {
         _replaced = true;
       case 4401:
         unawaited(
-          ref.read(sessionProvider.notifier).refreshTokens().then((ok) {
-            if (ok) {
-              _scheduleReconnect();
-            }
+          // Renovou ou não (sem rede agora), tenta de novo: com o login
+          // vencido de vez, a reconexão para sozinha (sai da conta).
+          ref.read(sessionProvider.notifier).refreshTokens().then((_) {
+            _scheduleReconnect();
           }),
         );
       default:
@@ -490,6 +524,9 @@ class DeviceController extends Notifier<DevicesState> implements RemoteControl {
       if (ref.mounted && _socket == null) unawaited(_connect());
     });
   }
+
+  @visibleForTesting
+  void keepAliveTickForTest(Duration every) => _keepAliveTick(every);
 
   void _teardown() {
     _keepAlive?.cancel();

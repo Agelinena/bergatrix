@@ -14,6 +14,13 @@ abstract interface class AudioEngine {
   /// Emite quando a faixa termina sozinha.
   Stream<void> get completedStream;
 
+  /// Se o motor está tocando. Muda sem o app pedir quando o sistema pausa
+  /// (fone/Bluetooth desconectado, ligação, outro app tocando).
+  Stream<bool> get playingStream;
+
+  /// Erros do motor no meio da faixa (stream cortado, arquivo trocado).
+  Stream<Object> get errorStream;
+
   Duration get position;
 
   Future<void> setUrl(Uri url);
@@ -49,6 +56,12 @@ class JustAudioEngine implements AudioEngine {
   Stream<void> get completedStream => _player.processingStateStream
       .where((s) => s == ja.ProcessingState.completed)
       .map((_) {});
+
+  @override
+  Stream<bool> get playingStream => _player.playingStream;
+
+  @override
+  Stream<Object> get errorStream => _player.errorStream;
 
   @override
   Duration get position => _player.position;

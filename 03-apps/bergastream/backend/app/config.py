@@ -60,6 +60,9 @@ class Settings(BaseSettings):
     lidarr_max_active: int = 30
     # Teto de buscas no indexador por 24 h (pedidos novos + repetições).
     lidarr_daily_searches: int = 100
+    # Parte do orçamento diário guardada para pedidos novos: as buscas
+    # repetidas dos álbuns já pedidos não podem gastar tudo.
+    lidarr_request_reserve: int = 30
     # Depois de copiar a música, apaga o resto do álbum do Lidarr (o Lidarr só
     # baixa álbuns inteiros). true = mantém o álbum na biblioteca do Lidarr.
     lidarr_keep_albums: bool = False

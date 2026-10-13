@@ -123,6 +123,7 @@ Widget wrap(
         const PlayerTimings(
           pollInterval: Duration.zero,
           rapidChangeDelay: Duration.zero,
+          autoSkipDelay: Duration.zero,
         ),
       ),
     ],

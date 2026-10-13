@@ -86,6 +86,23 @@ class PlaylistDownloadButton extends ConsumerWidget {
               ? manager.resume(playlist.id)
               : manager.downloadPlaylist(playlist),
         );
+      case PlaylistDownloadState.baixada when progress.upgrading > 0:
+        // Baixada, trocando cópias por qualidade melhor em segundo plano.
+        return AppChip(
+          label: 'Melhorando qualidade (${progress.upgrading})',
+          leading: SizedBox.square(
+            dimension: 14,
+            child: CircularProgressIndicator(strokeWidth: 2, color: c.gr),
+          ),
+          onTap: () => showChoiceDialog(
+            context,
+            message:
+                'O servidor tem uma versão melhor de ${progress.upgrading} '
+                'música(s) (ou a qualidade escolhida para downloads mudou). '
+                'A cópia atual continua tocando até a nova chegar.',
+            options: const ['Ok'],
+          ),
+        );
       case PlaylistDownloadState.baixada:
         return AppChip(
           label: 'Baixada',

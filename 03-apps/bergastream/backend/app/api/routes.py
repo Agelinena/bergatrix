@@ -6,6 +6,7 @@ token de stream da faixa (o `<audio>` da web não envia cabeçalhos).
 from __future__ import annotations
 import asyncio
 import logging
+import os
 from pathlib import Path
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
 from fastapi import Path as Path_
@@ -187,11 +188,13 @@ async def track_status(track_id: str, user: CurrentUser = Depends(current_user))
         # qualities: o que cada nível (original/high/normal/low) entrega desta faixa.
         return {"track_id": track_id, "status": "ready", "kind": row["kind"],
                 "qualities": variants.qualities(row)}
-    keys = await r.keys("bergastream:job:*")
-    for k in keys:
-        j = await r.hgetall(k)
-        if j and j.get("track_id") == track_id:
-            return {"track_id": track_id, "status": j.get("status", "unknown")}
+    # Job mais recente da faixa (o ponteiro expira com o job).
+    job_id = await r.get(q.track_job_key(track_id))
+    job = await q.get_job(r, job_id) if job_id else None
+    if job:
+        status = job.get("status", "unknown")
+        # "done" sem arquivo: o arquivo foi apagado depois (cache expirou).
+        return {"track_id": track_id, "status": "unknown" if status == "done" else status}
     return {"track_id": track_id, "status": "unknown"}
 
 # Stream
@@ -248,7 +251,6 @@ async def stream_track(track_id: str, request: Request, quality: str = _QUALITY,
     file_path, delivery = await _file_for(track_id, quality)
     await get_pool().execute("UPDATE files SET last_played_at = now() WHERE track_id=$1", track_id)
     media_type = _MEDIA_TYPES.get(file_path.suffix.lower(), "application/octet-stream")
-    file_size = file_path.stat().st_size
     headers = {"Accept-Ranges": "bytes", **_quality_headers(file_path, delivery)}
     range_hdr = request.headers.get("range")
     if not range_hdr:
@@ -256,25 +258,33 @@ async def stream_track(track_id: str, request: Request, quality: str = _QUALITY,
     m = _re.match(r"bytes=(\d*)-(\d*)", range_hdr)
     if not m:
         raise HTTPException(416, detail="Range mal formatado")
+    # Abre uma vez e mede o arquivo aberto: se ele for trocado no meio
+    # (melhoria de qualidade), esta resposta segue inteira e coerente.
+    try:
+        handle = await asyncio.to_thread(open, file_path, "rb")
+    except OSError:
+        raise HTTPException(404, detail="Arquivo nao encontrado em disco")
+    file_size = os.fstat(handle.fileno()).st_size
     start_s, end_s = m.groups()
     start = int(start_s) if start_s else 0
-    end = int(end_s) if end_s else file_size - 1
-    if start >= file_size or end >= file_size:
+    end = min(int(end_s), file_size - 1) if end_s else file_size - 1
+    if start >= file_size:
+        handle.close()
         raise HTTPException(416, detail="Range fora dos limites", headers={"Content-Range": f"bytes */{file_size}"})
     cl = end - start + 1
-    async def _chunk(path, offset, length):
-        import aiofiles
-        async with aiofiles.open(str(path), "rb") as f:
-            await f.seek(offset)
+    async def _chunk(f, offset, length):
+        try:
+            await asyncio.to_thread(f.seek, offset)
             left = length
             while left > 0:
-                bs = min(left, 65536)
-                data = await f.read(bs)
+                data = await asyncio.to_thread(f.read, min(left, 65536))
                 if not data:
                     break
                 yield data
                 left -= len(data)
-    return StreamingResponse(_chunk(file_path, start, cl), status_code=206, media_type=media_type,
+        finally:
+            f.close()
+    return StreamingResponse(_chunk(handle, start, cl), status_code=206, media_type=media_type,
                              headers={**headers, "Content-Range": f"bytes {start}-{end}/{file_size}",
                                       "Content-Length": str(cl)})
 

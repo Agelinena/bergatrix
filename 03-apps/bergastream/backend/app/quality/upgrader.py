@@ -53,6 +53,12 @@ DEEMIX_RETRY = timedelta(days=30)
 CHECK_EVERY = timedelta(minutes=30)
 ARTIST_LOADING = timedelta(minutes=15) # Lidarr carregando a discografia
 LIDARR_ERROR_RETRY = timedelta(hours=1)
+# Item travado na fila do Lidarr por mais que isto: remove e busca de novo.
+STUCK_GRACE = timedelta(hours=1)
+STUCK_KEY = "bergastream:lidarr:stuck"       # id na fila → quando travou
+# Conferir se artistas/álbuns ainda esperados continuam monitorados.
+MONITOR_CHECK_EVERY = timedelta(hours=6)
+MONITOR_KEY = "bergastream:lidarr:monitor_checked_at"
 ERROR_RETRY = timedelta(days=1)
 NOT_FOUND_RETRY = timedelta(days=7)
 
@@ -73,9 +79,11 @@ class Budget:
     """O que a rodada ainda pode gastar: buscas no indexador (teto por 24 h)
     e vagas de álbum na fase de busca diária."""
 
-    def __init__(self, searches: int, slots: int) -> None:
+    def __init__(self, searches: int, slots: int, reserve: int = 0) -> None:
         self.searches = searches
         self.slots = slots
+        # Buscas guardadas para pedidos novos (as repetidas não as usam).
+        self.reserve = reserve
         self._albums: set = set()
 
     @classmethod
@@ -89,14 +97,16 @@ class Budget:
                            AND lidarr_requested_at > now() - make_interval(days => $1)) AS active
                FROM quality_upgrades""", settings.upgrade_daily_days)
         return cls(max(0, settings.lidarr_daily_searches - row["searched"]),
-                   max(0, settings.lidarr_max_active - row["active"]))
+                   max(0, settings.lidarr_max_active - row["active"]),
+                   reserve=settings.lidarr_request_reserve)
 
-    def search(self, album) -> bool | None:
+    def search(self, album, repeat: bool = False) -> bool | None:
         """True: pode buscar (gasta 1). False: o álbum já foi buscado nesta
-        rodada (outra faixa dele). None: acabou o orçamento."""
+        rodada (outra faixa dele). None: acabou o orçamento (para busca
+        repetida, acaba ao chegar na reserva dos pedidos novos)."""
         if album in self._albums:
             return False
-        if self.searches <= 0:
+        if self.searches <= (self.reserve if repeat else 0):
             return None
         self.searches -= 1
         self._albums.add(album)
@@ -194,7 +204,7 @@ async def check_lidarr(pool, row, lidarr: Lidarr, budget: Budget) -> None:
     fields: dict = {"status": "waiting", "next_attempt_at": now() + CHECK_EVERY}
     searched = row["lidarr_searched_at"]
     if searched is None or now() - searched >= search_interval(requested, now()):
-        allowed = budget.search(album_id)
+        allowed = budget.search(album_id, repeat=searched is not None)
         if allowed is not None:
             if allowed:
                 await lidarr.search([album_id])
@@ -253,6 +263,9 @@ async def request_lidarr(pool, row, lidarr: Lidarr, budget: Budget) -> None:
         logger.info("[upgrade] %s — %s: artista adicionado ao Lidarr (álbum %r)",
                     track.artist, track.title, picked.get("title"))
         return
+    if not artist.get("monitored"):
+        # Artista que já estava no Lidarr sem monitorar: o álbum seria ignorado.
+        await lidarr.monitor_artists([artist["id"]])
     albums = await lidarr.albums(artist["id"])
     found = next((a for a in albums if a.get("foreignAlbumId") == foreign), None)
     if found is None:
@@ -314,8 +327,15 @@ async def finish_album(pool, lidarr: Lidarr, album_id: int) -> bool:
     """Ninguém mais espera o álbum: deixa de monitorar (senão o Lidarr baixa
     de novo o que faltar) e apaga os arquivos dele, já copiados. Devolve True
     se finalizou."""
+    # Também as faixas que entraram junto pelo id do MusicBrainz e ainda não
+    # têm o id do Lidarr gravado.
     waiting = await pool.fetchval(
-        "SELECT EXISTS (SELECT 1 FROM quality_upgrades WHERE lidarr_album_id = $1 AND status <> 'done')",
+        """SELECT EXISTS (
+             SELECT 1 FROM quality_upgrades
+             WHERE status <> 'done'
+               AND (lidarr_album_id = $1 OR lidarr_foreign_album_id IN (
+                     SELECT lidarr_foreign_album_id FROM quality_upgrades
+                     WHERE lidarr_album_id = $1 AND lidarr_foreign_album_id IS NOT NULL)))""",
         album_id)
     if waiting:
         return False
@@ -340,6 +360,80 @@ async def _release_albums(pool, redis, lidarr: Lidarr | None) -> None:
     logger.info("[upgrade] %d álbum(ns) liberados no Lidarr", len(ids))
 
 
+async def clear_stuck(pool, redis, lidarr: Lidarr) -> int:
+    """Downloads de álbuns que o Bergastream espera, travados na fila do
+    Lidarr (importação bloqueada ou falha) há mais de STUCK_GRACE: tira da
+    fila e do SABnzbd, põe o release na blocklist e agenda nova busca.
+    Devolve quantos removeu."""
+    waiting = {r["lidarr_album_id"] for r in await pool.fetch(
+        """SELECT DISTINCT lidarr_album_id FROM quality_upgrades
+           WHERE status = 'waiting' AND lidarr_album_id IS NOT NULL""")}
+    seen: dict = await redis.hgetall(STUCK_KEY) or {}
+    stuck_now: set[str] = set()
+    removed = 0
+    for item in await lidarr.queue():
+        reason = lidarr_api.stuck_reason(item)
+        album_id = item.get("albumId")
+        if reason is None or album_id not in waiting or item.get("id") is None:
+            continue
+        key = str(item["id"])
+        stuck_now.add(key)
+        first = seen.get(key) or seen.get(key.encode())
+        if first is None:
+            await redis.hset(STUCK_KEY, key, now().isoformat())
+            continue
+        if isinstance(first, bytes):
+            first = first.decode()
+        if now() - datetime.fromisoformat(first) < STUCK_GRACE:
+            continue
+        await lidarr.remove_queued(item["id"])
+        await redis.hdel(STUCK_KEY, key)
+        stuck_now.discard(key)
+        await pool.execute(
+            """UPDATE quality_upgrades SET lidarr_searched_at = NULL, next_attempt_at = now(),
+                      last_error = $2, updated_at = now()
+               WHERE lidarr_album_id = $1 AND status = 'waiting'""",
+            album_id, f"download travado no Lidarr ({reason}): removido, release na blocklist"[:300])
+        logger.info("[upgrade] álbum %s: download travado no Lidarr removido (%s); nova busca", album_id, reason)
+        removed += 1
+    # Itens que saíram da fila (andaram ou foram removidos à mão).
+    gone = [k for k in seen if (k.decode() if isinstance(k, bytes) else k) not in stuck_now]
+    if gone:
+        await redis.hdel(STUCK_KEY, *gone)
+    return removed
+
+
+async def ensure_monitored(pool, redis, lidarr: Lidarr) -> int:
+    """Álbuns que faixas ainda esperam, e seus artistas, voltam a ser
+    monitorados se alguém (ou o "só de passagem" de outra faixa) tirou.
+    Sem isso o Lidarr ignora o álbum no RSS. A cada MONITOR_CHECK_EVERY.
+    Devolve quantos álbuns/artistas remonitorou."""
+    last = await redis.get(MONITOR_KEY)
+    if last:
+        last = last.decode() if isinstance(last, bytes) else last
+        if now() - datetime.fromisoformat(last) < MONITOR_CHECK_EVERY:
+            return 0
+    await redis.set(MONITOR_KEY, now().isoformat())
+    ids = [r["lidarr_album_id"] for r in await pool.fetch(
+        """SELECT DISTINCT lidarr_album_id FROM quality_upgrades
+           WHERE status = 'waiting' AND lidarr_album_id IS NOT NULL""")]
+    if not ids:
+        return 0
+    albums = await lidarr.albums_by_ids(ids)
+    off_albums = [a["id"] for a in albums if not a.get("monitored")]
+    artist_ids = {a.get("artistId") for a in albums}
+    off_artists = [a["id"] for a in await lidarr.artists()
+                   if a.get("id") in artist_ids and not a.get("monitored")]
+    if off_albums:
+        await lidarr.monitor(off_albums)
+    if off_artists:
+        await lidarr.monitor_artists(off_artists)
+    if off_albums or off_artists:
+        logger.info("[upgrade] Lidarr: %d álbum(ns) e %d artista(s) voltaram a ser monitorados",
+                    len(off_albums), len(off_artists))
+    return len(off_albums) + len(off_artists)
+
+
 async def _each(pool, rows, step) -> None:
     for row in rows:
         try:
@@ -359,6 +453,11 @@ async def run_once(pool, redis, lidarr: Lidarr | None) -> int:
     budget = await Budget.load(pool) if lidarr else None
     checks: list = []
     if lidarr:
+        for step in (clear_stuck, ensure_monitored):
+            try:
+                await step(pool, redis, lidarr)
+            except LidarrError as exc:
+                logger.warning("[upgrade] %s: %s", step.__name__, exc)
         checks = await pool.fetch(
             """SELECT * FROM quality_upgrades
                WHERE status = 'waiting' AND lidarr_foreign_album_id IS NOT NULL
@@ -366,7 +465,11 @@ async def run_once(pool, redis, lidarr: Lidarr | None) -> int:
                ORDER BY lidarr_searched_at NULLS FIRST""")
         await _each(pool, checks, lambda r: check_lidarr(pool, r, lidarr, budget))
 
-    deemix_rows = await pool.fetch(
+    # Alguém esperando uma música (play/próxima da fila): o Deemix fica para
+    # ela; a melhoria das playlists espera a próxima rodada.
+    from app.downloads.queue import PRIORITY_QUEUES
+    listener_waiting = bool(await redis.llen(PRIORITY_QUEUES[1]))
+    deemix_rows = [] if listener_waiting else await pool.fetch(
         """SELECT * FROM quality_upgrades
            WHERE status <> 'done' AND next_attempt_at <= now()
              AND (deemix_checked_at IS NULL OR deemix_checked_at < now() - $2::interval)

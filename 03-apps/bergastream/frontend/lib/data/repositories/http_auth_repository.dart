@@ -48,8 +48,20 @@ class HttpAuthRepository implements AuthRepository {
       );
       return TokenResponse.fromJson(response.data!).tokens;
     } on DioException catch (e) {
-      throw AuthException(_loginError(e));
+      throw AuthException(_refreshError(e));
     }
+  }
+
+  /// Renovação: só a API recusando o token encerra a sessão. Proxy
+  /// devolvendo 403/404 (contêiner reiniciando), HTML, 429, 5xx e DNS
+  /// (logo depois de trocar de rede) são servidor fora: tenta de novo.
+  static AuthError _refreshError(DioException e) {
+    final status = e.response?.statusCode;
+    final json = e.response?.data is Map;
+    if (json && const {400, 401, 422}.contains(status)) {
+      return AuthError.credenciaisInvalidas;
+    }
+    return AuthError.semConexao;
   }
 
   @override

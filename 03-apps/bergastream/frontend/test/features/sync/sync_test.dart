@@ -226,6 +226,36 @@ void main() {
       },
     );
 
+    test(
+      'fora sem nenhuma chamada: o monitor observado tenta sozinho',
+      () async {
+        // Como na raiz do app: o monitor fica ouvido (um "read" só não basta).
+        final c2 = ProviderContainer(
+          overrides: [
+            appPlatformProvider.overrideWithValue(const AppPlatform.app()),
+            keyValueStoreProvider.overrideWithValue(MemoryKeyValueStore()),
+            initialSessionProvider.overrideWithValue(loggedIn),
+            localDatabaseProvider.overrideWithValue(db),
+            serverPingProvider.overrideWithValue((_) async => pingOk),
+            connectivityChangesProvider.overrideWithValue(const Stream.empty()),
+            serverRetryIntervalProvider.overrideWithValue(
+              const Duration(milliseconds: 20),
+            ),
+          ],
+        );
+        addTearDown(c2.dispose);
+        c2.listen(serverMonitorProvider, (_, _) {});
+        pingOk = false;
+        // Ex.: a renovação do login falhou por rede (marca direto na sessão).
+        c2.read(sessionProvider.notifier).setServerAvailable(false);
+        await Future<void>.delayed(const Duration(milliseconds: 60));
+        expect(c2.read(sessionProvider).serverAvailable, isFalse);
+        pingOk = true;
+        await Future<void>.delayed(const Duration(milliseconds: 80));
+        expect(c2.read(sessionProvider).serverAvailable, isTrue);
+      },
+    );
+
     test('sem login não marca nada', () async {
       final c2 = ProviderContainer(
         overrides: [

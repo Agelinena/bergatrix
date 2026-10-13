@@ -24,7 +24,12 @@ import '../../fake_player.dart';
 /// incompleto ou segurar até [gate] liberar.
 class FakeFetcher implements FileFetcher {
   int size = 100;
+
+  /// Quedas de rede (passageiras: não gastam tentativa).
   final failures = <String, int>{};
+
+  /// Erros do servidor (HTTP): gastam tentativa.
+  final httpFailures = <String, int>{};
   final truncated = <String>{};
   Completer<void>? gate;
   int concurrent = 0;
@@ -51,6 +56,10 @@ class FakeFetcher implements FileFetcher {
       if ((failures[key] ?? 0) > 0) {
         failures[key] = failures[key]! - 1;
         throw const SocketException('sem rede');
+      }
+      if ((httpFailures[key] ?? 0) > 0) {
+        httpFailures[key] = httpFailures[key]! - 1;
+        throw HttpException('Download failed (404)', uri: url);
       }
       final bytes = truncated.contains(key) ? size ~/ 2 : size;
       await File(path).writeAsBytes(List.filled(bytes, 1));
@@ -193,15 +202,15 @@ void main() {
     expect(dir.listSync(), isEmpty, reason: 'arquivos parciais apagados');
   });
 
-  test('falha de rede: até 3 tentativas, depois falhou', () async {
-    fetcher.failures['id-a'] = 2;
+  test('erro do servidor: até 3 tentativas, depois falhou', () async {
+    fetcher.httpFailures['id-a'] = 2;
     await manager().downloadPlaylist(playlist('p1', ['a']));
     await settle();
     await Future<void>.delayed(const Duration(milliseconds: 20));
     await settle();
     expect((await track('a'))!.downloadState, DownloadState.baixada);
 
-    fetcher.failures['id-b'] = 5;
+    fetcher.httpFailures['id-b'] = 5;
     await manager().downloadPlaylist(playlist('p2', ['b']));
     for (var i = 0; i < 5; i++) {
       await settle();
@@ -212,8 +221,28 @@ void main() {
     expect(fetcher.fetched.where((k) => k == 'id-b'), hasLength(3));
   });
 
+  test(
+    'queda de rede não gasta tentativa: baixa quando a rede volta',
+    () async {
+      manager().transientRetry = const Duration(milliseconds: 10);
+      fetcher.failures['id-a'] = 5;
+      await manager().downloadPlaylist(playlist('p1', ['a']));
+      await settle();
+      var a = (await track('a'))!;
+      expect((a.downloadState, a.attempts), (DownloadState.naFila, 0));
+      // Até 3 s (a suíte inteira deixa os timers mais lentos).
+      for (var i = 0; i < 150; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+        await settle();
+        if ((await track('a'))!.downloadState == DownloadState.baixada) break;
+      }
+      a = (await track('a'))!;
+      expect((a.downloadState, a.attempts), (DownloadState.baixada, 0));
+    },
+  );
+
   test('capa que falha impede de marcar como baixada', () async {
-    fetcher.failures['img'] = 99;
+    fetcher.httpFailures['img'] = 99;
     await manager().downloadPlaylist(playlist('p1', ['a']));
     for (var i = 0; i < 5; i++) {
       await settle();
@@ -424,7 +453,7 @@ void main() {
     test('falha na troca mantém a cópia atual', () async {
       final before = await downloaded('a');
       server.serverQualities = {'spotify:a': levels('MP3 320', 30)};
-      fetcher.failures['id-a'] = 5;
+      fetcher.httpFailures['id-a'] = 5;
       await manager().refreshQuality();
       await settle();
       final after = (await track('a'))!;
@@ -432,6 +461,36 @@ void main() {
       expect(after.audioPath, before.audioPath);
       expect(File(before.audioPath!).existsSync(), isTrue);
       expect((after.qualityLabel, after.needsReplace), ('MP3 128', false));
+    });
+
+    test(
+      'troca com a rede caindo: cópia fica e a troca continua pendente',
+      () async {
+        final before = await downloaded('a');
+        server.serverQualities = {'spotify:a': levels('MP3 320', 30)};
+        fetcher.failures['id-a'] = 5;
+        await manager().refreshQuality();
+        await settle();
+        final after = (await track('a'))!;
+        expect(after.audioPath, before.audioPath);
+        expect((after.qualityLabel, after.needsReplace), ('MP3 128', true));
+        expect(
+          manager().state.upgrading,
+          1,
+          reason: 'aparece como "melhorando"',
+        );
+      },
+    );
+
+    test('troca concluída: aviso com quantas foram trocadas', () async {
+      await downloaded('a');
+      server.serverQualities = {'spotify:a': levels('MP3 320', 30)};
+      fetcher.quality = 'MP3 320';
+      await manager().refreshQuality();
+      await settle();
+      expect((await track('a'))!.qualityLabel, 'MP3 320');
+      expect(manager().state.upgrading, 0);
+      expect(manager().state.upgraded?.count, 1);
     });
 
     test(

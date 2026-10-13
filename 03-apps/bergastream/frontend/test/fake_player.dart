@@ -11,6 +11,8 @@ class FakeAudioEngine implements AudioEngine {
   final _position = StreamController<Duration>.broadcast();
   final _duration = StreamController<Duration?>.broadcast();
   final _completed = StreamController<void>.broadcast();
+  final _playing = StreamController<bool>.broadcast();
+  final _errors = StreamController<Object>.broadcast();
 
   final urls = <Uri>[];
   final log = <String>[];
@@ -25,12 +27,25 @@ class FakeAudioEngine implements AudioEngine {
   void emitDuration(Duration d) => _duration.add(d);
   void complete() => _completed.add(null);
 
+  /// O sistema pausou/retomou o motor sozinho (ex.: Bluetooth desconectou).
+  void systemPause() {
+    playing = false;
+    log.add('pausa do sistema');
+    _playing.add(false);
+  }
+
+  void emitError(Object error) => _errors.add(error);
+
   @override
   Stream<Duration> get positionStream => _position.stream;
   @override
   Stream<Duration?> get durationStream => _duration.stream;
   @override
   Stream<void> get completedStream => _completed.stream;
+  @override
+  Stream<bool> get playingStream => _playing.stream;
+  @override
+  Stream<Object> get errorStream => _errors.stream;
   @override
   Duration get position => currentPosition;
 
@@ -89,6 +104,9 @@ class FakePlaybackRepository implements PlaybackRepository {
   List<TrackReadiness> statuses;
   bool failPrepare;
 
+  /// Só estas músicas (títulos) falham ao preparar.
+  final failTitles = <String>{};
+
   /// Se definido, `prepare` espera este futuro (para testar troca de faixa
   /// no meio do preparo).
   Completer<void>? gate;
@@ -104,7 +122,9 @@ class FakePlaybackRepository implements PlaybackRepository {
     prepared.add(track.title);
     if (gate != null) await gate!.future;
     if (gates[track.title] != null) await gates[track.title]!.future;
-    if (failPrepare) throw const ApiException(ApiErrorKind.servidor);
+    if (failPrepare || failTitles.contains(track.title)) {
+      throw const ApiException(ApiErrorKind.servidor);
+    }
     return PreparedTrack('id-${track.externalId}', initial);
   }
 

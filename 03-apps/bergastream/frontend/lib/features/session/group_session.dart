@@ -176,6 +176,13 @@ class GroupSessionController extends Notifier<GroupState>
     }());
   }
 
+  @override
+  void pausedHere() {
+    if (state.info == null || state.localPaused) return;
+    // Fone/Bluetooth desconectado aqui: os outros seguem ouvindo.
+    state = state.copyWith(localPaused: true);
+  }
+
   /// Play/pause. "Pausar para todos": vira ação da sessão. "Cada um pausa
   /// o seu": pausa só aqui; ao voltar, entra no ponto em que os outros
   /// estão.
@@ -382,7 +389,23 @@ class GroupSessionController extends Notifier<GroupState>
 
   void _ping() => _socket?.send({'type': 'ping', 't0': _now()});
 
+  /// Última mensagem do servidor (conexão "meio aberta" não avisa que caiu).
+  DateTime _lastHeard = DateTime.now();
+
+  void _keepAliveTick(Duration every) {
+    final socket = _socket;
+    if (socket == null) return;
+    if (DateTime.now().difference(_lastHeard) >
+        every * 2 + const Duration(seconds: 5)) {
+      unawaited(socket.close());
+      _onClosed(socket);
+      return;
+    }
+    _ping();
+  }
+
   void _onMessage(Map<String, dynamic> message) {
+    _lastHeard = DateTime.now();
     switch (message['type']) {
       case 'hello':
         final info = SessionInfo.fromJson(
@@ -399,7 +422,9 @@ class GroupSessionController extends Notifier<GroupState>
         }
         final every = _timings.keepAlive;
         _keepAlive?.cancel();
-        if (every != null) _keepAlive = Timer.periodic(every, (_) => _ping());
+        if (every != null) {
+          _keepAlive = Timer.periodic(every, (_) => _keepAliveTick(every));
+        }
         unawaited(_apply());
       case 'pong':
         final t0 = message['t0'];

@@ -136,6 +136,8 @@ class PlaylistDownloadProgress {
     required this.failed,
     required this.paused,
     required this.bytes,
+    this.upgrading = 0,
+    this.qualities = const {},
   });
 
   static const none = PlaylistDownloadProgress(
@@ -155,6 +157,13 @@ class PlaylistDownloadProgress {
   final int bytes;
 
   int get remaining => total - done;
+
+  /// Baixadas esperando a troca por qualidade melhor (ou outra escolhida).
+  final int upgrading;
+
+  /// Quantas baixadas em cada qualidade ("FLAC 16/44.1" → 28), da mais
+  /// comum para a menos.
+  final Map<String, int> qualities;
 }
 
 @DriftDatabase(
@@ -352,8 +361,21 @@ class AppDatabase extends _$AppDatabase {
         failed: failed,
         paused: p.paused,
         bytes: done.fold(0, (sum, r) => sum + (r.$1.sizeBytes ?? 0)),
+        upgrading: done.where((r) => r.$1.needsReplace).length,
+        qualities: _countQualities(done.map((r) => r.$1.qualityLabel)),
       );
     });
+  }
+
+  static Map<String, int> _countQualities(Iterable<String?> labels) {
+    final counts = <String, int>{};
+    for (final label in labels) {
+      if (label == null || label.isEmpty) continue;
+      counts[label] = (counts[label] ?? 0) + 1;
+    }
+    final sorted = counts.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    return {for (final e in sorted) e.key: e.value};
   }
 
   /// Remove o download da playlist. Devolve as faixas que não estão em
