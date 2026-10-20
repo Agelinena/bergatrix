@@ -48,6 +48,15 @@ O `<audio>` do navegador não envia `Authorization`: a web pede o token e toca `
 
 ---
 
+### Volume percebido e "baixar de novo"
+
+| Endpoint | Observação |
+|---|---|
+| `POST /api/tracks/loudness` | `{"refs": ["provider:external_id", …]}` → `{ref: {"lufs", "peak"}}` (só as já medidas). `GET /api/tracks/{id}/status` também traz `loudness`. |
+| `POST /api/tracks/redownload` | Corpo `SearchResult`: apaga o arquivo no servidor e baixa de novo com prioridade alta (409 se já está baixando). |
+
+---
+
 ### `POST /api/lyrics`
 
 Corpo `SearchResult` (como o `/api/play`) → `{"found", "synced": [{"time_ms", "text"}], "plain", "source": "lrclib"}`.

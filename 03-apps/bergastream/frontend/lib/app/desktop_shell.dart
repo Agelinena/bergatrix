@@ -10,6 +10,7 @@ import '../data/repositories/local_playlists.dart';
 import '../features/auth/session_banner.dart';
 import '../features/library/library_providers.dart';
 import '../features/library/library_screen.dart';
+import '../features/library/playlist_menu.dart';
 import 'routes.dart';
 import '../features/player/player_bar.dart';
 import '../features/player/player_controller.dart';
@@ -99,7 +100,9 @@ class _LyricsSidePanel extends StatelessWidget {
             ),
           ),
           Expanded(
+            // Uma por música: o estado (linha seguida) não passa para a próxima.
             child: LyricsView(
+              key: ValueKey(track.id),
               track: track,
               padding: const EdgeInsets.fromLTRB(20, 8, 20, 40),
             ),
@@ -238,6 +241,13 @@ class _SidebarPlaylists extends ConsumerWidget {
             cover: serverImage(ref, p.coverUrl),
             coverSize: 48,
             onTap: () => GoRouter.of(context).go(AppRoutes.playlist(p.id)),
+            onMenu: () => showPlaylistMenu(
+              context,
+              ref,
+              id: p.id,
+              name: p.name,
+              cover: serverImage(ref, p.coverUrl),
+            ),
           ),
         for (final p in local)
           PlaylistRow(

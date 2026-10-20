@@ -496,11 +496,16 @@ async def run_forever(pool, redis) -> None:
     lidarr = Lidarr() if lidarr_api.enabled() else None
     logger.info("[upgrade] iniciado (Lidarr %s)", "ligado" if lidarr else "desligado")
     await backfill_quality(pool)
+    from app.downloads import loudness
     while True:
         try:
             await run_once(pool, redis, lidarr)
         except Exception as exc:  # banco/Redis fora: tenta na próxima rodada
             logger.warning("[upgrade] rodada falhou: %s", exc)
+        try:
+            await loudness.backfill(pool)
+        except Exception as exc:
+            logger.warning("[loudness] backfill falhou: %s", exc)
         await asyncio.sleep(LOOP_EVERY)
 
 

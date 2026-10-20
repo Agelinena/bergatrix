@@ -56,6 +56,8 @@ class TrackActionsSheet extends StatelessWidget {
       context: context,
       // Por cima da barra de navegação e do mini player (como no protótipo).
       useRootNavigator: true,
+      // Muitas ações ou tela baixa: a folha rola em vez de cortar.
+      isScrollControlled: true,
       backgroundColor: c.card,
       barrierColor: c.scrim,
       elevation: 0,
@@ -83,7 +85,7 @@ class TrackActionsSheet extends StatelessWidget {
     final c = BergaColors.of(context);
     return SafeArea(
       top: false,
-      child: Padding(
+      child: SingleChildScrollView(
         padding: BergaSizes.sheetPadding,
         child: Column(
           mainAxisSize: MainAxisSize.min,

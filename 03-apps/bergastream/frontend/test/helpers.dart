@@ -124,6 +124,7 @@ Widget wrap(
           pollInterval: Duration.zero,
           rapidChangeDelay: Duration.zero,
           autoSkipDelay: Duration.zero,
+          fades: false,
         ),
       ),
     ],

@@ -37,6 +37,9 @@ final routerProvider = Provider<GoRouter>((ref) {
     GoRoute(
       path: 'artista/:provider/:id',
       builder: (_, s) => ArtistScreen(
+        key: ValueKey(
+          '${s.pathParameters['provider']}:${s.pathParameters['id']}',
+        ),
         provider: s.pathParameters['provider']!,
         id: s.pathParameters['id']!,
       ),
@@ -44,6 +47,9 @@ final routerProvider = Provider<GoRouter>((ref) {
     GoRoute(
       path: 'album/:provider/:id',
       builder: (_, s) => AlbumScreen(
+        key: ValueKey(
+          '${s.pathParameters['provider']}:${s.pathParameters['id']}',
+        ),
         provider: s.pathParameters['provider']!,
         id: s.pathParameters['id']!,
       ),
@@ -115,8 +121,13 @@ final routerProvider = Provider<GoRouter>((ref) {
                   ...catalog(),
                   GoRoute(
                     path: 'playlist/:id',
-                    builder: (_, s) =>
-                        PlaylistScreen(id: s.pathParameters['id']!),
+                    builder: (_, s) => PlaylistScreen(
+                      // Uma tela por playlist: trocar pela barra lateral
+                      // (go) reaproveitava a tela, com a busca e a
+                      // reordenação da playlist anterior.
+                      key: ValueKey(s.pathParameters['id']),
+                      id: s.pathParameters['id']!,
+                    ),
                     routes: [
                       GoRoute(
                         path: 'pessoas',
@@ -127,8 +138,10 @@ final routerProvider = Provider<GoRouter>((ref) {
                   ),
                   GoRoute(
                     path: 'local/:id',
-                    builder: (_, s) =>
-                        LocalPlaylistScreen(id: s.pathParameters['id']!),
+                    builder: (_, s) => LocalPlaylistScreen(
+                      key: ValueKey(s.pathParameters['id']),
+                      id: s.pathParameters['id']!,
+                    ),
                   ),
                 ],
               ),

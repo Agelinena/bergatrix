@@ -427,6 +427,8 @@ class DeviceController extends Notifier<DevicesState> implements RemoteControl {
         p.reorderQueue(intOf('from'), intOf('to'));
       case 'reorder_next':
         p.reorderUpNext(intOf('from'), intOf('to'));
+      case 'jump':
+        await p.jumpTo(intOf('uid'));
     }
     // A posição muda sem mudar o estado (ex.: buscar): manda de novo.
     _sendState();

@@ -1,13 +1,18 @@
+import 'dart:async';
+
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../../core/network/api_error.dart';
 import '../../core/platform/app_platform.dart';
 import '../../core/utils/links.dart';
 import '../../core/widgets/widgets.dart';
 import '../../data/models/search_result.dart';
+import '../../data/repositories/playback_repository.dart';
 import '../auth/session.dart';
+import '../downloads/download_manager.dart';
 import '../library/add_to_playlist.dart';
 import 'player_controller.dart';
 import 'player_texts.dart';
@@ -30,6 +35,10 @@ Future<void> showTrackMenu(
   List<(String, VoidCallback)> extraActions = const [],
 }) {
   final server = ref.read(sessionProvider).canUseServer;
+  final actions = [
+    ...extraActions,
+    if (server) ('Baixar de novo', () => redownloadTrack(context, ref, track)),
+  ];
   return TrackActionsSheet.show(
     context,
     TrackActionsSheet(
@@ -44,12 +53,43 @@ Future<void> showTrackMenu(
       onAddToQueue: () => queueTrack(context, ref, track),
       onGoToAlbum: onGoToAlbum,
       onGoToArtist: onGoToArtist,
-      extraActions: extraActions,
+      extraActions: actions,
       disabledMessage: server
           ? 'Indisponível para músicas desta origem'
           : 'Entre para usar esta opção',
     ),
   );
+}
+
+/// "Baixar de novo": apaga o arquivo da música no servidor e baixa outra vez
+/// (áudio errado, cortado ou com problema). Se está tocando, recarrega; se
+/// está baixada no aparelho, a cópia também é trocada.
+Future<void> redownloadTrack(
+  BuildContext context,
+  WidgetRef ref,
+  SearchResult track,
+) async {
+  final choice = await showChoiceDialog(
+    context,
+    message: 'Baixar ${track.title} de novo?',
+    detail:
+        'O arquivo atual no servidor é apagado e a música é baixada outra '
+        'vez (para todos que a ouvem).',
+    options: const ['Cancelar', 'Baixar de novo'],
+  );
+  if (choice != 1 || !context.mounted) return;
+  try {
+    await ref.read(playbackRepositoryProvider).redownload(track);
+  } on ApiException catch (e) {
+    if (context.mounted) AppToast.show(context, e.message);
+    return;
+  }
+  if (context.mounted) AppToast.show(context, 'Baixando de novo…');
+  final player = ref.read(playerProvider.notifier);
+  if (ref.read(playerProvider).current?.track.id == track.id) {
+    unawaited(player.reloadCurrent());
+  }
+  unawaited(ref.read(downloadManagerProvider.notifier).refetch(track));
 }
 
 /// Compartilhar (Seção 6.3): pergunta entre o link do serviço de origem

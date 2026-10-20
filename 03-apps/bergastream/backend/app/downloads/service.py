@@ -90,7 +90,8 @@ async def store_file(track_id: str, src: Path, source: str, db_pool=None) -> Aud
            SET path = EXCLUDED.path, size_bytes = EXCLUDED.size_bytes, format = EXCLUDED.format,
                codec = EXCLUDED.codec, bitrate_kbps = EXCLUDED.bitrate_kbps,
                sample_rate = EXCLUDED.sample_rate, bit_depth = EXCLUDED.bit_depth,
-               quality_rank = EXCLUDED.quality_rank, source = EXCLUDED.source""",
+               quality_rank = EXCLUDED.quality_rank, source = EXCLUDED.source,
+               loudness_lufs = NULL, true_peak_db = NULL""",
         track_id, str(dest), dest.stat().st_size, fmt,
         info.codec if info else None, info.bitrate_kbps if info else None,
         info.sample_rate if info else None, info.bit_depth if info else None,
@@ -100,6 +101,12 @@ async def store_file(track_id: str, src: Path, source: str, db_pool=None) -> Aud
     # A faixa pode já estar numa playlist (entrou antes de o arquivo existir):
     # aí fica permanente, na pasta permanent/.
     await sync_permanence(pool, track_id)
+    # Volume percebido, para a normalização no app (em segundo plano), no
+    # caminho final (a permanência pode ter movido o arquivo).
+    from app.downloads import loudness
+    final = await pool.fetchval("SELECT path FROM files WHERE track_id = $1", track_id)
+    if final:
+        loudness.measure_later(pool, track_id, Path(final))
     return info
 
 

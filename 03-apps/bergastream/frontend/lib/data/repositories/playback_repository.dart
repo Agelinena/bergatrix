@@ -35,6 +35,22 @@ class TrackQuality {
   final int rank;
 }
 
+/// Volume percebido do arquivo no servidor (EBU R128): [lufs] integrado e
+/// [peak] (pico real, dBTP). O player abaixa as músicas mais altas.
+class TrackLoudness {
+  const TrackLoudness(this.lufs, this.peak);
+
+  factory TrackLoudness.fromJson(Map<String, dynamic> json) => TrackLoudness(
+    (json['lufs'] as num).toDouble(),
+    (json['peak'] as num?)?.toDouble() ?? 0,
+  );
+
+  final double lufs;
+  final double peak;
+
+  Map<String, dynamic> toJson() => {'lufs': lufs, 'peak': peak};
+}
+
 /// Reprodução no servidor (Seção 9, área "Reprodução").
 abstract interface class PlaybackRepository {
   /// `POST /api/play`: registra a faixa e enfileira o download.
@@ -55,6 +71,14 @@ abstract interface class PlaybackRepository {
   /// "provider:externalId"), o que cada nível entrega hoje. Faixa sem
   /// arquivo no servidor não vem.
   Future<Map<String, Map<String, TrackQuality>>> qualities(List<String> refs);
+
+  /// `POST /api/tracks/loudness`: volume percebido por faixa
+  /// ("provider:externalId"). Faixa ainda não medida não vem.
+  Future<Map<String, TrackLoudness>> loudness(List<String> refs);
+
+  /// `POST /api/tracks/redownload`: apaga o arquivo no servidor e baixa de
+  /// novo (áudio errado ou cortado).
+  Future<PreparedTrack> redownload(SearchResult track);
 }
 
 class HttpPlaybackRepository implements PlaybackRepository {
@@ -107,6 +131,32 @@ class HttpPlaybackRepository implements PlaybackRepository {
             },
         };
       });
+
+  @override
+  Future<Map<String, TrackLoudness>> loudness(List<String> refs) =>
+      _call(() async {
+        if (refs.isEmpty) return const {};
+        final r = await _dio.post<Map<String, dynamic>>(
+          '/api/tracks/loudness',
+          data: {'refs': refs},
+        );
+        return {
+          for (final MapEntry(:key, :value) in (r.data ?? const {}).entries)
+            key: TrackLoudness.fromJson(value as Map<String, dynamic>),
+        };
+      });
+
+  @override
+  Future<PreparedTrack> redownload(SearchResult track) => _call(() async {
+    final r = await _dio.post<Map<String, dynamic>>(
+      '/api/tracks/redownload',
+      data: track.toJson(),
+    );
+    return PreparedTrack(
+      r.data!['track_id'] as String,
+      readinessFrom(r.data!['status'] as String?),
+    );
+  });
 
   Future<Uri> _tokenUrl(String trackId, String kind, String quality) => _call(
     () async {

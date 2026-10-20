@@ -165,25 +165,43 @@ class LyricsCard extends ConsumerWidget {
 
 /// Letra inteira em tela cheia.
 Future<void> openLyrics(BuildContext context, SearchResult track) {
-  final c = BergaColors.of(context);
   return Navigator.of(context, rootNavigator: true).push(
     MaterialPageRoute<void>(
       fullscreenDialog: true,
-      builder: (_) => Scaffold(
-        backgroundColor: c.bg,
-        appBar: AppBar(
-          backgroundColor: c.bg,
-          foregroundColor: c.tx,
-          elevation: 0,
-          title: Text(
-            track.title,
-            style: BergaText.trackTitle.copyWith(color: c.tx),
-          ),
-        ),
-        body: LyricsView(track: track),
-      ),
+      builder: (_) => LyricsPage(track: track),
     ),
   );
+}
+
+/// Letra em tela cheia. A música mudou (acabou ou trocaram): fecha e volta
+/// ao player — a letra era de outra música.
+class LyricsPage extends ConsumerWidget {
+  const LyricsPage({super.key, required this.track});
+
+  final SearchResult track;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final c = BergaColors.of(context);
+    ref.listen(playerProvider.select((s) => s.current?.track.id), (_, id) {
+      if (id != track.id && (ModalRoute.of(context)?.isCurrent ?? false)) {
+        Navigator.of(context).pop();
+      }
+    });
+    return Scaffold(
+      backgroundColor: c.bg,
+      appBar: AppBar(
+        backgroundColor: c.bg,
+        foregroundColor: c.tx,
+        elevation: 0,
+        title: Text(
+          track.title,
+          style: BergaText.trackTitle.copyWith(color: c.tx),
+        ),
+      ),
+      body: LyricsView(track: track),
+    );
+  }
 }
 
 /// Letra inteira, rolando sozinha com a música (tela cheia e painel do

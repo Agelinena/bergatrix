@@ -233,4 +233,33 @@ void main() {
     expect(restored.previous(Duration.zero), PreviousAction.voltar);
     expect(restored.current!.track.title, 'B');
   });
+
+  group('pular para uma música da fila', () {
+    test('de "a seguir": as de antes são puladas', () {
+      q.playList([t('A'), t('B'), t('C'), t('D')], 0);
+      final c = q.upNext[1];
+      expect(q.jumpTo(c.uid)!.track.title, 'C');
+      expect(q.upNext.map((i) => i.track.title), ['D']);
+      // "Anterior" volta pelas puladas.
+      expect(q.previous(Duration.zero), PreviousAction.voltar);
+      expect(q.current!.track.title, 'B');
+    });
+
+    test('da "sua fila": só ela sai; o resto da fila fica', () {
+      q.playList([t('A'), t('B')], 0);
+      q
+        ..add(t('X'))
+        ..add(t('Y'));
+      final y = q.manual[1];
+      expect(q.jumpTo(y.uid)!.track.title, 'Y');
+      expect(q.manual.map((i) => i.track.title), ['X']);
+      expect(q.upNext.map((i) => i.track.title), ['B']);
+    });
+
+    test('uid que não está na fila: nada muda', () {
+      q.playList([t('A'), t('B')], 0);
+      expect(q.jumpTo(999), isNull);
+      expect(q.current!.track.title, 'A');
+    });
+  });
 }

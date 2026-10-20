@@ -46,22 +46,38 @@ void main() {
     expect(find.text('Random Access Memories'), findsOneWidget);
   });
 
-  testWidgets('confirmar a busca guarda no histórico e tocar repete', (
-    tester,
-  ) async {
-    tall(tester);
-    final repo = FakeSearchRepository();
-    await tester.pumpWidget(wrap(const SearchScreen(), search: repo));
-    await tester.enterText(find.byType(TextField), 'queen');
-    await tester.testTextInput.receiveAction(TextInputAction.search);
-    await tester.pumpAndSettle();
-    await tester.enterText(find.byType(TextField), '');
-    await tester.pumpAndSettle();
-    expect(find.text('Buscas recentes'), findsOneWidget);
-    await tester.tap(find.text('queen'));
-    await tester.pumpAndSettle();
-    expect(find.text('Bohemian Rhapsody'), findsOneWidget);
-  });
+  testWidgets(
+    'buscas recentes guardam o que foi aberto (não o texto) e reabrem',
+    (tester) async {
+      tall(tester);
+      final repo = FakeSearchRepository();
+      await tester.pumpWidget(wrap(const SearchScreen(), search: repo));
+      await tester.enterText(find.byType(TextField), 'queen');
+      await tester.testTextInput.receiveAction(TextInputAction.search);
+      await tester.pumpAndSettle();
+      // Só confirmar a busca não guarda nada.
+      await tester.enterText(find.byType(TextField), '');
+      await tester.pumpAndSettle();
+      expect(find.text('Buscas recentes'), findsNothing);
+
+      await tester.enterText(find.byType(TextField), 'queen');
+      await tester.testTextInput.receiveAction(TextInputAction.search);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Bohemian Rhapsody').first);
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), '');
+      await tester.pumpAndSettle();
+      expect(find.text('Buscas recentes'), findsOneWidget);
+      expect(find.text('Bohemian Rhapsody'), findsOneWidget);
+      expect(find.textContaining('Música · '), findsOneWidget);
+      expect(find.text('queen'), findsNothing);
+
+      // Tirar da lista.
+      await tester.tap(find.byTooltip('Tirar das buscas recentes'));
+      await tester.pumpAndSettle();
+      expect(find.text('Buscas recentes'), findsNothing);
+    },
+  );
 
   testWidgets('nada encontrado', (tester) async {
     await tester.pumpWidget(wrap(const SearchScreen()));

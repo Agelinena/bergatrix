@@ -135,6 +135,26 @@ class PlayQueue {
     return PreviousAction.voltar;
   }
 
+  /// Toque numa música da fila: ela vira a atual. Da "sua fila", só ela sai
+  /// da fila; de "a seguir", as que estavam antes dela são puladas.
+  QueueItem? jumpTo(int uid) {
+    final current = _current;
+    if (current == null) return null;
+    final manual = _manual.indexWhere((i) => i.uid == uid);
+    final upNext = _upNext.indexWhere((i) => i.uid == uid);
+    if (manual < 0 && upNext < 0) return null;
+    _history.add(current);
+    if (manual >= 0) {
+      _current = _manual.removeAt(manual);
+    } else {
+      _history.addAll(_upNext.take(upNext));
+      _current = _upNext[upNext];
+      _upNext.removeRange(0, upNext + 1);
+    }
+    _played.add(_current!.uid);
+    return _current;
+  }
+
   /// Liga/desliga o aleatório. Só "a seguir" muda; a sua fila não.
   /// Ligar sorteia todas as faixas da lista que ainda não tocaram nesta
   /// sessão (não só as que estavam depois da atual); desligar segue a ordem

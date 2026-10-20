@@ -12,6 +12,7 @@ import '../../core/network/connectivity.dart';
 import '../../core/widgets/download_state_icon.dart';
 import '../../data/local/database.dart';
 import '../../data/models/playlist_models.dart';
+import '../../data/models/search_result.dart';
 import '../../data/repositories/playback_repository.dart';
 import '../auth/session.dart';
 import '../player/player_controller.dart';
@@ -153,6 +154,16 @@ class DownloadManager extends Notifier<DownloadsStatus> {
   }
 
   Future<void> pause(String playlistId) => _db.setPaused(playlistId, true);
+
+  /// "Baixar de novo": a cópia no aparelho (se houver) é trocada pela que o
+  /// servidor baixar agora; a atual segue tocando até a nova chegar.
+  Future<void> refetch(SearchResult track) async {
+    if (!available) return;
+    final local = await _db.downloadedFor(track);
+    if (local == null) return;
+    await _db.markForReplace([local.id]);
+    await pump();
+  }
 
   Future<void> resume(String playlistId) async {
     await _db.setPaused(playlistId, false);

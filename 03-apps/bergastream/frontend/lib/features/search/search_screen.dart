@@ -14,6 +14,7 @@ import '../../core/theme/berga_text.dart';
 import '../../core/utils/links.dart';
 import '../../core/widgets/widgets.dart';
 import '../../data/models/search_full.dart';
+import '../../data/models/search_result.dart';
 import '../../data/repositories/search_history_repository.dart';
 import '../../data/repositories/search_repository.dart';
 import '../auth/auth_texts.dart';
@@ -93,8 +94,19 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
   }
 
   /// Guarda o termo nas buscas recentes (ao usar um resultado ou confirmar).
-  void _remember() {
-    if (_query.isNotEmpty) ref.read(searchHistoryProvider.notifier).add(_query);
+  static RecentItem _trackItem(SearchResult t) => RecentItem(
+    kind: RecentKind.track,
+    provider: t.provider,
+    externalId: t.externalId,
+    title: t.title,
+    subtitle: 'Música · ${t.artist}',
+    imageUrl: t.coverUrl,
+    track: t,
+  );
+
+  /// Guarda nas buscas recentes o que foi aberto (não o texto digitado).
+  void _remember(RecentItem item) {
+    ref.read(searchHistoryProvider.notifier).add(item);
   }
 
   void _setSource(SearchSource source) => setState(() => _source = source);
@@ -118,7 +130,6 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
           onClear: () => _onChanged(''),
           onSubmitted: (text) {
             _searchNow(text);
-            _remember();
           },
           textInputAction: TextInputAction.search,
         ),
@@ -151,6 +162,85 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     );
   }
 
+  /// Uma linha das buscas recentes: capa, título, tipo; tocar abre de novo.
+  Widget _recentRow(BuildContext context, RecentItem item) {
+    final c = BergaColors.of(context);
+    final history = ref.read(searchHistoryProvider.notifier);
+    void open() {
+      history.add(item); // sobe para o topo
+      switch (item.kind) {
+        case RecentKind.track:
+          final t = item.track;
+          if (t != null) {
+            ref
+                .read(playerProvider.notifier)
+                .playList([t], 0, context: 'Busca');
+          }
+        case RecentKind.artist:
+          openArtist(context, item.provider, item.externalId);
+        case RecentKind.album:
+          openAlbum(context, item.provider, item.externalId);
+        case RecentKind.playlist:
+          if (item.url != null) context.push(AppRoutes.importedLink(item.url!));
+      }
+    }
+
+    final track = item.track;
+    return ContextMenuRegion(
+      onMenu: track == null ? null : () => showTrackMenu(context, ref, track),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: open,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            vertical: BergaSizes.trackPaddingVertical,
+          ),
+          child: Row(
+            spacing: BergaSizes.trackGap,
+            children: [
+              if (item.kind == RecentKind.playlist && item.imageUrl == null)
+                const Cover.playlist(size: BergaSizes.trackCover)
+              else
+                Cover(
+                  seed: item.key,
+                  title: item.title,
+                  size: BergaSizes.trackCover,
+                  circle: item.kind == RecentKind.artist,
+                  image: imageFor(item.imageUrl),
+                ),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      item.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: BergaText.trackTitle.copyWith(color: c.tx),
+                    ),
+                    Text(
+                      item.subtitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: BergaText.secondary.copyWith(color: c.mu),
+                    ),
+                  ],
+                ),
+              ),
+              IconButton(
+                onPressed: () => history.remove(item),
+                icon: const Icon(Icons.close),
+                iconSize: 18,
+                color: c.mu,
+                tooltip: 'Tirar das buscas recentes',
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   List<Widget> _serverBody(BuildContext context) {
     final c = BergaColors.of(context);
     final mu = BergaText.secondary.copyWith(color: c.mu);
@@ -159,43 +249,16 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
       final history = ref.watch(searchHistoryProvider);
       return [
         if (history.isNotEmpty) ...[
-          const SectionTitle('Buscas recentes'),
-          for (final term in history)
-            GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: () => _searchNow(term),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  vertical: BergaSizes.trackPaddingVertical,
-                ),
-                child: Row(
-                  spacing: BergaSizes.trackGap,
-                  children: [
-                    Icon(Icons.history, size: 13, color: c.mu),
-                    Expanded(
-                      child: Text(
-                        term,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: BergaText.body.copyWith(color: c.tx),
-                      ),
-                    ),
-                    GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: () =>
-                          ref.read(searchHistoryProvider.notifier).remove(term),
-                      child: Tooltip(
-                        message: 'Apagar "$term" das buscas recentes',
-                        child: Padding(
-                          padding: const EdgeInsets.all(4),
-                          child: Icon(Icons.close, size: 16, color: c.mu),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
+          Row(
+            children: [
+              const Expanded(child: SectionTitle('Buscas recentes')),
+              AppChip(
+                label: 'Limpar',
+                onTap: () => ref.read(searchHistoryProvider.notifier).clear(),
               ),
-            ),
+            ],
+          ),
+          for (final item in history) _recentRow(context, item),
         ],
         Padding(
           padding: EdgeInsets.only(top: history.isEmpty ? 20 : 14),
@@ -255,7 +318,19 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
               subtitle: p.subtitle,
               image: imageFor(p.imageUrl),
               onTap: () {
-                _remember();
+                _remember(
+                  RecentItem(
+                    kind: RecentKind.playlist,
+                    provider: _source.name,
+                    externalId: p.id,
+                    title: p.title,
+                    subtitle: p.subtitle.isEmpty
+                        ? 'Playlist'
+                        : 'Playlist · ${p.subtitle}',
+                    imageUrl: p.imageUrl,
+                    url: p.url,
+                  ),
+                );
                 context.push(AppRoutes.importedLink(p.url));
               },
             ),
@@ -280,7 +355,16 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                 name: a.name,
                 image: imageFor(a.imageUrl),
                 onTap: () {
-                  _remember();
+                  _remember(
+                    RecentItem(
+                      kind: RecentKind.artist,
+                      provider: a.provider,
+                      externalId: a.externalId,
+                      title: a.name,
+                      subtitle: 'Artista',
+                      imageUrl: a.imageUrl,
+                    ),
+                  );
                   openArtist(context, a.provider, a.externalId);
                 },
               ),
@@ -299,7 +383,18 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                 title: a.title,
                 image: imageFor(a.imageUrl),
                 onTap: () {
-                  _remember();
+                  _remember(
+                    RecentItem(
+                      kind: RecentKind.album,
+                      provider: a.provider,
+                      externalId: a.externalId,
+                      title: a.title,
+                      subtitle: a.artist.isEmpty
+                          ? 'Álbum'
+                          : 'Álbum · ${a.artist}',
+                      imageUrl: a.imageUrl,
+                    ),
+                  );
                   openAlbum(context, a.provider, a.externalId);
                 },
               ),
@@ -317,7 +412,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
             playing: r.id == playingId,
             cover: coverImage(r),
             onTap: () {
-              _remember();
+              _remember(_trackItem(r));
               player.playList(data.tracks, index, context: 'Busca');
             },
             onMore: () => showTrackMenu(
@@ -358,7 +453,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                   ) ==
                   t.id,
               onTap: () {
-                _remember();
+                _remember(_trackItem(t));
                 ref
                     .read(playerProvider.notifier)
                     .playList(link.tracks, 0, context: 'Busca');
@@ -368,7 +463,25 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
             ),
           ];
         }
-        return [_ImportedCard(link: link, url: _query, onOpen: _remember)];
+        return [
+          _ImportedCard(
+            link: link,
+            url: _query,
+            onOpen: () => _remember(
+              RecentItem(
+                kind: RecentKind.playlist,
+                provider: link.sourceLabel,
+                externalId: _query,
+                title: link.title,
+                subtitle: link.subtitle.isEmpty
+                    ? link.sourceLabel
+                    : '${link.sourceLabel} · ${link.subtitle}',
+                imageUrl: link.coverUrl,
+                url: _query,
+              ),
+            ),
+          ),
+        ];
       },
     );
   }

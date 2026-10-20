@@ -1,4 +1,6 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:just_audio_media_kit/just_audio_media_kit.dart';
 
@@ -11,6 +13,8 @@ import 'features/player/media_notification.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Web: o botão direito abre o menu do app (⋮), não o do navegador.
+  if (kIsWeb) await BrowserContextMenu.disableContextMenu();
   // Windows/Linux: o just_audio toca pelo media_kit (libmpv). No Android e
   // na web não faz nada.
   JustAudioMediaKit.ensureInitialized(linux: true, windows: true);

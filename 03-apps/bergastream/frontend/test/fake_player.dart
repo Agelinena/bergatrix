@@ -16,6 +16,10 @@ class FakeAudioEngine implements AudioEngine {
 
   final urls = <Uri>[];
   final log = <String>[];
+
+  /// Volume aplicado (fora do [log] para não poluir as sequências).
+  double volume = 1;
+  final volumes = <double>[];
   Duration currentPosition = Duration.zero;
   bool playing = false;
 
@@ -61,6 +65,12 @@ class FakeAudioEngine implements AudioEngine {
   Future<void> setFile(String path) async {
     files.add(path);
     log.add('setFile');
+  }
+
+  @override
+  Future<void> setVolume(double v) async {
+    volume = v;
+    volumes.add(v);
   }
 
   @override
@@ -165,6 +175,21 @@ class FakePlaybackRepository implements PlaybackRepository {
   ) async {
     qualityCalls++;
     return {for (final r in refs) r: ?serverQualities[r]};
+  }
+
+  /// Volume percebido por faixa ("provider:externalId").
+  Map<String, TrackLoudness> serverLoudness = {};
+  final redownloaded = <String>[];
+
+  @override
+  Future<Map<String, TrackLoudness>> loudness(List<String> refs) async => {
+    for (final r in refs) r: ?serverLoudness[r],
+  };
+
+  @override
+  Future<PreparedTrack> redownload(SearchResult track) async {
+    redownloaded.add(track.title);
+    return PreparedTrack('id-${track.externalId}', TrackReadiness.baixando);
   }
 }
 

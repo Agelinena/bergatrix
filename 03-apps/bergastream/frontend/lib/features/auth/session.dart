@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/network/api_error.dart';
@@ -133,6 +134,8 @@ class SessionStorage {
     await _store.write(_localMode, 'false');
   }
 
+  Future<void> saveServer(String server) => _store.write(_server, server);
+
   Future<void> saveTokens(AuthTokens t) async {
     _accessToken = t.accessToken;
     _refreshToken = t.refreshToken;
@@ -234,7 +237,12 @@ class SessionController extends Notifier<SessionState> {
     );
     try {
       final address = ref.read(appPlatformProvider).isWeb
-          ? (previous.server ?? webServerAddress() ?? '')
+          // Web: também pelo caminho do bypass (/api-access-bypass), se o
+          // domínio tiver. Atrás do Authentik, o Traefik apagava o
+          // "Authorization" das chamadas e todas voltavam "Sessão expirada".
+          ? await _repository.discoverServer(
+              previous.server ?? webServerAddress() ?? '',
+            )
           : await _repository.discoverServer(normalizeServer(server ?? ''));
       final response = await _repository.login(
         server: address,
@@ -298,6 +306,7 @@ class SessionController extends Notifier<SessionState> {
   /// é renovado pelo interceptor; sem rede, entra em modo offline.
   Future<void> validate() async {
     if (!state.isLoggedIn) return;
+    await _useBypassOnWeb();
     try {
       final user = await _repository.me();
       if (state.isLoggedIn) {
@@ -308,6 +317,24 @@ class SessionController extends Notifier<SessionState> {
           e.kind == ApiErrorKind.tempoEsgotado) {
         state = state.copyWith(serverAvailable: false);
       }
+    }
+  }
+
+  /// Sessão web salva antes desta versão (endereço = domínio, sem o
+  /// caminho do bypass): passa a usar o bypass, se o domínio tiver.
+  Future<void> _useBypassOnWeb() async {
+    final server = state.server;
+    if (!ref.read(appPlatformProvider).isWeb || server == null) return;
+    final path = Uri.tryParse(server)?.path ?? '';
+    if (path.isNotEmpty && path != '/') return; // já tem o caminho
+    try {
+      final found = await _repository.discoverServer(server);
+      if (found != server && state.server == server) {
+        await _storage.saveServer(found);
+        state = state.copyWith(server: found);
+      }
+    } on Object catch (e) {
+      debugPrint('Bypass do servidor não conferido: $e');
     }
   }
 

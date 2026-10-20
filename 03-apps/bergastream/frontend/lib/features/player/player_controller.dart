@@ -96,7 +96,15 @@ class PlayerTimings {
     this.prefetchAfter = const Duration(seconds: 8),
     this.prefetchRetry = const Duration(seconds: 20),
     this.autoSkipDelay = const Duration(seconds: 2),
+    this.fades = true,
+    this.pausedKeepAlive = const Duration(minutes: 30),
   });
+
+  /// Fades (pausa e troca de música); os testes desligam para não esperar.
+  final bool fades;
+
+  /// Pausado há mais que isto, o player sai do primeiro plano (nulo: nunca).
+  final Duration? pausedKeepAlive;
 
   final Duration pollInterval;
   final Duration prepareTimeout;
@@ -256,6 +264,112 @@ class PlayerController extends Notifier<PlayerState> {
 
   /// Faixa atual vem do servidor (id lá), não de arquivo no aparelho.
   String? _streamTrackId;
+
+  // ── Volume: do usuário × normalização × fade ──
+
+  double _userVolume = 1;
+
+  /// Ganho da normalização da faixa atual (só abaixa: 0..1).
+  double _trackGain = 1;
+  double _fade = 1;
+  int _fadeGen = 0;
+
+  /// Fade de fim de música em andamento (troca com fade).
+  bool _fadingOut = false;
+  Timer? _idleTimer;
+
+  /// Alvo da normalização (o mesmo do Spotify no modo normal).
+  static const loudnessTarget = -14.0;
+
+  void _applyVolume() {
+    unawaited(
+      _engine.setVolume((_userVolume * _trackGain * _fade).clamp(0.0, 1.0)),
+    );
+  }
+
+  /// Leva o fade a [target] em [ms] (passos de 25 ms). Um fade novo cancela
+  /// o anterior. Devolve se terminou (não foi cancelado).
+  Future<bool> _fadeTo(double target, int ms) async {
+    final token = ++_fadeGen;
+    if (ms <= 0 || !ref.read(playerTimingsProvider).fades) {
+      _fade = target;
+      _applyVolume();
+      return true;
+    }
+    final start = _fade;
+    final steps = (ms / 25).ceil().clamp(1, 400);
+    for (var i = 1; i <= steps; i++) {
+      await Future<void>.delayed(Duration(milliseconds: ms ~/ steps));
+      if (token != _fadeGen || !ref.mounted) return false;
+      _fade = start + (target - start) * i / steps;
+      _applyVolume();
+    }
+    return true;
+  }
+
+  Preferences get _prefs => ref.read(preferencesProvider);
+
+  /// Volume da barra (computador e web). [save] falso enquanto arrasta.
+  void setVolume(double volume, {bool save = true}) {
+    _userVolume = volume.clamp(0.0, 1.0);
+    _applyVolume();
+    unawaited(
+      ref.read(preferencesProvider.notifier).setVolume(_userVolume, save: save),
+    );
+  }
+
+  /// Ganho da normalização para [track]: abaixa até [loudnessTarget] (o
+  /// player não aumenta acima de 1). A medida fica guardada no aparelho
+  /// (vale offline); sem medida, sem ajuste.
+  Future<double> _gainFor(SearchResult track) async {
+    if (!_prefs.normalizeVolume) return 1;
+    final loud = await _loudnessOf(track);
+    if (loud == null) return 1;
+    final db = loudnessTarget - loud.lufs;
+    return db >= 0 ? 1 : pow(10, db / 20).toDouble();
+  }
+
+  Future<TrackLoudness?> _loudnessOf(SearchResult track) async {
+    final key = 'loudness.${track.id}';
+    final store = ref.read(keyValueStoreProvider);
+    try {
+      final cached = await store.read(key);
+      if (cached != null) {
+        return TrackLoudness.fromJson(
+          jsonDecode(cached) as Map<String, dynamic>,
+        );
+      }
+      if (!ref.read(sessionProvider).canUseServer) return null;
+      final found = (await _repository
+          .loudness([track.id])
+          .timeout(const Duration(milliseconds: 800)))[track.id];
+      if (found != null) await store.write(key, jsonEncode(found.toJson()));
+      return found;
+    } on Object catch (e) {
+      debugPrint('Volume da faixa não informado: $e');
+      return null;
+    }
+  }
+
+  /// Pausado/parado por muito tempo: sai do primeiro plano. Tocando:
+  /// cancela.
+  void _watchIdle(PlaybackStatus status) {
+    final keepAlive = ref.read(playerTimingsProvider).pausedKeepAlive;
+    final idle =
+        status == PlaybackStatus.pausado || status == PlaybackStatus.parado;
+    if (!idle ||
+        keepAlive == null ||
+        _notification == null ||
+        _remote != null) {
+      _idleTimer?.cancel();
+      _idleTimer = null;
+      return;
+    }
+    _idleTimer ??= Timer(keepAlive, () {
+      _idleTimer = null;
+      if (ref.mounted && !state.isPlaying) _notification?.idle();
+    });
+  }
 
   /// Último ponto visto da faixa (o motor zera a posição ao terminar).
   Duration _lastPosition = Duration.zero;
@@ -579,6 +693,27 @@ class PlayerController extends Notifier<PlayerState> {
   @override
   PlayerState build() {
     final engine = ref.watch(audioEngineProvider);
+    // Volume e normalização seguem as preferências (lidas do aparelho).
+    ref.listen(preferencesProvider, (before, now) {
+      if (before?.volume != now.volume) {
+        _userVolume = now.volume;
+        _applyVolume();
+      }
+      if (before?.normalizeVolume != now.normalizeVolume) {
+        final track = _queue.current?.track;
+        if (!now.normalizeVolume) {
+          _trackGain = 1;
+          _applyVolume();
+        } else if (track != null) {
+          unawaited(
+            _gainFor(track).then((g) {
+              _trackGain = g;
+              _applyVolume();
+            }),
+          );
+        }
+      }
+    });
     _subscriptions
       ..add(engine.completedStream.listen((_) => _onCompleted()))
       ..add(engine.durationStream.listen(_onDuration))
@@ -592,6 +727,7 @@ class PlayerController extends Notifier<PlayerState> {
         s.cancel();
       }
       _remoteTicker?.cancel();
+      _idleTimer?.cancel();
       _positions.close();
     });
     return const PlayerState();
@@ -779,22 +915,81 @@ class PlayerController extends Notifier<PlayerState> {
     if (_group case final group?) return group.togglePlay();
     switch (state.status) {
       case PlaybackStatus.tocando:
-        await _own(_engine.pause);
+        // Mostra pausado já; o som desce em pauseFadeMs e aí o motor para.
         _publish(status: PlaybackStatus.pausado);
+        final faded = await _fadeTo(0, _prefs.pauseFadeMs);
+        if (faded && state.status == PlaybackStatus.pausado) {
+          await _own(_engine.pause);
+        }
       case PlaybackStatus.pausado:
         if (_needsLoad) {
           // Restaurado ao abrir o app: carrega e continua de onde parou.
           await _loadCurrent(startAt: _resumeAt);
           return;
         }
+        final fadeMs = _prefs.pauseFadeMs;
+        if (fadeMs > 0 && ref.read(playerTimingsProvider).fades) {
+          _fade = 0;
+          _applyVolume();
+        }
         _engine.play();
         _publish(status: PlaybackStatus.tocando);
         unawaited(_save());
+        unawaited(_fadeTo(1, fadeMs));
       case PlaybackStatus.parado || PlaybackStatus.erro:
         if (_queue.current != null) await _loadCurrent();
       case PlaybackStatus.preparando:
         break;
     }
+  }
+
+  /// "Adicionar à fila" de uma lista inteira (playlist, álbum), na ordem.
+  Future<void> addAllToQueue(List<SearchResult> tracks) async {
+    if (tracks.isEmpty) return;
+    if (_remote case final remote?) {
+      for (final t in tracks) {
+        remote.command({'action': 'add', 'track': t.toJson()});
+      }
+      return;
+    }
+    if (_group case final group?) {
+      for (final t in tracks) {
+        group.act({'action': 'add', 'track': t.toJson()});
+      }
+      return;
+    }
+    for (final t in tracks) {
+      _queue.add(t);
+    }
+    if (state.current == null) {
+      _queue.startFromManual();
+      _context = 'Sua fila';
+      await _loadCurrent();
+    } else {
+      _publish();
+    }
+  }
+
+  /// Toque numa música da fila: pula direto para ela.
+  Future<void> jumpTo(int uid) async {
+    if (_remote case final remote?) {
+      remote.command({'action': 'jump', 'uid': uid});
+      return;
+    }
+    if (_group case final group?) {
+      final shared = _sharedUidOf(uid);
+      if (shared != null) group.act({'action': 'jump', 'uid': shared});
+      return;
+    }
+    if (_queue.jumpTo(uid) == null) return;
+    await _loadCurrent();
+  }
+
+  /// "Baixar de novo" da música que está tocando: carrega outra vez (espera
+  /// o servidor baixar).
+  Future<void> reloadCurrent() async {
+    if (_remote != null || _group != null || _queue.current == null) return;
+    await _loadCurrent();
   }
 
   Future<void> next() async {
@@ -1002,7 +1197,9 @@ class PlayerController extends Notifier<PlayerState> {
       // Repetir uma faixa.
       _counted = false;
       _lastPosition = Duration.zero;
+      _fadingOut = false;
       await _engine.seek(Duration.zero);
+      unawaited(_fadeTo(1, _prefs.trackFadeMs));
       _engine.play();
       return;
     }
@@ -1153,6 +1350,7 @@ class PlayerController extends Notifier<PlayerState> {
     _lastPosition = startAt ?? Duration.zero;
     _autoAdvanced = auto;
     if (!auto) _autoSkips = 0;
+    _fadingOut = false;
     _quality = null;
     _loadedTrackId = item.track.id;
     _publish(status: PlaybackStatus.preparando);
@@ -1179,6 +1377,8 @@ class PlayerController extends Notifier<PlayerState> {
     if (path != null && File(path).existsSync()) {
       _quality = local?.qualityLabel;
       await _own(() => _engine.setFile(path));
+      if (generation != _generation) return;
+      _trackGain = await _gainFor(item.track);
       if (generation != _generation) return;
       await _start(startAt);
       return;
@@ -1230,6 +1430,8 @@ class PlayerController extends Notifier<PlayerState> {
       await _own(() => _engine.setUrl(url));
       if (generation != _generation) return;
       _streamTrackId = prepared.trackId;
+      _trackGain = await _gainFor(item.track);
+      if (generation != _generation) return;
       await _start(startAt);
       _autoSkips = 0;
     } on Object catch (e) {
@@ -1264,8 +1466,15 @@ class PlayerController extends Notifier<PlayerState> {
     final at = group?.position ?? startAt;
     if (at != null && at > Duration.zero) await _engine.seek(at);
     if (group == null || group.shouldPlay) {
+      // Troca com fade: começa do silêncio e sobe em trackFadeMs.
+      final fadeMs = _prefs.trackFadeMs;
+      final fadeIn = fadeMs > 0 && ref.read(playerTimingsProvider).fades;
+      _fadeGen++;
+      _fade = fadeIn ? 0 : 1;
+      _applyVolume();
       _engine.play();
       _publish(status: PlaybackStatus.tocando);
+      if (fadeIn) unawaited(_fadeTo(1, fadeMs));
     } else {
       _publish(status: PlaybackStatus.pausado);
     }
@@ -1305,12 +1514,37 @@ class PlayerController extends Notifier<PlayerState> {
             : null,
       );
     }
+    _maybeFadeOut(position);
     _maybePrefetch(item, position);
     _notification?.showState(
       playing: state.isPlaying,
       loading: state.isPreparing,
       position: position,
     );
+  }
+
+  /// Troca com fade: nos últimos trackFadeMs da música o som desce. Voltou
+  /// para trás (buscou um trecho antes), o som volta.
+  void _maybeFadeOut(Duration position) {
+    final fadeMs = _prefs.trackFadeMs;
+    final duration = _duration;
+    if (fadeMs <= 0 ||
+        duration == null ||
+        _group != null ||
+        !ref.read(playerTimingsProvider).fades) {
+      return;
+    }
+    final remaining = (duration - position).inMilliseconds;
+    if (!_fadingOut &&
+        remaining > 0 &&
+        remaining <= fadeMs &&
+        _queue.peekNext != null) {
+      _fadingOut = true;
+      unawaited(_fadeTo(0, remaining));
+    } else if (_fadingOut && remaining > fadeMs + 500) {
+      _fadingOut = false;
+      unawaited(_fadeTo(1, 200));
+    }
   }
 
   /// Pede ao servidor só a próxima música, depois de a atual tocar um pouco
@@ -1337,6 +1571,7 @@ class PlayerController extends Notifier<PlayerState> {
         final local = await ref
             .read(localDatabaseProvider)
             ?.downloadedFor(next.track);
+        unawaited(_loudnessOf(next.track)); // volume da próxima, já em cache
         if (local?.audioPath != null) return; // já está no aparelho
         await _repository.prepare(next.track);
       } on Object catch (e) {
@@ -1382,6 +1617,7 @@ class PlayerController extends Notifier<PlayerState> {
       );
       return;
     }
+    _watchIdle(status ?? state.status);
     final changed =
         state.current?.uid != _queue.current?.uid ||
         state.upNext.length != _queue.upNext.length ||

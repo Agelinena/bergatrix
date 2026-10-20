@@ -122,6 +122,7 @@ class SettingsScreen extends ConsumerWidget {
         if (downloadsAvailable) const _OfflineCard(),
         _QualityCard(downloadsAvailable: downloadsAvailable),
         if (session.isLoggedIn) const SessionSettingsCard(),
+        const _PlaybackCard(),
         const _AppearanceCard(),
         if (session.canUseServer) const _ServerStatusCard(),
         if (ref.watch(updateTargetProvider) != null) const _AboutCard(),
@@ -212,6 +213,96 @@ class _QualityCard extends ConsumerWidget {
                 debugPrint('Troca das cópias fica para depois: ${e.message}');
               }
             }),
+        ],
+      ),
+    );
+  }
+}
+
+/// Reprodução: fade ao pausar, fade na troca de música e normalização.
+class _PlaybackCard extends ConsumerWidget {
+  const _PlaybackCard();
+
+  static String _ms(int ms) => ms == 0 ? 'Desligado' : '$ms ms';
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final c = BergaColors.of(context);
+    final prefs = ref.watch(preferencesProvider);
+    final notifier = ref.read(preferencesProvider.notifier);
+    final title = BergaText.trackTitle.copyWith(color: c.tx);
+    final mu = BergaText.secondary.copyWith(color: c.mu);
+
+    Widget slider({
+      required int value,
+      required int max,
+      required int step,
+      required ValueChanged<int> onChanged,
+    }) => SliderTheme(
+      data: SliderTheme.of(context).copyWith(
+        activeTrackColor: c.gr,
+        inactiveTrackColor: c.track,
+        thumbColor: c.tx,
+        trackHeight: 3,
+      ),
+      child: Slider(
+        value: value.clamp(0, max).toDouble(),
+        max: max.toDouble(),
+        divisions: max ~/ step,
+        label: _ms(value),
+        onChanged: (v) => onChanged(v.round()),
+      ),
+    );
+
+    return AppCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Reprodução', style: title),
+          const SizedBox(height: 10),
+          Text('Fade ao pausar: ${_ms(prefs.pauseFadeMs)}', style: mu),
+          slider(
+            value: prefs.pauseFadeMs,
+            max: 1000,
+            step: 50,
+            onChanged: notifier.setPauseFade,
+          ),
+          Text('Fade na troca de música: ${_ms(prefs.trackFadeMs)}', style: mu),
+          Text(
+            'O som desce no fim de uma música e sobe no começo da próxima.',
+            style: mu.copyWith(fontSize: 12),
+          ),
+          slider(
+            value: prefs.trackFadeMs,
+            max: 10000,
+            step: 250,
+            onChanged: notifier.setTrackFade,
+          ),
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Normalizar volume',
+                      style: BergaText.body.copyWith(color: c.tx),
+                    ),
+                    Text(
+                      'Abaixa as músicas mais altas para todas soarem '
+                      'parecidas.',
+                      style: mu,
+                    ),
+                  ],
+                ),
+              ),
+              Switch(
+                value: prefs.normalizeVolume,
+                onChanged: notifier.setNormalizeVolume,
+                activeThumbColor: c.gr,
+              ),
+            ],
+          ),
         ],
       ),
     );

@@ -29,6 +29,9 @@ abstract interface class AudioEngine {
   Future<void> setFile(String path);
   void play();
   Future<void> pause();
+
+  /// 0 (mudo) a 1 (volume cheio do aparelho).
+  Future<void> setVolume(double volume);
   Future<void> seek(Duration position);
   Future<void> stop();
   Future<void> dispose();
@@ -86,6 +89,9 @@ class JustAudioEngine implements AudioEngine {
 
   @override
   Future<void> pause() => _player.pause();
+
+  @override
+  Future<void> setVolume(double volume) => _player.setVolume(volume);
 
   @override
   Future<void> seek(Duration position) => _player.seek(position);

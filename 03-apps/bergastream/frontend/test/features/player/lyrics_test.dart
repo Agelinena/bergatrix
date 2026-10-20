@@ -7,6 +7,7 @@ import 'package:bergastream/data/repositories/lyrics_repository.dart';
 import 'package:bergastream/features/auth/session.dart';
 import 'package:bergastream/features/player/full_player.dart';
 import 'package:bergastream/features/player/lyrics.dart';
+import 'package:bergastream/features/player/player_controller.dart';
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -91,6 +92,25 @@ void main() {
     await tester.tap(find.text('Terceira linha da letra'));
     await tester.pumpAndSettle();
     expect(engine.log.last, 'seek 25');
+    await tester.pump(const Duration(seconds: 3));
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('letra em tela cheia fecha quando a música muda', (tester) async {
+    await playAndOpen(tester);
+    await tester.tap(find.text(LyricsCard.title));
+    await tester.pumpAndSettle();
+    expect(find.byType(LyricsPage), findsOneWidget);
+    // Outra música começa: volta para o player.
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(LyricsPage)),
+    );
+    await container
+        .read(playerProvider.notifier)
+        .playList([song('Outra')], 0, context: 'Teste');
+    await tester.pumpAndSettle();
+    expect(find.byType(LyricsPage), findsNothing);
+    expect(find.byType(FullPlayer), findsOneWidget);
     await tester.pump(const Duration(seconds: 3));
     await tester.pumpAndSettle();
   });

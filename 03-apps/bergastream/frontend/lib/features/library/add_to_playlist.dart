@@ -12,6 +12,7 @@ import '../../data/models/search_full.dart';
 import '../../data/models/search_result.dart';
 import '../../data/models/playlist_models.dart';
 import '../playlists/playlist_store.dart';
+import 'library_providers.dart';
 
 /// "Adicionar à playlist" (⋮) e "Adicionar músicas à playlist" (link
 /// importado): pergunta em qual playlist (ou cria uma) e adiciona. Sem
@@ -179,8 +180,9 @@ class _PlaylistPicker extends ConsumerWidget {
                     ),
                   for (final p in playlists)
                     row(
-                      leading: const Cover.playlist(
+                      leading: Cover.playlist(
                         size: BergaSizes.trackCover,
+                        image: serverImage(ref, p.coverUrl),
                       ),
                       label: p.name,
                       onTap: () =>

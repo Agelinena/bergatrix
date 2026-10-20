@@ -14,6 +14,7 @@ import 'package:bergastream/features/player/player_controller.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:bergastream/features/playlists/last_played.dart';
 import 'package:bergastream/features/playlists/playlist_shuffle.dart';
+import 'package:bergastream/features/settings/preferences.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../app_harness.dart';
@@ -43,6 +44,7 @@ void main() {
             pollInterval: Duration.zero,
             rapidChangeDelay: Duration.zero,
             autoSkipDelay: Duration.zero,
+            fades: false,
           ),
         ),
         playRecorderProvider.overrideWithValue((
@@ -268,6 +270,7 @@ void main() {
             pollInterval: Duration.zero,
             rapidChangeDelay: Duration.zero,
             autoSkipDelay: Duration.zero,
+            fades: false,
           ),
         ),
         playRecorderProvider.overrideWithValue(
@@ -330,6 +333,7 @@ void main() {
               pollInterval: Duration.zero,
               rapidChangeDelay: Duration.zero,
               autoSkipDelay: Duration.zero,
+              fades: false,
             ),
           ),
           playRecorderProvider.overrideWithValue(
@@ -500,6 +504,99 @@ void main() {
       await pumpEventQueue();
       expect(state().current!.track.title, 'B');
       expect(state().status, PlaybackStatus.erro);
+    });
+  });
+
+  group('fila, volume e fades', () {
+    /// Player com os fades ligados (os outros testes desligam).
+    ProviderContainer fading() {
+      final c = ProviderContainer(
+        overrides: [
+          audioEngineProvider.overrideWithValue(engine),
+          playbackRepositoryProvider.overrideWithValue(repo),
+          playerTimingsProvider.overrideWithValue(
+            const PlayerTimings(
+              pollInterval: Duration.zero,
+              rapidChangeDelay: Duration.zero,
+              autoSkipDelay: Duration.zero,
+            ),
+          ),
+          playRecorderProvider.overrideWithValue(
+            (SearchResult t, {String? playlistId}) {},
+          ),
+          localDatabaseProvider.overrideWithValue(null),
+          appPlatformProvider.overrideWithValue(const AppPlatform.app()),
+          keyValueStoreProvider.overrideWithValue(MemoryKeyValueStore()),
+          initialSessionProvider.overrideWithValue(loggedIn),
+        ],
+      );
+      addTearDown(c.dispose);
+      return c;
+    }
+
+    test('tocar numa música da fila pula direto para ela', () async {
+      await controller().playList(abc, 0, context: 'Busca');
+      final c = state().upNext[1];
+      await controller().jumpTo(c.uid);
+      expect(state().current!.track.title, 'C');
+      expect(state().upNext, isEmpty);
+      expect(engine.playing, isTrue);
+    });
+
+    test('normalização: música alta é abaixada até -14 LUFS', () async {
+      repo.serverLoudness = {
+        song('A').id: const TrackLoudness(-8, -0.5), // 6 dB acima do alvo
+        song('B').id: const TrackLoudness(-18, -3), // abaixo: não sobe
+      };
+      await controller().playList(abc, 0, context: 'Busca');
+      expect(engine.volume, closeTo(0.501, 0.01));
+      await controller().next();
+      expect(engine.volume, 1.0);
+    });
+
+    test('normalização desligada: volume cheio', () async {
+      repo.serverLoudness = {song('A').id: const TrackLoudness(-8, -0.5)};
+      await container
+          .read(preferencesProvider.notifier)
+          .setNormalizeVolume(false);
+      await controller().playList(abc, 0, context: 'Busca');
+      expect(engine.volume, 1.0);
+    });
+
+    test('volume da barra multiplica o da normalização', () async {
+      repo.serverLoudness = {song('A').id: const TrackLoudness(-8, -0.5)};
+      await controller().playList(abc, 0, context: 'Busca');
+      controller().setVolume(0.5);
+      expect(engine.volume, closeTo(0.25, 0.01));
+      expect(container.read(preferencesProvider).volume, 0.5);
+    });
+
+    test('fade ao pausar: o som desce até 0 e só então o motor para', () async {
+      final c = fading();
+      await c.read(preferencesProvider.notifier).setPauseFade(100);
+      final ctl = c.read(playerProvider.notifier);
+      await ctl.playList(abc, 0, context: 'Busca');
+      engine.volumes.clear();
+      await ctl.togglePlay();
+      expect(c.read(playerProvider).status, PlaybackStatus.pausado);
+      expect(engine.volumes.length, greaterThan(2), reason: 'desce aos poucos');
+      expect(engine.volumes.last, 0);
+      expect(engine.playing, isFalse);
+      // Voltar a tocar sobe de novo.
+      await ctl.togglePlay();
+      await Future<void>.delayed(const Duration(milliseconds: 150));
+      expect(engine.volume, 1.0);
+    });
+
+    test('fade na troca: a música nova começa do silêncio e sobe', () async {
+      final c = fading();
+      await c.read(preferencesProvider.notifier).setTrackFade(100);
+      final ctl = c.read(playerProvider.notifier);
+      engine.volumes.clear();
+      await ctl.playList(abc, 0, context: 'Busca');
+      expect(engine.volumes.first, 0);
+      await Future<void>.delayed(const Duration(milliseconds: 150));
+      expect(engine.volume, 1.0);
     });
   });
 }

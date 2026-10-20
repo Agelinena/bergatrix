@@ -165,6 +165,7 @@ Future<ProviderContainer> pumpBergastream(
           pollInterval: Duration.zero,
           rapidChangeDelay: Duration.zero,
           autoSkipDelay: Duration.zero,
+          fades: false,
         ),
       ),
     ],

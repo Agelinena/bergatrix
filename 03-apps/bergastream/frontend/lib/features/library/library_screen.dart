@@ -17,6 +17,7 @@ import '../auth/session.dart';
 import '../playlists/playlist_store.dart';
 import '../playlists/sync_notices.dart';
 import 'library_providers.dart';
+import 'playlist_menu.dart';
 
 /// Aba Biblioteca (Seção 6.4): playlists do servidor (suas e compartilhadas)
 /// e as locais ("Só neste aparelho").
@@ -99,6 +100,13 @@ class LibraryScreen extends ConsumerWidget {
               ),
               cover: serverImage(ref, p.coverUrl),
               onTap: () => context.push(AppRoutes.playlist(p.id)),
+              onMenu: () => showPlaylistMenu(
+                context,
+                ref,
+                id: p.id,
+                name: p.name,
+                cover: serverImage(ref, p.coverUrl),
+              ),
               trailing: trailing(p),
             ),
           for (final p in offline)
@@ -163,7 +171,11 @@ class PlaylistRow extends StatelessWidget {
     this.onTap,
     this.coverSize = 56,
     this.trailing,
+    this.onMenu,
   });
+
+  /// Botão direito (computador e web).
+  final VoidCallback? onMenu;
 
   final String title;
   final String subtitle;
@@ -175,38 +187,41 @@ class PlaylistRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = BergaColors.of(context);
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(
-          vertical: BergaSizes.trackPaddingVertical,
-        ),
-        child: Row(
-          spacing: BergaSizes.trackGap,
-          children: [
-            Cover.playlist(size: coverSize, image: cover),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: BergaText.trackTitle.copyWith(color: c.tx),
-                  ),
-                  Text(
-                    subtitle,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: BergaText.secondary.copyWith(color: c.mu),
-                  ),
-                ],
+    return ContextMenuRegion(
+      onMenu: onMenu,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            vertical: BergaSizes.trackPaddingVertical,
+          ),
+          child: Row(
+            spacing: BergaSizes.trackGap,
+            children: [
+              Cover.playlist(size: coverSize, image: cover),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: BergaText.trackTitle.copyWith(color: c.tx),
+                    ),
+                    Text(
+                      subtitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: BergaText.secondary.copyWith(color: c.mu),
+                    ),
+                  ],
+                ),
               ),
-            ),
-            ?trailing,
-          ],
+              ?trailing,
+            ],
+          ),
         ),
       ),
     );

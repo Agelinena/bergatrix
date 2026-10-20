@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../theme/berga_colors.dart';
 import '../theme/berga_sizes.dart';
 import '../theme/berga_text.dart';
+import 'context_menu_region.dart';
 import 'cover.dart';
 import 'download_state_icon.dart';
 
@@ -53,70 +54,79 @@ class TrackRow extends StatelessWidget {
     final c = BergaColors.of(context);
     final subtitle = addedBy == null ? artist : '$artist · por $addedBy';
 
-    final row = GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(
-          vertical: BergaSizes.trackPaddingVertical,
-        ),
-        child: Row(
-          children: [
-            if (number != null)
-              SizedBox(
-                width: 28,
-                child: Text(
-                  '$number',
-                  textAlign: TextAlign.center,
-                  style: BergaText.body.copyWith(color: playing ? c.gr : c.mu),
-                ),
-              )
-            else
-              Cover(
-                seed: id,
-                title: title,
-                size: BergaSizes.trackCover,
-                image: cover,
-              ),
-            const SizedBox(width: BergaSizes.trackGap),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: BergaText.trackTitle.copyWith(
-                      color: playing ? c.gr : c.tx,
+    // Botão direito abre o mesmo menu do ⋮.
+    final row = ContextMenuRegion(
+      onMenu: onMore,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            vertical: BergaSizes.trackPaddingVertical,
+          ),
+          child: Row(
+            children: [
+              if (number != null)
+                SizedBox(
+                  width: 28,
+                  child: Text(
+                    '$number',
+                    textAlign: TextAlign.center,
+                    style: BergaText.body.copyWith(
+                      color: playing ? c.gr : c.mu,
                     ),
                   ),
-                  Text(
-                    subtitle,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: BergaText.secondary.copyWith(color: c.mu),
-                  ),
-                ],
+                )
+              else
+                Cover(
+                  seed: id,
+                  title: title,
+                  size: BergaSizes.trackCover,
+                  image: cover,
+                ),
+              const SizedBox(width: BergaSizes.trackGap),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: BergaText.trackTitle.copyWith(
+                        color: playing ? c.gr : c.tx,
+                      ),
+                    ),
+                    Text(
+                      subtitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: BergaText.secondary.copyWith(color: c.mu),
+                    ),
+                  ],
+                ),
               ),
-            ),
-            if (downloadState != DownloadState.naoBaixada) ...[
-              const SizedBox(width: 8),
-              DownloadStateIcon(
-                state: downloadState,
-                progress: downloadProgress,
+              if (downloadState != DownloadState.naoBaixada) ...[
+                const SizedBox(width: 8),
+                DownloadStateIcon(
+                  state: downloadState,
+                  progress: downloadProgress,
+                ),
+              ],
+              IconButton(
+                onPressed: onMore,
+                icon: const Icon(Icons.more_vert),
+                color: c.mu,
+                iconSize: 20,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints.tightFor(
+                  width: 40,
+                  height: 40,
+                ),
+                tooltip: 'Mais opções',
               ),
             ],
-            IconButton(
-              onPressed: onMore,
-              icon: const Icon(Icons.more_vert),
-              color: c.mu,
-              iconSize: 20,
-              padding: EdgeInsets.zero,
-              constraints: const BoxConstraints.tightFor(width: 40, height: 40),
-              tooltip: 'Mais opções',
-            ),
-          ],
+          ),
         ),
       ),
     );

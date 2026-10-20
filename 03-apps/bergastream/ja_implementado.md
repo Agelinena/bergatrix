@@ -405,6 +405,41 @@ Rodado na imagem `ghcr.io/cirruslabs/flutter:stable` (Flutter 3.44.0 / Dart 3.12
 - Testes: `test_quality` 61, `test_upgrade_flow` 10 (novo; banco real e Lidarr falso). Validado
   contra o MusicBrainz e um Lidarr local (ISRC → álbum de estúdio → `album/lookup` por MBID).
 
+### Versão 0.3.2 — reprodução, volume e atalhos de computador
+- **Pausado em segundo plano (Android):** o serviço de mídia segue em primeiro plano pausado (o
+  Android encerrava o app logo depois de pausar e não dava para retomar pela notificação); depois
+  de 30 min pausado ele libera.
+- **Normalização de volume:** o servidor mede o volume percebido de cada arquivo (EBU R128,
+  `loudnorm` do ffmpeg; migração `0015_loudness.sql`, backfill no worker) e o app abaixa as
+  músicas mais altas até -14 LUFS (o player não aumenta acima do volume cheio). A medida fica no
+  aparelho e vale offline. Ajustes → Reprodução → "Normalizar volume" (padrão ligado).
+  `GET /api/tracks/{id}/status` traz `loudness`; `POST /api/tracks/loudness` em lote.
+- **Fades:** ao pausar/retomar (padrão 300 ms) e na troca de música (desce no fim de uma e sobe
+  no começo da próxima; padrão desligado, até 10 s), em Ajustes → Reprodução, em ms.
+- **Volume** na barra do player do computador e da web (com mudo), guardado no aparelho.
+- **Baixar de novo** no menu ⋮ da música: apaga o arquivo no servidor e baixa outra vez
+  (`POST /api/tracks/redownload`); se está tocando, recarrega; se está baixada no aparelho, a
+  cópia é trocada.
+- **Login no navegador atrás do Authentik:** o middleware do Authentik no Traefik tem
+  `Authorization` em `authResponseHeaders`, então apagava o token do Bergastream e toda chamada
+  voltava "Sessão expirada". A web passa a usar `/api-access-bypass` para a API (como os apps);
+  sessões salvas migram ao abrir.
+- **Fila:** tocar numa música da fila pula direto para ela (toque simples; rolar e arrastar
+  não disparam). Funciona também na sessão "ouvir junto" e no "Tocar em…".
+- **Botão direito** (computador e web) abre o menu ⋮ das músicas, das playlists da Biblioteca e
+  da barra lateral (tocar, aleatório, fila, compartilhar, abrir), do cabeçalho da playlist, da
+  fila e do player.
+- **Player grande no computador** (seta na barra), com largura limitada e Esc para fechar;
+  artista e álbum clicáveis no player (abrem a página; sem o id do catálogo, a busca).
+- **Letra em tela cheia** fecha e volta ao player quando a música muda.
+- **Playlist importada** (Spotify/Deezer/YouTube) ganhou aleatório, adicionar tudo à fila,
+  compartilhar e buscar na lista.
+- **Buscas recentes** guardam o que foi aberto (música, artista, álbum, playlist), não o texto.
+- Correções: busca dentro da playlist vazava para as outras ao trocar pela barra lateral (e não
+  dava para apagar) — telas de playlist/artista/álbum agora são uma por item e o campo tem "x";
+  capas das playlists aparecem em "Adicionar à playlist"; folha do menu ⋮ rola em telas baixas.
+- Testes: backend `test_loudness` 7 (novo); app 386.
+
 ### Versão 0.3.1 — correções de uso (player, conexão, downloads, Lidarr)
 - **Música pulando para o fim e trocando sozinha (Busca):** o servidor baixava a mesma faixa duas
   vezes (pré-carregamento + play) e o segundo download trocava o arquivo de quem estava ouvindo,

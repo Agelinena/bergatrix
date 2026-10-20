@@ -118,10 +118,18 @@ void main() {
   /// Espera os downloads terminarem. Arquivos são gravados de verdade: com
   /// a máquina carregada (suíte inteira) leva mais que algumas voltas da
   /// fila de eventos, então espera também tempo real (até ~3 s).
+  /// Espera os downloads começarem (ou 300 ms, se forem rápidos demais para
+  /// serem vistos ativos) e depois terminarem. Só "0 ativos" parava antes de
+  /// o download começar (o gerenciador confere o Wi-Fi primeiro).
   Future<void> settle() async {
+    var started = false;
     for (var i = 0; i < 300; i++) {
       await pumpEventQueue();
-      if (c.read(downloadManagerProvider).active == 0) break;
+      final active = c.read(downloadManagerProvider).active;
+      if (active > 0) started = true;
+      if (started && active == 0) break;
+      // Rápido demais para ser visto ativo: terminou se a fila esvaziou.
+      if (!started && i >= 10 && (await db.queuedTracks()).isEmpty) break;
       await Future<void>.delayed(const Duration(milliseconds: 10));
     }
   }
@@ -224,14 +232,18 @@ void main() {
   test(
     'queda de rede não gasta tentativa: baixa quando a rede volta',
     () async {
-      manager().transientRetry = const Duration(milliseconds: 10);
+      manager().transientRetry = const Duration(milliseconds: 400);
       fetcher.failures['id-a'] = 5;
       await manager().downloadPlaylist(playlist('p1', ['a']));
-      await settle();
+      // Primeira queda: volta para a fila sem gastar tentativa.
+      for (var i = 0; i < 100 && fetcher.fetched.isEmpty; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+      }
+      await pumpEventQueue();
       var a = (await track('a'))!;
       expect((a.downloadState, a.attempts), (DownloadState.naFila, 0));
-      // Até 3 s (a suíte inteira deixa os timers mais lentos).
-      for (var i = 0; i < 150; i++) {
+      // 5 quedas × 400 ms; até 6 s (a suíte inteira deixa os timers lentos).
+      for (var i = 0; i < 300; i++) {
         await Future<void>.delayed(const Duration(milliseconds: 20));
         await settle();
         if ((await track('a'))!.downloadState == DownloadState.baixada) break;

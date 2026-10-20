@@ -66,7 +66,7 @@ void main() {
     expect(find.text('Na fila: toca depois da atual'), findsNothing);
   });
 
-  testWidgets('"x" na busca apaga o texto; "x" no histórico apaga o termo', (
+  testWidgets('"x" na busca apaga o texto; "x" no histórico tira o item', (
     tester,
   ) async {
     await pumpBergastream(tester, size: const Size(400, 1400));
@@ -75,13 +75,16 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Bohemian Rhapsody'), findsOneWidget);
 
+    // Abrir um resultado guarda ele nas buscas recentes.
+    await tester.tap(find.text('Bohemian Rhapsody'));
+    await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('Limpar'));
     await tester.pumpAndSettle();
     expect(find.widgetWithText(TextField, 'queen'), findsNothing);
     expect(find.text('Buscas recentes'), findsOneWidget);
     expect(find.byTooltip('Limpar'), findsNothing);
 
-    await tester.tap(find.byTooltip('Apagar "queen" das buscas recentes'));
+    await tester.tap(find.byTooltip('Tirar das buscas recentes'));
     await tester.pumpAndSettle();
     expect(find.text('Buscas recentes'), findsNothing);
   });

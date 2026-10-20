@@ -49,6 +49,18 @@ class BergaAudioHandler extends BaseAudioHandler with SeekHandler {
     );
   }
 
+  /// Pausado há muito tempo: sai do primeiro plano (a notificação some e o
+  /// Android pode encerrar o app; reabrindo, a música continua de onde
+  /// parou).
+  void idle() {
+    playbackState.add(
+      playbackState.value.copyWith(
+        processingState: AudioProcessingState.idle,
+        playing: false,
+      ),
+    );
+  }
+
   /// Atualiza botões, estado e posição da notificação.
   void showState({
     required bool playing,
@@ -83,7 +95,11 @@ Future<BergaAudioHandler?> initMediaNotification() async {
       config: const AudioServiceConfig(
         androidNotificationChannelId: 'com.bergastream.app.audio',
         androidNotificationChannelName: 'Reprodução',
-        androidNotificationOngoing: true,
+        // Pausado continua em primeiro plano (o Android encerrava o app logo
+        // depois de pausar e não dava para retomar pela notificação); o
+        // player libera depois de um tempo pausado (ver idle()).
+        androidStopForegroundOnPause: false,
+        androidNotificationOngoing: false,
         // Silhueta branca: o ícone colorido do app vira um quadrado branco
         // na barra de status.
         androidNotificationIcon: 'drawable/ic_stat_bergastream',

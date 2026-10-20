@@ -9,7 +9,12 @@ import '../session/session_sheet.dart';
 import 'play_queue.dart';
 import 'player_controller.dart';
 import 'player_texts.dart';
+import '../../app/catalog_navigation.dart';
+import 'full_player.dart';
+import 'track_menu.dart';
 import 'seek_bar.dart';
+import 'track_links.dart';
+import 'volume_control.dart';
 
 /// Painel da fila aberto no layout de navegador.
 final desktopQueueOpenProvider = NotifierProvider<DesktopQueueOpen, bool>(
@@ -86,43 +91,57 @@ class PlayerBar extends ConsumerWidget {
       child: Row(
         children: [
           Expanded(
-            child: Row(
-              spacing: 12,
-              children: [
-                Cover(
-                  seed: track.id,
-                  title: track.title,
-                  size: 56,
-                  image: coverImage(track),
-                ),
-                Flexible(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        track.title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: BergaText.trackTitle.copyWith(color: c.tx),
-                      ),
-                      if (state.playingOn case final device?)
-                        PlayingOnLabel(name: device, compact: true)
-                      else
+            child: ContextMenuRegion(
+              onMenu: () => showTrackMenu(
+                context,
+                ref,
+                track,
+                onGoToAlbum: goToAlbumOf(context, track),
+                onGoToArtist: goToArtistOf(context, track),
+              ),
+              child: Row(
+                spacing: 12,
+                children: [
+                  Cover(
+                    seed: track.id,
+                    title: track.title,
+                    size: 56,
+                    image: coverImage(track),
+                  ),
+                  Flexible(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
                         Text(
-                          state.isPreparing
-                              ? 'Baixando…'
-                              : artistAndAlbum(track),
+                          track.title,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: BergaText.secondary.copyWith(
-                            color: state.isPreparing ? c.gr : c.mu,
-                          ),
+                          style: BergaText.trackTitle.copyWith(color: c.tx),
                         ),
-                    ],
+                        if (state.playingOn case final device?)
+                          PlayingOnLabel(name: device, compact: true)
+                        else
+                          state.isPreparing
+                              ? Text(
+                                  'Baixando…',
+                                  maxLines: 1,
+                                  style: BergaText.secondary.copyWith(
+                                    color: c.gr,
+                                  ),
+                                )
+                              // Artista e álbum abrem a página deles.
+                              : ArtistAlbumLinks(
+                                  track: track,
+                                  style: BergaText.secondary.copyWith(
+                                    color: c.mu,
+                                  ),
+                                ),
+                      ],
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
           SizedBox(
@@ -165,26 +184,37 @@ class PlayerBar extends ConsumerWidget {
             ),
           ),
           Expanded(
-            child: Align(
-              alignment: Alignment.centerRight,
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  DevicesButton(iconSize: 22, idleColor: c.mu),
-                  SessionButton(iconSize: 22, idleColor: c.mu),
-                  control(
-                    Icons.lyrics_outlined,
-                    'Letra',
-                    ref.read(desktopLyricsOpenProvider.notifier).toggle,
-                    active: lyricsOpen,
-                  ),
-                  control(
-                    Icons.queue_music,
-                    'Fila',
-                    ref.read(desktopQueueOpenProvider.notifier).toggle,
-                    active: queueOpen,
-                  ),
-                ],
+            child: LayoutBuilder(
+              builder: (context, area) => Align(
+                alignment: Alignment.centerRight,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Barra de volume só com espaço (6 botões de 48 + barra);
+                    // senão, só o ícone de mudo.
+                    VolumeControl(showSlider: area.maxWidth >= 400, width: 100),
+                    DevicesButton(iconSize: 22, idleColor: c.mu),
+                    SessionButton(iconSize: 22, idleColor: c.mu),
+                    control(
+                      Icons.lyrics_outlined,
+                      'Letra',
+                      ref.read(desktopLyricsOpenProvider.notifier).toggle,
+                      active: lyricsOpen,
+                    ),
+                    control(
+                      Icons.queue_music,
+                      'Fila',
+                      ref.read(desktopQueueOpenProvider.notifier).toggle,
+                      active: queueOpen,
+                    ),
+                    // Player grande (capa, letra, fila), como no celular.
+                    control(
+                      Icons.keyboard_arrow_up,
+                      'Abrir player',
+                      () => openFullPlayer(context),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),

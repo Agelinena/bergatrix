@@ -224,4 +224,5 @@ gunzip -c bergastream-AAAA-MM-DD.sql.gz | docker compose exec -T db psql -U berg
 | Log do worker: "álbum … não encontrado no MusicBrainz" | O Lidarr não achou o álbum (nome diferente no MusicBrainz ou lançamento só digital). A faixa fica em 320 e o worker tenta de novo em 7 dias. |
 | Log do worker: "arquivo do Lidarr não visível aqui" | O worker não vê `${STORAGE_PATH}/lidarr/music` (volume do compose alterado?). |
 | Lidarr não importa o que o SABnzbd baixou ("No files found" / caminho inexistente) | `USENET_DOWNLOADS_DIR` não é a pasta que o SABnzbd monta como `/downloads`. |
+| Navegador atrás do Authentik: entra, mas tudo diz "Sessão expirada" | O middleware do Authentik no Traefik (`01-network/traefik/config/dynamic.yml`) tem `Authorization` em `authResponseHeaders` e apaga o token do Bergastream. A partir da 0.3.2 a web usa `/api-access-bypass` para a API e não depende disso. Se outro app tiver o mesmo sintoma, avalie tirar `Authorization` dessa lista. |
 | "Muitas tentativas" no login | 5 senhas erradas em 15 min para aquele usuário e IP: espere ou troque a senha (USUARIOS.md). |

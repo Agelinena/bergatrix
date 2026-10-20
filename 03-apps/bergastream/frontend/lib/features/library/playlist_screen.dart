@@ -43,6 +43,14 @@ class PlaylistScreen extends ConsumerStatefulWidget {
 
 class _PlaylistScreenState extends ConsumerState<PlaylistScreen> {
   String _query = '';
+  final _search = TextEditingController();
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
+
   bool _reordering = false;
 
   /// Ordem enquanto reordena (ids), aplicada ao salvar.
@@ -415,6 +423,8 @@ class _PlaylistScreenState extends ConsumerState<PlaylistScreen> {
             onTap: role.canEdit && synced
                 ? () => _needsServer(_changePhoto)
                 : null,
+            // Botão direito na capa: o menu da playlist (⋮).
+            onSecondaryTap: () => _openMenu(p),
             // Capa baixada (file://) ou do servidor.
             child: Cover.playlist(
               size: constraints.maxWidth.clamp(
@@ -427,7 +437,10 @@ class _PlaylistScreenState extends ConsumerState<PlaylistScreen> {
           ),
         ),
       ),
-      ScreenTitle(p.name, bottom: 4),
+      ContextMenuRegion(
+        onMenu: () => _openMenu(p),
+        child: ScreenTitle(p.name, bottom: 4),
+      ),
       if (p.description.isNotEmpty)
         Padding(
           padding: const EdgeInsets.only(bottom: 4),
@@ -518,7 +531,10 @@ class _PlaylistScreenState extends ConsumerState<PlaylistScreen> {
             Expanded(
               child: AppTextField(
                 hint: 'Buscar na playlist',
+                controller: _search,
                 onChanged: (v) => setState(() => _query = v),
+                // "x" para apagar a busca (antes não havia como limpar).
+                onClear: () => setState(() => _query = ''),
               ),
             ),
             AppChip(

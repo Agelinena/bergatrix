@@ -174,6 +174,52 @@ async def track_qualities(body: QualitiesRequest, user: CurrentUser = Depends(cu
     return {f"{r['provider']}:{r['external_id']}": variants.qualities(r) for r in rows if r["codec"]}
 
 
+def _loudness(row) -> dict | None:
+    """Volume percebido (LUFS) e pico (dBTP), para a normalização no app.
+    0/0 = não deu para medir."""
+    lufs = row["loudness_lufs"]
+    if lufs is None or (lufs == 0 and row["true_peak_db"] == 0):
+        return None
+    return {"lufs": lufs, "peak": row["true_peak_db"]}
+
+
+@router.post("/tracks/loudness")
+async def track_loudness(body: QualitiesRequest, user: CurrentUser = Depends(current_user)):
+    """Em lote, pelas chaves "<provider>:<external_id>": {ref: {lufs, peak}}.
+    Sem medida ainda, a ref fica de fora."""
+    pairs = [ref.split(":", 1) for ref in body.refs if ":" in ref]
+    if not pairs:
+        return {}
+    rows = await get_pool().fetch(
+        """SELECT e.provider, e.external_id, f.loudness_lufs, f.true_peak_db
+           FROM unnest($1::text[], $2::text[]) AS r(provider, external_id)
+           JOIN external_ids e ON e.provider = r.provider AND e.external_id = r.external_id
+           JOIN files f ON f.track_id = e.track_id""",
+        [p for p, _ in pairs], [x for _, x in pairs])
+    return {f"{r['provider']}:{r['external_id']}": loud for r in rows if (loud := _loudness(r))}
+
+
+@router.post("/tracks/redownload", response_model=PlayResponse)
+async def redownload(body: PlayRequest, pool=Depends(_get_pool), user: CurrentUser = Depends(current_user)):
+    """"Baixar de novo": apaga o arquivo da faixa no servidor (e as versões
+    convertidas) e baixa outra vez, com prioridade de quem está ouvindo.
+    Serve para áudio errado/cortado. A faixa continua nas playlists."""
+    from app.downloads import variants
+    result = await tracks_service.resolve_and_register(pool, body)
+    r = await get_redis()
+    if await r.sismember(q._ACTIVE_SET, result.track_id):
+        raise HTTPException(409, detail="A música já está sendo baixada")
+    old = await pool.fetchval("DELETE FROM files WHERE track_id = $1 RETURNING path", result.track_id)
+    if old:
+        Path(old).unlink(missing_ok=True)
+    variants.remove_for(result.track_id)
+    await r.delete(q.track_job_key(result.track_id))
+    await q.enqueue(r, result.track_id, body.provider, priority=1, external_id=body.external_id,
+                    title=body.title, artist=body.artist)
+    logger.info("[redownload] %s — %s (pedido por %s)", body.artist, body.title, user.id[:8])
+    return PlayResponse(track_id=result.track_id, status="downloading")
+
+
 @router.get("/tracks/{track_id}/status")
 async def track_status(track_id: str, user: CurrentUser = Depends(current_user)):
     r = await get_redis()
@@ -182,12 +228,13 @@ async def track_status(track_id: str, user: CurrentUser = Depends(current_user))
         return {"track_id": track_id, "status": "downloading"}
     pool = get_pool()
     row = await pool.fetchrow(
-        "SELECT kind, codec, bitrate_kbps, sample_rate, bit_depth FROM files WHERE track_id=$1", track_id)
+        """SELECT kind, codec, bitrate_kbps, sample_rate, bit_depth, loudness_lufs, true_peak_db
+           FROM files WHERE track_id=$1""", track_id)
     if row:
         from app.downloads import variants
         # qualities: o que cada nível (original/high/normal/low) entrega desta faixa.
         return {"track_id": track_id, "status": "ready", "kind": row["kind"],
-                "qualities": variants.qualities(row)}
+                "qualities": variants.qualities(row), "loudness": _loudness(row)}
     # Job mais recente da faixa (o ponteiro expira com o job).
     job_id = await r.get(q.track_job_key(track_id))
     job = await q.get_job(r, job_id) if job_id else None

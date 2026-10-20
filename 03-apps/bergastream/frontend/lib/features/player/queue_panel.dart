@@ -9,6 +9,7 @@ import '../../core/theme/berga_text.dart';
 import '../../core/widgets/widgets.dart';
 import 'play_queue.dart';
 import 'player_controller.dart';
+import 'track_menu.dart';
 
 /// Painel da fila (Seção 6.6, item 6): "Sua fila" e "A seguir", com
 /// reordenar (arrastar pela alça) e remover.
@@ -59,6 +60,15 @@ class _QueuePanelState extends ConsumerState<QueuePanel> {
             items: state.manual,
             onReorder: controller.reorderQueue,
             onRemove: controller.removeFromQueue,
+            onPlay: controller.jumpTo,
+            onMenu: (item) => showTrackMenu(
+              context,
+              ref,
+              item.track,
+              extraActions: [
+                ('Remover da fila', () => controller.removeFromQueue(item.uid)),
+              ],
+            ),
           ),
         _Header(
           title:
@@ -75,6 +85,15 @@ class _QueuePanelState extends ConsumerState<QueuePanel> {
             items: upNext,
             onReorder: controller.reorderUpNext,
             onRemove: controller.removeFromQueue,
+            onPlay: controller.jumpTo,
+            onMenu: (item) => showTrackMenu(
+              context,
+              ref,
+              item.track,
+              extraActions: [
+                ('Remover da fila', () => controller.removeFromQueue(item.uid)),
+              ],
+            ),
           ),
           if (state.upNext.length > QueuePanel.preview)
             Padding(
@@ -125,11 +144,17 @@ class _ReorderableItems extends StatelessWidget {
     required this.items,
     required this.onReorder,
     required this.onRemove,
+    required this.onPlay,
+    this.onMenu,
   });
 
   final List<QueueItem> items;
   final void Function(int oldIndex, int newIndex) onReorder;
   final void Function(int uid) onRemove;
+  final void Function(int uid) onPlay;
+
+  /// Botão direito na linha (menu da música).
+  final void Function(QueueItem item)? onMenu;
 
   @override
   Widget build(BuildContext context) {
@@ -145,6 +170,8 @@ class _ReorderableItems extends StatelessWidget {
             index: index,
             item: item,
             onRemove: () => onRemove(item.uid),
+            onPlay: () => onPlay(item.uid),
+            onMenu: onMenu == null ? null : () => onMenu!(item),
           ),
       ],
     );
@@ -157,62 +184,79 @@ class _QueueRow extends StatelessWidget {
     required this.index,
     required this.item,
     required this.onRemove,
+    required this.onPlay,
+    this.onMenu,
   });
 
   final int index;
+  final VoidCallback? onMenu;
   final QueueItem item;
   final VoidCallback onRemove;
+
+  /// Toque na linha: toca esta música (toque simples; rolar a lista ou
+  /// arrastar pela alça não dispara).
+  final VoidCallback onPlay;
 
   @override
   Widget build(BuildContext context) {
     final c = BergaColors.of(context);
     final track = item.track;
-    return ColoredBox(
-      color: c.bg,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(
-          vertical: BergaSizes.trackPaddingVertical,
-        ),
-        child: Row(
-          spacing: BergaSizes.trackGap,
-          children: [
-            Cover(
-              seed: track.id,
-              title: track.title,
-              size: BergaSizes.trackCover,
-              image: imageFor(track.coverUrl),
-            ),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+    return ContextMenuRegion(
+      onMenu: onMenu,
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: onPlay,
+          child: ColoredBox(
+            color: c.bg,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(
+                vertical: BergaSizes.trackPaddingVertical,
+              ),
+              child: Row(
+                spacing: BergaSizes.trackGap,
                 children: [
-                  Text(
-                    track.title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: BergaText.trackTitle.copyWith(color: c.tx),
+                  Cover(
+                    seed: track.id,
+                    title: track.title,
+                    size: BergaSizes.trackCover,
+                    image: imageFor(track.coverUrl),
                   ),
-                  Text(
-                    track.artist,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: BergaText.secondary.copyWith(color: c.mu),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          track.title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: BergaText.trackTitle.copyWith(color: c.tx),
+                        ),
+                        Text(
+                          track.artist,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: BergaText.secondary.copyWith(color: c.mu),
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: onRemove,
+                    icon: const Icon(Icons.close),
+                    iconSize: 20,
+                    color: c.mu,
+                    tooltip: 'Remover da fila',
+                  ),
+                  ReorderableDragStartListener(
+                    index: index,
+                    child: Icon(Icons.drag_handle, color: c.mu),
                   ),
                 ],
               ),
             ),
-            IconButton(
-              onPressed: onRemove,
-              icon: const Icon(Icons.close),
-              iconSize: 20,
-              color: c.mu,
-              tooltip: 'Remover da fila',
-            ),
-            ReorderableDragStartListener(
-              index: index,
-              child: Icon(Icons.drag_handle, color: c.mu),
-            ),
-          ],
+          ),
         ),
       ),
     );
