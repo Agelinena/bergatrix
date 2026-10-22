@@ -118,15 +118,12 @@ O banco nunca fica na `bergatrix-proxy`.
 
 ## Acesso (Traefik e autenticação)
 
-> **Em transição.** Hoje a maioria das stacks usa três rotas: Authentik por forward-auth, acesso direto para IPs de confiança e bypass em `/api-access-bypass` para apps mobile. O modelo está descrito em [legado/modelos-labels-traefik.md](legado/modelos-labels-traefik.md). Ele será substituído por **login OIDC do Authentik dentro de cada app**, e esta seção será reescrita.
+Regra e labels em [05-acesso.md](05-acesso.md). Em resumo:
 
-Para apps novos, siga já o modelo de destino, que o Bergalink usa:
-
-- uma rota só: `Host(\`<app>.${DOMAIN}\`)`, entrypoint `websecure`, `tls=true` e middleware `crowdsec-bouncer@file`;
-- o próprio app autentica pelo Authentik (OIDC) e valida o token;
-- painéis administrativos sem login próprio recebem `internal-only@file`.
-
-App sem OIDC, mas com suporte a LDAP (como o Jellyfin): login pelo outpost LDAP do Authentik. Ver [guias/autenticacao-ldap.md](guias/autenticacao-ldap.md).
+- **Nenhum serviço fica sem Authentik na frente, nem na rede local.**
+- O app entra por **OIDC**, por **LDAP** ou por **forward-auth**.
+- Cada serviço tem uma rota só.
+- Não se usam mais IPs fixos, bypass nem `internal-only` em serviços do Docker.
 
 ## Checklist de stack nova
 
@@ -134,9 +131,10 @@ App sem OIDC, mas com suporte a LDAP (como o Jellyfin): login pelo outpost LDAP 
 2. `.env.example` com o bloco base e todas as variáveis, sem valores reais.
 3. Cada volume na raiz certa ([como decidir](02-armazenamento.md#como-decidir-onde-um-volume-vai)), com `:?`.
 4. Imagens com versão fixa; banco com healthcheck e rede interna.
-5. Validar: `docker compose --env-file .env.example config --quiet`.
-6. Criar as pastas no servidor com o dono certo antes do primeiro `up`.
-7. Atualizar o [mapa por stack](02-armazenamento.md#mapa-atual-por-stack) e a tabela de stacks em [01-infraestrutura.md](01-infraestrutura.md).
+5. Acesso conforme [05-acesso.md](05-acesso.md): aplicação e grupo no Authentik, e rota no padrão certo.
+6. Validar: `docker compose --env-file .env.example config --quiet`.
+7. Criar as pastas no servidor com o dono certo antes do primeiro `up`.
+8. Atualizar o [mapa por stack](02-armazenamento.md#mapa-atual-por-stack) e a tabela de stacks em [01-infraestrutura.md](01-infraestrutura.md).
 
 ## Dívidas conhecidas
 
@@ -146,7 +144,7 @@ Stacks existentes que ainda não seguem o padrão. Nenhuma delas impede a migra�
 |---|---|
 | várias | Imagens sem versão fixa: Jellyfin, *arr, SABnzbd, Deemix, Lidarr, Vaultwarden, CrowdSec, CloudBeaver, Ollama, Open WebUI, n8n, LiteLLM, FlareSolverr |
 | várias | `container_name` antigos (`bitwarden`, `ollama`, `sonarr`…). Mantidos porque outras stacks os usam como endereço; mudam junto com a revisão de acesso. |
-| várias | IPs de confiança escritos nas labels e no `dynamic.yml`. Saem com a migração para OIDC. |
+| várias | Rotas antigas com IPs fixos, bypass e `internal-only`. Saem stack por stack, conforme o [plano de acesso](plano-acesso.md). |
 | jellyfin | Legendarr (web, worker, optimizer) roda como root. O optimizer guarda `requires_redownload.txt` fora de volume. |
 | jellyfin | Sem rede interna: tudo, inclusive o que não tem rota, fica na `bergatrix-proxy`. |
 | openuiweb | O nome da pasta tem um erro de digitação (o app é Open WebUI). Renomear muda `${APPDATA_PATH}/openuiweb`. |

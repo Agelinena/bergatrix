@@ -8,7 +8,8 @@ Plano para trocar o modelo atual de três rotas (forward-auth do Authentik, aces
   - **OIDC no app:** Bergalink, Open WebUI, Bergastream, Transcriptor, Vaultwarden, LiteLLM, Legendarr e Home Assistant;
   - **forward-auth:** Wazuh, n8n, CloudBeaver, os *arr e o painel do Traefik.
 - **Público sem Authentik:** só o Drop.
-- **Só pela VPN:** Proxmox, OMV e o Ubuntu (SSH e o host Docker).
+- **Só pela VPN:** Proxmox, OMV e o Ubuntu (SSH e o host Docker). A VPN é o Tailscale, gerenciado no firewall, fora da VM do Docker.
+- **Nada sem Authentik na frente, nem na rede local.** O padrão de rotas e labels está em [05-acesso.md](05-acesso.md).
 - **Homepage removida** da stack.
 - **Fim** das rotas `-direct` por IP fixo, da rota `-bypass` e do middleware `api-access-bypass`.
 
@@ -19,7 +20,7 @@ Plano para trocar o modelo atual de três rotas (forward-auth do Authentik, aces
 | **A. SSO nativo (OIDC ou SAML)** | O app sabe falar com o Authentik sozinho | `crowdsec-bouncer` |
 | **B. LDAP** | Sem OIDC, mas aceita LDAP e tem cliente de TV ou celular ([guia](guias/autenticacao-ldap.md)) | `crowdsec-bouncer` |
 | **C. SSO na frente (forward-auth)** | Sem OIDC: o Authentik pede o login antes de deixar passar | `crowdsec-bouncer` + `authentik@file` |
-| **D. Só rede local/VPN** | Infraestrutura crítica | `lan-only@file` |
+| **D. Só rede local/VPN** | Só a infraestrutura fora do Docker (Proxmox, OMV, SSH) | Fora do Traefik |
 | **E. Público com login próprio** | O app tem autenticação forte e clientes que não passam por forward-auth, ou é público por natureza | `crowdsec-bouncer` |
 | **F. Sem rota** | Usado só por outros containers | Sem labels e fora da `bergatrix-proxy` |
 
@@ -40,7 +41,7 @@ Para quem usa, A, B e C dão o mesmo resultado: a tela do Authentik, o mesmo 2FA
 | bergastream | web/api | `bergastream` | 3 rotas + JWT próprio | **A** (OIDC) | Em desenvolvimento. Até lá: E (uma rota, sem forward-auth nem bypass). | Em andamento |
 | transcriptor | transcriptor | `transcriptor` | Forward-auth + IP | **A** (OIDC, código próprio) | Até o OIDC, C na interface. A API v1 (`X-API-Key`) precisa de rota própria fora do forward-auth. | – |
 | jellyfin | legendarr-web | `legendarr` | D | **A** (OIDC, código próprio) | Até o OIDC, C. O webhook dos *arr é chamado entre containers, então não é afetado. | – |
-| bitwarden | vaultwarden | `bitwarden` | 3 rotas + rotas de WebSocket | **A** (OIDC) | As extensões e os apps precisam da API sem forward-auth, então a rota é pública e o SSO fica dentro do app (`SSO_ENABLED`, `SSO_AUTHORITY`, `SSO_CLIENT_ID`, `SSO_CLIENT_SECRET`). A senha mestra **continua obrigatória**: ela cifra o cofre e nunca passa pelo Authentik. Deixe `SSO_ONLY` desligado no começo. `/admin` com o token desligado. Revisar as rotas `-ws-*` para a porta 3012, que deve estar obsoleta. | – |
+| bitwarden | vaultwarden | `bitwarden` | 3 rotas + rotas de WebSocket | **A** (OIDC) | As extensões e os apps precisam da API sem forward-auth, então a rota é pública e o SSO fica dentro do app (`SSO_ENABLED`, `SSO_AUTHORITY`, `SSO_CLIENT_ID`, `SSO_CLIENT_SECRET`). A senha mestra **continua obrigatória**: ela cifra o cofre e nunca passa pelo Authentik. Deixe `SSO_ONLY` desligado no começo. `/admin` com o token desligado. Revisar as rotas `-ws-*` para a porta 3012, que deve estar obsoleta. | Em andamento |
 | wazuh | dashboard | `wazuh` | D | **C** | O dashboard mantém o próprio login atrás do Authentik. (SSO por SAML com papéis é possível no futuro.) | – |
 | litellm | litellm | `llm` | D | **A** (OIDC) na interface | O SSO da interface é gratuito até 5 usuários. A API continua com chaves próprias, na mesma rota. | – |
 | n8n | n8n | `n8n` | Forward-auth + IP | **C** no editor; `/webhook*` em **E** | OIDC no n8n é pago (Enterprise). O n8n mantém o próprio login atrás do Authentik (login duplo). Os webhooks externos precisam da rota pública. | – |
@@ -92,7 +93,7 @@ Para quem usa, A, B e C dão o mesmo resultado: a tela do Authentik, o mesmo 2FA
 
 ## Decisões em aberto
 
-1. **Qual VPN, e onde ela roda:** o WireGuard e o Tailscale saíram em abril. Para alcançar o Proxmox mesmo com a VM Docker fora do ar, a VPN não deve depender dela: no roteador, num container LXC próprio no Proxmox ou no próprio host.
+1. ~~Qual VPN~~ → Tailscale gerenciado no firewall.
 2. **Caminho do tráfego externo:** a configuração ainda espera um proxy em `10.100.0.1`, mas a VM nova não tem túnel. Confirmar como o tráfego de fora chega hoje.
 3. **Apps de celular dos *arr:** se você usa algum, as rotas dos *arr precisariam de uma exceção por chave de API, o que traz de volta parte do bypass.
 4. **CloudBeaver:** remover ou dar uma função para ele.
