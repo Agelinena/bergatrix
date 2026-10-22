@@ -5,8 +5,8 @@ Plano para trocar o modelo atual de três rotas (forward-auth do Authentik, aces
 ## Decisões tomadas (outubro de 2026)
 
 - **Login único pelo Authentik**, com 2FA, para todos os serviços com interface:
-  - **OIDC no app:** Bergalink, Open WebUI, Bergastream, Transcriptor, Vaultwarden, LiteLLM, Legendarr e Home Assistant;
-  - **forward-auth:** Wazuh, n8n, CloudBeaver, os *arr e o painel do Traefik.
+  - **OIDC no app:** Bergalink, Open WebUI, Bergastream, Transcriptor, Vaultwarden, LiteLLM e Home Assistant;
+  - **forward-auth:** Wazuh, n8n, CloudBeaver, os *arr, o painel do Traefik e o Legendarr.
 - **Público sem Authentik:** só o Drop.
 - **Só pela VPN:** Proxmox, OMV e o Ubuntu (SSH e o host Docker). A VPN é o Tailscale, gerenciado no firewall, fora da VM do Docker.
 - **Nada sem Authentik na frente, nem na rede local.** O padrão de rotas e labels está em [05-acesso.md](05-acesso.md).
@@ -40,15 +40,15 @@ Para quem usa, A, B e C dão o mesmo resultado: a tela do Authentik, o mesmo 2FA
 | openuiweb | open-webui | `chat` | Forward-auth + IP | **A** (OIDC) | OIDC nativo por variáveis (`OAUTH_*`, `OPENID_PROVIDER_URL`). Melhor piloto. | – |
 | bergastream | web/api | `bergastream` | 3 rotas + JWT próprio | **A** (OIDC) | Em desenvolvimento. Até lá: E (uma rota, sem forward-auth nem bypass). | Em andamento |
 | transcriptor | transcriptor | `transcriptor` | Forward-auth + IP | **A** (OIDC, código próprio) | Até o OIDC, C na interface. A API v1 (`X-API-Key`) precisa de rota própria fora do forward-auth. | – |
-| jellyfin | legendarr-web | `legendarr` | D | **A** (OIDC, código próprio) | Até o OIDC, C. O webhook dos *arr é chamado entre containers, então não é afetado. | – |
+| jellyfin | legendarr-web | `legendarr` | D | **C** | Forward-auth (decisão de out/2026, no lugar do OIDC). O webhook dos *arr é chamado entre containers e não passa pelo Traefik. | No repositório (falta subir) |
 | bitwarden | vaultwarden | `bitwarden` | 3 rotas + rotas de WebSocket | **A** (OIDC) | As extensões e os apps precisam da API sem forward-auth, então a rota é pública e o SSO fica dentro do app (`SSO_ENABLED`, `SSO_AUTHORITY`, `SSO_CLIENT_ID`, `SSO_CLIENT_SECRET`). A senha mestra **continua obrigatória**: ela cifra o cofre e nunca passa pelo Authentik. Deixe `SSO_ONLY` desligado no começo. `/admin` com o token desligado. Revisar as rotas `-ws-*` para a porta 3012, que deve estar obsoleta. | Em andamento |
-| wazuh | dashboard | `wazuh` | D | **C** | O dashboard mantém o próprio login atrás do Authentik. (SSO por SAML com papéis é possível no futuro.) | – |
+| wazuh | dashboard | `wazuh` | D | **C** | O dashboard mantém o próprio login atrás do Authentik. (SSO por SAML com papéis é possível no futuro.) | No repositório (falta subir) |
 | litellm | litellm | `llm` | D | **A** (OIDC) na interface | O SSO da interface é gratuito até 5 usuários. A API continua com chaves próprias, na mesma rota. | – |
-| n8n | n8n | `n8n` | Forward-auth + IP | **C** no editor; `/webhook*` em **E** | OIDC no n8n é pago (Enterprise). O n8n mantém o próprio login atrás do Authentik (login duplo). Os webhooks externos precisam da rota pública. | – |
-| traefik | painel | `traefik` | D + basic auth | **C** | Substitui o basic auth | – |
-| jellyfin | sonarr, radarr, prowlarr, bazarr, sabnzbd, qbittorrent | um por serviço | D | **C** | Desligar o login próprio (`External` nos *arr) para não ter login duplo. Apps de celular para os *arr (nzb360, LunaSea) param de funcionar de fora. Corrigir as labels incompletas do radarr. | – |
-| bergastream | lidarr | `lidarr` | D | **C** | Idem *arr | – |
-| cloudbeaver | cloudbeaver | `db` | 3 rotas | **C**, ou remover | A edição gratuita não tem SSO. Hoje não alcança nenhum banco. | – |
+| n8n | n8n | `n8n` | Forward-auth + IP | **C** no editor; `/webhook*` em **E** | OIDC no n8n é pago (Enterprise). O n8n mantém o próprio login atrás do Authentik (login duplo). Os webhooks externos precisam da rota pública. | No repositório (falta subir) |
+| traefik | painel | `traefik` | D + basic auth | **C** | Substitui o basic auth | No repositório (falta subir) |
+| jellyfin | sonarr, radarr, prowlarr, bazarr, sabnzbd, qbittorrent | um por serviço | D | **C** | Desligar o login próprio (`External` nos *arr) para não ter login duplo. Apps de celular para os *arr (nzb360, LunaSea) param de funcionar de fora. Corrigir as labels incompletas do radarr. | No repositório (falta subir) |
+| bergastream | lidarr | `lidarr` | D | **C** | Idem *arr | No repositório (falta subir) |
+| cloudbeaver | cloudbeaver | `db` | 3 rotas | **C**, ou remover | A edição gratuita não tem SSO. Hoje não alcança nenhum banco. | No repositório (falta subir) |
 | jellyfin | jellyfin | `jellyflix` | E, sem CrowdSec | **B** (LDAP) | LDAP feito. Falta o `crowdsec-bouncer`. | Em andamento |
 | jellyfin | catalogo (Seerr) | `catalogo` | Forward-auth + IP | **E** | O login é pela conta do Jellyfin, que já usa LDAP. Se a versão tiver OIDC, A. | – |
 | homeassistant | homeassistant | `ha` | 3 rotas (bypass para o Companion) | **A** (OIDC) | Sem OIDC nativo: usa a integração da comunidade `hass-oidc-auth` (HACS). A rota fica pública, sem forward-auth, porque o app Companion fala direto com a API. Manter um usuário local com MFA como acesso de emergência. Configurar `trusted_proxies`. | – |

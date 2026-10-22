@@ -29,8 +29,6 @@ services:
     environment:
       - DOMAIN=${DOMAIN}
       - DESEC_TOKEN=${DESEC_TOKEN}
-      - TRAEFIK_USER=${TRAEFIK_USER}
-      - TRAEFIK_PASSWORD=${TRAEFIK_PASSWORD}
       - CROWDSEC_BOUNCER_KEY=${CROWDSEC_BOUNCER_KEY}
       - LEGO_DISABLE_CNAME_SUPPORT=true
     labels:

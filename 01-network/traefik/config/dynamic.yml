@@ -41,3 +41,9 @@ http:
           crowdsecMode: "live"
           crowdsecLapiKey: "${CROWDSEC_BOUNCER_KEY}"
           crowdsecLapiHost: "crowdsec:8080"
+
+  serversTransports:
+    # O painel do Wazuh só responde em HTTPS, com certificado próprio gerado
+    # pelo Wazuh; a conexão fica dentro da rede Docker.
+    wazuh-dashboard:
+      insecureSkipVerify: true

@@ -1,5 +1,6 @@
 http:
   routers:
+    # Painel do Traefik: forward-auth do Authentik (docs/05-acesso.md)
     dashboard:
       rule: "Host(`traefik.${DOMAIN}`)"
       service: api@internal
@@ -7,12 +8,5 @@ http:
         - websecure
       tls: {}
       middlewares:
-        - "internal-only@file"
-        - "auth@file"
-      priority: 100
-
-  middlewares:
-    auth:
-      basicAuth:
-        users:
-          - "${TRAEFIK_USER}:${TRAEFIK_PASSWORD}"
+        - "crowdsec-bouncer@file"
+        - "authentik@file"

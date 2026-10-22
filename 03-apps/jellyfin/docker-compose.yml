@@ -72,7 +72,7 @@ services:
       - "traefik.http.routers.catalogo-direct.priority=110"
       - "traefik.http.services.catalogo-service.loadbalancer.server.port=5055"
 
-  # --- LOCAL: Apenas via Tailscale/Rede Local (Middleware internal-only) ---
+  # --- Ferramentas de administração: forward-auth do Authentik ---
   qbittorrent:
     image: lscr.io/linuxserver/qbittorrent:version-4.6.0-r0
     container_name: qbittorrent
@@ -91,14 +91,15 @@ services:
       - bergatrix-proxy
       - media-network
     labels:
+      # Forward-auth: só entra quem passou pelo Authentik (docs/05-acesso.md)
       - "traefik.enable=true"
       - "traefik.docker.network=bergatrix-proxy"
-      - "traefik.http.routers.qbittorrent-router.rule=Host(`qbittorrent.${DOMAIN}`)"
-      - "traefik.http.routers.qbittorrent-router.entrypoints=websecure"
-      - "traefik.http.routers.qbittorrent-router.tls=true"
-      - "traefik.http.routers.qbittorrent-router.service=qbittorrent-service"
-      - "traefik.http.routers.qbittorrent-router.middlewares=internal-only@file"
-      - "traefik.http.services.qbittorrent-service.loadbalancer.server.port=8080"
+      - "traefik.http.routers.qbittorrent.rule=Host(`qbittorrent.${DOMAIN}`)"
+      - "traefik.http.routers.qbittorrent.entrypoints=websecure"
+      - "traefik.http.routers.qbittorrent.tls=true"
+      - "traefik.http.routers.qbittorrent.service=qbittorrent"
+      - "traefik.http.routers.qbittorrent.middlewares=crowdsec-bouncer@file,authentik@file"
+      - "traefik.http.services.qbittorrent.loadbalancer.server.port=8080"
 
   sonarr:
     image: lscr.io/linuxserver/sonarr
@@ -118,14 +119,15 @@ services:
       - bergatrix-proxy
       - media-network
     labels:
+      # Forward-auth: só entra quem passou pelo Authentik (docs/05-acesso.md)
       - "traefik.enable=true"
       - "traefik.docker.network=bergatrix-proxy"
-      - "traefik.http.routers.sonarr-router.rule=Host(`sonarr.${DOMAIN}`)"
-      - "traefik.http.routers.sonarr-router.entrypoints=websecure"
-      - "traefik.http.routers.sonarr-router.tls=true"
-      - "traefik.http.routers.sonarr-router.service=sonarr-service"
-      - "traefik.http.routers.sonarr-router.middlewares=internal-only@file"
-      - "traefik.http.services.sonarr-service.loadbalancer.server.port=8989"
+      - "traefik.http.routers.sonarr.rule=Host(`sonarr.${DOMAIN}`)"
+      - "traefik.http.routers.sonarr.entrypoints=websecure"
+      - "traefik.http.routers.sonarr.tls=true"
+      - "traefik.http.routers.sonarr.service=sonarr"
+      - "traefik.http.routers.sonarr.middlewares=crowdsec-bouncer@file,authentik@file"
+      - "traefik.http.services.sonarr.loadbalancer.server.port=8989"
 
   radarr:
     image: lscr.io/linuxserver/radarr
@@ -145,11 +147,15 @@ services:
       - bergatrix-proxy
       - media-network
     labels:
+      # Forward-auth: só entra quem passou pelo Authentik (docs/05-acesso.md)
       - "traefik.enable=true"
       - "traefik.docker.network=bergatrix-proxy"
-      - "traefik.http.routers.radarr-router.rule=Host(`radarr.${DOMAIN}`)"
-      - "traefik.http.routers.radarr-router.middlewares=internal-only@file"
-      - "traefik.http.services.radarr-service.loadbalancer.server.port=7878"
+      - "traefik.http.routers.radarr.rule=Host(`radarr.${DOMAIN}`)"
+      - "traefik.http.routers.radarr.entrypoints=websecure"
+      - "traefik.http.routers.radarr.tls=true"
+      - "traefik.http.routers.radarr.service=radarr"
+      - "traefik.http.routers.radarr.middlewares=crowdsec-bouncer@file,authentik@file"
+      - "traefik.http.services.radarr.loadbalancer.server.port=7878"
 
   prowlarr:
     image: lscr.io/linuxserver/prowlarr
@@ -167,14 +173,15 @@ services:
       - bergatrix-proxy
       - media-network
     labels:
+      # Forward-auth: só entra quem passou pelo Authentik (docs/05-acesso.md)
       - "traefik.enable=true"
       - "traefik.docker.network=bergatrix-proxy"
-      - "traefik.http.routers.prowlarr-router.rule=Host(`prowlarr.${DOMAIN}`)"
-      - "traefik.http.routers.prowlarr-router.entrypoints=websecure"
-      - "traefik.http.routers.prowlarr-router.tls=true"
-      - "traefik.http.routers.prowlarr-router.service=prowlarr-service"
-      - "traefik.http.routers.prowlarr-router.middlewares=internal-only@file"
-      - "traefik.http.services.prowlarr-service.loadbalancer.server.port=9696"
+      - "traefik.http.routers.prowlarr.rule=Host(`prowlarr.${DOMAIN}`)"
+      - "traefik.http.routers.prowlarr.entrypoints=websecure"
+      - "traefik.http.routers.prowlarr.tls=true"
+      - "traefik.http.routers.prowlarr.service=prowlarr"
+      - "traefik.http.routers.prowlarr.middlewares=crowdsec-bouncer@file,authentik@file"
+      - "traefik.http.services.prowlarr.loadbalancer.server.port=9696"
 
   bazarr:
     image: lscr.io/linuxserver/bazarr
@@ -194,15 +201,17 @@ services:
       - bergatrix-proxy
       - media-network
     labels:
+      # Forward-auth: só entra quem passou pelo Authentik (docs/05-acesso.md)
       - "traefik.enable=true"
       - "traefik.docker.network=bergatrix-proxy"
-      - "traefik.http.routers.bazarr-router.rule=Host(`bazarr.${DOMAIN}`)"
-      - "traefik.http.routers.bazarr-router.entrypoints=websecure"
-      - "traefik.http.routers.bazarr-router.tls=true"
-      - "traefik.http.routers.bazarr-router.service=bazarr-service"
-      - "traefik.http.routers.bazarr-router.middlewares=internal-only@file"
-      - "traefik.http.services.bazarr-service.loadbalancer.server.port=6767"
+      - "traefik.http.routers.bazarr.rule=Host(`bazarr.${DOMAIN}`)"
+      - "traefik.http.routers.bazarr.entrypoints=websecure"
+      - "traefik.http.routers.bazarr.tls=true"
+      - "traefik.http.routers.bazarr.service=bazarr"
+      - "traefik.http.routers.bazarr.middlewares=crowdsec-bouncer@file,authentik@file"
+      - "traefik.http.services.bazarr.loadbalancer.server.port=6767"
 
+  # Sem rota no Traefik: só o Prowlarr e o torrent-indexer usam, pela media-network.
   flaresolverr:
     image: ghcr.io/flaresolverr/flaresolverr:latest
     container_name: flaresolverr
@@ -213,17 +222,7 @@ services:
       - LOG_LEVEL=info
     restart: unless-stopped
     networks:
-      - bergatrix-proxy
       - media-network
-    labels:
-      - "traefik.enable=true"
-      - "traefik.docker.network=bergatrix-proxy"
-      - "traefik.http.routers.flaresolverr-router.rule=Host(`flaresolverr.${DOMAIN}`)"
-      - "traefik.http.routers.flaresolverr-router.entrypoints=websecure"
-      - "traefik.http.routers.flaresolverr-router.tls=true"
-      - "traefik.http.routers.flaresolverr-router.service=flaresolverr-service"
-      - "traefik.http.routers.flaresolverr-router.middlewares=internal-only@file"
-      - "traefik.http.services.flaresolverr-service.loadbalancer.server.port=8191"
 
   legendarr-web:
     build: ./app/web
@@ -247,15 +246,15 @@ services:
       - bergatrix-proxy
       - media-network
     labels:
+      # Forward-auth: só entra quem passou pelo Authentik (docs/05-acesso.md)
       - "traefik.enable=true"
       - "traefik.docker.network=bergatrix-proxy"
-      - "traefik.http.routers.legendarr-router.rule=Host(`legendarr.${DOMAIN}`)"
-      - "traefik.http.routers.legendarr-router.entrypoints=websecure"
-      - "traefik.http.routers.legendarr-router.tls=true"
-      - "traefik.http.routers.legendarr-router.service=legendarr-service"
-      - "traefik.http.routers.legendarr-router.middlewares=internal-only@file"
-      - "traefik.http.services.legendarr-service.loadbalancer.server.port=8000"
-
+      - "traefik.http.routers.legendarr.rule=Host(`legendarr.${DOMAIN}`)"
+      - "traefik.http.routers.legendarr.entrypoints=websecure"
+      - "traefik.http.routers.legendarr.tls=true"
+      - "traefik.http.routers.legendarr.service=legendarr"
+      - "traefik.http.routers.legendarr.middlewares=crowdsec-bouncer@file,authentik@file"
+      - "traefik.http.services.legendarr.loadbalancer.server.port=8000"
   # --- SERVIÇOS DE BACKGROUND (Sem labels de Traefik) ---
   recyclarr:
     image: ghcr.io/recyclarr/recyclarr:8
@@ -380,6 +379,7 @@ services:
     networks:
       - media-network
     
+  # Sem rota no Traefik: indexador consultado pelo Prowlarr, pela media-network.
   torrent-indexer-br:
     image: ghcr.io/felipemarinho97/torrent-indexer:latest
     container_name: torrent-indexer-br
@@ -396,18 +396,8 @@ services:
     depends_on:
       - flaresolverr
     networks:
-      - bergatrix-proxy
       - media-network
-    labels:
-      - "traefik.enable=true"
-      - "traefik.docker.network=bergatrix-proxy"
-      - "traefik.http.routers.torrent-indexer-br-router.rule=Host(`torrent-indexer-br.${DOMAIN}`)"
-      - "traefik.http.routers.torrent-indexer-br-router.entrypoints=websecure"
-      - "traefik.http.routers.torrent-indexer-br-router.tls=true"
-      - "traefik.http.routers.torrent-indexer-br-router.service=torrent-indexer-br-service"
-      - "traefik.http.routers.torrent-indexer-br-router.middlewares=internal-only@file"
-      - "traefik.http.services.torrent-indexer-br-service.loadbalancer.server.port=7006"
-  
+
   sabnzbd:
     image: lscr.io/linuxserver/sabnzbd
     container_name: sabnzbd
@@ -429,14 +419,15 @@ services:
       - bergatrix-proxy
       - media-network
     labels:
+      # Forward-auth: só entra quem passou pelo Authentik (docs/05-acesso.md)
       - "traefik.enable=true"
       - "traefik.docker.network=bergatrix-proxy"
-      - "traefik.http.routers.sabnzbd-router.rule=Host(`sabnzbd.${DOMAIN}`)"
-      - "traefik.http.routers.sabnzbd-router.entrypoints=websecure"
-      - "traefik.http.routers.sabnzbd-router.tls=true"
-      - "traefik.http.routers.sabnzbd-router.service=sabnzbd-service"
-      - "traefik.http.routers.sabnzbd-router.middlewares=internal-only@file"
-      - "traefik.http.services.sabnzbd-service.loadbalancer.server.port=8080"
+      - "traefik.http.routers.sabnzbd.rule=Host(`sabnzbd.${DOMAIN}`)"
+      - "traefik.http.routers.sabnzbd.entrypoints=websecure"
+      - "traefik.http.routers.sabnzbd.tls=true"
+      - "traefik.http.routers.sabnzbd.service=sabnzbd"
+      - "traefik.http.routers.sabnzbd.middlewares=crowdsec-bouncer@file,authentik@file"
+      - "traefik.http.services.sabnzbd.loadbalancer.server.port=8080"
 
 networks:
   bergatrix-proxy:

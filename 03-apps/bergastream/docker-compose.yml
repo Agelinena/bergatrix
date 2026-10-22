@@ -128,7 +128,7 @@ services:
   # (http://sabnzbd:8080, http://prowlarr:9696) e precisa ver a pasta de
   # downloads do SABnzbd no mesmo caminho (/downloads) para importar:
   # ${MEDIA_PATH}/downloads, a mesma do stack jellyfin.
-  # Interface só na rede local/Tailscale: lidarr.${DOMAIN}.
+  # Interface em lidarr.${DOMAIN}, atrás do forward-auth do Authentik.
   lidarr:
     image: lscr.io/linuxserver/lidarr:latest
     container_name: bergastream-lidarr
@@ -152,7 +152,7 @@ services:
       - "traefik.http.routers.bergastream-lidarr.entrypoints=websecure"
       - "traefik.http.routers.bergastream-lidarr.tls=true"
       - "traefik.http.routers.bergastream-lidarr.service=bergastream-lidarr"
-      - "traefik.http.routers.bergastream-lidarr.middlewares=internal-only@file"
+      - "traefik.http.routers.bergastream-lidarr.middlewares=crowdsec-bouncer@file,authentik@file"
       - "traefik.http.services.bergastream-lidarr.loadbalancer.server.port=8686"
 
   # Gera PO Tokens para o yt-dlp (o YouTube bloqueia menos o servidor no

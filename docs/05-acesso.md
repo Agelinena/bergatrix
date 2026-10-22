@@ -70,17 +70,24 @@ Para dar acesso **só ao painel de administração** de um app OIDC (ex.: `/admi
 
 ## No Authentik, para cada app
 
-Tudo em *Applications → Applications → Create with provider*. A aplicação usa o slug `<app>`.
+### OIDC: uma aplicação por app
 
-| | OIDC | Forward-auth |
-|---|---|---|
-| **Tipo de provider** | OAuth2/OpenID | Proxy, modo *Forward auth (single application)* |
-| **Redirect URI** | O caminho de callback do app, com *matching* **Strict** | – |
-| **Client type** | *Confidential* | – |
-| **Signing key** | `authentik Self-signed Certificate` (RS256). Sem *encryption key*. | – |
-| **External host** | – | `https://<app>.${DOMAIN}` |
-| **Outpost** | – | Acrescentar a aplicação ao **authentik Embedded Outpost** |
-| **Acesso** | *Binding* da aplicação ao grupo `<app>_users` | Igual |
+| Campo | Valor |
+|---|---|
+| **Tipo de provider** | OAuth2/OpenID |
+| **Redirect URI** | O caminho de callback do app, com *matching* **Strict** |
+| **Client type** | *Confidential* |
+| **Authorization flow** | `default-provider-authorization-implicit-consent` |
+| **Signing key** | `authentik Self-signed Certificate` (RS256). Sem *encryption key*. |
+| **Acesso** | *Binding* da aplicação ao grupo `<app>_users` (Order `0`) |
+
+### Forward-auth: uma aplicação para o domínio inteiro
+
+Já existe uma aplicação única (aqui chamada de **"Forward Auth do domínio"**), com um provider *Proxy* em modo *Forward auth (domain level)* no outpost embutido. Ela protege todo serviço que usa o middleware `authentik@file`. Um app novo nesse padrão **não precisa de nada no Authentik**, só das labels.
+
+- **Quem entra:** a aplicação tem *binding* com o grupo `admins`. Só esse grupo passa em qualquer serviço de forward-auth. Sem binding, qualquer usuário logado passaria.
+- **App que precise de outro grupo:** crie uma aplicação *Proxy* em modo *Forward auth (single application)*, com o *external host* dele, no mesmo outpost, vinculada ao grupo do app. Ela vale para aquele endereço, e a de domínio continua cobrindo o resto.
+- **Login duplo:** os *arr aceitam `AuthenticationMethod=External` no `config.xml` (o login fica só com o Authentik; a API continua exigindo a chave). No Bazarr, a autenticação vai para `None`. O n8n, o Wazuh, o CloudBeaver e o qBittorrent mantêm o login próprio atrás do Authentik.
 
 Em todos os casos:
 - **2FA:** o login dos usuários precisa passar por 2FA.

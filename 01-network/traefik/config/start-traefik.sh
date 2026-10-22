@@ -12,8 +12,6 @@ escape_sed_replacement() {
 }
 
 domain=$(escape_sed_replacement "${DOMAIN}")
-traefik_user=$(escape_sed_replacement "${TRAEFIK_USER:-}")
-traefik_password=$(escape_sed_replacement "${TRAEFIK_PASSWORD:-}")
 crowdsec_key=$(escape_sed_replacement "${CROWDSEC_BOUNCER_KEY:-}")
 
 sed \
@@ -22,8 +20,6 @@ sed \
 
 sed \
   -e "s|\${DOMAIN}|${domain}|g" \
-  -e "s|\${TRAEFIK_USER}|${traefik_user}|g" \
-  -e "s|\${TRAEFIK_PASSWORD}|${traefik_password}|g" \
   /config-source/config.yml > /tmp/traefik-dynamic/config.yml
 
 sed \
