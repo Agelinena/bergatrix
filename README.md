@@ -11,10 +11,10 @@ O servidor roda **Proxmox VE** com duas VMs: um **OpenMediaVault** (NAS, HD de 4
 
 | Ordem | Gomo (Pasta) | Descrição |
 | :--- | :--- | :--- |
-| **`00`** | **Infrastructure** | **CloudBeaver** como interface de banco de dados. |
-| **`01`** | **Network** | Entrada de tráfego com **Traefik** (TLS curinga, roteamento por labels). |
+| **`00`** | **Infrastructure** | **CloudBeaver** e os scripts que sobem e derrubam tudo na ordem certa. |
+| **`01`** | **Network** | Entrada de tráfego com **Traefik** (TLS curinga, roteamento por labels) e as redes compartilhadas. |
 | **`02`** | **Security** | **Authentik** (SSO/IdP), **Vaultwarden** (senhas) e **CrowdSec** (bloqueio de IPs). |
-| **`03`** | **Apps** | Aplicações de produtividade, automação, IA e mídia. |
+| **`03`** | **Apps** | Aplicações próprias, mídia, IA local e automação residencial. |
 | **`04`** | **Monitoring** | **Wazuh** (SIEM). |
 
 📖 Documentação completa, padrões e guia para novas stacks: [`docs/`](docs/README.md).
@@ -30,9 +30,7 @@ O servidor roda **Proxmox VE** com duas VMs: um **OpenMediaVault** (NAS, HD de 4
 | **Drop** | Transferência de arquivos cifrada de ponta a ponta. |
 | **Home Assistant** | Automação residencial (dispositivos, automações e app Companion). |
 | **Jellyfin** | Servidor de mídia com *arr, Seerr e o **Legendarr**: legendas pelo Bazarr, tradução local por IA (Ollama) e otimização de vídeo. |
-| **LiteLLM** | Proxy unificado de LLMs com sincronizador automático de modelos. |
-| **n8n** | Plataforma de automação de workflows. |
-| **Open WebUI** | Interface web para modelos de IA, com **Ollama** na GPU. |
+| **Ollama** | Modelos de IA locais na GPU, usados pelo Legendarr. |
 | **Transcriptor** | Transcrição de áudio/vídeo com Faster-Whisper + GPU, desenvolvido internamente. |
 
 ---
@@ -47,6 +45,13 @@ O servidor roda **Proxmox VE** com duas VMs: um **OpenMediaVault** (NAS, HD de 4
 
 ## 🚀 Como Iniciar
 
+Para subir tudo na ordem certa (redes primeiro, depois as stacks do [`stacks.txt`](00-infrastructure/stacks.txt)):
+
+```bash
+./00-infrastructure/subir-tudo.sh
+./00-infrastructure/derrubar-tudo.sh
+```
+
 Para subir uma stack específica, entre na pasta dela, crie o `.env` a partir do `.env.example` e execute:
 
 ```bash
@@ -54,7 +59,7 @@ cp .env.example .env   # e preencha
 docker compose up -d
 ```
 
-A ordem de subida e as dependências entre stacks estão em [`docs/01-infraestrutura.md`](docs/01-infraestrutura.md).
+As dependências entre stacks estão em [`docs/01-infraestrutura.md`](docs/01-infraestrutura.md), e as redes em [`docs/06-redes.md`](docs/06-redes.md).
 
 ---
 

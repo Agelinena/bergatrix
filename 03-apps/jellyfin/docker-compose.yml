@@ -1,5 +1,5 @@
 services:
-  # --- PÚBLICO: Acessível via Internet/Tailscale ---
+  # Login pelo Authentik via LDAP (docs/guias/autenticacao-ldap.md)
   jellyfin:
     image: jellyfin/jellyfin
     container_name: jellyfin
@@ -21,7 +21,8 @@ services:
       - NVIDIA_DRIVER_CAPABILITIES=all
     networks:
       - bergatrix-proxy
-      - media-network
+      - bergatrix-media
+      - bergatrix-ldap     # authentik-ldap:3389
     deploy:
       resources:
         reservations:
@@ -30,13 +31,15 @@ services:
               count: 1
               capabilities: [ gpu ]
     labels:
+      # Imagens e streaming têm exceção no CrowdSec (02-security/crowdsec/whitelists)
       - "traefik.enable=true"
       - "traefik.docker.network=bergatrix-proxy"
-      - "traefik.http.routers.jellyfin-router.rule=Host(`jellyflix.${DOMAIN}`)"
-      - "traefik.http.routers.jellyfin-router.entrypoints=websecure"
-      - "traefik.http.routers.jellyfin-router.tls=true"
-      - "traefik.http.routers.jellyfin-router.service=jellyfin-service"
-      - "traefik.http.services.jellyfin-service.loadbalancer.server.port=8096"
+      - "traefik.http.routers.jellyfin.rule=Host(`jellyflix.${DOMAIN}`)"
+      - "traefik.http.routers.jellyfin.entrypoints=websecure"
+      - "traefik.http.routers.jellyfin.tls=true"
+      - "traefik.http.routers.jellyfin.service=jellyfin"
+      - "traefik.http.routers.jellyfin.middlewares=crowdsec-bouncer@file"
+      - "traefik.http.services.jellyfin.loadbalancer.server.port=8096"
 
   catalogo:
     # Seerr (pedidos de filmes e séries)
@@ -55,7 +58,7 @@ services:
       - TZ=${TZ}
     networks:
       - bergatrix-proxy
-      - media-network
+      - bergatrix-media
     labels:
       # Login pela conta do Jellyfin, que confere a senha no Authentik (LDAP).
       # Sem forward-auth para não ter login duplo; o login local do Seerr fica
@@ -86,7 +89,7 @@ services:
       - TZ=${TZ}
     networks:
       - bergatrix-proxy
-      - media-network
+      - bergatrix-media
     labels:
       # Forward-auth: só entra quem passou pelo Authentik (docs/05-acesso.md)
       - "traefik.enable=true"
@@ -114,7 +117,7 @@ services:
       - ${MEDIA_PATH:?}/downloads:/downloads
     networks:
       - bergatrix-proxy
-      - media-network
+      - bergatrix-media
     labels:
       # Forward-auth: só entra quem passou pelo Authentik (docs/05-acesso.md)
       - "traefik.enable=true"
@@ -142,7 +145,7 @@ services:
       - ${MEDIA_PATH:?}/downloads:/downloads
     networks:
       - bergatrix-proxy
-      - media-network
+      - bergatrix-media
     labels:
       # Forward-auth: só entra quem passou pelo Authentik (docs/05-acesso.md)
       - "traefik.enable=true"
@@ -168,7 +171,7 @@ services:
       - ${APPDATA_PATH:?}/jellyfin/prowlarr:/config
     networks:
       - bergatrix-proxy
-      - media-network
+      - bergatrix-media
     labels:
       # Forward-auth: só entra quem passou pelo Authentik (docs/05-acesso.md)
       - "traefik.enable=true"
@@ -196,7 +199,7 @@ services:
       - ${MEDIA_PATH:?}/series:/media/series
     networks:
       - bergatrix-proxy
-      - media-network
+      - bergatrix-media
     labels:
       # Forward-auth: só entra quem passou pelo Authentik (docs/05-acesso.md)
       - "traefik.enable=true"
@@ -208,7 +211,7 @@ services:
       - "traefik.http.routers.bazarr.middlewares=crowdsec-bouncer@file,authentik@file"
       - "traefik.http.services.bazarr.loadbalancer.server.port=6767"
 
-  # Sem rota no Traefik: só o Prowlarr e o torrent-indexer usam, pela media-network.
+  # Sem rota no Traefik: só o Prowlarr e o torrent-indexer usam, pela bergatrix-media.
   flaresolverr:
     image: ghcr.io/flaresolverr/flaresolverr:latest
     container_name: flaresolverr
@@ -219,7 +222,7 @@ services:
       - LOG_LEVEL=info
     restart: unless-stopped
     networks:
-      - media-network
+      - bergatrix-media
 
   legendarr-web:
     build: ./app/web
@@ -241,7 +244,7 @@ services:
       - ${APPDATA_PATH:?}/jellyfin/legendarr/stats:/app/stats
     networks:
       - bergatrix-proxy
-      - media-network
+      - bergatrix-media
     labels:
       # Forward-auth: só entra quem passou pelo Authentik (docs/05-acesso.md)
       - "traefik.enable=true"
@@ -266,7 +269,7 @@ services:
     environment:
       - TZ=${TZ}
     networks:
-      - media-network
+      - bergatrix-media
 
   legendarr-worker:
     build: ./app/worker
@@ -281,8 +284,8 @@ services:
       - ${APPDATA_PATH:?}/jellyfin/legendarr/jobs:/app/jobs
       - ${APPDATA_PATH:?}/jellyfin/legendarr/stats:/app/stats
     environment:
-      # Tradução 100% LOCAL via Ollama (sem APIs externas).
-      # O worker e o ollama compartilham a rede bergatrix-proxy → http://ollama:11434
+      # Tradução 100% LOCAL via Ollama (stack 03-apps/ollama, sem APIs externas).
+      # O worker e o ollama compartilham a rede bergatrix-ai → http://ollama:11434
       - LOCAL_AI_URL=${LOCAL_AI_URL:-http://ollama:11434}
       - TRANSLATOR_MODEL=${TRANSLATOR_MODEL:-translategemma:4b}
       - OLLAMA_NUM_CTX=${OLLAMA_NUM_CTX:-8192}
@@ -346,8 +349,8 @@ services:
               count: 1
               capabilities: [ gpu ]
     networks:
-      - bergatrix-proxy
-      - media-network
+      - bergatrix-media
+      - bergatrix-ai
 
   optimizer:
     build: ./app/optimizer
@@ -374,9 +377,9 @@ services:
               count: 1
               capabilities: [ gpu ]
     networks:
-      - media-network
+      - bergatrix-media
     
-  # Sem rota no Traefik: indexador consultado pelo Prowlarr, pela media-network.
+  # Sem rota no Traefik: indexador consultado pelo Prowlarr, pela bergatrix-media.
   torrent-indexer-br:
     image: ghcr.io/felipemarinho97/torrent-indexer:latest
     container_name: torrent-indexer-br
@@ -393,7 +396,7 @@ services:
     depends_on:
       - flaresolverr
     networks:
-      - media-network
+      - bergatrix-media
 
   sabnzbd:
     image: lscr.io/linuxserver/sabnzbd
@@ -414,7 +417,7 @@ services:
       - ${CACHE_PATH:?}/jellyfin/incomplete:/incomplete-downloads
     networks:
       - bergatrix-proxy
-      - media-network
+      - bergatrix-media
     labels:
       # Forward-auth: só entra quem passou pelo Authentik (docs/05-acesso.md)
       - "traefik.enable=true"
@@ -429,6 +432,9 @@ services:
 networks:
   bergatrix-proxy:
     external: true
-  media-network:
-    name: media-internal
-    driver: bridge
+  bergatrix-media:
+    external: true
+  bergatrix-ldap:
+    external: true
+  bergatrix-ai:
+    external: true

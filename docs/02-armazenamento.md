@@ -19,7 +19,7 @@ Toda stack usa só estas quatro raízes. Nenhum compose aponta para um caminho a
 
 Pergunte, nesta ordem:
 
-1. **É banco de dados, SQLite ou algo que o app trava com lock?** → `APPDATA_PATH`. Nunca em NFS: Postgres e SQLite corrompem ou travam sobre rede. Isso inclui a pasta `/config` dos *arr, do Jellyfin, do Home Assistant, do Vaultwarden, do n8n e do Open WebUI, que guardam SQLite lá dentro.
+1. **É banco de dados, SQLite ou algo que o app trava com lock?** → `APPDATA_PATH`. Nunca em NFS: Postgres e SQLite corrompem ou travam sobre rede. Isso inclui a pasta `/config` dos *arr, do Jellyfin, do Home Assistant, e do Vaultwarden, que guardam SQLite lá dentro.
 2. **Se eu apagar, perco algo que não volta?**
    - Sim, e é pequeno e ligado a um app (config, avatar, chave) → `APPDATA_PATH`.
    - Sim, e é um acervo grande de pessoas (fotos, documentos) → `USERDATA_PATH`.
@@ -82,9 +82,7 @@ ${USERDATA_PATH}/nextcloud/
 | drop | – | – | – |
 | homeassistant | `config` | – | – |
 | jellyfin | `jellyfin`, `catalogo`, `qbittorrent`, `sonarr`, `radarr`, `prowlarr`, `bazarr`, `sabnzbd`, `recyclarr`, `legendarr/jobs`, `legendarr/stats` | `jellyfin` (transcodes), `optimizer`, `incomplete` | raiz inteira (Jellyfin), `filmes`, `series`, `downloads` |
-| litellm | `postgres` | – | – |
-| n8n | `data` | – | – |
-| openuiweb | `open-webui` | `ollama` | – |
+| ollama | – | `models` | – |
 | transcriptor | `data` | `models` | – |
 | wazuh | `wazuh_manager`, `wazuh_indexer`, `wazuh_dashboard`, `filebeat`, `config` | – | – |
 

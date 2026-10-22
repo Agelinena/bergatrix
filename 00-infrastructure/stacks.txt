@@ -1,0 +1,28 @@
+# Stacks da Bergatrix, na ordem de subida. O derrubar-tudo.sh usa a ordem inversa.
+# Toda stack nova entra aqui no mesmo commit em que é criada (docs/07-ligar-e-desligar.md).
+# Uma linha por stack: o caminho da pasta a partir da raiz do repositório.
+# As redes (01-network/redes) sobem antes de tudo e não entram nesta lista.
+
+# Proteção e entrada de tráfego
+02-security/crowdsec
+01-network/traefik
+
+# Identidade e segredos (outros apps dependem do Authentik)
+02-security/authentik
+02-security/bitwarden
+
+# Ferramentas de base
+00-infrastructure/cloudbeaver
+
+# Apps: o Ollama antes do Jellyfin (Legendarr) e o Jellyfin antes do
+# bergastream (o Lidarr usa o SABnzbd e o Prowlarr)
+03-apps/ollama
+03-apps/jellyfin
+03-apps/bergastream
+03-apps/bergalink
+03-apps/transcriptor
+03-apps/drop
+03-apps/homeassistant
+
+# Monitoramento
+04-monitoring/wazuh

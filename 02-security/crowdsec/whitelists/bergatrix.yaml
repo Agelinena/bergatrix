@@ -1,0 +1,23 @@
+# Exceções da Bergatrix: eventos que não devem contar para os cenários.
+# Montado em /etc/crowdsec/parsers/s02-enrich/ pelo docker-compose.yml.
+# Testar uma linha de log: docker exec crowdsec cscli explain --log '<linha>' --type traefik
+name: bergatrix/whitelist
+description: "Tráfego legítimo de apps da Bergatrix que os cenários HTTP leem como varredura"
+whitelist:
+  reason: "Apps da Bergatrix (Bergastream reconectando, Jellyfin carregando imagens e vídeo)"
+  expression:
+    # Bergastream: com o container parado, o Traefik responde 404 e o nginx
+    # 502/503/504. O app do celular dispara dezenas desses em segundos ao
+    # reconectar, o que o cenário http-probing lê como varredura. A API continua
+    # protegida pelo login; qualquer outro erro segue contando normalmente.
+    # /api-access-bypass/api/ é o caminho dos apps 0.3.x.
+    - >-
+      evt.Meta.target_fqdn startsWith 'bergastream.' &&
+      evt.Meta.http_path matches '^/(api-access-bypass/)?api/' &&
+      evt.Meta.http_status in ['404', '502', '503', '504']
+    # Jellyfin: TVs e celulares pedem muitas imagens (404 quando o item não tem
+    # pôster ou fundo) e pedaços de vídeo e áudio. Esses caminhos só entregam
+    # mídia; o login (/Users/AuthenticateByName) e o resto continuam contando.
+    - >-
+      evt.Meta.target_fqdn startsWith 'jellyflix.' &&
+      evt.Meta.http_path matches '(?i)^/(items/[^/]+/images/|videos/|audio/)'

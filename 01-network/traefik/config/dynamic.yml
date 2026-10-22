@@ -1,12 +1,7 @@
 http:
   middlewares:
-    internal-only:
-      ipAllowList:
-        sourceRange:
-          - "192.168.10.140/32"
-          - "192.168.10.121/32"
-          - "192.168.10.1/32"
-
+    # Só a rede local (a VPN chega pelo firewall, que está nela). Usado apenas
+    # no painel admin do Authentik; serviços de app usam o Authentik (docs/05-acesso.md).
     lan-only:
       ipAllowList:
         sourceRange:
@@ -24,11 +19,14 @@ http:
           - "X-authentik-uid"
           - "Authorization"
 
+    # LEGADO: remover quando o Home Assistant e o Transcriptor migrarem
+    # (docs/plano-acesso.md). Não use em rotas novas: use authentik@file.
     public-auth:
       chain:
         middlewares:
           - "authentik@file"
 
+    # LEGADO: só a rota -bypass do Home Assistant usa. Remover junto com ela.
     api-access-bypass:
       stripPrefix:
         prefixes:

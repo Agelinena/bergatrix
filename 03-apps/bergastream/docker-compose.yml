@@ -144,7 +144,8 @@ services:
     networks:
       - bergastream-internal   # o worker fala com ele aqui
       - bergastream-egress     # servidor de metadados (MusicBrainz)
-      - bergatrix-proxy        # Traefik, SABnzbd e Prowlarr
+      - bergatrix-proxy        # rota do Traefik
+      - bergatrix-media        # SABnzbd e Prowlarr (stack jellyfin)
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=bergatrix-proxy"
@@ -227,4 +228,6 @@ networks:
   bergastream-egress:
     name: bergastream-egress
   bergatrix-proxy:
+    external: true
+  bergatrix-media:
     external: true

@@ -58,7 +58,7 @@ app ─▶ plugin/config LDAP do app ─▶ authentik-ldap:3389 ─▶ Authentik
 | Filtro de admins | `(memberOf=cn=<app>_admins,ou=groups,dc=ldap,dc=goauthentik,dc=io)` |
 | Atributo de ID / de login | `uid` / `cn` |
 
-3. O app precisa alcançar `authentik-ldap`, ou seja, estar na rede `bergatrix-proxy`.
+3. O app precisa alcançar `authentik-ldap`, ou seja, estar na rede `bergatrix-ldap` ([06-redes.md](../06-redes.md)).
 4. Mantenha um **admin local** do app fora do LDAP. É o acesso de emergência se o Authentik cair.
 
 ### Jellyfin

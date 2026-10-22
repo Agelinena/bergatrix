@@ -52,42 +52,31 @@ Rede local ───────────────────────
 | 03 | drop | Transferência de arquivos cifrada (sem disco) | `drop` | – |
 | 03 | homeassistant | Home Assistant | `ha` | appdata |
 | 03 | jellyfin | Jellyfin, Seerr, qBittorrent, Sonarr, Radarr, Prowlarr, Bazarr, SABnzbd, FlareSolverr, indexador BR, Recyclarr, Legendarr (web, worker, optimizer) | `jellyflix`, `catalogo`, `legendarr` e um por serviço *arr | appdata, cache, media |
-| 03 | litellm | LiteLLM, Postgres, sincronizador de modelos | `llm` | appdata |
-| 03 | n8n | n8n com Python | `n8n` | appdata |
-| 03 | openuiweb | Open WebUI, Ollama (GPU) | `chat` | appdata, cache |
+| 03 | ollama | Ollama (GPU), sem rota | – | cache |
 | 03 | transcriptor | Transcrição com faster-whisper (GPU) | `transcriptor` | appdata, cache |
 | 04 | wazuh | Wazuh manager, indexer, dashboard | `wazuh` (+ portas 1514, 1515, 514/udp, 55000 para agentes) | appdata |
 
 ### Ordem de subida
 
-1. `docker network create bergatrix-proxy` (uma vez)
-2. `01-network/traefik` e `02-security/crowdsec`
-3. `02-security/authentik`
-4. Demais stacks, em qualquer ordem, respeitando as dependências abaixo.
+A ordem fica em [`00-infrastructure/stacks.txt`](../00-infrastructure/stacks.txt), e os scripts `subir-tudo.sh` e `derrubar-tudo.sh` a seguem. Veja [07-ligar-e-desligar.md](07-ligar-e-desligar.md).
 
 ## Dependências entre stacks
 
-Elas se falam pelo nome do container na rede `bergatrix-proxy`. Mudar um destes nomes, ou tirar o serviço da rede, quebra a stack que depende dele.
+Elas se falam pelo nome do container, numa rede compartilhada ([06-redes.md](06-redes.md)). Mudar um destes nomes, ou tirar o serviço da rede, quebra a stack que depende dele.
 
-| Quem usa | Usa o quê | Endereço |
-|---|---|---|
-| Traefik (forward-auth), Bergalink (JWKS) | Authentik | `authentik-server:9000` |
-| Jellyfin (plugin LDAP) | Outpost LDAP do Authentik | `authentik-ldap:3389` |
-| Traefik (bouncer) | CrowdSec | `crowdsec:8080` |
-| CrowdSec | Log do Traefik | `${APPDATA_PATH}/traefik/logs` (arquivo) |
-| Open WebUI, sincronizador do LiteLLM, Legendarr worker | Ollama (stack openuiweb) | `ollama:11434` |
-| Open WebUI | LiteLLM | `litellm:4000` |
-| Lidarr (bergastream) | SABnzbd e Prowlarr (stack jellyfin) | `sabnzbd:8080`, `prowlarr:9696` |
-| Lidarr (bergastream) | Downloads do SABnzbd | `${MEDIA_PATH}/downloads` (mesma pasta) |
+| Quem usa | Usa o quê | Endereço | Rede |
+|---|---|---|---|
+| Traefik (forward-auth), Bergalink e Bergastream (OIDC) | Authentik | `authentik-server:9000` | `bergatrix-proxy` |
+| Jellyfin (plugin LDAP) | Outpost LDAP do Authentik | `authentik-ldap:3389` | `bergatrix-ldap` |
+| Traefik (bouncer) | CrowdSec | `crowdsec:8080` | `bergatrix-proxy` |
+| CrowdSec | Log do Traefik | `${APPDATA_PATH}/traefik/logs` | (arquivo) |
+| Legendarr worker | Ollama | `ollama:11434` | `bergatrix-ai` |
+| Lidarr (bergastream) | SABnzbd e Prowlarr (stack jellyfin) | `sabnzbd:8080`, `prowlarr:9696` | `bergatrix-media` |
+| Lidarr (bergastream) | Downloads do SABnzbd | `${MEDIA_PATH}/downloads` | (mesma pasta) |
 
 ## Redes Docker
 
-| Rede | Tipo | Quem cria |
-|---|---|---|
-| `bergatrix-proxy` | Compartilhada entre stacks | Manual: `docker network create bergatrix-proxy` |
-| `bergastream-internal`, `bergalink-internal`, `litellm-internal` | Internas, sem internet | A própria stack |
-| `bergastream-egress`, `litellm-egress` | Saída para a internet de serviços internos | A própria stack |
-| `authentik-internal`, `media-internal` | Internas da stack (com internet) | A própria stack |
+Redes compartilhadas, redes de cada stack e as regras: [06-redes.md](06-redes.md).
 
 ## Repositórios
 

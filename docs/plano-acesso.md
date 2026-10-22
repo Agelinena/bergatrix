@@ -5,12 +5,12 @@ Plano para trocar o modelo atual de três rotas (forward-auth do Authentik, aces
 ## Decisões tomadas (outubro de 2026)
 
 - **Login único pelo Authentik**, com 2FA, para todos os serviços com interface:
-  - **OIDC no app:** Bergalink, Open WebUI, Bergastream, Transcriptor, Vaultwarden, LiteLLM e Home Assistant;
-  - **forward-auth:** Wazuh, n8n, CloudBeaver, os *arr, o painel do Traefik e o Legendarr.
+  - **OIDC no app:** Bergalink, Bergastream, Transcriptor, Vaultwarden e Home Assistant;
+  - **forward-auth:** Wazuh, CloudBeaver, os *arr, o painel do Traefik e o Legendarr.
 - **Público sem Authentik:** só o Drop.
 - **Só pela VPN:** Proxmox, OMV e o Ubuntu (SSH e o host Docker). A VPN é o Tailscale, gerenciado no firewall, fora da VM do Docker.
 - **Nada sem Authentik na frente, nem na rede local.** O padrão de rotas e labels está em [05-acesso.md](05-acesso.md).
-- **Homepage removida** da stack.
+- **Removidos:** Homepage, Open WebUI, LiteLLM e n8n (sem uso). O Ollama ficou numa stack própria, porque o Legendarr usa.
 - **Fim** das rotas `-direct` por IP fixo, da rota `-bypass` e do middleware `api-access-bypass`.
 
 ## Os modelos
@@ -37,29 +37,26 @@ Para quem usa, A, B e C dão o mesmo resultado: a tela do Authentik, o mesmo 2FA
 | Stack | Serviço | Endereço | Hoje | Destino | Observações | Estado |
 |---|---|---|---|---|---|---|
 | bergalink | api | `bergalink` | A | **A** (OIDC) | Modelo de referência | ✓ |
-| openuiweb | open-webui | `chat` | Forward-auth + IP | **A** (OIDC) | OIDC nativo por variáveis (`OAUTH_*`, `OPENID_PROVIDER_URL`). Melhor piloto. | – |
 | bergastream | web/api | `bergastream` | 3 rotas + JWT próprio | **A** (OIDC) | Em desenvolvimento. Até lá: E (uma rota, sem forward-auth nem bypass). | Em andamento |
-| transcriptor | transcriptor | `transcriptor` | Forward-auth + IP | **A** (OIDC, código próprio) | Até o OIDC, C na interface. A API v1 (`X-API-Key`) precisa de rota própria fora do forward-auth. | – |
-| jellyfin | legendarr-web | `legendarr` | D | **C** | Forward-auth (decisão de out/2026, no lugar do OIDC). O webhook dos *arr é chamado entre containers e não passa pelo Traefik. | No repositório (falta subir) |
-| bitwarden | vaultwarden | `bitwarden` | 3 rotas + rotas de WebSocket | **A** (OIDC) | As extensões e os apps precisam da API sem forward-auth, então a rota é pública e o SSO fica dentro do app (`SSO_ENABLED`, `SSO_AUTHORITY`, `SSO_CLIENT_ID`, `SSO_CLIENT_SECRET`). A senha mestra **continua obrigatória**: ela cifra o cofre e nunca passa pelo Authentik. Deixe `SSO_ONLY` desligado no começo. `/admin` com o token desligado. Revisar as rotas `-ws-*` para a porta 3012, que deve estar obsoleta. | Em andamento |
-| wazuh | dashboard | `wazuh` | D | **C** | O dashboard mantém o próprio login atrás do Authentik. (SSO por SAML com papéis é possível no futuro.) | No repositório (falta subir) |
-| litellm | litellm | `llm` | D | **A** (OIDC) na interface | O SSO da interface é gratuito até 5 usuários. A API continua com chaves próprias, na mesma rota. | – |
-| n8n | n8n | `n8n` | Forward-auth + IP | **C** no editor; `/webhook*` em **E** | OIDC no n8n é pago (Enterprise). O n8n mantém o próprio login atrás do Authentik (login duplo). Os webhooks externos precisam da rota pública. | No repositório (falta subir) |
-| traefik | painel | `traefik` | D + basic auth | **C** | Substitui o basic auth | No repositório (falta subir) |
-| jellyfin | sonarr, radarr, prowlarr, bazarr, sabnzbd, qbittorrent | um por serviço | D | **C** | Desligar o login próprio (`External` nos *arr) para não ter login duplo. Apps de celular para os *arr (nzb360, LunaSea) param de funcionar de fora. Corrigir as labels incompletas do radarr. | No repositório (falta subir) |
-| bergastream | lidarr | `lidarr` | D | **C** | Idem *arr | No repositório (falta subir) |
-| cloudbeaver | cloudbeaver | `db` | 3 rotas | **C**, ou remover | A edição gratuita não tem SSO. Hoje não alcança nenhum banco. | No repositório (falta subir) |
-| jellyfin | jellyfin | `jellyflix` | E, sem CrowdSec | **B** (LDAP) | LDAP feito. Falta o `crowdsec-bouncer`. | Em andamento |
-| jellyfin | catalogo (Seerr) | `catalogo` | Forward-auth + IP | **E** | Login pela conta do Jellyfin, que já usa LDAP (a senha conferida é a do Authentik). Login local do Seerr desligado em *Settings → Users*. Observar bans do CrowdSec por pôsteres com 404. | No repositório (falta subir) |
+| transcriptor | transcriptor | `transcriptor` | Forward-auth + IP | **A** (OIDC, código próprio) | Até o OIDC, C na interface. A API v1 (`X-API-Key`) precisa de rota própria fora do forward-auth. | Em andamento |
+| jellyfin | legendarr-web | `legendarr` | D | **C** | Forward-auth (decisão de out/2026, no lugar do OIDC). O webhook dos *arr é chamado entre containers e não passa pelo Traefik. | ✓ |
+| bitwarden | vaultwarden | `bitwarden` | 3 rotas + rotas de WebSocket | **A** (OIDC) | As extensões e os apps precisam da API sem forward-auth, então a rota é pública e o SSO fica dentro do app (`SSO_ENABLED`, `SSO_AUTHORITY`, `SSO_CLIENT_ID`, `SSO_CLIENT_SECRET`). A senha mestra **continua obrigatória**: ela cifra o cofre e nunca passa pelo Authentik. Deixe `SSO_ONLY` desligado no começo. `/admin` com o token desligado. Revisar as rotas `-ws-*` para a porta 3012, que deve estar obsoleta. | ✓ |
+| wazuh | dashboard | `wazuh` | D | **C** | O dashboard mantém o próprio login atrás do Authentik. (SSO por SAML com papéis é possível no futuro.) | ✓ |
+| traefik | painel | `traefik` | D + basic auth | **C** | Substitui o basic auth | ✓ |
+| jellyfin | sonarr, radarr, prowlarr, bazarr, sabnzbd, qbittorrent | um por serviço | D | **C** | Desligar o login próprio (`External` nos *arr) para não ter login duplo. Apps de celular para os *arr (nzb360, LunaSea) param de funcionar de fora. Corrigir as labels incompletas do radarr. | ✓ |
+| bergastream | lidarr | `lidarr` | D | **C** | Idem *arr | ✓ |
+| cloudbeaver | cloudbeaver | `db` | 3 rotas | **C**, ou remover | A edição gratuita não tem SSO. Hoje não alcança nenhum banco. | ✓ |
+| jellyfin | jellyfin | `jellyflix` | E, sem CrowdSec | **B** (LDAP) | LDAP feito. `crowdsec-bouncer` com exceção para imagens e streaming (`02-security/crowdsec/whitelists`). | No repositório (falta subir) |
+| jellyfin | catalogo (Seerr) | `catalogo` | Forward-auth + IP | **E** | Login pela conta do Jellyfin, que já usa LDAP (a senha conferida é a do Authentik). Login local do Seerr desligado em *Settings → Users*. Observar bans do CrowdSec por pôsteres com 404. | ✓ |
 | homeassistant | homeassistant | `ha` | 3 rotas (bypass para o Companion) | **A** (OIDC) | Sem OIDC nativo: usa a integração da comunidade `hass-oidc-auth` (HACS). A rota fica pública, sem forward-auth, porque o app Companion fala direto com a API. Manter um usuário local com MFA como acesso de emergência. Configurar `trusted_proxies`. | – |
-| drop | drop | `drop` | E | **E** | Público por decisão. Acrescentar `crowdsec-bouncer`. | – |
-| authentik | server | `authentik` | Público; `/if/admin` em D | **E**, com 2FA obrigatório para admins | É a porta de entrada de tudo, então o 2FA e as atualizações são inegociáveis. `/if/admin` pode continuar em D. | – |
+| drop | drop | `drop` | E | **E** | Público por decisão. Acrescentar `crowdsec-bouncer`. | Em andamento |
+| authentik | server | `authentik` | Público; `/if/admin` em D | **E**, com 2FA obrigatório para admins | É a porta de entrada de tudo, então o 2FA e as atualizações são inegociáveis. `/if/admin` pode continuar em D. | ✓ |
 | authentik | server | `auth` | Público | **Remover** | Host duplicado, provável sobra da migração de domínio | – |
 | *infra* | Proxmox | IP local | Login local | **D** (VPN) | OIDC nativo é opcional; o acesso de fora é só pela VPN | – |
 | *infra* | OpenMediaVault | IP local | Login local | **D** (VPN) | Interface em PHP: manter sempre atualizado | – |
 | *infra* | Ubuntu (VM Docker) | IP local | SSH | **D** (VPN) | SSH só pela rede local e pela VPN, com chave | – |
 | wazuh | manager | portas 1514/1515/514/55000 | Publicadas | Revisar | Os agentes precisam da 1514/1515; a 55000 (API) não precisa ficar exposta | – |
-| vários | outpost LDAP, ollama, flaresolverr, torrent-indexer, litellm-updater, workers, bancos | – | Vários na `bergatrix-proxy`; flaresolverr e torrent-indexer com rota | **F** | Tirar as rotas e sair da `bergatrix-proxy` (ver redes) | – |
+| vários | outpost LDAP, worker do Authentik, ollama, flaresolverr, torrent-indexer, worker do Legendarr, bancos | – | Vários na `bergatrix-proxy`; flaresolverr e torrent-indexer com rota | **F** | Sem rota e fora da `bergatrix-proxy`, cada um na rede do assunto ([06-redes.md](06-redes.md)) | No repositório (falta subir) |
 
 ## O que precisa existir no Authentik
 
@@ -72,23 +69,17 @@ Para quem usa, A, B e C dão o mesmo resultado: a tela do Authentik, o mesmo 2FA
 
 ## Redes
 
-| Rede | Destino |
-|---|---|
-| `bergatrix-proxy` | Só o Traefik e os serviços **com rota** |
-| `bergatrix-ldap` (nova) | Outpost LDAP e os apps que usam LDAP |
-| `bergatrix-ai` (nova) | Ollama, Open WebUI, LiteLLM e o worker do Legendarr |
-| `bergatrix-media` (nova, substitui `media-internal`) | Os *arr, SABnzbd, Prowlarr e o Lidarr do bergastream |
-| `<stack>-internal` | Bancos e serviços internos de cada stack (sem mudança) |
+Feito: `bergatrix-proxy` só com quem tem rota, mais `bergatrix-media`, `bergatrix-ldap` e `bergatrix-ai`, todas em `01-network/redes`. Detalhes em [06-redes.md](06-redes.md).
 
 ## Traefik (`dynamic.yml`)
 
 | Item | Destino |
 |---|---|
-| `api-access-bypass` | Remover quando nenhuma rota usar mais |
-| Rotas `-direct` com `ClientIP` | Remover (é o fim dos IPs fixos) |
-| `internal-only` (3 IPs fixos) | Substituído por `lan-only` (a sub-rede), só para a infraestrutura |
+| `api-access-bypass` | Só a rota `-bypass` do Home Assistant usa. Sai com o OIDC dele. |
+| Rotas `-direct` com `ClientIP` | Só no Home Assistant e no Transcriptor. Saem com a migração deles. |
+| `internal-only` (3 IPs fixos) | ✓ Removido. O painel admin do Authentik usa o `lan-only` (a sub-rede). |
 | `authentik` (forward-auth) | Manter (modelo C). Testar sem `Authorization` em `authResponseHeaders`, que já atrapalhou o login do Bergastream. |
-| `public-auth` | Remover; usar `authentik@file` direto |
+| `public-auth` | Só o Home Assistant e o Transcriptor usam. Remover depois deles. |
 | `proxyProtocol` e `forwardedHeaders` (`10.100.0.1`) | Revisar junto com o caminho do tráfego externo |
 
 ## Decisões em aberto
@@ -97,17 +88,16 @@ Para quem usa, A, B e C dão o mesmo resultado: a tela do Authentik, o mesmo 2FA
 2. **Caminho do tráfego externo:** a configuração ainda espera um proxy em `10.100.0.1`, mas a VM nova não tem túnel. Confirmar como o tráfego de fora chega hoje.
 3. **Apps de celular dos *arr:** se você usa algum, as rotas dos *arr precisariam de uma exceção por chave de API, o que traz de volta parte do bypass.
 4. **CloudBeaver:** remover ou dar uma função para ele.
+5. **Host `auth`:** confirmar se algum app ainda usa `auth.<domínio>` antes de remover a rota.
 
-## Ordem sugerida
+## O que falta
 
-1. **Base no Authentik:** 2FA obrigatório no fluxo, grupos e o padrão de provider (*Proxy* e *OIDC*).
-2. **Redes e serviços F:** tirar rotas e acessos desnecessários à `bergatrix-proxy`. Nada muda para quem usa.
-3. **Open WebUI → OIDC**, o piloto de OIDC.
-4. **Painel do Traefik → C**, o piloto de forward-auth de uma rota só.
-5. **Jellyfin:** CrowdSec. **Seerr e Drop:** uma rota só, com CrowdSec.
-6. **Os *arr e o Lidarr → C**, com `External`.
-7. **Vaultwarden e Home Assistant → OIDC**, com uma rota pública só.
-8. **n8n:** editor em C e webhooks em E.
-9. **LiteLLM (OIDC) e Wazuh (C).**
-10. **`dynamic.yml`:** remover `api-access-bypass`, `public-auth` e os IPs fixos.
-11. **Bergastream, Transcriptor e Legendarr → OIDC** no código, seguindo o Bergalink.
+Feito: base no Authentik, redes, painel do Traefik, *arr, Lidarr, Legendarr, Seerr, Vaultwarden, Wazuh e CloudBeaver.
+
+1. **Jellyfin:** subir com o CrowdSec e acompanhar os bans nos primeiros dias.
+2. **Drop:** uma rota só, com CrowdSec (em andamento).
+3. **Transcriptor:** OIDC no código (em andamento). Tira a rota `-direct` e o `public-auth`.
+4. **Home Assistant → OIDC** (`hass-oidc-auth`), com uma rota pública só. Tira a rota `-direct`, a `-bypass` e o `public-auth`.
+5. **`dynamic.yml`:** remover `public-auth` e `api-access-bypass` quando os itens 3 e 4 estiverem no ar.
+6. **Wazuh:** revisar a porta 55000.
+7. **Bergastream:** OIDC no código, seguindo o Bergalink.

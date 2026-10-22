@@ -1,0 +1,45 @@
+# Redes compartilhadas entre stacks. Guia: docs/06-redes.md
+#
+# Criar ou conferir (o subir-tudo.sh já faz isso):
+#   docker compose run --rm redes
+#
+# O Compose só cria redes usadas por algum serviço; o serviço "redes" existe
+# só para isso. Ele roda `true` e é apagado na hora (--rm).
+#
+# As stacks usam estas redes com `external: true`. Redes que só uma stack usa
+# (<stack>-internal, <stack>-egress) ficam no compose da própria stack.
+name: redes
+
+services:
+  redes:
+    image: busybox:1.36
+    command: ["true"]
+    restart: "no"
+    networks:
+      - bergatrix-proxy
+      - bergatrix-media
+      - bergatrix-ldap
+      - bergatrix-ai
+
+networks:
+  # Traefik e os serviços com rota. Também o CrowdSec, que o bouncer do
+  # Traefik consulta. Nada sem rota entra aqui.
+  bergatrix-proxy:
+    name: bergatrix-proxy
+
+  # Biblioteca de mídia: Jellyfin, Seerr, *arr, clientes de download,
+  # Legendarr e o Lidarr do bergastream. Precisa de internet (indexadores,
+  # metadados), por isso não é internal.
+  bergatrix-media:
+    name: bergatrix-media
+
+  # Outpost LDAP do Authentik e os apps que fazem login por LDAP (Jellyfin).
+  # Sem saída para a internet.
+  bergatrix-ldap:
+    name: bergatrix-ldap
+    internal: true
+
+  # Ollama e quem usa ele (worker do Legendarr). Com internet para o
+  # `ollama pull` baixar modelos.
+  bergatrix-ai:
+    name: bergatrix-ai

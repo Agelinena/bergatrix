@@ -1,0 +1,27 @@
+# Ollama — modelos de IA locais na GPU, sem rota no Traefik.
+# Quem usa entra na rede bergatrix-ai e chama http://ollama:11434
+# (hoje: o worker do Legendarr, na stack jellyfin).
+services:
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    restart: unless-stopped
+    volumes:
+      # Modelos baixados (rebaixáveis com `ollama pull`): fica no cache, sem backup
+      - ${CACHE_PATH:?}/ollama/models:/root/.ollama
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+    networks:
+      - bergatrix-ai
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+networks:
+  bergatrix-ai:
+    external: true

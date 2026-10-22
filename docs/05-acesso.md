@@ -18,13 +18,13 @@ Exceções:
 | Exceção | Por quê | Middlewares |
 |---|---|---|
 | **Drop** (público) | Sem contas, por natureza. Cifra de ponta a ponta. | `crowdsec-bouncer@file` + rate limit |
-| **Caminho técnico** dentro de um app forward-auth (ex.: `/webhook` do n8n) | Chamado por máquinas que não fazem login no Authentik. Precisa ter autenticação própria (token, chave, assinatura). | `crowdsec-bouncer@file` |
+| **Caminho técnico** dentro de um app forward-auth (ex.: webhooks) | Chamado por máquinas que não fazem login no Authentik. Precisa ter autenticação própria (token, chave, assinatura). | `crowdsec-bouncer@file` |
 | **Infraestrutura** (Proxmox, OMV, SSH do Ubuntu) | Fica fora do Traefik | Só pela rede local e pelo Tailscale do firewall |
 
 Não se usa mais:
 - rotas `-direct` com `ClientIP`, nem IPs fixos nas labels;
 - a rota `-bypass` e o middleware `api-access-bypass`;
-- o `internal-only` e o `lan-only` em serviços do Docker;
+- o `internal-only` (removido) e o `lan-only` em serviços de app. O `lan-only` (a sub-rede local, que inclui a VPN) fica só para o painel admin do Authentik;
 - o `public-auth` (use `authentik@file`).
 
 ## Labels por padrão
@@ -88,7 +88,7 @@ Já existe uma aplicação única (aqui chamada de **"Forward Auth do domínio"*
 
 - **Quem entra:** a aplicação tem *binding* com o grupo `admins`. Só esse grupo passa em qualquer serviço de forward-auth. Sem binding, qualquer usuário logado passaria.
 - **App que precise de outro grupo:** crie uma aplicação *Proxy* em modo *Forward auth (single application)*, com o *external host* dele, no mesmo outpost, vinculada ao grupo do app. Ela vale para aquele endereço, e a de domínio continua cobrindo o resto.
-- **Login duplo:** os *arr aceitam `AuthenticationMethod=External` no `config.xml` (o login fica só com o Authentik; a API continua exigindo a chave). No Bazarr, a autenticação vai para `None`. O n8n, o Wazuh, o CloudBeaver e o qBittorrent mantêm o login próprio atrás do Authentik.
+- **Login duplo:** os *arr aceitam `AuthenticationMethod=External` no `config.xml` (o login fica só com o Authentik; a API continua exigindo a chave). No Bazarr, a autenticação vai para `None`. O Wazuh, o CloudBeaver e o qBittorrent mantêm o login próprio atrás do Authentik.
 
 Em todos os casos:
 - **2FA:** o login dos usuários precisa passar por 2FA.

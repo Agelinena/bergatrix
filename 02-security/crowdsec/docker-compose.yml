@@ -11,6 +11,7 @@ services:
       - ${APPDATA_PATH:?}/crowdsec/data:/var/lib/crowdsec/data
       - ${APPDATA_PATH:?}/traefik/logs:/var/log/traefik:ro
       - ./acquis.yaml:/etc/crowdsec/acquis.yaml:ro
+      - ./whitelists/bergatrix.yaml:/etc/crowdsec/parsers/s02-enrich/bergatrix-whitelist.yaml:ro
     networks:
       - bergatrix-proxy
 

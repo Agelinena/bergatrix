@@ -64,12 +64,12 @@ services:
       - "traefik.docker.network=bergatrix-proxy"
       - "traefik.http.services.authentik-service.loadbalancer.server.port=9000"
 
-      # --- Painel admin: SÓ rede local ---
+      # --- Painel admin: só rede local (inclui a VPN, que chega pelo firewall) ---
       - "traefik.http.routers.authentik-admin.rule=Host(`authentik.${DOMAIN}`) && PathPrefix(`/if/admin`)"
       - "traefik.http.routers.authentik-admin.entrypoints=websecure"
       - "traefik.http.routers.authentik-admin.tls=true"
       - "traefik.http.routers.authentik-admin.service=authentik-service"
-      - "traefik.http.routers.authentik-admin.middlewares=internal-only@file"
+      - "traefik.http.routers.authentik-admin.middlewares=lan-only@file"
       - "traefik.http.routers.authentik-admin.priority=110"
 
       # --- Login / fluxo normal: público ---
@@ -106,12 +106,14 @@ services:
     depends_on:
       - postgresql
       - redis
+    # Sem rota: fala com o banco e o Redis, e sai para a internet (SMTP) pela
+    # authentik-internal, que não é internal.
     networks:
-      - bergatrix-proxy
       - authentik-internal
 
   # Outpost LDAP: login com as contas do Authentik em apps sem OIDC (ex.: Jellyfin).
-  # Sem porta publicada: os apps usam ldap://authentik-ldap:3389 pela bergatrix-proxy.
+  # Sem porta publicada: os apps entram na rede bergatrix-ldap e usam
+  # ldap://authentik-ldap:3389. Ele fala com o server pela authentik-internal.
   # Mesma versão do server. O token vem de Applications → Outposts no Authentik.
   ldap:
     image: ghcr.io/goauthentik/ldap:2025.10.2
@@ -124,10 +126,13 @@ services:
     depends_on:
       - server
     networks:
-      - bergatrix-proxy
+      - authentik-internal
+      - bergatrix-ldap
 
 networks:
   bergatrix-proxy:
+    external: true
+  bergatrix-ldap:
     external: true
   authentik-internal:
     driver: bridge

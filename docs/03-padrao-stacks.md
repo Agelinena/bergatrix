@@ -16,8 +16,8 @@ Se uma stack existente foge de alguma regra, ela está listada em [Dívidas conh
 
 | Camada | Para quê |
 |---|---|
-| `00-infrastructure` | Ferramentas de base (CloudBeaver) |
-| `01-network` | Entrada de tráfego (Traefik) |
+| `00-infrastructure` | Ferramentas de base (CloudBeaver), a ordem das stacks e os scripts de subir e derrubar tudo |
+| `01-network` | Entrada de tráfego (Traefik) e redes compartilhadas |
 | `02-security` | Identidade, segredos e proteção (Authentik, Vaultwarden, CrowdSec) |
 | `03-apps` | Aplicações |
 | `04-monitoring` | Observabilidade e segurança (Wazuh) |
@@ -57,12 +57,12 @@ Depois do bloco base, uma seção por assunto (`# ── Banco ──`, `# ─�
 
 | Regra | Exemplo |
 |---|---|
-| Prefixo com o nome do app | `VAULTWARDEN_ADMIN_TOKEN`, `TRANSCRIPTOR_API_KEY`, `OPENWEBUI_SECRET_KEY` |
+| Prefixo com o nome do app | `VAULTWARDEN_ADMIN_TOKEN`, `TRANSCRIPTOR_API_KEY`, `OUTPOST_LDAP_TOKEN` |
 | O Postgres próprio da stack usa os nomes da imagem oficial (um banco por stack, sem colisão) | `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD` |
 | Serviços de terceiros usam o nome do serviço | `OPENROUTER_API_KEY`, `DESEC_TOKEN`, `HF_TOKEN`, `DEEMIX_ARL` |
 | Variáveis lidas diretamente pelo app via `env_file` mantêm o nome que o app espera | `AUTHENTIK_*` e as configurações do Bergastream e do Legendarr |
-| Endereço nunca é variável: o subdomínio fica escrito no compose | `Host(\`n8n.${DOMAIN}\`)`, e não `${N8N_DOMAIN}` |
-| Caminho nunca é variável própria: deriva de uma raiz | `${APPDATA_PATH}/n8n/data`, e não `N8N_DATA_DIR` |
+| Endereço nunca é variável: o subdomínio fica escrito no compose | `Host(\`drop.${DOMAIN}\`)`, e não `${DROP_DOMAIN}` |
+| Caminho nunca é variável própria: deriva de uma raiz | `${APPDATA_PATH}/transcriptor/data`, e não `TRANSCRIPTOR_DATA_DIR` |
 
 ### No compose
 
@@ -99,13 +99,11 @@ volumes:
 
 ## Redes
 
-| Rede | Quem entra | Como declarar |
-|---|---|---|
-| `bergatrix-proxy` | Só os serviços com rota no Traefik ou que precisam falar com outra stack | `external: true` (criada uma vez: `docker network create bergatrix-proxy`) |
-| `<stack>-internal` | Banco, Redis e serviços internos da stack | `name: <stack>-internal` e `internal: true` (sem internet) |
-| `<stack>-egress` | Serviços internos que precisam de internet, mas não do Traefik | `name: <stack>-egress` |
+Regras completas e como criar uma rede em [06-redes.md](06-redes.md). Em resumo:
 
-O banco nunca fica na `bergatrix-proxy`.
+- Redes compartilhadas (`bergatrix-proxy`, `bergatrix-media`, `bergatrix-ldap`, `bergatrix-ai`) ficam em `01-network/redes` e entram na stack com `external: true`.
+- A `bergatrix-proxy` é só para serviços com rota no Traefik.
+- Banco e serviços internos ficam na `<stack>-internal` (`internal: true`). O banco nunca entra numa rede compartilhada.
 
 ## Containers
 
@@ -124,7 +122,7 @@ Regra e labels em [05-acesso.md](05-acesso.md). Em resumo:
 - **Nenhum serviço fica sem Authentik na frente, nem na rede local.**
 - O app entra por **OIDC**, por **LDAP** ou por **forward-auth**.
 - Cada serviço tem uma rota só.
-- Não se usam mais IPs fixos, bypass nem `internal-only` em serviços do Docker.
+- Não se usam mais IPs fixos nem bypass em serviços do Docker.
 
 ## Checklist de stack nova
 
@@ -134,8 +132,10 @@ Regra e labels em [05-acesso.md](05-acesso.md). Em resumo:
 4. Imagens com versão fixa; banco com healthcheck e rede interna.
 5. Acesso conforme [05-acesso.md](05-acesso.md): aplicação e grupo no Authentik, e rota no padrão certo.
 6. Validar: `docker compose --env-file .env.example config --quiet`.
-7. Criar as pastas no servidor com o dono certo antes do primeiro `up`.
-8. Atualizar o [mapa por stack](02-armazenamento.md#mapa-atual-por-stack) e a tabela de stacks em [01-infraestrutura.md](01-infraestrutura.md).
+7. Redes conforme [06-redes.md](06-redes.md): rede compartilhada nova só no `01-network/redes`.
+8. **Acrescentar a stack ao [`00-infrastructure/stacks.txt`](../00-infrastructure/stacks.txt)**, depois das stacks de que ela depende ([07-ligar-e-desligar.md](07-ligar-e-desligar.md)).
+9. Criar as pastas no servidor com o dono certo antes do primeiro `up`.
+10. Atualizar o [mapa por stack](02-armazenamento.md#mapa-atual-por-stack) e a tabela de stacks em [01-infraestrutura.md](01-infraestrutura.md).
 
 ## Dívidas conhecidas
 
@@ -143,12 +143,10 @@ Stacks existentes que ainda não seguem o padrão. Nenhuma delas impede a migra�
 
 | Stack | Fora do padrão |
 |---|---|
-| várias | Imagens sem versão fixa: Jellyfin, *arr, SABnzbd, Deemix, Lidarr, Vaultwarden, CrowdSec, CloudBeaver, Ollama, Open WebUI, n8n, LiteLLM, FlareSolverr |
+| várias | Imagens sem versão fixa: Jellyfin, *arr, SABnzbd, Deemix, Lidarr, CrowdSec, CloudBeaver, Ollama, FlareSolverr |
 | várias | `container_name` antigos (`bitwarden`, `ollama`, `sonarr`…). Mantidos porque outras stacks os usam como endereço; mudam junto com a revisão de acesso. |
-| várias | Rotas antigas com IPs fixos, bypass e `internal-only`. Saem stack por stack, conforme o [plano de acesso](plano-acesso.md). |
+| homeassistant, transcriptor | Rotas antigas com IPs fixos, bypass e `public-auth`. Saem conforme o [plano de acesso](plano-acesso.md). |
 | jellyfin | Legendarr (web, worker, optimizer) roda como root. O optimizer guarda `requires_redownload.txt` fora de volume. |
-| jellyfin | Sem rede interna: tudo, inclusive o que não tem rota, fica na `bergatrix-proxy`. |
-| openuiweb | O nome da pasta tem um erro de digitação (o app é Open WebUI). Renomear muda `${APPDATA_PATH}/openuiweb`. |
 | bitwarden | O nome da pasta é `bitwarden`, mas o app é o Vaultwarden. |
 | cloudbeaver | Ficou sem banco para acessar desde que o Postgres global saiu: cada stack tem o seu, em rede interna. |
 | quase todas | Sem `README.md` próprio (só bergastream, bergalink e wazuh têm). |
