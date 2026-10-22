@@ -34,6 +34,25 @@ mkdir -p /mnt/nas/media/{filmes,series,downloads,musica/bergastream/deemix_dl,mu
 
 ## 2. Mover os dados de cada stack
 
+No cenário A, o script [`scripts/migrar-dados.py`](../scripts/migrar-dados.py) aplica o mapa abaixo inteiro de dentro de `/srv/docker_volumes`:
+
+- só usa `mv`, que é instantâneo no mesmo disco, e não apaga nada;
+- copia o `acme.json` do repositório;
+- leva para `/srv/_legado` tudo que não está no mapa: stacks que saíram e pastas fora de `docker_volumes`.
+
+```bash
+sudo python3 scripts/migrar-dados.py             # mostra o que faria, com os tamanhos
+sudo python3 scripts/migrar-dados.py --aplicar   # move
+```
+
+**Mídia provisória no HD:** se o NFS do NAS ainda não estiver pronto, o script põe a mídia em `/srv/media` (padrão do `--media`). Use `MEDIA_PATH=/srv/media` nos `.env` até lá: `python3 scripts/migrar-env.py --media /srv/media --aplicar`. Quando o NAS estiver montado, copie com `rsync` (próximo item) e troque o valor em todas as stacks:
+
+```bash
+sed -i 's#^MEDIA_PATH=.*#MEDIA_PATH=/mnt/nas/media#' ~/bergatrix/0*/*/.env
+```
+
+Para fazer à mão, ou no cenário B:
+
 - **Configs e bancos** (cenário A): `sudo mv ANTIGO/x /srv/appdata/<stack>/y`. No cenário B, use `sudo rsync -aHAX`.
 - **Mídia** (rede): `sudo rsync -aHAX --info=progress2 ANTIGO/x/ /mnt/nas/media/y/`. Confira o resultado antes de apagar a origem.
 - Sempre com os containers parados. Os bancos Postgres usam a mesma imagem (`postgres:16`), então a pasta é copiada como está.
