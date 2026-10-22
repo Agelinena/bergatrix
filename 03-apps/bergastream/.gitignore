@@ -4,7 +4,7 @@ __pycache__/
 *.egg-info/
 dist/
 .venv/
-# Dados do ambiente local (STORAGE_PATH=./.data)
+# Dados do ambiente local (APPDATA_PATH, CACHE_PATH e MEDIA_PATH em ./.data)
 .data/
 
 # O .gitignore da raiz ignora pastas chamadas data/, downloads/ e storage/

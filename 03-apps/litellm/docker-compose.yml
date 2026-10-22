@@ -5,10 +5,10 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: litellm
-      POSTGRES_PASSWORD: ${LITELLM_DB_PASSWORD}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: litellm
     volumes:
-      - ${LITELLM_DATA_DIR}:/var/lib/postgresql/data
+      - ${APPDATA_PATH:?}/litellm/postgres:/var/lib/postgresql/data
     networks:
       - litellm-internal
     healthcheck:
@@ -32,7 +32,7 @@ services:
     volumes:
       - ./config.yaml:/app/config.yaml:ro
     environment:
-      DATABASE_URL: postgresql://litellm:${LITELLM_DB_PASSWORD}@litellm-db:5432/litellm
+      DATABASE_URL: postgresql://litellm:${POSTGRES_PASSWORD}@litellm-db:5432/litellm
       LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
       LITELLM_SALT_KEY: ${LITELLM_SALT_KEY}
       UI_USERNAME: ${LITELLM_UI_USERNAME}

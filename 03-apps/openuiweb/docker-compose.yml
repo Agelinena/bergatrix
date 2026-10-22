@@ -7,10 +7,10 @@ services:
       - 1.1.1.1
       - 8.8.8.8
     volumes:
-      - ${OPENWEBUI_DATA_DIR}:/app/backend/data
+      - ${APPDATA_PATH:?}/openuiweb/open-webui:/app/backend/data
     environment:
       # ─── Identidade ─────────────────────────────────────────────────────────
-      WEBUI_SECRET_KEY: ${WEBUI_SECRET_KEY}
+      WEBUI_SECRET_KEY: ${OPENWEBUI_SECRET_KEY}
       WEBUI_NAME: "Bergatrix AI"
 
       # ─── Backend: LiteLLM como OpenAI-compatible endpoint ───────────────────
@@ -52,8 +52,8 @@ services:
     container_name: ollama
     restart: unless-stopped
     volumes:
-      # Centraliza os dados do Ollama e a pasta do Mímesis no mesmo volume apontado por você
-      - ${DATA_DIR}:/root/.ollama
+      # Modelos baixados (rebaixáveis com `ollama pull`): fica no cache, sem backup
+      - ${CACHE_PATH:?}/openuiweb/ollama:/root/.ollama
     environment:
       - NVIDIA_VISIBLE_DEVICES=all
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility

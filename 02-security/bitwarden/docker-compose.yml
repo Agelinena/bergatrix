@@ -4,14 +4,14 @@ services:
     container_name: bitwarden
     restart: unless-stopped
     volumes:
-      - ${STORAGE_PATH}/vaultwarden:/data
+      - ${APPDATA_PATH:?}/bitwarden/vaultwarden:/data
     networks:
       - bergatrix-proxy
     environment:
       - SIGNUPS_ALLOWED=false
-      - TZ=America/Sao_Paulo
+      - TZ=${TZ}
       - WEBSOCKET_ENABLED=true
-      - ADMIN_TOKEN=${ADMIN_TOKEN}
+      - ADMIN_TOKEN=${VAULTWARDEN_ADMIN_TOKEN}
       - DOMAIN=https://bitwarden.${DOMAIN}
     labels:
       - "traefik.enable=true"

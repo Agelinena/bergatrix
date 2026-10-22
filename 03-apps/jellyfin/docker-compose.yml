@@ -10,8 +10,10 @@ services:
       - 8.8.8.8
       - 1.1.1.1
     volumes:
-      - ${STORAGE_PATH}/config/jellyfin:/config
-      - ${STORAGE_PATH}:/media/
+      - ${APPDATA_PATH:?}/jellyfin/jellyfin:/config
+      # Transcodes e imagens temporárias: cache, sem backup
+      - ${CACHE_PATH:?}/jellyfin/jellyfin:/cache
+      - ${MEDIA_PATH:?}:/media
     environment:
       - PUID=${PUID}
       - PGID=${PGID}
@@ -46,7 +48,7 @@ services:
       - 8.8.8.8
       - 1.1.1.1
     volumes:
-      - ${STORAGE_PATH}/config/catalogo:/app/config
+      - ${APPDATA_PATH:?}/jellyfin/catalogo:/app/config
     environment:
       - PUID=${PUID}
       - PGID=${PGID}
@@ -79,8 +81,8 @@ services:
       - 8.8.8.8
       - 1.1.1.1
     volumes:
-      - ${STORAGE_PATH}/config/qbittorrent:/config
-      - ${STORAGE_PATH}/downloads:/downloads
+      - ${APPDATA_PATH:?}/jellyfin/qbittorrent:/config
+      - ${MEDIA_PATH:?}/downloads:/downloads
     environment:
       - PUID=${PUID}
       - PGID=${PGID}
@@ -109,9 +111,9 @@ services:
       - PUID=${PUID}
       - PGID=${PGID}
     volumes:
-      - ${STORAGE_PATH}/config/sonarr:/config
-      - ${STORAGE_PATH}/series:/media/series
-      - ${STORAGE_PATH}/downloads:/downloads
+      - ${APPDATA_PATH:?}/jellyfin/sonarr:/config
+      - ${MEDIA_PATH:?}/series:/media/series
+      - ${MEDIA_PATH:?}/downloads:/downloads
     networks:
       - bergatrix-proxy
       - media-network
@@ -136,9 +138,9 @@ services:
       - PUID=${PUID}
       - PGID=${PGID}
     volumes:
-      - ${STORAGE_PATH}/config/radarr:/config
-      - ${STORAGE_PATH}/filmes:/media/filmes
-      - ${STORAGE_PATH}/downloads:/downloads
+      - ${APPDATA_PATH:?}/jellyfin/radarr:/config
+      - ${MEDIA_PATH:?}/filmes:/media/filmes
+      - ${MEDIA_PATH:?}/downloads:/downloads
     networks:
       - bergatrix-proxy
       - media-network
@@ -160,7 +162,7 @@ services:
       - PUID=${PUID}
       - PGID=${PGID}
     volumes:
-      - ${STORAGE_PATH}/config/prowlarr:/config
+      - ${APPDATA_PATH:?}/jellyfin/prowlarr:/config
     networks:
       - bergatrix-proxy
       - media-network
@@ -185,9 +187,9 @@ services:
       - PUID=${PUID}
       - PGID=${PGID}
     volumes:
-      - ${STORAGE_PATH}/config/bazarr:/config
-      - ${STORAGE_PATH}/filmes:/media/filmes
-      - ${STORAGE_PATH}/series:/media/series
+      - ${APPDATA_PATH:?}/jellyfin/bazarr:/config
+      - ${MEDIA_PATH:?}/filmes:/media/filmes
+      - ${MEDIA_PATH:?}/series:/media/series
     networks:
       - bergatrix-proxy
       - media-network
@@ -237,9 +239,10 @@ services:
       - BAZARR_API_KEY=${BAZARR_API_KEY}
       - BAZARR_LANGUAGE=${BAZARR_LANGUAGE:-pb}
     volumes:
-      - ${STORAGE_PATH}:/media
-      - ${STORAGE_PATH}/config/legendarr/jobs:/app/jobs
-      - ${STORAGE_PATH}/config/legendarr/stats:/app/stats
+      - ${MEDIA_PATH:?}/filmes:/media/filmes
+      - ${MEDIA_PATH:?}/series:/media/series
+      - ${APPDATA_PATH:?}/jellyfin/legendarr/jobs:/app/jobs
+      - ${APPDATA_PATH:?}/jellyfin/legendarr/stats:/app/stats
     networks:
       - bergatrix-proxy
       - media-network
@@ -263,7 +266,7 @@ services:
       - 1.1.1.1
     user: ${PUID}:${PGID}
     volumes:
-      - ${STORAGE_PATH}/config/recyclarr:/config
+      - ${APPDATA_PATH:?}/jellyfin/recyclarr:/config
     environment:
       - TZ=${TZ}
     networks:
@@ -277,9 +280,10 @@ services:
       - 8.8.8.8
       - 1.1.1.1
     volumes:
-      - ${STORAGE_PATH}:/media
-      - ${STORAGE_PATH}/config/legendarr/jobs:/app/jobs
-      - ${STORAGE_PATH}/config/legendarr/stats:/app/stats
+      - ${MEDIA_PATH:?}/filmes:/media/filmes
+      - ${MEDIA_PATH:?}/series:/media/series
+      - ${APPDATA_PATH:?}/jellyfin/legendarr/jobs:/app/jobs
+      - ${APPDATA_PATH:?}/jellyfin/legendarr/stats:/app/stats
     environment:
       # Tradução 100% LOCAL via Ollama (sem APIs externas).
       # O worker e o ollama compartilham a rede bergatrix-proxy → http://ollama:11434
@@ -303,6 +307,11 @@ services:
       - REFINE_MIN_MATCH=${REFINE_MIN_MATCH:-0.6}
       - REFINE_MAX_CPS=${REFINE_MAX_CPS:-17}
       - SCAN_INTERVAL=${SCAN_INTERVAL:-3600}
+      # Espera (s) sem alterações antes de processar uma legenda PT recém-criada
+      - SUBTITLE_WATCH_DEBOUNCE=${SUBTITLE_WATCH_DEBOUNCE:-3}
+      # Limites (s) do mapa temporal do sync antes de rejeitá-lo
+      - ALIGNMENT_MAX_AVERAGE_DELTA=${ALIGNMENT_MAX_AVERAGE_DELTA:-8}
+      - ALIGNMENT_MAX_DELTA=${ALIGNMENT_MAX_DELTA:-60}
       # Cooldown progressivo de legendas: revisita a cada RETRY_INTERVAL_HOURS;
       # após MAX_FAST_RETRIES falhas, recua para COOLDOWN_HOURS (3 dias)
       - RETRY_INTERVAL_HOURS=${RETRY_INTERVAL_HOURS:-1}
@@ -312,6 +321,10 @@ services:
       - BAZARR_API_KEY=${BAZARR_API_KEY}
       - BAZARR_LANGUAGE=${BAZARR_LANGUAGE:-pb}
       - BAZARR_WAIT_SECONDS=${BAZARR_WAIT_SECONDS:-120}
+      # Acompanhamento do job assíncrono de sincronização do Bazarr
+      - BAZARR_SYNC_TIMEOUT=${BAZARR_SYNC_TIMEOUT:-900}
+      - BAZARR_SYNC_POLL_SECONDS=${BAZARR_SYNC_POLL_SECONDS:-10}
+      - BAZARR_SYNC_DISCOVERY_SECONDS=${BAZARR_SYNC_DISCOVERY_SECONDS:-20}
       # Verificador de áudio (idioma original) — deleta+rebaixa via Radarr/Sonarr
       - RADARR_URL=${RADARR_URL:-http://radarr:7878}
       - RADARR_API_KEY=${RADARR_API_KEY}
@@ -348,9 +361,10 @@ services:
       - 8.8.8.8
       - 1.1.1.1
     volumes:
-      - ${STORAGE_PATH}:/media
-      - ${STORAGE_PATH}/config/legendarr/stats:/app/stats
-      - ./temp:/app/temp
+      - ${MEDIA_PATH:?}/filmes:/media/filmes
+      - ${MEDIA_PATH:?}/series:/media/series
+      - ${APPDATA_PATH:?}/jellyfin/legendarr/stats:/app/stats
+      - ${CACHE_PATH:?}/jellyfin/optimizer:/app/temp
     environment:
       - NVIDIA_VISIBLE_DEVICES=all
       - NVIDIA_DRIVER_CAPABILITIES=all
@@ -406,9 +420,11 @@ services:
       - PGID=${PGID}
       - TZ=${TZ}
     volumes:
-      - ${STORAGE_PATH}/config/sabnzbd:/config
-      - ${STORAGE_PATH}/downloads:/downloads
-      - ${STORAGE_PATH}/incomplete:/incomplete-downloads
+      - ${APPDATA_PATH:?}/jellyfin/sabnzbd:/config
+      - ${MEDIA_PATH:?}/downloads:/downloads
+      # Downloads em andamento no disco local (mais rápido que o NAS); o
+      # SABnzbd move para /downloads ao terminar
+      - ${CACHE_PATH:?}/jellyfin/incomplete:/incomplete-downloads
     networks:
       - bergatrix-proxy
       - media-network

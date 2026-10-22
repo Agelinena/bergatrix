@@ -1,6 +1,6 @@
 services:
   # --- Modelo B: Authentik de fora, direto p/ dispositivos de confiança,
-  # bypass /api-access-bypass p/ o app Companion. Ver docs/stacks/homeassistant.md
+  # bypass /api-access-bypass p/ o app Companion. Ver docs/legado/stacks/homeassistant.md
   homeassistant:
     image: ghcr.io/home-assistant/home-assistant:stable
     container_name: homeassistant
@@ -8,7 +8,7 @@ services:
     security_opt:
       - no-new-privileges:true
     volumes:
-      - ${VOLUMES_BASE}/homeassistant/config:/config
+      - ${APPDATA_PATH:?}/homeassistant/config:/config
       - /etc/localtime:/etc/localtime:ro
       # Bluetooth (opcional): descomente se usar integrações BLE
       # - /run/dbus:/run/dbus:ro

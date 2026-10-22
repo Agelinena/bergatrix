@@ -7,5 +7,5 @@ services:
       - CERT_TOOL_VERSION=4.14
     volumes:
       # Agora os certificados serão salvos direto no seu HD de storage
-      - ${WAZUH_DATA_DIR}/config/wazuh_indexer_ssl_certs/:/certificates/
-      - ${WAZUH_DATA_DIR}/config/certs.yml:/config/certs.yml
+      - ${APPDATA_PATH:?}/wazuh/config/wazuh_indexer_ssl_certs/:/certificates/
+      - ${APPDATA_PATH:?}/wazuh/config/certs.yml:/config/certs.yml

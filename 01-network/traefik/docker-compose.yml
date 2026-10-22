@@ -18,16 +18,17 @@ services:
       - 149.112.112.112
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      - ./config/traefik.yml:/traefik.yml:ro
+      - ./config/traefik.yml:/config-source/traefik.yml:ro
       - ./config/dynamic.yml:/config-source/dynamic.yml:ro
       - ./config/config.yml:/config-source/config.yml:ro
-      - ./config/acme.json:/acme.json
       - ./config/start-traefik.sh:/start-traefik.sh:ro
-      - ${STORAGE_PATH}/traefik/logs:/var/log/traefik
+      # Certificados (acme.json, criado pelo Traefik com permissão 600)
+      - ${APPDATA_PATH:?}/traefik/acme:/acme
+      # access.log lido também pelo CrowdSec
+      - ${APPDATA_PATH:?}/traefik/logs:/var/log/traefik
     environment:
+      - DOMAIN=${DOMAIN}
       - DESEC_TOKEN=${DESEC_TOKEN}
-      - DESEC_DOMAIN=${DOMAIN}
-      - SUBDOMAIN_TRAEFIK_DASHBOARD=${SUBDOMAIN_TRAEFIK_DASHBOARD}
       - TRAEFIK_USER=${TRAEFIK_USER}
       - TRAEFIK_PASSWORD=${TRAEFIK_PASSWORD}
       - CROWDSEC_BOUNCER_KEY=${CROWDSEC_BOUNCER_KEY}

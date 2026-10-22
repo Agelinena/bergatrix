@@ -8,6 +8,9 @@ else
   exit 1
 fi
 
+: "${APPDATA_PATH:?defina APPDATA_PATH no .env}"
+WAZUH_DATA_DIR="$APPDATA_PATH/wazuh"
+
 echo "🚀 Criando estrutura de diretórios em $WAZUH_DATA_DIR..."
 
 # Cria as pastas de persistência dos containers

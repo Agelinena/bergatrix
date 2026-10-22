@@ -1,7 +1,7 @@
 http:
   routers:
     dashboard:
-      rule: "Host(`${SUBDOMAIN_TRAEFIK_DASHBOARD}`)"
+      rule: "Host(`traefik.${DOMAIN}`)"
       service: api@internal
       entryPoints:
         - websecure

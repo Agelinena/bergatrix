@@ -4,10 +4,9 @@ services:
     container_name: cloudbeaver
     restart: unless-stopped
     volumes:
-      - ${STORAGE_PATH}/cloudbeaver:/opt/cloudbeaver/workspace
+      - ${APPDATA_PATH:?}/cloudbeaver/workspace:/opt/cloudbeaver/workspace
     networks:
-      - bergatrix-proxy       # Para o Traefik levar o tráfego
-      - bergatrix-db-internal # Para ele alcançar o Postgres Global
+      - bergatrix-proxy
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=bergatrix-proxy"
@@ -32,6 +31,4 @@ services:
 
 networks:
   bergatrix-proxy:
-    external: true
-  bergatrix-db-internal:
     external: true

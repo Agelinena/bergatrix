@@ -7,15 +7,17 @@ A **Bergatrix** é o núcleo central de gerenciamento do meu homelab no **BergaS
 
 ## 📂 Arquitetura da Matrix
 
-A estrutura segue uma lógica de dependência numérica, garantindo que os serviços essenciais estejam disponíveis para as aplicações de nível superior.
+O servidor roda **Proxmox VE** com duas VMs: um **OpenMediaVault** (NAS, HD de 4 TB por NFS) e um **Ubuntu Server** com Docker, cujos configs e bancos ficam num HD local de 1 TB. As stacks seguem uma lógica de dependência numérica, garantindo que os serviços essenciais estejam disponíveis para as aplicações de nível superior.
 
-| Ordem | Gomo (Pasta) | Descrição | Status |
-| :--- | :--- | :--- | :--- |
-| **`00`** | **Infrastructure** | A base de tudo. **AdGuard Home** para DNS filtering e **CloudBeaver** como interface de banco de dados. | 🟢 *Ativo* |
-| **`01`** | **Network** | A casca protetora. Gerenciamento de tráfego com **Traefik** e túnel VPN via **WireGuard**. | 🟢 *Ativo* |
-| **`02`** | **Security** | O escudo da Matrix. **Authentik** para SSO/IdP e **Bitwarden** (Vaultwarden) para gestão de senhas. | 🟢 *Ativo* |
-| **`03`** | **Apps** | O recheio. Aplicações de produtividade, automação, IA e mídia. | 🟢 *Ativo* |
-| **`04`** | **Monitoring** | Os sentinelas. **Wazuh** para SIEM, detecção de intrusão e observabilidade de segurança. | 🔍 *Em Configuração* |
+| Ordem | Gomo (Pasta) | Descrição |
+| :--- | :--- | :--- |
+| **`00`** | **Infrastructure** | **CloudBeaver** como interface de banco de dados. |
+| **`01`** | **Network** | Entrada de tráfego com **Traefik** (TLS curinga, roteamento por labels). |
+| **`02`** | **Security** | **Authentik** (SSO/IdP), **Vaultwarden** (senhas) e **CrowdSec** (bloqueio de IPs). |
+| **`03`** | **Apps** | Aplicações de produtividade, automação, IA e mídia. |
+| **`04`** | **Monitoring** | **Homepage** (painel) e **Wazuh** (SIEM). |
+
+📖 Documentação completa, padrões e guia para novas stacks: [`docs/`](docs/README.md).
 
 ---
 
@@ -23,14 +25,14 @@ A estrutura segue uma lógica de dependência numérica, garantindo que os servi
 
 | App | Descrição |
 | :--- | :--- |
-| **Drop** | Serviço de transferência de arquivos self-hosted. |
-| **GhostMap** | Aplicação web customizada (PWA). |
-| **Home Assistant** | Automação residencial self-hosted (dispositivos, automações e app Companion). |
-| **Jellyfin** | Servidor de mídia com stack customizada de legendas: pipeline de OCR, tradução automática e otimização via Bazarr. |
-| **LiteLLM** | Proxy unificado de LLMs com updater automático de modelos gratuitos. |
+| **Bergalink** | App próprio de localização em família (Flutter + FastAPI, login pelo Authentik). |
+| **Bergastream** | Streaming de música próprio (Flutter + FastAPI), com Deemix, YouTube e Lidarr. |
+| **Drop** | Transferência de arquivos cifrada de ponta a ponta. |
+| **Home Assistant** | Automação residencial (dispositivos, automações e app Companion). |
+| **Jellyfin** | Servidor de mídia com *arr, Seerr e o **Legendarr**: legendas pelo Bazarr, tradução local por IA (Ollama) e otimização de vídeo. |
+| **LiteLLM** | Proxy unificado de LLMs com sincronizador automático de modelos. |
 | **n8n** | Plataforma de automação de workflows. |
-| **Open WebUI** | Interface web para modelos de IA (conectado ao LiteLLM). |
-| **RSS** | Agregador de feeds RSS self-hosted. |
+| **Open WebUI** | Interface web para modelos de IA, com **Ollama** na GPU. |
 | **Transcriptor** | Transcrição de áudio/vídeo com Faster-Whisper + GPU, desenvolvido internamente. |
 
 ---
@@ -45,11 +47,14 @@ A estrutura segue uma lógica de dependência numérica, garantindo que os servi
 
 ## 🚀 Como Iniciar
 
-Para subir uma stack específica, navegue até a pasta desejada e execute o comando:
+Para subir uma stack específica, entre na pasta dela, crie o `.env` a partir do `.env.example` e execute:
 
 ```bash
+cp .env.example .env   # e preencha
 docker compose up -d
 ```
+
+A ordem de subida e as dependências entre stacks estão em [`docs/01-infraestrutura.md`](docs/01-infraestrutura.md).
 
 ---
 

@@ -1,0 +1,69 @@
+# Minha App — uma linha sobre o que ela faz.
+# Padrão: docs/03-padrao-stacks.md
+#
+# Troque "minhaapp" pelo nome da pasta da stack e apague o que não usar.
+services:
+  app:
+    image: exemplo/minhaapp:1.2.3   # versão fixa, nunca latest
+    container_name: minhaapp
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      TZ: ${TZ}
+      PUID: ${PUID}
+      PGID: ${PGID}
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      MINHAAPP_SECRET_KEY: ${MINHAAPP_SECRET_KEY}
+      MINHAAPP_LOG_LEVEL: ${MINHAAPP_LOG_LEVEL:-info}
+    volumes:
+      # Config e dados do app (backup)
+      - ${APPDATA_PATH:?}/minhaapp/app:/config
+      # Recriável (sem backup)
+      - ${CACHE_PATH:?}/minhaapp/cache:/cache
+      # Mídia: só a subpasta usada; :ro se só lê
+      - ${MEDIA_PATH:?}/filmes:/media/filmes:ro
+    networks:
+      - minhaapp-internal
+      - bergatrix-proxy
+    depends_on:
+      db:
+        condition: service_healthy
+    labels:
+      # Modelo de destino: uma rota; o app faz o login OIDC pelo Authentik
+      - "traefik.enable=true"
+      - "traefik.docker.network=bergatrix-proxy"
+      - "traefik.http.routers.minhaapp.rule=Host(`minhaapp.${DOMAIN}`)"
+      - "traefik.http.routers.minhaapp.entrypoints=websecure"
+      - "traefik.http.routers.minhaapp.tls=true"
+      - "traefik.http.routers.minhaapp.service=minhaapp-service"
+      - "traefik.http.routers.minhaapp.middlewares=crowdsec-bouncer@file"
+      - "traefik.http.services.minhaapp-service.loadbalancer.server.port=8000"
+
+  db:
+    image: postgres:16-alpine
+    container_name: minhaapp-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      TZ: ${TZ}
+    volumes:
+      - ${APPDATA_PATH:?}/minhaapp/postgres:/var/lib/postgresql/data
+    networks:
+      - minhaapp-internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
+networks:
+  # Banco sem saída para a internet
+  minhaapp-internal:
+    name: minhaapp-internal
+    internal: true
+  bergatrix-proxy:
+    external: true

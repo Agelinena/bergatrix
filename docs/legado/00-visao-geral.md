@@ -18,7 +18,7 @@ A Bergatrix é um **monorepo de homelab self-hosted** organizado por **camadas n
 | **00** | `infrastructure` | Base de dados/admin | `networks` (runbook de redes), `cloudbeaver` (console DB) |
 | **01** | `network` | Ingress e TLS | `traefik` (reverse proxy central) |
 | **02** | `security` | Identidade e segredos | `authentik` (SSO/IdP), `bitwarden` (Vaultwarden) |
-| **03** | `apps` | Aplicações | 12 stacks (mídia, IA, automação, casa inteligente, RSS, streaming, utilidades) |
+| **03** | `apps` | Aplicações | 13 stacks (mídia, IA, automação, casa inteligente, RSS, streaming, utilidades) |
 | **04** | `monitoring` | Observabilidade de segurança | `wazuh` (SIEM/XDR) |
 
 A numeração reflete a dependência real: **as redes e o Traefik (01) precisam existir antes** das apps (03); o **Authentik (02)** expõe o middleware `authentik@docker` consumido por serviços de outras camadas (cloudbeaver em 00, wazuh em 04).
@@ -35,6 +35,7 @@ A numeração reflete a dependência real: **as redes e o Traefik (01) precisam 
 | **authentik** | 02 | IdP / SSO + ForwardAuth para o Traefik | 🔒 `authentik.` | [stacks/authentik.md](stacks/authentik.md) |
 | **bitwarden** | 02 | Gerenciador de senhas (Vaultwarden) | 🌐 `bitwarden.` | [stacks/bitwarden.md](stacks/bitwarden.md) |
 | **berga-news** | 03 | Agregador RSS com digest por IA (PWA) | 🔒 `news.` | [stacks/berga-news.md](stacks/berga-news.md) |
+| **bergalink** | 03 | App Android familiar de localização privada (MVP em desenvolvimento) | 🌐 `bergalink.` | [stacks/bergalink.md](stacks/bergalink.md) |
 | **bergastream** | 03 | Streaming de música (substituto do Spotify) | 🌐 `WEB/API/DEEMIX_DOMAIN` | [stacks/bergastream.md](stacks/bergastream.md) |
 | **drop** | 03 | Transferência efêmera E2EE de segredos | 🌐 `drop.` | [stacks/drop.md](stacks/drop.md) |
 | **homeassistant** | 03 | Automação residencial (Home Assistant Core) | 🛡️ `ha.` (Modelo B: Authentik + direto LAN + bypass Companion) | [stacks/homeassistant.md](stacks/homeassistant.md) |
@@ -115,7 +116,7 @@ flowchart TB
 
 ## Stack tecnológica recorrente
 - **Backend de apps próprios:** Python + **FastAPI** + Uvicorn (berga-news, bergastream, drop, rss-ig, transcriptor, jellyfin/Legendarr); Flask em ghostmap.
-- **Frontend:** **Flutter** (bergastream), Jinja2 server-side + Tailwind/HTMX/Alpine (berga-news, jellyfin), JS vanilla (rss-ig, transcriptor, drop).
+- **Frontend:** **Flutter** (bergalink, bergastream), Jinja2 server-side + Tailwind/HTMX/Alpine (berga-news, jellyfin), JS vanilla (rss-ig, transcriptor, drop).
 - **Persistência:** **PostgreSQL** (authentik, bergastream, berga-news, litellm, rss), **Redis** (authentik, bergastream), **SQLite** (rss-ig), **JSON/arquivos** (jellyfin/Legendarr, transcriptor), **OpenSearch** (wazuh).
 - **IA:** **LiteLLM** (gateway OpenAI-compatible) + **Ollama** local (GPU) + APIs externas (Gemini/OpenAI/OpenRouter).
 - **Infra:** **Docker Compose**, **Traefik** (ingress/TLS), **Authentik** (SSO), **Wazuh** (SIEM), **n8n** (automação), GPU NVIDIA GTX 1060 compartilhada.
@@ -130,6 +131,7 @@ flowchart TB
 - **Sólido / produção:** traefik, authentik, bitwarden, litellm, rss, bergastream, berga-news, transcriptor, ghostmap, drop, rss-ig.
 - **Em afinação:** **jellyfin/optimizer** (pipeline NVENC/x265 com refatoração em andamento — arquivos não rastreados `job_queue.py`/`skiplist.py`).
 - **Em configuração:** **wazuh** (vulnerability-detector e active-response inativos; credenciais demo a trocar).
+- **Em desenvolvimento:** **bergalink** (API/OIDC/grupos/localização implementados; setup Authentik/Firebase e testes em celulares pendentes).
 - **Planejado mas ausente no repo:** **AdGuard Home** e **WireGuard** (citados no README; ver discrepâncias em [04-roadmap-e-backlog.md](04-roadmap-e-backlog.md)).
 
 ## Mapa de documentos
@@ -140,7 +142,7 @@ flowchart TB
 - [04-roadmap-e-backlog.md](04-roadmap-e-backlog.md) — pendências, riscos e ideias
 - [05-instrucoes-projeto-claude.md](05-instrucoes-projeto-claude.md) — instruções para o Projeto no Claude
 - [06-guia-env.md](06-guia-env.md) — como construir/manter o `.env` (variáveis comuns, segredos, armadilhas)
-- [stacks/](stacks/) — um documento detalhado por stack (18)
+- [stacks/](stacks/) — um documento detalhado por stack (19)
 
 ---
 _Documento gerado por análise automatizada da Bergatrix e revisado. Atualize conforme a estrutura evoluir._

@@ -3,11 +3,11 @@ services:
     image: ghcr.io/gethomepage/homepage:latest
     container_name: homepage
     environment:
-      - HOMEPAGE_ALLOWED_HOSTS=homepage.daberga.com
-      - PUID=1000
-      - PGID=1000
+      - HOMEPAGE_ALLOWED_HOSTS=homepage.${DOMAIN}
+      - PUID=${PUID}
+      - PGID=${PGID}
     volumes:
-      - ${HOMEPAGE_PATH}/config:/app/config
+      - ${APPDATA_PATH:?}/homepage/config:/app/config
       - /var/run/docker.sock:/var/run/docker.sock:ro
     labels:
       - "traefik.enable=true"

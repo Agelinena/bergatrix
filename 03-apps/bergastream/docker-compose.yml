@@ -1,7 +1,7 @@
 # Bergastream – Docker Compose
 #
 # Produção: só o `web` (nginx com o app web) fica na rede do Traefik, no
-# modelo B de docs/modelos-labels-traefik.md. O nginx repassa /api/ para a
+# modelo B de docs/legado/modelos-labels-traefik.md. O nginx repassa /api/ para a
 # API, que fica na rede interna junto com banco, Redis, worker e Deemix.
 #
 #   bergastream.${DOMAIN}                     → web (Authentik de fora; direto
@@ -9,7 +9,8 @@
 #   bergastream.${DOMAIN}/api-access-bypass/  → mesma coisa sem Authentik,
 #                                               para os apps (Android/desktop)
 #
-# Dados em ${STORAGE_PATH} (ver .env.example). Desenvolvimento local:
+# Banco, Redis e configs em ${APPDATA_PATH}/bergastream; músicas em
+# ${MEDIA_PATH}/musica (ver .env.example). Desenvolvimento local:
 # docker-compose.dev.yml (portas 8080/8000).
 services:
   db:
@@ -21,7 +22,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
-      - ${STORAGE_PATH}/db:/var/lib/postgresql/data
+      - ${APPDATA_PATH:?}/bergastream/postgres:/var/lib/postgresql/data
     networks:
       - bergastream-internal
     healthcheck:
@@ -54,11 +55,12 @@ services:
     restart: unless-stopped
     environment:
       ARL: ${DEEMIX_ARL}
-      PUID: ${PUID:-1000}
-      PGID: ${PGID:-1000}
+      PUID: ${PUID}
+      PGID: ${PGID}
     volumes:
-      - ${STORAGE_PATH}/deemix/config:/config
-      - ${STORAGE_PATH}/deemix/downloads:/downloads
+      - ${APPDATA_PATH:?}/bergastream/deemix:/config
+      # Dentro da pasta de música: a API e o worker veem em /data/music/deemix_dl
+      - ${MEDIA_PATH:?}/musica/bergastream/deemix_dl:/downloads
     networks:
       - bergastream-internal
       - bergastream-egress
@@ -75,7 +77,7 @@ services:
     restart: unless-stopped
     command: redis-server --appendonly yes
     volumes:
-      - ${STORAGE_PATH}/redis:/data
+      - ${APPDATA_PATH:?}/bergastream/redis:/data
     networks:
       - bergastream-internal
     healthcheck:
@@ -97,15 +99,15 @@ services:
       CACHE_TTL_HOURS: ${CACHE_TTL_HOURS:-48}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
     volumes: &backend-volumes
-      - ${STORAGE_PATH}/music:/data/music
-      - ${STORAGE_PATH}/deemix/downloads:/data/music/deemix_dl
+      # Músicas (cache, permanent, variants, covers, image_cache, deemix_dl)
+      - ${MEDIA_PATH:?}/musica/bergastream:/data/music
       # Cookies opcionais do YouTube (YT_COOKIES_FILE no .env), só leitura.
-      - ${STORAGE_PATH}/youtube:/data/youtube:ro
+      - ${APPDATA_PATH:?}/bergastream/youtube:/data/youtube:ro
       # Versões novas da SpotifyScraper instaladas pelo teste diário do Spotify.
-      - ${STORAGE_PATH}/pydeps:/data/pydeps
+      - ${CACHE_PATH:?}/bergastream/pydeps:/data/pydeps
       # Músicas baixadas pelo Lidarr, só leitura: o FLAC da faixa é copiado
       # daqui (e o resto do álbum é apagado pelo próprio Lidarr).
-      - ${STORAGE_PATH}/lidarr/music:/data/lidarr:ro
+      - ${MEDIA_PATH:?}/musica/lidarr:/data/lidarr:ro
     networks:
       - bergastream-internal
       - bergastream-egress
@@ -122,20 +124,21 @@ services:
   # copia a música e manda apagar o resto (a pasta de música é só passagem).
   # Usa o SABnzbd e o Prowlarr do servidor pela rede do Traefik
   # (http://sabnzbd:8080, http://prowlarr:9696) e precisa ver a pasta de
-  # downloads do SABnzbd no mesmo caminho (/downloads) para importar.
+  # downloads do SABnzbd no mesmo caminho (/downloads) para importar:
+  # ${MEDIA_PATH}/downloads, a mesma do stack jellyfin.
   # Interface só na rede local/Tailscale: lidarr.${DOMAIN}.
   lidarr:
     image: lscr.io/linuxserver/lidarr:latest
     container_name: bergastream-lidarr
     restart: unless-stopped
     environment:
-      PUID: ${PUID:-1000}
-      PGID: ${PGID:-1000}
-      TZ: ${TZ:-America/Sao_Paulo}
+      PUID: ${PUID}
+      PGID: ${PGID}
+      TZ: ${TZ}
     volumes:
-      - ${STORAGE_PATH}/lidarr/config:/config
-      - ${STORAGE_PATH}/lidarr/music:/music
-      - ${USENET_DOWNLOADS_DIR:-${STORAGE_PATH}/usenet-downloads}:/downloads
+      - ${APPDATA_PATH:?}/bergastream/lidarr:/config
+      - ${MEDIA_PATH:?}/musica/lidarr:/music
+      - ${MEDIA_PATH:?}/downloads:/downloads
     networks:
       - bergastream-internal   # o worker fala com ele aqui
       - bergastream-egress     # servidor de metadados (MusicBrainz)

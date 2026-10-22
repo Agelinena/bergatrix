@@ -4,12 +4,12 @@ services:
     container_name: crowdsec
     restart: unless-stopped
     environment:
-      GID: "1000"
+      GID: ${PGID}
       COLLECTIONS: "crowdsecurity/traefik crowdsecurity/http-cve crowdsecurity/base-http-scenarios"
     volumes:
-      - ${STORAGE_PATH}/crowdsec/config:/etc/crowdsec
-      - ${STORAGE_PATH}/crowdsec/data:/var/lib/crowdsec/data
-      - ${STORAGE_PATH}/traefik/logs:/var/log/traefik:ro
+      - ${APPDATA_PATH:?}/crowdsec/config:/etc/crowdsec
+      - ${APPDATA_PATH:?}/crowdsec/data:/var/lib/crowdsec/data
+      - ${APPDATA_PATH:?}/traefik/logs:/var/log/traefik:ro
       - ./acquis.yaml:/etc/crowdsec/acquis.yaml:ro
     networks:
       - bergatrix-proxy

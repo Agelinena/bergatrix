@@ -33,7 +33,7 @@ Traefik (bergatrix-proxy) ──► bergastream-web (nginx: app web + /api/ → 
   cd ~/bergatrix/03-apps/bergastream02 && docker compose down   # os dados dela ficam onde estão
   ```
 
-  A versão nova usa outra pasta de dados (`/mnt/storage/docker_volumes/bergastream`) e outro banco:
+  A versão nova usa outras pastas de dados (`${APPDATA_PATH}/bergastream`, `${MEDIA_PATH}/musica`) e outro banco:
   nada da antiga é reaproveitado nem apagado.
 
 ## 1. Código e pastas
@@ -42,8 +42,14 @@ Traefik (bergatrix-proxy) ──► bergastream-web (nginx: app web + /api/ → 
 cd ~/bergatrix && git pull
 cd 03-apps/bergastream
 
-sudo mkdir -p /mnt/storage/docker_volumes/bergastream/{db,redis,music,pydeps,lidarr/config,lidarr/music,deemix/config,deemix/downloads}
-sudo chown -R 1000:1000 /mnt/storage/docker_volumes/bergastream/{music,pydeps,lidarr,deemix}
+# Use os mesmos valores do .env (passo 2)
+APPDATA_PATH=/srv/appdata CACHE_PATH=/srv/cache MEDIA_PATH=/mnt/nas/media
+
+sudo mkdir -p $APPDATA_PATH/bergastream/{postgres,redis,deemix,lidarr,youtube} \
+              $CACHE_PATH/bergastream/pydeps \
+              $MEDIA_PATH/musica/bergastream/deemix_dl $MEDIA_PATH/musica/lidarr
+sudo chown -R 1000:1000 $APPDATA_PATH/bergastream/{deemix,lidarr} $CACHE_PATH/bergastream \
+                        $MEDIA_PATH/musica/bergastream $MEDIA_PATH/musica/lidarr
 ```
 
 ## 2. `.env`
@@ -55,13 +61,13 @@ nano .env
 
 | Variável | O que pôr |
 |---|---|
-| `STORAGE_PATH` | `/mnt/storage/docker_volumes/bergastream` (já vem assim) |
-| `DOMAIN` | `daberga.com` (já vem assim) |
+| `DOMAIN`, `TZ`, `PUID`, `PGID` | base Bergatrix (ver `docs/03-padrao-stacks.md` na raiz) |
+| `APPDATA_PATH`, `CACHE_PATH`, `MEDIA_PATH` | raízes de armazenamento do servidor (ver `docs/02-armazenamento.md` na raiz) |
 | `POSTGRES_PASSWORD` | senha nova (gere abaixo) |
 | `DATABASE_URL` | a mesma senha no lugar de `troque_esta_senha` |
 | `JWT_SECRET` | segredo novo (gere abaixo) |
 | `DEEMIX_ARL` | cookie `arl` do deezer.com logado — conta **Premium** para MP3 320/FLAC (grátis = 128) |
-| `LIDARR_API_KEY`, `USENET_DOWNLOADS_DIR` | FLAC das playlists pela Usenet (passo 7); sem a chave o Lidarr fica de fora |
+| `LIDARR_API_KEY` | FLAC das playlists pela Usenet (passo 7); sem a chave o Lidarr fica de fora |
 
 O Spotify não precisa de conta nem de chave (as antigas `SPOTIFY_CLIENT_ID/SECRET` podem sair do `.env`).
 
@@ -141,15 +147,15 @@ indexadores do Prowlarr do servidor, que ele alcança pela rede do Traefik):
    "Folder '/music' is not writable"). Já estão no passo 1; se o servidor já existia:
 
    ```bash
-   sudo mkdir -p /mnt/storage/docker_volumes/bergastream/lidarr/{config,music}
-   sudo chown -R 1000:1000 /mnt/storage/docker_volumes/bergastream/lidarr
+   sudo mkdir -p $APPDATA_PATH/bergastream/lidarr $MEDIA_PATH/musica/lidarr
+   sudo chown -R 1000:1000 $APPDATA_PATH/bergastream/lidarr $MEDIA_PATH/musica/lidarr
    ```
 
-   No `.env`: `USENET_DOWNLOADS_DIR=/mnt/storage/docker_volumes/jellyflix/downloads` (a pasta que
-   o SABnzbd monta como `/downloads`: o Lidarr precisa ver os downloads no mesmo caminho).
+   O Lidarr monta `${MEDIA_PATH}/downloads` como `/downloads`, a mesma pasta do SABnzbd do stack
+   jellyfin: ele precisa ver os downloads no mesmo caminho.
    `docker compose up -d` sobe o Lidarr junto.
 
-2. Em `https://lidarr.daberga.com` (rede local/Tailscale), na primeira vez:
+2. Em `https://lidarr.<seu domínio>` (rede local/Tailscale), na primeira vez:
    - **Settings → General → Security:** crie usuário e senha (método "Forms").
    - **Settings → Media Management → Root Folders:** adicionar `/music`, perfil de qualidade
      **Lossless**, metadados **Standard**.
@@ -196,7 +202,8 @@ Econômica (AAC 96). Versões menores são convertidas uma vez e guardadas em `m
 
 ## 8. Backup
 
-Tudo está em `/mnt/storage/docker_volumes/bergastream`. O banco é pequeno; as músicas podem ser
+Banco e configs em `${APPDATA_PATH}/bergastream` (entra no backup do servidor); músicas em
+`${MEDIA_PATH}/musica` (sem backup). O banco é pequeno; as músicas podem ser
 baixadas de novo, mas as playlists, o histórico e os usuários não:
 
 ```bash
@@ -222,7 +229,7 @@ gunzip -c bergastream-AAAA-MM-DD.sql.gz | docker compose exec -T db psql -U berg
 | Aba Spotify da busca dá "O Spotify não respondeu" | O Spotify mudou o web player. O worker testa todo dia e instala a versão nova da biblioteca sozinho quando sai; para ver agora: `docker compose exec worker python -m app.search.spotify_health` e `GET /api/server/status` → `spotify`. |
 | Log do worker: "Lidarr fora do ar: ReadTimeout" | O Lidarr demorou mais de 30 s (normal enquanto carrega discografias de artistas novos). A faixa é conferida de novo em 1 h. |
 | Log do worker: "álbum … não encontrado no MusicBrainz" | O Lidarr não achou o álbum (nome diferente no MusicBrainz ou lançamento só digital). A faixa fica em 320 e o worker tenta de novo em 7 dias. |
-| Log do worker: "arquivo do Lidarr não visível aqui" | O worker não vê `${STORAGE_PATH}/lidarr/music` (volume do compose alterado?). |
-| Lidarr não importa o que o SABnzbd baixou ("No files found" / caminho inexistente) | `USENET_DOWNLOADS_DIR` não é a pasta que o SABnzbd monta como `/downloads`. |
+| Log do worker: "arquivo do Lidarr não visível aqui" | O worker não vê `${MEDIA_PATH}/musica/lidarr` (volume do compose alterado?). |
+| Lidarr não importa o que o SABnzbd baixou ("No files found" / caminho inexistente) | O Lidarr e o SABnzbd precisam montar a mesma `${MEDIA_PATH}/downloads` como `/downloads`; confira o `MEDIA_PATH` nos dois `.env`. |
 | Navegador atrás do Authentik: entra, mas tudo diz "Sessão expirada" | O middleware do Authentik no Traefik (`01-network/traefik/config/dynamic.yml`) tem `Authorization` em `authResponseHeaders` e apaga o token do Bergastream. A partir da 0.3.2 a web usa `/api-access-bypass` para a API e não depende disso. Se outro app tiver o mesmo sintoma, avalie tirar `Authorization` dessa lista. |
 | "Muitas tentativas" no login | 5 senhas erradas em 15 min para aquele usuário e IP: espere ou troque a senha (USUARIOS.md). |

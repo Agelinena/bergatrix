@@ -113,6 +113,18 @@ labels:
   - "traefik.http.services.MEUAPP-service.loadbalancer.server.port=PORTA"
 ```
 
+### Bloquear navegador no bypass
+
+O Traefik não consegue provar que uma requisição veio do aplicativo nativo. O cabeçalho `User-Agent` pode ser falsificado e não deve ser usado como autenticação. Para bloquear navegadores comuns por conveniência (evitar acesso acidental pela URL), acrescente uma condição negativa à regra do roteador `MEUAPP-bypass`:
+
+```yaml
+- "traefik.http.routers.MEUAPP-bypass.rule=Host(`meuapp.${DOMAIN}`) && PathPrefix(`/api-access-bypass`) && !HeaderRegexp(`User-Agent`, `(?i)(Mozilla|Chrome|Safari|Firefox|Edg)`)"
+```
+
+Isso não bloqueia um usuário malicioso: ele pode trocar ou remover o `User-Agent`, e a condição pode afetar clientes que usem um agente compatível com navegador. Uma requisição sem esse cabeçalho também não é bloqueada por essa regra. O tráfego normal do navegador continua passando pelo roteador com Authentik; o bypass permanece acessível publicamente por clientes que não correspondam ao filtro.
+
+Para uma restrição real, use uma fronteira que o cliente consiga provar e que não dependa de um cabeçalho livre: VPN/rede confiável, certificado de cliente (mTLS) se o app suportar, ou uma credencial própria enviada e validada pelo serviço. Muitos apps prontos não permitem configurar certificado ou cabeçalho adicional; nesses casos, mantenha a autenticação nativa do serviço forte e proteja separadamente os painéis administrativos. O prefixo `/api-access-bypass` não é secreto.
+
 > Tem WebSocket (tipo `/notifications/hub`)? Duplica os 3 roteadores acima (`-ws-router`, `-ws-direct`, `-ws-bypass`) apontando pro serviço/porta do WebSocket — veja o `docker-compose.yml` do Vaultwarden como referência.
 >
 > Authentik com "External host" dedicado (ex: `auth.daberga.com`)? Precisa de um roteador de callback apontando pro `authentik-service`, ou o login trava em 404.

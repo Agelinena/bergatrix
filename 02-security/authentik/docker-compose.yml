@@ -10,9 +10,9 @@ services:
       retries: 5
       timeout: 5s
     volumes:
-      - ${STORAGE_PATH}/authentik/database:/var/lib/postgresql/data
+      - ${APPDATA_PATH:?}/authentik/postgres:/var/lib/postgresql/data
     environment:
-      POSTGRES_PASSWORD: ${PG_PASS}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_USER: authentik
       POSTGRES_DB: authentik
     env_file:
@@ -32,7 +32,7 @@ services:
       retries: 5
       timeout: 3s
     volumes:
-      - ${STORAGE_PATH}/authentik/redis:/data
+      - ${APPDATA_PATH:?}/authentik/redis:/data
     networks:
       - authentik-internal
 
@@ -46,11 +46,11 @@ services:
       AUTHENTIK_POSTGRESQL__HOST: postgresql
       AUTHENTIK_POSTGRESQL__USER: authentik
       AUTHENTIK_POSTGRESQL__NAME: authentik
-      AUTHENTIK_POSTGRESQL__PASSWORD: ${PG_PASS}
+      AUTHENTIK_POSTGRESQL__PASSWORD: ${POSTGRES_PASSWORD}
       AUTHENTIK_TRUSTED_PROXY_CIDRS: "172.16.0.0/12"
     volumes:
-      - ${STORAGE_PATH}/authentik/media:/media
-      - ${STORAGE_PATH}/authentik/custom-templates:/templates
+      - ${APPDATA_PATH:?}/authentik/media:/media
+      - ${APPDATA_PATH:?}/authentik/templates:/templates
     env_file:
       - .env
     depends_on:
@@ -80,7 +80,7 @@ services:
       - "traefik.http.routers.authentik.priority=100"
 
       # --- Callback OAuth: público ---
-      - "traefik.http.routers.authentik-callback.rule=Host(`auth.daberga.com`)"
+      - "traefik.http.routers.authentik-callback.rule=Host(`auth.${DOMAIN}`)"
       - "traefik.http.routers.authentik-callback.entrypoints=websecure"
       - "traefik.http.routers.authentik-callback.tls=true"
       - "traefik.http.routers.authentik-callback.service=authentik-service"
@@ -95,12 +95,12 @@ services:
       AUTHENTIK_POSTGRESQL__HOST: postgresql
       AUTHENTIK_POSTGRESQL__USER: authentik
       AUTHENTIK_POSTGRESQL__NAME: authentik
-      AUTHENTIK_POSTGRESQL__PASSWORD: ${PG_PASS}
+      AUTHENTIK_POSTGRESQL__PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - ${STORAGE_PATH}/authentik/media:/media
-      - ${STORAGE_PATH}/authentik/certs:/certs
-      - ${STORAGE_PATH}/authentik/custom-templates:/templates
+      - ${APPDATA_PATH:?}/authentik/media:/media
+      - ${APPDATA_PATH:?}/authentik/certs:/certs
+      - ${APPDATA_PATH:?}/authentik/templates:/templates
     env_file:
       - .env
     depends_on:

@@ -31,9 +31,9 @@ entryPoints:
       tls:
         certResolver: "letsencrypt"
         domains:
-          - main: "daberga.com"
+          - main: "${DOMAIN}"
             sans:
-              - "*.daberga.com"
+              - "*.${DOMAIN}"
     forwardedHeaders:
       trustedIPs:
         - "127.0.0.1/32"
@@ -53,7 +53,7 @@ certificatesResolvers:
   letsencrypt:
     acme:
       #caServer: https://acme-staging-v02.api.letsencrypt.org/directory
-      storage: "/acme.json"
+      storage: "/acme/acme.json"
       dnsChallenge:
         provider: desec
         resolvers:
