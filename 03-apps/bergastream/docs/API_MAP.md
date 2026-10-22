@@ -2,8 +2,8 @@
 
 > Criado no Passo 0; atualizado em 07/10/2026 (Passos 1–13), conferido contra o código.
 > Base URL: `https://<servidor>/api` (na web, o próprio domínio; ex.:
-> `https://bergastream.example.com/api`. Apps 0.3.x usavam `/api-access-bypass/api`, rota
-> temporária — ver `docs/DEPLOY.md`).
+> `https://bergastream.example.com/api`. Apps 0.3.x usam `/api-access-bypass/api`, que o
+> nginx trata como `/api` — ver `docs/DEPLOY.md`).
 > Local: `http://localhost:8000/api`.
 
 **Autenticação:** todas as rotas exigem `Authorization: Bearer <access_token>`, exceto as

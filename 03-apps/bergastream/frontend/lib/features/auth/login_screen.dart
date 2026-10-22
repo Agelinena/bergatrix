@@ -10,6 +10,7 @@ import '../../core/theme/berga_colors.dart';
 import '../../core/theme/berga_text.dart';
 import '../../core/widgets/widgets.dart';
 import '../../data/models/auth.dart';
+import '../../data/repositories/auth_repository.dart';
 import 'session.dart';
 
 /// Tela de login (Seção 2.2). Na web não tem o campo de servidor nem
@@ -42,7 +43,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   @override
   void initState() {
     super.initState();
-    _optionsServer = ref.read(sessionProvider).server;
+    // Sem o caminho antigo dos apps 0.3.x (/api-access-bypass) no campo.
+    final saved = ref.read(sessionProvider).server;
+    _optionsServer = saved != null && saved.endsWith(bypassPrefix)
+        ? saved.substring(0, saved.length - bypassPrefix.length)
+        : saved;
     _server = TextEditingController(text: _optionsServer ?? '');
   }
 

@@ -56,6 +56,10 @@ const bypassPrefix = '/api-access-bypass';
 /// para servidores ainda atrás do forward-auth do Authentik.
 List<String> serverCandidates(String server) {
   final uri = Uri.parse(server);
+  // Endereço salvo pela 0.3.x (com o caminho antigo): o simples primeiro.
+  if (uri.path == bypassPrefix) {
+    return [server.substring(0, server.length - bypassPrefix.length), server];
+  }
   if (uri.path.isNotEmpty && uri.path != '/') return [server];
   return [server, '$server$bypassPrefix'];
 }

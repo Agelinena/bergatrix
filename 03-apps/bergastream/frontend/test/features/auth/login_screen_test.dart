@@ -53,6 +53,19 @@ void main() {
     expect(find.text('Continuar sem entrar'), findsNothing);
   });
 
+  testWidgets('app: endereço salvo pela 0.3.x aparece sem o caminho antigo', (
+    tester,
+  ) async {
+    await pumpBergastream(
+      tester,
+      session: const SessionState(
+        status: SessionStatus.deslogado,
+        server: 'https://musica.exemplo.com/api-access-bypass',
+      ),
+    );
+    expect(find.text('https://musica.exemplo.com'), findsOneWidget);
+  });
+
   testWidgets('web: nenhuma rota abre sem login', (tester) async {
     await pumpBergastream(
       tester,

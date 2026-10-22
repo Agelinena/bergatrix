@@ -576,7 +576,7 @@ Migrações do Drift versionadas desde o início.
 - **Layout no Windows/Linux:** janela com 900 px ou mais usa o layout de navegador (Seção 6.8), mas com as regras do app (uso sem login, downloads, biblioteca local). Janela mais estreita usa o layout de celular na largura toda. Tamanho mínimo da janela: 360×600.
 - **Distribuição:** GitHub Releases do repositório `Agelinena/bergatrix`, tag `bergastream-vX.Y.Z`, gerada pelo GitHub Actions (APK universal assinado, `.zip` do Windows, `.tar.gz` do Linux). Ver `docs/RELEASE.md`.
 - **Atualização pelo app:** ao abrir (no máximo a cada 20 h) e em Ajustes → "Verificar atualizações". Android baixa e abre o instalador; Windows/Linux salvam em Downloads e abrem a pasta; sempre há "Ver no GitHub" e "Agora não" (não insiste na mesma versão).
-- **Publicação:** modelo E do `docs/plano-acesso.md` na raiz (uma rota pública com CrowdSec, sem forward-auth); o login é pelo Authentik (OIDC) dentro do app, ver `docs/AUTHENTIK.md`. A rota `/api-access-bypass/api` fica só até os apps 0.3.x atualizarem. Ver `docs/DEPLOY.md`.
+- **Publicação:** modelo E do `docs/plano-acesso.md` na raiz (uma rota pública com CrowdSec, sem forward-auth); o login é pelo Authentik (OIDC) dentro do app, ver `docs/AUTHENTIK.md`. O caminho antigo `/api-access-bypass/…` dos apps 0.3.x é tratado pelo nginx como `/…`. Ver `docs/DEPLOY.md`.
 - **Usuários:** criados pela CLI (`docs/USUARIOS.md`); cadastro aberto desligado.
 
 ---

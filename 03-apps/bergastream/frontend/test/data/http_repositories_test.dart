@@ -294,12 +294,24 @@ void main() {
       test('endereço com caminho é usado como está', () async {
         final adapter = FakeAdapter((_) async => jsonBody(config));
         expect(
+          await repoWith(adapter).discoverServer('https://b.com/musica'),
+          'https://b.com/musica',
+        );
+        expect(adapter.requests, hasLength(1));
+      });
+
+      test('endereço salvo pela 0.3.x: tenta o simples primeiro', () async {
+        final adapter = FakeAdapter((_) async => jsonBody(config));
+        expect(
           await repoWith(
             adapter,
           ).discoverServer('https://b.com/api-access-bypass'),
-          'https://b.com/api-access-bypass',
+          'https://b.com',
         );
-        expect(adapter.requests, hasLength(1));
+        expect(
+          adapter.requests.single.uri.toString(),
+          'https://b.com/api/auth/config',
+        );
       });
 
       test('sem rede: erro de conexão', () async {

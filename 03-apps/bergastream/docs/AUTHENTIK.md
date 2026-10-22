@@ -140,12 +140,12 @@ e-mail de outra pessoa e entrar na conta dela. Depois de ligada, a conta só res
 
 ## 5. Apps antigos e o login por senha
 
-- Apps **0.3.x** só sabem entrar por senha e usam a rota `/api-access-bypass`. Eles mostram a
-  atualização ao abrir; depois de atualizados, entram pelo Authentik.
+- Apps **0.3.x** só sabem entrar por senha e usam o caminho `/api-access-bypass` (o nginx trata
+  como o endereço normal). Eles mostram a atualização ao abrir; depois de atualizados, entram
+  pelo Authentik.
 - Enquanto alguém usar a 0.3.x, mantenha `PASSWORD_LOGIN=true` (a tela da 0.4 mostra
   "Entrar com o Authentik" e, recolhido, "Entrar com usuário e senha").
-- Todos na 0.4: `PASSWORD_LOGIN=auto` (só Authentik), e apague as linhas `bergastream-bypass` do
-  `docker-compose.yml` ([DEPLOY.md](DEPLOY.md)).
+- Todos na 0.4: `PASSWORD_LOGIN=auto` (só Authentik).
 - Quem já está logado continua logado: a sessão do Bergastream não depende do Authentik.
   "Sair" e entrar de novo passa pelo Authentik.
 - Pelo mesmo motivo, tirar alguém do grupo só barra o **próximo** login. Para tirar na hora:

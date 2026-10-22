@@ -8,9 +8,8 @@
 # forward-auth. O login é feito pelo próprio Bergastream com o Authentik
 # (OIDC, variáveis OIDC_* no .env; guia em docs/AUTHENTIK.md).
 #
-#   bergastream.${DOMAIN}                          → app web e API
-#   bergastream.${DOMAIN}/api-access-bypass/api/   → API para os apps 0.3.x
-#                                                    (temporário, ver abaixo)
+#   bergastream.${DOMAIN}   → app web e API (uma rota só). O caminho antigo
+#   /api-access-bypass/… dos apps 0.3.x é tratado pelo nginx como /….
 #
 # Banco, Redis e configs em ${APPDATA_PATH}/bergastream; músicas em
 # ${MEDIA_PATH}/musica (ver .env.example). Desenvolvimento local:
@@ -216,17 +215,6 @@ services:
       - "traefik.http.routers.bergastream-router.tls=true"
       - "traefik.http.routers.bergastream-router.service=bergastream-service"
       - "traefik.http.routers.bergastream-router.middlewares=crowdsec-bouncer@file"
-
-      # TEMPORÁRIO: apps 0.3.x salvaram o servidor com /api-access-bypass. A
-      # 0.4 volta sozinha para o endereço simples ao abrir. Remover estas
-      # linhas quando todos os aparelhos estiverem na 0.4 (antes de tirar o
-      # middleware api-access-bypass do dynamic.yml).
-      - "traefik.http.routers.bergastream-bypass.rule=Host(`bergastream.${DOMAIN}`) && PathPrefix(`/api-access-bypass/api`)"
-      - "traefik.http.routers.bergastream-bypass.entrypoints=websecure"
-      - "traefik.http.routers.bergastream-bypass.tls=true"
-      - "traefik.http.routers.bergastream-bypass.service=bergastream-service"
-      - "traefik.http.routers.bergastream-bypass.middlewares=crowdsec-bouncer@file,api-access-bypass@file"
-      - "traefik.http.routers.bergastream-bypass.priority=120"
 
       - "traefik.http.services.bergastream-service.loadbalancer.server.port=80"
 

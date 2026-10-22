@@ -8,13 +8,11 @@ dela em toda chamada. Configuração do Authentik: [AUTHENTIK.md](AUTHENTIK.md).
 
 | Quem acessa | Caminho | Login |
 |---|---|---|
-| Navegador e apps 0.4+ (qualquer rede) | `bergastream.example.com` | "Entrar com o Authentik" |
-| Apps 0.3.x ainda não atualizados | `bergastream.example.com/api-access-bypass/api/…` | **temporário**, ver abaixo |
+| Navegador e apps (qualquer rede) | `bergastream.example.com` | "Entrar com o Authentik" |
 
-A rota `/api-access-bypass` continua no compose só até todos os aparelhos estarem na 0.4: os apps
-0.3.x salvaram o servidor com esse caminho. A 0.4 volta sozinha para o endereço simples ao abrir.
-Depois, apague as linhas `bergastream-bypass` do `docker-compose.yml` (antes de tirar o middleware
-`api-access-bypass` do `dynamic.yml`).
+Os apps 0.3.x salvaram o servidor com o caminho `/api-access-bypass`. O nginx do Bergastream trata
+`/api-access-bypass/…` como `/…` (mesma rota, mesmo login), então eles seguem funcionando sem
+rota nem middleware próprios no Traefik. A 0.4 volta sozinha para o endereço simples.
 
 ```
 Traefik (bergatrix-proxy) ──► bergastream-web (nginx: app web + /api/ → API)
@@ -29,7 +27,7 @@ Traefik (bergatrix-proxy) ──► bergastream-web (nginx: app web + /api/ → 
 ## 0. Antes de começar
 
 - Traefik rodando com a rede `bergatrix-proxy` e, no `dynamic.yml`, os middlewares
-  `crowdsec-bouncer` e (enquanto houver apps 0.3.x) `api-access-bypass`.
+  `crowdsec-bouncer`.
 - Authentik com o provider e a aplicação do Bergastream ([AUTHENTIK.md](AUTHENTIK.md)). A API entra
   na rede `bergatrix-proxy` para falar com o `authentik-server` direto.
 - DNS de `bergastream.example.com` apontando para o servidor (o curinga do `${DOMAIN}` já resolve).
@@ -131,7 +129,7 @@ O usuário `demo` existe só no ambiente de desenvolvimento local; não vai para
 3. **App:** instale pela [release do GitHub](https://github.com/Agelinena/bergatrix/releases), servidor
    `bergastream.example.com` → "Entrar com o Authentik". O Android abre o navegador e volta ao app;
    no Windows/Linux, a aba do navegador diz "Pronto! Pode fechar esta aba". Teste também pelo 4G.
-4. **App 0.3.x antigo** (enquanto a rota temporária existir):
+4. **Caminho antigo dos apps 0.3.x** (deve dar o mesmo JSON do passo 1):
 
    ```bash
    curl -s https://bergastream.example.com/api-access-bypass/api/auth/config
@@ -252,5 +250,6 @@ gunzip -c bergastream-AAAA-MM-DD.sql.gz | docker compose exec -T db psql -U berg
 | Lidarr não importa o que o SABnzbd baixou ("No files found" / caminho inexistente) | O Lidarr e o SABnzbd precisam montar a mesma `${MEDIA_PATH}/downloads` como `/downloads`; confira o `MEDIA_PATH` nos dois `.env`. |
 | Navegador entra, mas tudo diz "Sessão expirada" | A rota ainda passa pelo forward-auth do Authentik, que apaga o `Authorization` (está em `authResponseHeaders` no `dynamic.yml`). Desde a 0.4 a rota do Bergastream não tem forward-auth: suba o compose atual. |
 | App web antigo depois de atualizar o servidor | O nginx manda o navegador conferir os arquivos a cada abertura (`Cache-Control`). Uma aba aberta há tempo mostra "Nova versão do Bergastream → Recarregar". Se nem assim: Ctrl+Shift+R. |
+| App 0.3.x: "Servidor não encontrado" | O caminho antigo recebeu a página do app web: o `web` está com o nginx antigo. `docker compose up -d --build web` e o `curl` do passo 5.4. |
 | Bloqueios do CrowdSec ao reconectar os apps | A exceção em `02-security/crowdsec/whitelists/bergatrix.yaml` vale para `/api-access-bypass/api/`. Com a 0.4 os apps usam `/api/`: inclua esse caminho na expressão. |
 | "Muitas tentativas" no login | 5 senhas erradas em 15 min para aquele usuário e IP: espere ou troque a senha (USUARIOS.md). |
