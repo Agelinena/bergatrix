@@ -114,6 +114,9 @@ O OMV exporta duas pastas compartilhadas, uma por raiz, porque elas têm políti
 |---|---|---|
 | `media` | `/mnt/nas/media` | `MEDIA_PATH` |
 | `userdata` | `/mnt/nas/userdata` | `USERDATA_PATH` |
+| `backups` | não é exportada | Cópias de `APPDATA_PATH` (destino do backup). Nunca compartilhe: contém bancos e segredos. |
+
+No HD do NAS, as três ficam lado a lado na raiz do filesystem: `media/`, `userdata/` e `backups/`.
 
 Exemplo de `/etc/fstab`:
 
