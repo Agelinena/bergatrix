@@ -44,7 +44,7 @@ Rede local ───────────────────────
 |---|---|---|---|---|
 | 00 | cloudbeaver | CloudBeaver | `db` | appdata |
 | 01 | traefik | Traefik + plugin CrowdSec | `traefik` (painel) | appdata |
-| 02 | authentik | Authentik (server, worker), Postgres, Redis | `authentik`, `auth` | appdata |
+| 02 | authentik | Authentik (server, worker, outpost LDAP), Postgres, Redis | `authentik`, `auth` | appdata |
 | 02 | bitwarden | Vaultwarden | `bitwarden` | appdata |
 | 02 | crowdsec | CrowdSec | – | appdata |
 | 03 | bergalink | API própria (localização em família), Postgres | `bergalink` | appdata |
@@ -73,6 +73,7 @@ Elas se falam pelo nome do container na rede `bergatrix-proxy`. Mudar um destes 
 | Quem usa | Usa o quê | Endereço |
 |---|---|---|
 | Traefik (forward-auth), Bergalink (JWKS) | Authentik | `authentik-server:9000` |
+| Jellyfin (plugin LDAP) | Outpost LDAP do Authentik | `authentik-ldap:3389` |
 | Traefik (bouncer) | CrowdSec | `crowdsec:8080` |
 | CrowdSec | Log do Traefik | `${APPDATA_PATH}/traefik/logs` (arquivo) |
 | Open WebUI, sincronizador do LiteLLM, Legendarr worker | Ollama (stack openuiweb) | `ollama:11434` |

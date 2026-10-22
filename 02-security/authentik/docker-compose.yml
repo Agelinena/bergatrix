@@ -110,6 +110,22 @@ services:
       - bergatrix-proxy
       - authentik-internal
 
+  # Outpost LDAP: login com as contas do Authentik em apps sem OIDC (ex.: Jellyfin).
+  # Sem porta publicada: os apps usam ldap://authentik-ldap:3389 pela bergatrix-proxy.
+  # Mesma versão do server. O token vem de Applications → Outposts no Authentik.
+  ldap:
+    image: ghcr.io/goauthentik/ldap:2025.10.2
+    container_name: authentik-ldap
+    restart: unless-stopped
+    environment:
+      AUTHENTIK_HOST: http://authentik-server:9000
+      AUTHENTIK_INSECURE: "false"
+      AUTHENTIK_TOKEN: ${OUTPOST_LDAP_TOKEN}
+    depends_on:
+      - server
+    networks:
+      - bergatrix-proxy
+
 networks:
   bergatrix-proxy:
     external: true
