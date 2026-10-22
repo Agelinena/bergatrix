@@ -19,7 +19,13 @@ import 'package:bergastream/data/repositories/playlist_repository.dart';
 import 'package:bergastream/data/repositories/search_repository.dart';
 import 'package:bergastream/features/player/audio_engine.dart';
 import 'package:bergastream/features/player/player_controller.dart';
+import 'package:bergastream/data/repositories/account_repository.dart';
+import 'package:bergastream/features/account/account_providers.dart';
+import 'package:bergastream/features/auth/oidc_launcher.dart';
 import 'package:bergastream/features/auth/session.dart';
+import 'package:bergastream/features/library/playlist_cover.dart';
+import 'package:bergastream/features/playlists/playlist_store.dart';
+import 'package:bergastream/features/update/web_version_watcher.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:bergastream/data/models/stats.dart';
@@ -34,9 +40,13 @@ import 'package:bergastream/features/update/update_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'fake_player.dart';
+import 'fake_oidc.dart';
 import 'fake_update.dart';
 
 const testServer = 'https://musica.exemplo.com';
+
+/// Endereços abertos no navegador (página do Authentik) pelos testes.
+final openedLinks = <String>[];
 
 const loggedIn = SessionState(
   status: SessionStatus.logado,
@@ -92,6 +102,8 @@ Future<ProviderContainer> pumpBergastream(
   FakeUpdateRepository? updates,
   FakeUpdateLauncher? launcher,
   SessionRepository? sessions,
+  FakeOidcLauncher? oidc,
+  FakeAccountRepository? accounts,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
@@ -130,6 +142,7 @@ Future<ProviderContainer> pumpBergastream(
       authRepositoryProvider.overrideWithValue(
         auth ?? FakeAuthRepository(delay: Duration.zero),
       ),
+      oidcLauncherProvider.overrideWithValue(oidc ?? FakeOidcLauncher()),
       searchRepositoryProvider.overrideWithValue(
         search ?? FakeSearchRepository(),
       ),
@@ -154,6 +167,15 @@ Future<ProviderContainer> pumpBergastream(
       serverPingProvider.overrideWithValue(ping ?? (_) async => true),
       connectivityChangesProvider.overrideWithValue(const Stream.empty()),
       serverRetryIntervalProvider.overrideWithValue(null),
+      playlistRetryDelayProvider.overrideWithValue(null),
+      webVersionFetcherProvider.overrideWithValue(null),
+      coverFetcherProvider.overrideWithValue(_NoFetcher()),
+      accountRepositoryProvider.overrideWithValue(
+        accounts ?? FakeAccountRepository(),
+      ),
+      externalLinkProvider.overrideWithValue(
+        (url) async => openedLinks.add(url),
+      ),
       downloadPathsProvider.overrideWithValue(
         () async => DownloadPaths(
           audio: Directory.systemTemp.path,

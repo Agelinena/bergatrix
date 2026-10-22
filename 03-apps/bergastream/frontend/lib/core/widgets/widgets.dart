@@ -5,6 +5,7 @@ export 'app_text_field.dart';
 export 'app_toast.dart';
 export 'buttons.dart';
 export 'choice_dialog.dart';
+export 'form_dialog.dart';
 export 'context_menu_region.dart';
 export 'text_input_dialog.dart';
 export 'cover.dart';

@@ -302,11 +302,24 @@ class FlushOutcome {
   final int notices;
 }
 
+/// Espera antes de reenviar a fila que não foi (dobra a cada falha, até
+/// 5 minutos). Nulo nos testes: sem reenvio automático.
+final playlistRetryDelayProvider = Provider<Duration?>(
+  (ref) => const Duration(seconds: 5),
+);
+
 /// Envia a fila ao servidor. Estado: verdadeiro enquanto envia.
 class PlaylistSync extends Notifier<bool> {
-  static const batchSize = 50;
+  /// Lotes pequenos: cada "adicionar" pode buscar a música nos catálogos, e
+  /// um lote grande passava do tempo de resposta.
+  static const batchSize = 20;
 
   Future<FlushOutcome>? _running;
+
+  /// Pedido de envio enquanto outro estava no fim: envia de novo depois.
+  bool _again = false;
+  Timer? _retry;
+  int _failures = 0;
 
   /// Avisa quando um envio gerou avisos novos (a tela mostra um toast).
   final _notices = StreamController<int>.broadcast();
@@ -315,6 +328,7 @@ class PlaylistSync extends Notifier<bool> {
   @override
   bool build() {
     ref.onDispose(_notices.close);
+    ref.onDispose(() => _retry?.cancel());
     // Outra conta entrou neste aparelho: a cópia e a fila eram da anterior.
     ref.listen(sessionProvider.select((s) => s.username), (_, username) async {
       final cache = ref.read(playlistCacheProvider);
@@ -329,10 +343,44 @@ class PlaylistSync extends Notifier<bool> {
     return false;
   }
 
-  Future<FlushOutcome> flush() => _running ??= _flush().whenComplete(() {
-    _running = null;
-    if (ref.mounted) state = false;
-  });
+  Future<FlushOutcome> flush() {
+    if (_running case final running?) {
+      _again = true;
+      return running;
+    }
+    _retry?.cancel();
+    _retry = null;
+    return _running = _flush().whenComplete(() {
+      _running = null;
+      if (!ref.mounted) return;
+      state = false;
+      if (_again) {
+        _again = false;
+        unawaited(flush());
+      }
+    });
+  }
+
+  /// Ficou alteração na fila (servidor fora, lento ou "tente depois"):
+  /// tenta de novo sozinho, cada vez esperando mais.
+  Future<void> _scheduleRetry(AppDatabase db) async {
+    final base = ref.read(playlistRetryDelayProvider);
+    if (base == null || !ref.mounted) return;
+    if ((await db.playlistOpsInOrder()).isEmpty) {
+      _failures = 0;
+      return;
+    }
+    final wait = base * (1 << _failures.clamp(0, 6));
+    _failures++;
+    const max = Duration(minutes: 5);
+    _retry?.cancel();
+    _retry = Timer(wait > max ? max : wait, () {
+      _retry = null;
+      if (ref.mounted && ref.read(sessionProvider).canUseServer) {
+        unawaited(flush());
+      }
+    });
+  }
 
   Future<FlushOutcome> _flush() async {
     final db = ref.read(localDatabaseProvider);
@@ -344,10 +392,14 @@ class PlaylistSync extends Notifier<bool> {
     state = true;
     var sent = 0;
     var notices = 0;
+    // Depois de um lote recusado inteiro: uma alteração por vez, para achar
+    // a que o servidor não aceita sem travar as outras.
+    var size = batchSize;
+    var stuck = false;
     while (true) {
       final rows = await db.playlistOpsInOrder();
       if (rows.isEmpty) break;
-      final batch = rows.take(batchSize).toList();
+      final batch = rows.take(size).toList();
       final ops = [
         for (final r in batch)
           PlaylistOp.fromJson(jsonDecode(r.opJson) as Map<String, dynamic>),
@@ -356,8 +408,20 @@ class PlaylistSync extends Notifier<bool> {
       try {
         result = await ref.read(playlistRepositoryProvider).applyOps(ops);
       } on ApiException catch (e) {
+        if (e.kind == ApiErrorKind.requisicao) {
+          if (batch.length > 1) {
+            size = 1;
+            continue;
+          }
+          // Esta alteração nunca vai passar (ex.: dado inválido): sai da
+          // fila para não segurar as outras.
+          debugPrint('Alteração descartada pelo servidor: ${e.message}');
+          await db.deletePlaylistOps([batch.single.seq]);
+          continue;
+        }
         // Sem rede ou servidor com problema: tudo fica para depois.
         debugPrint('Fila de playlists fica para depois: ${e.message}');
+        stuck = true;
         break;
       }
       await cache.addAliases(result.refs);
@@ -406,7 +470,15 @@ class PlaylistSync extends Notifier<bool> {
         }
       }
       // Nada andou (só "retry"): tenta de novo na próxima vez.
-      if (done.isEmpty) break;
+      if (done.isEmpty) {
+        stuck = true;
+        break;
+      }
+    }
+    if (stuck) {
+      await _scheduleRetry(db);
+    } else {
+      _failures = 0;
     }
     ref.invalidate(playlistAliasesProvider);
     ref.invalidate(serverPlaylistsProvider);
@@ -501,6 +573,13 @@ class PlaylistConflict implements Exception {
   final String message;
 }
 
+/// Nome aceito pelo servidor: sem espaços nas pontas e até 100 letras (um
+/// nome maior era recusado e segurava a fila inteira).
+String playlistName(String name) {
+  final trimmed = name.trim();
+  return trimmed.length > 100 ? trimmed.substring(0, 100).trim() : trimmed;
+}
+
 class PlaylistEditor {
   PlaylistEditor(this._ref);
 
@@ -512,7 +591,10 @@ class PlaylistEditor {
   /// Nova playlist. No app devolve o ref temporário (a tela abre na hora,
   /// mesmo sem servidor); na web, o id do servidor.
   Future<String> create(String name) async {
-    final op = PlaylistOp.create(ref: PlaylistOp.newRef(), name: name.trim());
+    final op = PlaylistOp.create(
+      ref: PlaylistOp.newRef(),
+      name: playlistName(name),
+    );
     final result = await _submit([op]);
     return result?.refs[op.ref] ?? op.ref!;
   }
@@ -529,8 +611,14 @@ class PlaylistEditor {
   }) async {
     final create = PlaylistOp.create(
       ref: PlaylistOp.newRef(),
-      name: name.trim(),
-      description: description.trim().isEmpty ? null : description.trim(),
+      name: playlistName(name),
+      // O servidor aceita até 500 letras de descrição.
+      description: description.trim().isEmpty
+          ? null
+          : description.trim().substring(
+              0,
+              description.trim().length.clamp(0, 500),
+            ),
     );
     final ref = create.ref!;
     final cover = coverUrl == null ? null : PlaylistOp.cover(ref, coverUrl);
@@ -575,9 +663,9 @@ class PlaylistEditor {
     required String name,
     required String current,
   }) async {
-    if (name.trim() == current) return;
+    if (playlistName(name) == current) return;
     await _submit([
-      PlaylistOp.rename(playlistId, name: name.trim(), base: current),
+      PlaylistOp.rename(playlistId, name: playlistName(name), base: current),
     ]);
   }
 

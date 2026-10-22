@@ -148,7 +148,7 @@ void main() {
       final repo = repoWith(
         FakeAdapter((_) async => jsonBody({'registration_enabled': true})),
       );
-      expect(await repo.canRegister('https://s.com'), isTrue);
+      expect((await repo.options('https://s.com')).registrationEnabled, isTrue);
       final offline = repoWith(
         FakeAdapter(
           (o) async => throw DioException.connectionError(
@@ -157,19 +157,88 @@ void main() {
           ),
         ),
       );
-      expect(await offline.canRegister('https://s.com'), isFalse);
+      expect(
+        (await offline.options('https://s.com')).registrationEnabled,
+        isFalse,
+      );
+    });
+
+    test('opções de login e troca do código do Authentik', () async {
+      final adapter = FakeAdapter(
+        (o) async => o.path.endsWith('/config')
+            ? jsonBody({
+                'registration_enabled': false,
+                'oidc_enabled': true,
+                'password_login_enabled': false,
+              })
+            : o.data['code'] == 'bom'
+            ? jsonBody(fixture('login.json'))
+            : jsonBody({'detail': 'Código inválido'}, status: 401),
+      );
+      final repo = repoWith(adapter);
+      final options = await repo.options('https://s.com');
+      expect(options.oidcEnabled, isTrue);
+      expect(options.passwordLoginEnabled, isFalse);
+      final tokens = await repo.exchangeOidc(
+        server: 'https://s.com',
+        code: 'bom',
+        verifier: 'v' * 43,
+      );
+      expect(tokens.user.username, 'lucas');
+      expect(adapter.requests.last.uri.path, '/api/auth/oidc/exchange');
+      await expectLater(
+        repo.exchangeOidc(server: 'https://s.com', code: 'x', verifier: 'v'),
+        throwsA(
+          isA<AuthException>().having(
+            (e) => e.error,
+            'error',
+            AuthError.authentikFalhou,
+          ),
+        ),
+      );
+    });
+
+    test('senha desligada no servidor: "use o Authentik"', () async {
+      final repo = repoWith(
+        FakeAdapter(
+          (_) async =>
+              jsonBody({'detail': 'Entre pelo Authentik'}, status: 403),
+        ),
+      );
+      await expectLater(
+        repo.login(server: 'https://s.com', username: 'a', password: 'b'),
+        throwsA(
+          isA<AuthException>().having(
+            (e) => e.error,
+            'error',
+            AuthError.useAuthentik,
+          ),
+        ),
+      );
     });
 
     group('descoberta do endereço (Traefik modelo B)', () {
       const config = {'registration_enabled': false};
 
-      test('usa o bypass quando ele responde', () async {
+      test('usa o endereço simples quando ele responde', () async {
         final adapter = FakeAdapter((_) async => jsonBody(config));
         final found = await repoWith(adapter).discoverServer('https://b.com');
-        expect(found, 'https://b.com/api-access-bypass');
+        expect(found, 'https://b.com');
         expect(
           adapter.requests.single.uri.toString(),
-          'https://b.com/api-access-bypass/api/auth/config',
+          'https://b.com/api/auth/config',
+        );
+      });
+
+      test('cai no bypass se o simples não for o Bergastream', () async {
+        final adapter = FakeAdapter(
+          (o) async => o.uri.path.startsWith('/api-access-bypass')
+              ? jsonBody(config)
+              : jsonBody({'detail': 'Not Found'}, status: 404),
+        );
+        expect(
+          await repoWith(adapter).discoverServer('https://b.com'),
+          'https://b.com/api-access-bypass',
         );
       });
 

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../../app/routes.dart';
 import '../../core/platform/app_layout.dart';
@@ -9,6 +10,7 @@ import '../../core/theme/berga_sizes.dart';
 import '../../core/theme/berga_text.dart';
 import '../../core/widgets/widgets.dart';
 import '../../data/repositories/local_playlists.dart';
+import 'playlist_cover.dart';
 
 /// Playlist criada sem login ("Só neste aparelho"). Pode ser editada offline;
 /// as músicas vêm das baixadas (Passo 9).
@@ -45,11 +47,15 @@ class LocalPlaylistScreen extends ConsumerWidget {
                 child: Text('Playlist não encontrada.', style: mu),
               )
             else ...[
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 10),
-                child: Cover.playlist(
-                  size: BergaSizes.playlistCoverMaxHeight,
-                  initialSize: 60,
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                child: GestureDetector(
+                  onTap: () => _changePhoto(context, ref),
+                  child: Cover.playlist(
+                    size: BergaSizes.playlistCoverMaxHeight,
+                    initialSize: 60,
+                    image: localPlaylistImage(p),
+                  ),
                 ),
               ),
               ScreenTitle(p.name, bottom: 4),
@@ -75,6 +81,10 @@ class LocalPlaylistScreen extends ConsumerWidget {
                       },
                     ),
                     AppChip(
+                      label: 'Trocar foto',
+                      onTap: () => _changePhoto(context, ref),
+                    ),
+                    AppChip(
                       label: 'Apagar',
                       onTap: () async {
                         await notifier.delete(p.id);
@@ -94,5 +104,20 @@ class LocalPlaylistScreen extends ConsumerWidget {
         ),
       ),
     );
+  }
+
+  /// Foto da galeria (ou de um arquivo, no computador), guardada no
+  /// aparelho; vai junto quando a playlist for enviada ao servidor.
+  Future<void> _changePhoto(BuildContext context, WidgetRef ref) async {
+    final file = await ImagePicker().pickImage(
+      source: ImageSource.gallery,
+      maxWidth: 1200,
+      imageQuality: 85,
+    );
+    if (file == null) return;
+    await ref
+        .read(localPlaylistsProvider.notifier)
+        .setCover(id, await file.readAsBytes());
+    if (context.mounted) AppToast.show(context, 'Foto da playlist trocada');
   }
 }

@@ -1,8 +1,9 @@
 # Bergastream — Mapa da API (API_MAP.md)
 
 > Criado no Passo 0; atualizado em 07/10/2026 (Passos 1–13), conferido contra o código.
-> Base URL: `https://<servidor>/api` (na web, o próprio domínio; nos apps atrás do Traefik,
-> `https://bergastream.daberga.com/api-access-bypass/api` — ver `docs/DEPLOY.md`).
+> Base URL: `https://<servidor>/api` (na web, o próprio domínio; ex.:
+> `https://bergastream.example.com/api`. Apps 0.3.x usavam `/api-access-bypass/api`, rota
+> temporária — ver `docs/DEPLOY.md`).
 > Local: `http://localhost:8000/api`.
 
 **Autenticação:** todas as rotas exigem `Authorization: Bearer <access_token>`, exceto as
@@ -131,9 +132,12 @@ resultado guardado. Detalhes em `backend/app/playlists/ops.py`.
 
 | Endpoint | Corpo | Resposta | Autenticação |
 |---|---|---|---|
-| `GET /api/auth/config` | — | `{"registration_enabled": bool}` | Pública |
-| `POST /api/auth/login` | `{"username", "password"}` | `TokenPair` · 401 senha errada · 429 muitas tentativas (`Retry-After`) | Pública |
-| `POST /api/auth/register` | `{"username", "password"}` (≥ 8) | `TokenPair` (201) · 403 se desativado · 409 já existe | Pública, só com `ALLOW_REGISTRATION=true` |
+| `GET /api/auth/config` | — | `{"registration_enabled", "oidc_enabled", "password_login_enabled", "password_reset_enabled"}` | Pública |
+| `POST /api/auth/login` | `{"username", "password"}` | `TokenPair` · 401 senha errada · 403 "Entre pelo Authentik" (senha desligada) · 429 muitas tentativas (`Retry-After`) | Pública |
+| `POST /api/auth/register` | `{"username", "password"}` (≥ 8) | `TokenPair` (201) · 403 se desativado · 409 já existe | Pública, só com `ALLOW_REGISTRATION=true` e login por senha ligado |
+| `GET /api/auth/oidc/start?redirect&challenge` | — | 302 para o Authentik · página de erro (redirect ou challenge inválido, OIDC desligado) | Pública |
+| `GET /api/auth/oidc/callback?code&state` | — | 302 para `redirect?oidc_code=…` · página de erro (recusado, fora do grupo, expirado) | Pública (o Authentik chama) |
+| `POST /api/auth/oidc/exchange` | `{"code", "verifier"}` | `TokenPair` · 401 código inválido, usado ou verifier errado | Pública |
 | `POST /api/auth/refresh` | `{"refresh_token"}` | `TokenPair` novo (o refresh antigo deixa de valer) · 401 | Pública |
 | `POST /api/auth/logout` | `{"refresh_token"}` | 204 | Pública |
 | `GET /api/auth/me` | — | `UserOut` | Bearer |
@@ -145,7 +149,25 @@ Regras:
 - Senhas com Argon2. Username não diferencia maiúsculas.
 - Refresh com **rotação**: cada uso gera outro; reusar um já trocado revoga a família inteira (todas as sessões daquele login).
 - 5 falhas por usuário+IP bloqueiam por 15 min (`LOGIN_MAX_FAILURES`, `LOGIN_BLOCK_MINUTES`).
-- Usuários são criados pela linha de comando: `docker compose exec api python -m app.auth.cli create-user <nome> [--admin]` (também `set-password` e `list-users`).
+- Usuários são criados pela linha de comando: `docker compose exec api python -m app.auth.cli create-user <nome> [--admin]` (também `set-password`, `list-users`, `set-email` e `unlink-authentik`).
+
+**Login pelo Authentik (OIDC)** — o servidor é o cliente OIDC (confidencial, com PKCE e `nonce`);
+o app nunca vê o token do Authentik, só os do Bergastream:
+
+1. O app gera um `verifier` (PKCE) e abre no navegador `/api/auth/oidc/start` com o `redirect`
+   (para onde voltar) e `challenge = base64url(sha256(verifier))`.
+   `redirect` aceito: caminho do próprio site (`/`, web), `com.bergatrix.bergastream://auth`
+   (Android) ou `http://127.0.0.1:<porta>/…` (Windows/Linux, RFC 8252).
+2. O servidor guarda `state`, `nonce`, o PKCE dele e o `challenge` do app no Redis (10 min) e
+   redireciona para o Authentik.
+3. O Authentik volta em `/api/auth/oidc/callback`; o servidor troca o código, valida o
+   `id_token` (assinatura pelo JWKS, `iss`, `aud`, `exp`, `nonce`), confere o grupo
+   (`OIDC_REQUIRED_GROUP`) e liga a conta: pelo `sub`; senão pelo username (`preferred_username`,
+   contas ainda não ligadas); senão pelo e-mail; senão cria (`OIDC_AUTO_CREATE`). Com
+   `OIDC_ADMIN_GROUP`, quem está no grupo vira admin (e quem sai, deixa de ser).
+4. Redireciona para `redirect?oidc_code=…` (código de uso único, 2 min).
+5. O app chama `/api/auth/oidc/exchange` com o código e o `verifier` e recebe o `TokenPair`
+   normal (refresh, rotação e "Sair" iguais ao login por senha).
 - Todas as outras rotas `/api/*` exigem Bearer; `POST /api/admin/cleanup` (antes `GET`) exige admin.
 
 ---
@@ -222,7 +244,9 @@ Estado em memória na API (some ao reiniciar; os apps reconectam).
   `reorder_manual`, `reorder_next`), `transfer {to, state?}`, `handoff_state {state}`, `ping`.
 - Servidor → app: `hello {device_id, devices, active, state, server_now}`, `devices {devices,
   active}`, `state {state, from}`, `command {command, from}`, `handoff {to}` (pare e mande a fila
-  completa), `play_here {state}` (agora toca aqui), `pong`, `error`.
+  completa), `play_here {state}` (agora toca aqui), `playlists_changed {playlists}` (playlists
+  da pessoa mudaram em outro aparelho ou por outra pessoa: o app busca de novo; também durante
+  a importação de links grandes, a cada 25 músicas), `pong`, `error`.
 - Fecha com **4401** (login inválido) e **4409** (o mesmo aparelho conectou de novo, ex.: outra
   aba).
 - Na sessão "ouvir junto", só o aparelho ativo de cada pessoa sai som; os outros seguem a
@@ -235,6 +259,30 @@ Estado em memória na API (some ao reiniciar; os apps reconectam).
 | Endpoint | Quem |
 |---|---|
 | `POST /api/admin/cleanup` | admin — limpa arquivos sem referência e cache vencido |
+| `GET /api/admin/users` | admin — `{users: [Account], mail_enabled, oidc_enabled, password_login_enabled, authentik_admin_url}` |
+| `POST /api/admin/users` | admin — `{username, name?, email?, is_admin?, invite?}` → `Account` (201) · 409 usuário/nome/e-mail já usado · 422 inválido |
+| `PATCH /api/admin/users/{id}` | admin — `{username?, name?, email? ("" apaga), is_admin?, disabled?, notify?}` · 409 se vem do Authentik, último admin, a si mesmo |
+| `POST /api/admin/users/{id}/password` | admin — `{mode: "link"\|"temporary", notify?}` → `{sent}` ou `{password, sent}` · 409 se a senha é do Authentik ou o login por senha está desligado |
+| `POST /api/admin/users/{id}/sessions/revoke` | admin — desconecta os aparelhos (204) |
+| `POST /api/admin/users/{id}/unlink` | admin — desfaz a ligação com o Authentik |
+| `POST /api/admin/users/{id}/notice` | admin — `{subject, message}`: aviso por e-mail · 409 sem e-mail · 502 SMTP falhou |
+| `GET /api/admin/mail` · `POST /api/admin/mail/test` | admin — situação do SMTP; e-mail de teste para o próprio admin |
+
+**`Account`:** `id`, `username`, `name`, `email`, `is_admin`, `disabled`, `linked` (já entrou
+pelo Authentik), `managed_by_authentik` (usuário/nome/e-mail/senha vêm de lá, só leitura aqui),
+`admin_managed_by_authentik`, `has_password`, `last_login_at`, `created_at`, `sessions`.
+
+Minha conta e senha:
+
+| Endpoint | Corpo | Resposta | Autenticação |
+|---|---|---|---|
+| `GET /api/auth/account` | — | `Account` + `can_change_password`, `account_url` (Authentik), `mail_enabled`, `oidc_enabled` | Bearer |
+| `PATCH /api/auth/account` | `{username?, name?, email?}` | idem · 409 se vem do Authentik | Bearer |
+| `POST /api/auth/account/password` | `{current_password, new_password}` | `TokenPair` novo (as outras sessões caem) · 403 senha atual errada · 409 senha do Authentik | Bearer |
+| `POST /api/auth/password/forgot` | `{login}` (usuário ou e-mail) | 202 sempre (não revela contas) · 403 desligado · 429 limite por IP | Pública |
+| `GET\|POST /api/auth/password/reset` | `?token=` / formulário `token, password, confirm` | página HTML (link do e-mail, uso único) | Pública |
+
+Conta desativada: login 403 "Conta desativada", renovação 401, login pelo Authentik recusado.
 
 ---
 

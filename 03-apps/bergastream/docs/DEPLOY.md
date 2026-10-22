@@ -1,15 +1,20 @@
 # Bergastream — subir no servidor
 
-Endereço final: **https://bergastream.daberga.com**
+Endereço final: **https://bergastream.example.com** (troque `example.com` pelo `${DOMAIN}` real).
 
-| Quem acessa | Caminho | Proteção |
+Acesso no modelo **E** do `docs/plano-acesso.md` da raiz: **uma rota pública só**, com CrowdSec e
+**sem forward-auth**. O login é feito dentro do app com o **Authentik (OIDC)**; a API exige o token
+dela em toda chamada. Configuração do Authentik: [AUTHENTIK.md](AUTHENTIK.md).
+
+| Quem acessa | Caminho | Login |
 |---|---|---|
-| Navegador fora de casa | `bergastream.daberga.com` | Authentik → login do Bergastream |
-| Notebook, celular e firewall de confiança | `bergastream.daberga.com` | direto → login do Bergastream |
-| Apps Android/Windows/Linux (qualquer rede) | `bergastream.daberga.com/api-access-bypass/api/…` | só o login do Bergastream (JWT + limite de tentativas) |
+| Navegador e apps 0.4+ (qualquer rede) | `bergastream.example.com` | "Entrar com o Authentik" |
+| Apps 0.3.x ainda não atualizados | `bergastream.example.com/api-access-bypass/api/…` | **temporário**, ver abaixo |
 
-Os apps só pedem `bergastream.daberga.com` e descobrem o prefixo `/api-access-bypass` sozinhos.
-O bypass libera **só a API**: o app web continua atrás do Authentik.
+A rota `/api-access-bypass` continua no compose só até todos os aparelhos estarem na 0.4: os apps
+0.3.x salvaram o servidor com esse caminho. A 0.4 volta sozinha para o endereço simples ao abrir.
+Depois, apague as linhas `bergastream-bypass` do `docker-compose.yml` (antes de tirar o middleware
+`api-access-bypass` do `dynamic.yml`).
 
 ```
 Traefik (bergatrix-proxy) ──► bergastream-web (nginx: app web + /api/ → API)
@@ -24,8 +29,10 @@ Traefik (bergatrix-proxy) ──► bergastream-web (nginx: app web + /api/ → 
 ## 0. Antes de começar
 
 - Traefik rodando com a rede `bergatrix-proxy` e, no `dynamic.yml`, os middlewares
-  `crowdsec-bouncer`, `public-auth` e `api-access-bypass` (os mesmos do Bitwarden).
-- DNS de `bergastream.daberga.com` apontando para o servidor (o curinga `*.daberga.com` já resolve).
+  `crowdsec-bouncer` e (enquanto houver apps 0.3.x) `api-access-bypass`.
+- Authentik com o provider e a aplicação do Bergastream ([AUTHENTIK.md](AUTHENTIK.md)). A API entra
+  na rede `bergatrix-proxy` para falar com o `authentik-server` direto.
+- DNS de `bergastream.example.com` apontando para o servidor (o curinga do `${DOMAIN}` já resolve).
 - **Pare a versão antiga** (`03-apps/bergastream02`) se ela estiver rodando: ela usa os mesmos
   nomes de container e o mesmo domínio.
 
@@ -66,6 +73,8 @@ nano .env
 | `POSTGRES_PASSWORD` | senha nova (gere abaixo) |
 | `DATABASE_URL` | a mesma senha no lugar de `troque_esta_senha` |
 | `JWT_SECRET` | segredo novo (gere abaixo) |
+| `OIDC_*`, `PASSWORD_LOGIN` | login pelo Authentik ([AUTHENTIK.md](AUTHENTIK.md), passo 3) |
+| `SMTP_*`, `APP_URL` | e-mails de aviso, convite e "esqueci minha senha" (opcional; pode ser o SMTP do Authentik) |
 | `DEEMIX_ARL` | cookie `arl` do deezer.com logado — conta **Premium** para MP3 320/FLAC (grátis = 128) |
 | `LIDARR_API_KEY` | FLAC das playlists pela Usenet (passo 7); sem a chave o Lidarr fica de fora |
 
@@ -92,14 +101,17 @@ docker compose logs migrate       # migrações aplicadas
 docker logs traefik 2>&1 | grep -i bergastream   # sem erro de parsing das regras
 ```
 
-## 4. Criar os usuários
+## 4. Usuários
 
-Não há cadastro aberto (`ALLOW_REGISTRATION=false`). A senha é pedida no terminal (mínimo 8 caracteres).
-Detalhes e outros comandos em [USUARIOS.md](USUARIOS.md).
+Com o Authentik configurado, as contas vêm de lá: quem está no grupo `bergastream_users` entra, e
+a conta do Bergastream é criada (ou ligada à que já existia) no primeiro login. Para ligar as
+contas antigas sem perder playlists e histórico, veja [AUTHENTIK.md](AUTHENTIK.md#4-contas-que-já-existem).
+
+Sem Authentik (ou com `PASSWORD_LOGIN=true`), as contas com senha são criadas pela linha de
+comando ([USUARIOS.md](USUARIOS.md)):
 
 ```bash
-docker compose exec api python -m app.auth.cli create-user lucas --admin
-docker compose exec api python -m app.auth.cli create-user marina
+docker compose exec api python -m app.auth.cli create-user <usuario> --admin
 docker compose exec api python -m app.auth.cli list-users
 ```
 
@@ -107,17 +119,23 @@ O usuário `demo` existe só no ambiente de desenvolvimento local; não vai para
 
 ## 5. Testar
 
-1. **Navegador de um aparelho de confiança:** https://bergastream.daberga.com → login `lucas` → buscar e tocar.
-2. **Navegador pelo 4G:** pede o Authentik antes e depois o login do Bergastream.
-3. **API pelo bypass** (de qualquer lugar):
+1. **Configuração do login** (de qualquer lugar):
 
    ```bash
-   curl -s https://bergastream.daberga.com/api-access-bypass/api/auth/config
-   # {"registration_enabled":false}
+   curl -s https://bergastream.example.com/api/auth/config
+   # {"registration_enabled":false,"oidc_enabled":true,"password_login_enabled":false}
    ```
 
-4. **App:** instale pela [release do GitHub](https://github.com/Agelinena/bergatrix/releases)
-   e entre com servidor `bergastream.daberga.com`, usuário e senha. Teste também pelo 4G.
+2. **Navegador:** https://bergastream.example.com → "Entrar com o Authentik" → login no Authentik
+   → volta para o app já logado → buscar e tocar.
+3. **App:** instale pela [release do GitHub](https://github.com/Agelinena/bergatrix/releases), servidor
+   `bergastream.example.com` → "Entrar com o Authentik". O Android abre o navegador e volta ao app;
+   no Windows/Linux, a aba do navegador diz "Pronto! Pode fechar esta aba". Teste também pelo 4G.
+4. **App 0.3.x antigo** (enquanto a rota temporária existir):
+
+   ```bash
+   curl -s https://bergastream.example.com/api-access-bypass/api/auth/config
+   ```
 
 ## 6. Atualizar o servidor depois
 
@@ -220,7 +238,8 @@ gunzip -c bergastream-AAAA-MM-DD.sql.gz | docker compose exec -T db psql -U berg
 
 | Sintoma | Causa provável |
 |---|---|
-| App diz "Servidor não encontrado" | Bypass não está casando: confira o `curl` do passo 5.3 e o middleware `api-access-bypass@file`. |
+| App diz "Servidor não encontrado" | Confira o `curl` do passo 5.1. Se ele devolve HTML (página do Authentik), a rota ainda está atrás do forward-auth: suba o `docker-compose.yml` atual. |
+| "Entrar com o Authentik" mostra "Login pelo Authentik não terminou" na volta | Veja `docker compose logs api \| grep oidc`. Causas comuns em [AUTHENTIK.md](AUTHENTIK.md#problemas-comuns). |
 | 404 em tudo | Rede `bergatrix-proxy` errada ou regra descartada: `docker logs traefik 2>&1 \| grep -i bergastream`. |
 | 502 no navegador | API parada ou reiniciando: `docker compose ps` e `docker compose logs api`. |
 | Músicas não baixam do Deezer | ARL vencido: pegue o cookie de novo, troque no `.env`, `docker compose up -d deemix api worker`. O YouTube segue como alternativa. |
@@ -231,5 +250,7 @@ gunzip -c bergastream-AAAA-MM-DD.sql.gz | docker compose exec -T db psql -U berg
 | Log do worker: "álbum … não encontrado no MusicBrainz" | O Lidarr não achou o álbum (nome diferente no MusicBrainz ou lançamento só digital). A faixa fica em 320 e o worker tenta de novo em 7 dias. |
 | Log do worker: "arquivo do Lidarr não visível aqui" | O worker não vê `${MEDIA_PATH}/musica/lidarr` (volume do compose alterado?). |
 | Lidarr não importa o que o SABnzbd baixou ("No files found" / caminho inexistente) | O Lidarr e o SABnzbd precisam montar a mesma `${MEDIA_PATH}/downloads` como `/downloads`; confira o `MEDIA_PATH` nos dois `.env`. |
-| Navegador atrás do Authentik: entra, mas tudo diz "Sessão expirada" | O middleware do Authentik no Traefik (`01-network/traefik/config/dynamic.yml`) tem `Authorization` em `authResponseHeaders` e apaga o token do Bergastream. A partir da 0.3.2 a web usa `/api-access-bypass` para a API e não depende disso. Se outro app tiver o mesmo sintoma, avalie tirar `Authorization` dessa lista. |
+| Navegador entra, mas tudo diz "Sessão expirada" | A rota ainda passa pelo forward-auth do Authentik, que apaga o `Authorization` (está em `authResponseHeaders` no `dynamic.yml`). Desde a 0.4 a rota do Bergastream não tem forward-auth: suba o compose atual. |
+| App web antigo depois de atualizar o servidor | O nginx manda o navegador conferir os arquivos a cada abertura (`Cache-Control`). Uma aba aberta há tempo mostra "Nova versão do Bergastream → Recarregar". Se nem assim: Ctrl+Shift+R. |
+| Bloqueios do CrowdSec ao reconectar os apps | A exceção em `02-security/crowdsec/whitelists/bergatrix.yaml` vale para `/api-access-bypass/api/`. Com a 0.4 os apps usam `/api/`: inclua esse caminho na expressão. |
 | "Muitas tentativas" no login | 5 senhas erradas em 15 min para aquele usuário e IP: espere ou troque a senha (USUARIOS.md). |

@@ -18,6 +18,7 @@ import '../features/settings/preferences.dart';
 import '../features/update/update_prompt.dart';
 import 'app_frame.dart';
 import 'router.dart';
+import '../features/update/web_version_watcher.dart';
 
 class BergastreamApp extends ConsumerStatefulWidget {
   const BergastreamApp({super.key});
@@ -36,8 +37,14 @@ class _BergastreamAppState extends ConsumerState<BergastreamApp> {
     // timers param): confere o servidor na hora, retoma downloads e as
     // conexões em tempo real, sem precisar fechar e abrir.
     _lifecycle = AppLifecycleListener(onResume: _onResume);
-    // Confere a sessão salva no servidor (token vencido, servidor fora do ar).
-    Future.microtask(() => ref.read(sessionProvider.notifier).validate());
+    // Confere a sessão salva no servidor (token vencido, servidor fora do ar)
+    // e termina o login pelo Authentik que voltou recarregando a página
+    // (web) ou reabrindo o app (Android).
+    Future.microtask(() async {
+      final session = ref.read(sessionProvider.notifier);
+      await session.completePendingOidc();
+      await session.validate();
+    });
     // Retoma downloads que ficaram pela metade (Seção 8.5).
     Future.microtask(() => ref.read(downloadManagerProvider.notifier).start());
     // Detecção do servidor e sincronização ao reconectar (Passo 11).
@@ -50,7 +57,14 @@ class _BergastreamAppState extends ConsumerState<BergastreamApp> {
   void _onResume() {
     final session = ref.read(sessionProvider);
     if (!session.isLoggedIn) return;
-    unawaited(ref.read(serverMonitorProvider.notifier).check());
+    // Confere o servidor e sincroniza: alterações que ficaram no aparelho e
+    // o que mudou nos outros enquanto este estava em segundo plano.
+    unawaited(
+      ref
+          .read(serverMonitorProvider.notifier)
+          .check()
+          .then((_) => ref.read(syncServiceProvider.notifier).run()),
+    );
     unawaited(ref.read(downloadManagerProvider.notifier).start());
     ref.read(devicesProvider.notifier).reconnectNow();
   }
@@ -83,9 +97,13 @@ class _BergastreamAppState extends ConsumerState<BergastreamApp> {
       builder: (context, child) => AppFrame(
         platform: platform,
         child: UpdateWatcher(
-          child: SessionInviteWatcher(
-            child: SyncNoticesListener(
-              child: DownloadNotices(child: LocalPlaylistsOffer(child: child!)),
+          child: WebVersionWatcher(
+            child: SessionInviteWatcher(
+              child: SyncNoticesListener(
+                child: DownloadNotices(
+                  child: LocalPlaylistsOffer(child: child!),
+                ),
+              ),
             ),
           ),
         ),

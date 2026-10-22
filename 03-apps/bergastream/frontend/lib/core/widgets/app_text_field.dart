@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../theme/berga_colors.dart';
 import '../theme/berga_sizes.dart';
@@ -19,7 +20,15 @@ class AppTextField extends StatelessWidget {
     this.autofocus = false,
     this.autofillHints,
     this.onClear,
+    this.maxLength,
+    this.maxLines = 1,
   });
+
+  /// Mais de 1: texto em várias linhas (mensagem).
+  final int maxLines;
+
+  /// Corta o texto neste tamanho (sem contador).
+  final int? maxLength;
 
   final String hint;
   final TextEditingController? controller;
@@ -69,10 +78,15 @@ class AppTextField extends StatelessWidget {
     );
     return TextField(
       controller: controller,
+      inputFormatters: [
+        if (maxLength case final max?) LengthLimitingTextInputFormatter(max),
+      ],
       onChanged: onChanged,
       onSubmitted: onSubmitted,
       obscureText: obscureText,
-      keyboardType: keyboardType,
+      maxLines: maxLines,
+      minLines: maxLines > 1 ? 3 : null,
+      keyboardType: maxLines > 1 ? TextInputType.multiline : keyboardType,
       textInputAction: textInputAction,
       autofocus: autofocus,
       autofillHints: autofillHints,

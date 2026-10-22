@@ -31,20 +31,33 @@ abstract interface class AuthRepository {
   /// Lança [AuthException] se nenhum candidato responder.
   Future<String> discoverServer(String server);
 
-  /// Se o servidor permite criar conta (mostra o link "Criar conta").
-  Future<bool> canRegister(String server);
+  /// Como o servidor aceita o login (Authentik, senha, cadastro).
+  /// Sem resposta: só senha, como antes.
+  Future<AuthOptions> options(String server);
+
+  /// "Esqueci minha senha": o servidor manda o link para o e-mail da conta
+  /// ([login] = usuário ou e-mail). Não diz se a conta existe.
+  Future<void> forgotPassword({required String server, required String login});
+
+  /// Troca o código de uso único do login pelo Authentik pelos tokens do
+  /// Bergastream, provando o PKCE do app ([verifier]).
+  Future<TokenResponse> exchangeOidc({
+    required String server,
+    required String code,
+    required String verifier,
+  });
 }
 
 /// Caminho do Traefik que libera a API para os apps (sem Authentik).
 const bypassPrefix = '/api-access-bypass';
 
-/// Endereços a testar, em ordem: o bypass primeiro, porque funciona em casa
-/// e fora (o endereço simples só passa direto pelos aparelhos de
-/// confiança da rede local).
+/// Endereços a testar, em ordem: o endereço simples primeiro (com o login
+/// pelo Authentik dentro do app, o servidor tem uma rota só); o bypass é
+/// para servidores ainda atrás do forward-auth do Authentik.
 List<String> serverCandidates(String server) {
   final uri = Uri.parse(server);
   if (uri.path.isNotEmpty && uri.path != '/') return [server];
-  return ['$server$bypassPrefix', server];
+  return [server, '$server$bypassPrefix'];
 }
 
 final authRepositoryProvider = Provider<AuthRepository>(HttpAuthRepository.new);

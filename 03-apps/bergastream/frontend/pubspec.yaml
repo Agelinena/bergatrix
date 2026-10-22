@@ -1,17 +1,19 @@
 name: bergastream
 description: Bergastream, app de streaming musical self-hosted.
 publish_to: none
-version: 0.3.2+302
+version: 0.4.0+400
 
 environment:
   sdk: ^3.12.0
 
 # Os pacotes da Seção 3 da Documentação entram no passo que os usa.
 dependencies:
+  app_links: ^7.2.2
   audio_service: ^0.18.19
   audio_session: ^0.2.4
   background_downloader: ^9.5.9
   connectivity_plus: ^7.3.2
+  crypto: ^3.0.6
   device_info_plus: ^13.3.0
   dio: ^5.11.1
   drift: ^2.35.1
@@ -32,6 +34,7 @@ dependencies:
   path_provider: ^2.1.6
   share_plus: ^13.3.1
   url_launcher: ^6.3.3
+  web: ^1.1.1
   web_socket_channel: ^3.0.3
 
 dev_dependencies:

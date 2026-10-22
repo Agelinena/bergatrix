@@ -27,6 +27,10 @@ class InvalidRefreshToken(Exception):
     pass
 
 
+class AccountDisabled(Exception):
+    pass
+
+
 def _user_out(row) -> UserOut:
     return UserOut(
         id=row["id"], username=row["username"], name=row["name"], is_admin=row["is_admin"]
@@ -61,6 +65,14 @@ async def login(
     ok = verify_password(row["password_hash"] if row else None, password)
     if not row or not ok:
         raise InvalidCredentials()
+    # Só depois da senha certa: não revela quais contas existem.
+    if row["disabled_at"] is not None:
+        raise AccountDisabled()
+    return await _issue(pool, row, uuid.uuid4(), user_agent)
+
+
+async def issue_for(pool: "asyncpg.Pool", row, user_agent: str | None) -> TokenPair:
+    """Sessão nova para um usuário já autenticado (login pelo Authentik)."""
     return await _issue(pool, row, uuid.uuid4(), user_agent)
 
 
@@ -87,7 +99,7 @@ async def refresh(pool: "asyncpg.Pool", token: str, user_agent: str | None) -> T
         raise InvalidRefreshToken()
 
     row = await repo.get_user_by_id(pool, current["user_id"])
-    if row is None:
+    if row is None or row["disabled_at"] is not None:
         raise InvalidRefreshToken()
     return await _issue(pool, row, current["family_id"], user_agent)
 

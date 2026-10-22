@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import sys
+import uuid
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -148,6 +149,26 @@ def main():
                 ok(True, False, "token inválido")
             except WebSocketDisconnect as exc:
                 ok(exc.code, 4401, "token inválido: 4401")
+            print("=== playlists mudaram ===")
+            def auth(k):
+                return {"Authorization": f"Bearer {tok[k]}"}
+            pid = c.post("/api/playlists", json={"name": "Aviso"}, headers=auth("lucas")).json()["id"]
+            ok(recv(web2, "playlists_changed")["playlists"], [pid], "criar avisa os aparelhos do dono")
+            c.put(f"/api/playlists/{pid}/members/{users['marina'][0]}", json={"role": "editor"},
+                  headers=auth("lucas"))
+            ok(recv(other, "playlists_changed")["playlists"], [pid], "quem entrou na playlist é avisado")
+            recv(web2, "playlists_changed")
+            c.patch(f"/api/playlists/{pid}", json={"name": "Aviso 2"}, headers=auth("marina"))
+            ok(recv(web2, "playlists_changed")["playlists"], [pid], "edição de outra pessoa avisa o dono")
+            recv(other, "playlists_changed")
+            r = c.post("/api/playlists/ops", headers=auth("lucas"), json={"ops": [
+                {"op_id": str(uuid.uuid4()), "type": "rename",
+                 "playlist": pid, "name": "Aviso 3", "base": "Aviso 2"}]})
+            ok(r.json()["results"][0]["status"], "applied", "lote de alterações aplicado")
+            ok(recv(other, "playlists_changed")["playlists"], [pid], "lote de alterações avisa quem vê")
+            recv(web2, "playlists_changed")
+            c.delete(f"/api/playlists/{pid}", headers=auth("lucas"))
+            ok(recv(other, "playlists_changed")["playlists"], [pid], "apagar avisa quem via")
             for ws in OPEN:
                 try:
                     ws.__exit__(None, None, None)

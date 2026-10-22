@@ -24,6 +24,9 @@ import '../session/session_sheet.dart';
 import '../update/update_prompt.dart';
 import '../update/update_service.dart';
 import 'preferences.dart';
+import '../sync/sync_now_button.dart';
+import '../sync/sync_service.dart';
+import '../account/account_card.dart';
 
 /// Aba Ajustes (Seção 6.5). Downloads e opções completas entram no
 /// Passo 10; o cartão "Desenvolvimento" só existe em debug.
@@ -74,7 +77,8 @@ class SettingsScreen extends ConsumerWidget {
     final c = BergaColors.of(context);
     final session = ref.watch(sessionProvider);
     // Mantém a fila de playlists carregada (aviso ao sair).
-    ref.watch(pendingPlaylistOpsProvider);
+    final pendingOps = ref.watch(pendingPlaylistOpsProvider).value?.length ?? 0;
+    final syncing = ref.watch(syncServiceProvider);
     final downloadsAvailable = ref
         .read(downloadManagerProvider.notifier)
         .available;
@@ -108,9 +112,25 @@ class SettingsScreen extends ConsumerWidget {
                 ),
                 _ => Text('Não conectado', style: mu),
               },
+              if (session.isLoggedIn && pendingOps > 0)
+                Text(
+                  'Alterações de playlist aguardando envio: $pendingOps',
+                  style: mu,
+                ),
               const SizedBox(height: 12),
               if (session.isLoggedIn)
-                AppChip(label: 'Sair', onTap: () => _logout(context, ref))
+                Wrap(
+                  spacing: BergaSizes.chipGap,
+                  runSpacing: 8,
+                  children: [
+                    AppChip(
+                      label: syncing ? 'Sincronizando…' : 'Sincronizar agora',
+                      icon: Icons.cloud_sync_outlined,
+                      onTap: syncing ? null : () => syncNow(context, ref),
+                    ),
+                    AppChip(label: 'Sair', onTap: () => _logout(context, ref)),
+                  ],
+                )
               else
                 PrimaryButton(
                   label: 'Entrar',
@@ -119,6 +139,7 @@ class SettingsScreen extends ConsumerWidget {
             ],
           ),
         ),
+        if (session.isLoggedIn) const AccountCard(),
         if (downloadsAvailable) const _OfflineCard(),
         _QualityCard(downloadsAvailable: downloadsAvailable),
         if (session.isLoggedIn) const SessionSettingsCard(),

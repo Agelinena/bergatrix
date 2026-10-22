@@ -1,5 +1,6 @@
 import 'package:bergastream/app/routes.dart';
 import 'package:bergastream/core/platform/app_platform.dart';
+import 'package:bergastream/data/models/auth.dart';
 import 'package:bergastream/data/repositories/fake_auth_repository.dart';
 import 'package:bergastream/features/auth/login_screen.dart';
 import 'package:bergastream/features/auth/session.dart';
@@ -7,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../app_harness.dart';
+import '../../fake_oidc.dart';
 
 void main() {
   Finder field(String hint) => find.widgetWithText(TextField, hint);
@@ -84,6 +86,74 @@ void main() {
       find.text('Não foi possível conectar. Verifique sua internet.'),
       findsOneWidget,
     );
+  });
+
+  group('servidor com Authentik', () {
+    const web = SessionState(
+      status: SessionStatus.deslogado,
+      server: testServer,
+    );
+
+    FakeAuthRepository authWith(AuthOptions options) =>
+        FakeAuthRepository(delay: Duration.zero)
+          ..authOptions = options
+          ..oidcCode = 'c1';
+
+    testWidgets('só Authentik: sem usuário e senha; entra pelo botão', (
+      tester,
+    ) async {
+      final oidc = FakeOidcLauncher(code: 'c1');
+      await pumpBergastream(
+        tester,
+        platform: const AppPlatform.web(),
+        session: web,
+        size: const Size(1200, 800),
+        auth: authWith(
+          const AuthOptions(oidcEnabled: true, passwordLoginEnabled: false),
+        ),
+        oidc: oidc,
+      );
+      expect(find.text('Entrar com o Authentik'), findsOneWidget);
+      expect(find.text('Seu usuário'), findsNothing);
+      expect(find.text('Entrar com usuário e senha'), findsNothing);
+
+      await tester.tap(find.text('Entrar com o Authentik'));
+      await tester.pumpAndSettle();
+      expect(oidc.opened.single.path, '/api/auth/oidc/start');
+      expect(find.byType(LoginScreen), findsNothing);
+    });
+
+    testWidgets('Authentik e senha: a senha fica recolhida', (tester) async {
+      await pumpBergastream(
+        tester,
+        platform: const AppPlatform.web(),
+        session: web,
+        size: const Size(1200, 800),
+        auth: authWith(const AuthOptions(oidcEnabled: true)),
+      );
+      expect(find.text('Entrar com o Authentik'), findsOneWidget);
+      expect(find.text('Seu usuário'), findsNothing);
+      await tester.tap(find.text('Entrar com usuário e senha'));
+      await tester.pumpAndSettle();
+      expect(field('Seu usuário'), findsOneWidget);
+    });
+
+    testWidgets('desistiu no navegador: mostra o aviso', (tester) async {
+      await pumpBergastream(
+        tester,
+        platform: const AppPlatform.web(),
+        session: web,
+        size: const Size(1200, 800),
+        auth: authWith(const AuthOptions(oidcEnabled: true)),
+        oidc: FakeOidcLauncher(),
+      );
+      await tester.tap(find.text('Entrar com o Authentik'));
+      await tester.pumpAndSettle();
+      expect(
+        find.text('O login pelo Authentik não terminou. Tente de novo.'),
+        findsOneWidget,
+      );
+    });
   });
 
   testWidgets('login certo abre o Início', (tester) async {

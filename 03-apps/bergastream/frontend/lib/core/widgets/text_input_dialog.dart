@@ -13,6 +13,7 @@ Future<String?> showTextInputDialog(
   required String hint,
   String initial = '',
   String confirmLabel = 'Salvar',
+  int maxLength = 100,
 }) {
   return showDialog<String>(
     context: context,
@@ -20,8 +21,11 @@ Future<String?> showTextInputDialog(
     builder: (_) => _TextInputDialog(
       title: title,
       hint: hint,
-      initial: initial,
+      initial: initial.length > maxLength
+          ? initial.substring(0, maxLength)
+          : initial,
       confirmLabel: confirmLabel,
+      maxLength: maxLength,
     ),
   );
 }
@@ -32,8 +36,10 @@ class _TextInputDialog extends StatefulWidget {
     required this.hint,
     required this.initial,
     required this.confirmLabel,
+    required this.maxLength,
   });
 
+  final int maxLength;
   final String title;
   final String hint;
   final String initial;
@@ -90,6 +96,7 @@ class _TextInputDialogState extends State<_TextInputDialog> {
                   hint: widget.hint,
                   controller: _controller,
                   autofocus: true,
+                  maxLength: widget.maxLength,
                   onSubmitted: (_) => _submit(),
                 ),
               ),

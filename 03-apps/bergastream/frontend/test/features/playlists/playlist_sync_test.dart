@@ -1,3 +1,4 @@
+import 'package:bergastream/core/network/api_error.dart';
 import 'package:bergastream/core/platform/app_platform.dart';
 import 'package:bergastream/core/storage/key_value_store.dart';
 import 'package:bergastream/data/local/database.dart';
@@ -321,6 +322,60 @@ void main() {
 
     repo.opsHandler = null;
     expect((await flush()).sent, 4);
+    expect(await pending(), 0);
+  });
+
+  test('alteração que o servidor nunca aceita não trava a fila', () async {
+    await editOffline();
+    online(true);
+    var calls = 0;
+    // O servidor recusa o lote inteiro (422) por causa da renomeação: passa
+    // a mandar uma por vez e só ela sai da fila.
+    repo.opsHandler = (ops) {
+      calls++;
+      if (ops.any((o) => o.type == PlaylistOpType.rename)) {
+        throw const ApiException(ApiErrorKind.requisicao, statusCode: 422);
+      }
+      return OpBatchResult(
+        results: [
+          for (final o in ops) OpResult(opId: o.opId, status: OpStatus.applied),
+        ],
+      );
+    };
+    final outcome = await flush();
+    expect(await pending(), 0);
+    expect(outcome.sent, 3);
+    expect(calls, 5); // lote + 4 sozinhas
+  });
+
+  test('fila que não foi tenta de novo sozinha', () async {
+    c.dispose();
+    c = ProviderContainer(
+      overrides: [
+        appPlatformProvider.overrideWithValue(const AppPlatform.app()),
+        keyValueStoreProvider.overrideWithValue(MemoryKeyValueStore()),
+        initialSessionProvider.overrideWithValue(loggedIn),
+        authRepositoryProvider.overrideWithValue(
+          FakeAuthRepository(delay: Duration.zero),
+        ),
+        playlistRepositoryProvider.overrideWithValue(repo),
+        localDatabaseProvider.overrideWithValue(db),
+        playlistRetryDelayProvider.overrideWithValue(
+          const Duration(milliseconds: 10),
+        ),
+      ],
+    );
+    c.listen(myPlaylistsProvider, (_, _) {});
+    c.listen(playlistSyncProvider, (_, _) {});
+    await editOffline();
+    online(true);
+    repo.offline = true;
+    await flush();
+    expect(await pending(), 4);
+    repo.offline = false;
+    for (var i = 0; i < 50 && await pending() > 0; i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+    }
     expect(await pending(), 0);
   });
 

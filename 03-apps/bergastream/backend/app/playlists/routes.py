@@ -13,6 +13,7 @@ from app.auth.dependencies import CurrentUser, current_user
 from app.core.db import get_pool
 from app.core.redis import get_redis
 from app.downloads import queue as q
+from app.playlists import notify
 from app.playlists import ops as playlist_ops
 from app.playlists import repository as repo
 from app.playlists import service
@@ -84,6 +85,7 @@ async def create(body: NewPlaylist, user: CurrentUser = Depends(current_user)):
     row = await pool.fetchrow(
         "INSERT INTO playlists (user_id, name, description) VALUES ($1, $2, $3) RETURNING id",
         user.id, body.name.strip(), body.description.strip())
+    await notify.changed(pool, user.id, [str(row["id"])])
     return await service.summary(pool, str(row["id"]), user.id)
 
 
@@ -91,7 +93,16 @@ async def create(body: NewPlaylist, user: CurrentUser = Depends(current_user)):
 async def apply_ops(body: playlist_ops.OpBatch, user: CurrentUser = Depends(current_user)):
     """Alterações em lote, na ordem (inclusive as feitas offline nos apps).
     Ver app/playlists/ops.py: intenções, conflitos e reenvio seguro."""
-    return await playlist_ops.apply_batch(get_pool(), user, body)
+    pool = get_pool()
+    # Quem via as playlists antes (as apagadas no lote perdem os membros).
+    before = await notify.audience(pool, [
+        op.playlist for op in body.ops
+        if isinstance(op.playlist, str) and playlist_ops._is_uuid(op.playlist)])
+    result = await playlist_ops.apply_batch(pool, user, body)
+    touched = [r.playlist_id for r in result.results if r.status == "applied"]
+    if touched:
+        await notify.changed(pool, user.id, touched, people=before)
+    return result
 
 
 @router.get("/playlists/{playlist_id}", response_model=service.PlaylistDetail)
@@ -110,6 +121,7 @@ async def update(playlist_id: str, body: PlaylistPatch, user: CurrentUser = Depe
     if body.description is not None:
         await pool.execute("UPDATE playlists SET description = $2, updated_at = now() WHERE id = $1",
                            playlist_id, body.description.strip())
+    await notify.changed(pool, user.id, [playlist_id])
     return await service.summary(pool, playlist_id, user.id)
 
 
@@ -118,10 +130,12 @@ async def remove(playlist_id: str, user: CurrentUser = Depends(current_user)):
     await _require(playlist_id, user, "owner")
     pool = get_pool()
     row = await pool.fetchrow("SELECT cover_path FROM playlists WHERE id = $1", playlist_id)
+    people = await notify.audience(pool, [playlist_id])
     for track_id in await service.delete(pool, playlist_id):
         await repo.release_if_orphan(pool, track_id)
     if row and row["cover_path"]:
         Path(row["cover_path"]).unlink(missing_ok=True)
+    await notify.changed(pool, user.id, [playlist_id], people=people)
 
 
 @router.post("/playlists/{playlist_id}/tracks")
@@ -134,6 +148,7 @@ async def add_track(playlist_id: str, body: PlayRequest, user: CurrentUser = Dep
         r = await get_redis()
         await q.enqueue(r, result.track_id, body.provider, priority=3,
                         external_id=body.external_id, title=body.title, artist=body.artist)
+    await notify.changed(pool, user.id, [playlist_id])
     return {"track_id": result.track_id, "playlist_id": playlist_id, "status": "permanent"}
 
 
@@ -143,7 +158,7 @@ async def _add_tracks_in_background(playlist_id: str, user_id: str, tracks: list
     pool = get_pool()
     r = await get_redis()
     added = 0
-    for body in tracks:
+    for i, body in enumerate(tracks, 1):
         try:
             result = await tracks_service.resolve_and_register(pool, body)
             await repo.add_track_to_playlist(pool, playlist_id, result.track_id, user_id)
@@ -153,6 +168,9 @@ async def _add_tracks_in_background(playlist_id: str, user_id: str, tracks: list
             added += 1
         except Exception as exc:
             logger.warning("[bulk] falhou %s - %s: %s", body.artist, body.title, exc)
+        # As telas abertas vão vendo as músicas chegarem (e o fim).
+        if i % 25 == 0 or i == len(tracks):
+            await notify.changed(pool, user_id, [playlist_id])
     logger.info("[bulk] %d/%d faixas adicionadas à playlist %s", added, len(tracks), playlist_id)
 
 
@@ -171,6 +189,7 @@ async def remove_track(playlist_id: str, track_id: str, user: CurrentUser = Depe
     await _require(playlist_id, user, "editor")
     pool = get_pool()
     await repo.remove_track_from_playlist(pool, playlist_id, track_id)
+    await notify.changed(pool, user.id, [playlist_id])
     remaining = await repo.get_track_playlist_count(pool, track_id)
     return {"track_id": track_id, "playlist_id": playlist_id,
             "status": "permanent" if remaining else "cache", "remaining_playlists": remaining}
@@ -180,6 +199,7 @@ async def remove_track(playlist_id: str, track_id: str, user: CurrentUser = Depe
 async def reorder(playlist_id: str, body: Order, user: CurrentUser = Depends(current_user)):
     await _require(playlist_id, user, "editor")
     await service.reorder(get_pool(), playlist_id, body.track_ids)
+    await notify.changed(get_pool(), user.id, [playlist_id])
 
 
 @router.put("/playlists/{playlist_id}/cover", response_model=service.PlaylistSummary)
@@ -193,6 +213,7 @@ async def upload_cover(playlist_id: str, file: UploadFile = File(...), user: Cur
         raise HTTPException(413, detail="Imagem maior que 5 MB")
     pool = get_pool()
     await service.save_cover(pool, playlist_id, data, ext)
+    await notify.changed(pool, user.id, [playlist_id])
     return await service.summary(pool, playlist_id, user.id)
 
 
@@ -224,6 +245,7 @@ async def set_member(playlist_id: str, member_id: str, body: MemberRole, user: C
            ON CONFLICT (playlist_id, user_id) DO UPDATE SET role = EXCLUDED.role""",
         playlist_id, member_id, body.role)
     await pool.execute("UPDATE playlists SET updated_at = now() WHERE id = $1", playlist_id)
+    await notify.changed(pool, user.id, [playlist_id])
 
 
 @router.delete("/playlists/{playlist_id}/members/{member_id}", status_code=204)
@@ -233,3 +255,5 @@ async def remove_member(playlist_id: str, member_id: str, user: CurrentUser = De
     await pool.execute("DELETE FROM playlist_members WHERE playlist_id = $1 AND user_id = $2",
                        playlist_id, member_id)
     await pool.execute("UPDATE playlists SET updated_at = now() WHERE id = $1", playlist_id)
+    # Quem saiu também atualiza (a playlist some da Biblioteca dele).
+    await notify.changed(pool, user.id, [playlist_id], people={member_id})

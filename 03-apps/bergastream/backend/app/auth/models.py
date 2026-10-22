@@ -40,6 +40,17 @@ class TokenPair(BaseModel):
 
 class AuthConfig(BaseModel):
     registration_enabled: bool
+    # Login pelo Authentik (botão "Entrar com o Authentik") e por senha.
+    oidc_enabled: bool = False
+    password_login_enabled: bool = True
+    # "Esqueci minha senha" (senha ligada, SMTP e endereço do app configurados).
+    password_reset_enabled: bool = False
+
+
+class OIDCExchange(BaseModel):
+    code: str = Field(min_length=10, max_length=200)
+    # PKCE do app: só quem começou o login consegue trocar o código.
+    verifier: str = Field(min_length=43, max_length=128)
 
 
 class StreamToken(BaseModel):

@@ -13,6 +13,8 @@ import 'package:bergastream/features/auth/session.dart';
 import 'package:bergastream/features/downloads/download_manager.dart';
 import 'package:bergastream/features/downloads/file_fetcher.dart';
 import 'package:bergastream/features/player/player_controller.dart';
+import 'package:bergastream/features/playlists/playlist_store.dart';
+import 'package:bergastream/features/sync/playlist_signal.dart';
 import 'package:bergastream/features/sync/server_monitor.dart';
 import 'package:bergastream/features/sync/sync_service.dart';
 import 'package:bergastream/data/api/api_dio.dart';
@@ -29,11 +31,13 @@ import '../../fake_player.dart';
 /// Servidor de playlists em que dá para mudar a playlist p1 "pelo web".
 class ChangingPlaylists extends FakePlaylistRepository {
   String updatedAt = 'v1';
+  int listCalls = 0;
 
   @override
-  Future<List<ServerPlaylist>> myPlaylists() async => [
-    ServerPlaylist(id: 'p1', name: 'Roadtrip', updatedAt: updatedAt),
-  ];
+  Future<List<ServerPlaylist>> myPlaylists() async {
+    listCalls++;
+    return [ServerPlaylist(id: 'p1', name: 'Roadtrip', updatedAt: updatedAt)];
+  }
 
   @override
   Future<PlaylistDetail> detail(String id) async {
@@ -185,6 +189,50 @@ void main() {
       expect(
         await c.read(syncServiceProvider.notifier).updateDownloadedPlaylists(),
         0,
+      );
+    });
+  });
+
+  group('sincronizar com a nuvem', () {
+    test('aviso do servidor busca as playlists de novo', () async {
+      c.listen(syncServiceProvider, (_, _) {});
+      c.listen(serverPlaylistsProvider, (_, _) {});
+      await c.read(serverPlaylistsProvider.future);
+      final before = playlists.listCalls;
+      final signal = c.read(playlistsChangedSignalProvider);
+      // Vários avisos seguidos viram uma busca só.
+      signal
+        ..add(['p1'])
+        ..add(['p1']);
+      await Future<void>.delayed(const Duration(milliseconds: 700));
+      await c.read(serverPlaylistsProvider.future);
+      expect(playlists.listCalls, before + 1);
+    });
+
+    test(
+      '"Sincronizar agora" atualiza as baixadas mesmo sem o automático',
+      () async {
+        await db.savePlaylist(await playlists.detail('p1'));
+        playlists.updatedAt = 'v2';
+        playlists.tracks.add(playlists.tracks.first.copyForTest('nova'));
+        final report = await c.read(syncServiceProvider.notifier).syncNow();
+        expect(report.updated, 1);
+        expect(report.message, 'Sincronizado: 1 playlist baixada atualizada.');
+        expect(await db.track('nova'), isNotNull);
+        expect(c.read(syncServiceProvider), isFalse);
+      },
+    );
+
+    test('sem servidor: avisa que as alterações ficam guardadas', () async {
+      await db.addPlaylistOp('p1', '{}');
+      c.read(sessionProvider.notifier).setServerAvailable(false);
+      pingOk = false;
+      final report = await c.read(syncServiceProvider.notifier).syncNow();
+      expect(report.offline, isTrue);
+      expect(
+        report.message,
+        'Sem conexão com o servidor. 1 alteração fica guardada e vai quando '
+        'ele voltar.',
       );
     });
   });

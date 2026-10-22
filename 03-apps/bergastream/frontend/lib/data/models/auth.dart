@@ -66,6 +66,42 @@ enum AuthError {
 
   /// "Muitas tentativas. Aguarde alguns minutos e tente de novo."
   muitasTentativas,
+
+  /// O servidor só aceita o login pelo Authentik.
+  useAuthentik,
+
+  /// O servidor não tem login pelo Authentik.
+  semAuthentik,
+
+  /// O login pelo Authentik não terminou (cancelado, expirou, recusado).
+  authentikFalhou,
+}
+
+/// Como o servidor aceita o login (`/api/auth/config`).
+class AuthOptions {
+  const AuthOptions({
+    this.oidcEnabled = false,
+    this.passwordLoginEnabled = true,
+    this.registrationEnabled = false,
+    this.passwordResetEnabled = false,
+  });
+
+  factory AuthOptions.fromJson(Map<String, dynamic> json) => AuthOptions(
+    oidcEnabled: json['oidc_enabled'] == true,
+    passwordLoginEnabled: json['password_login_enabled'] != false,
+    registrationEnabled: json['registration_enabled'] == true,
+    passwordResetEnabled: json['password_reset_enabled'] == true,
+  );
+
+  /// "Entrar com o Authentik".
+  final bool oidcEnabled;
+
+  /// Usuário e senha do Bergastream.
+  final bool passwordLoginEnabled;
+  final bool registrationEnabled;
+
+  /// "Esqueci minha senha" (link por e-mail).
+  final bool passwordResetEnabled;
 }
 
 class AuthException implements Exception {

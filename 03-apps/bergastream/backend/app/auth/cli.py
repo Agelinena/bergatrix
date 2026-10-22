@@ -4,6 +4,8 @@ Uso (dentro do container da API):
     python -m app.auth.cli create-user <username> [--admin]
     python -m app.auth.cli set-password <username>
     python -m app.auth.cli list-users
+    python -m app.auth.cli set-email <username> <email>
+    python -m app.auth.cli unlink-authentik <username>
 
 A senha é pedida no terminal (ou lida da entrada padrão com --password-stdin).
 """
@@ -36,14 +38,36 @@ async def _main(args: argparse.Namespace) -> None:
     try:
         if args.command == "list-users":
             rows = await pool.fetch(
-                "SELECT username, is_admin, password_hash IS NOT NULL AS has_password "
-                "FROM users ORDER BY username"
+                "SELECT username, is_admin, password_hash IS NOT NULL AS has_password, "
+                "oidc_subject IS NOT NULL AS linked, email FROM users ORDER BY username"
             )
             for r in rows:
-                flags = ("admin " if r["is_admin"] else "") + (
-                    "" if r["has_password"] else "(sem senha)"
-                )
-                print(f"{r['username']} {flags}".rstrip())
+                flags = [
+                    "admin" if r["is_admin"] else "",
+                    "" if r["has_password"] else "(sem senha)",
+                    "[Authentik]" if r["linked"] else "",
+                    r["email"] or "",
+                ]
+                print(" ".join([r["username"], *[f for f in flags if f]]))
+            return
+
+        if args.command in ("set-email", "unlink-authentik"):
+            existing = await repo.get_user_by_username(pool, args.username)
+            if not existing:
+                sys.exit(f"Usuário {args.username!r} não existe.")
+            if args.command == "set-email":
+                # O 1º login pelo Authentik liga a conta por este e-mail quando
+                # o nome de usuário lá é outro.
+                await pool.execute("UPDATE users SET email = $2 WHERE id = $1",
+                                   existing["id"], args.email.strip().lower())
+                print(f"E-mail de {args.username!r} definido.")
+            else:
+                # Ligação errada: o próximo login pelo Authentik liga de novo
+                # (pelo nome de usuário ou e-mail).
+                await pool.execute("UPDATE users SET oidc_subject = NULL WHERE id = $1",
+                                   existing["id"])
+                await repo.revoke_all_for_user(pool, existing["id"])
+                print(f"{args.username!r} desligado do Authentik; sessões encerradas.")
             return
 
         existing = await repo.get_user_by_username(pool, args.username)
@@ -74,6 +98,11 @@ def main() -> None:
     setpw.add_argument("username")
     setpw.add_argument("--password-stdin", action="store_true")
     sub.add_parser("list-users")
+    email = sub.add_parser("set-email")
+    email.add_argument("username")
+    email.add_argument("email")
+    unlink = sub.add_parser("unlink-authentik")
+    unlink.add_argument("username")
     asyncio.run(_main(parser.parse_args()))
 
 

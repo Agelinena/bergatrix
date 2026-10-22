@@ -40,10 +40,13 @@ class FakeAuthRepository implements AuthRepository {
     );
   }
 
+  /// Endereço que a descoberta devolve no lugar do digitado (ex.: bypass).
+  final discovered = <String, String>{};
+
   @override
   Future<String> discoverServer(String server) async {
     _checkServer(server);
-    return server;
+    return discovered[server] ?? server;
   }
 
   @override
@@ -72,8 +75,51 @@ class FakeAuthRepository implements AuthRepository {
     return user;
   }
 
+  /// O que o servidor falso diz aceitar (padrão: só senha).
+  AuthOptions authOptions = const AuthOptions();
+
   @override
-  Future<bool> canRegister(String server) async => false;
+  Future<AuthOptions> options(String server) async => authOptions;
+
+  /// Pedidos de "esqueci minha senha" recebidos.
+  final forgotten = <String>[];
+
+  @override
+  Future<void> forgotPassword({
+    required String server,
+    required String login,
+  }) async {
+    _checkServer(server);
+    forgotten.add(login);
+  }
+
+  /// Código que o "Authentik" devolve e o verifier esperado (PKCE).
+  String? oidcCode;
+  String? oidcVerifier;
+
+  /// Recebe o verifier de cada troca (para conferir o PKCE nos testes).
+  void Function(String verifier)? onExchange;
+
+  @override
+  Future<TokenResponse> exchangeOidc({
+    required String server,
+    required String code,
+    required String verifier,
+  }) async {
+    _checkServer(server);
+    onExchange?.call(verifier);
+    if (code != oidcCode ||
+        (oidcVerifier != null && verifier != oidcVerifier)) {
+      throw const AuthException(AuthError.authentikFalhou);
+    }
+    final t = _tokens();
+    return TokenResponse(
+      accessToken: t.accessToken,
+      refreshToken: t.refreshToken,
+      expiresIn: 900,
+      user: user,
+    );
+  }
 
   void _checkServer(String server) {
     if (server.contains('offline')) {

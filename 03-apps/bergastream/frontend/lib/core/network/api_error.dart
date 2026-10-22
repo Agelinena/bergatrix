@@ -18,12 +18,22 @@ enum ApiErrorKind {
 }
 
 class ApiException implements Exception {
-  const ApiException(this.kind, {this.statusCode});
+  const ApiException(this.kind, {this.statusCode, this.detail});
 
   final ApiErrorKind kind;
   final int? statusCode;
 
+  /// Texto do servidor (`detail`), quando ele explica o motivo.
+  final String? detail;
+
   String get message => kind.message;
+
+  /// O motivo dado pelo servidor ("Já existe uma conta com este e-mail."),
+  /// senão a mensagem geral. Usado onde o servidor fala com a pessoa.
+  String get serverMessage =>
+      kind == ApiErrorKind.semConexao || kind == ApiErrorKind.tempoEsgotado
+      ? message
+      : detail ?? message;
 
   /// Falha passageira (rede, servidor fora, tempo esgotado): vale tentar de
   /// novo mais tarde sem perder o que estava sendo enviado.
@@ -50,7 +60,11 @@ class ApiException implements Exception {
       },
       _ => ApiErrorKind.semConexao,
     };
-    return ApiException(kind, statusCode: status);
+    final data = e.response?.data;
+    final detail = data is Map && data['detail'] is String
+        ? data['detail'] as String
+        : null;
+    return ApiException(kind, statusCode: status, detail: detail);
   }
 
   /// Erro de conexão em que o endereço do servidor não existe (DNS).

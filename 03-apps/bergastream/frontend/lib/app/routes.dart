@@ -9,6 +9,9 @@ abstract final class AppRoutes {
   /// Gerenciar downloads (Ajustes).
   static const manageDownloads = '$settings/downloads';
 
+  /// Gestão das pessoas (só admin).
+  static const adminUsers = '$settings/usuarios';
+
   /// Detalhe da playlist do servidor, "Pessoas" e playlist local.
   static String playlist(String id) => '$library/playlist/$id';
   static String playlistPeople(String id) => '$library/playlist/$id/pessoas';

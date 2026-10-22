@@ -1,13 +1,16 @@
 # Bergastream – Docker Compose
 #
-# Produção: só o `web` (nginx com o app web) fica na rede do Traefik, no
-# modelo B de docs/legado/modelos-labels-traefik.md. O nginx repassa /api/ para a
-# API, que fica na rede interna junto com banco, Redis, worker e Deemix.
+# Produção: só o `web` (nginx com o app web) recebe o tráfego do Traefik. O
+# nginx repassa /api/ para a API, que fica na rede interna junto com banco,
+# Redis, worker e Deemix.
 #
-#   bergastream.${DOMAIN}                     → web (Authentik de fora; direto
-#                                               nos aparelhos de confiança)
-#   bergastream.${DOMAIN}/api-access-bypass/  → mesma coisa sem Authentik,
-#                                               para os apps (Android/desktop)
+# Acesso (docs/plano-acesso.md): uma rota pública só, com CrowdSec e sem
+# forward-auth. O login é feito pelo próprio Bergastream com o Authentik
+# (OIDC, variáveis OIDC_* no .env; guia em docs/AUTHENTIK.md).
+#
+#   bergastream.${DOMAIN}                          → app web e API
+#   bergastream.${DOMAIN}/api-access-bypass/api/   → API para os apps 0.3.x
+#                                                    (temporário, ver abaixo)
 #
 # Banco, Redis e configs em ${APPDATA_PATH}/bergastream; músicas em
 # ${MEDIA_PATH}/musica (ver .env.example). Desenvolvimento local:
@@ -177,6 +180,9 @@ services:
     networks:
       - bergastream-internal
       - bergastream-egress
+      # Fala com o Authentik direto (OIDC_INTERNAL_URL=http://authentik-server:9000),
+      # sem passar pelo Traefik. Sem labels: o Traefik não publica a API.
+      - bergatrix-proxy
     depends_on:
       redis:
         condition: service_healthy
@@ -203,25 +209,18 @@ services:
       - "traefik.enable=true"
       - "traefik.docker.network=bergatrix-proxy"
 
-      # De fora: login do Authentik antes do app web.
-      - "traefik.http.routers.bergastream-router.rule=Host(`bergastream.${DOMAIN}`) && !PathPrefix(`/api-access-bypass`) && !(ClientIP(`192.168.10.140/32`) || ClientIP(`192.168.10.121/32`) || ClientIP(`192.168.10.1/32`))"
+      # App web e API (modelo E). Sem forward-auth: o Authentik entra pelo
+      # login OIDC do próprio app; a API exige o token dela em toda chamada.
+      - "traefik.http.routers.bergastream-router.rule=Host(`bergastream.${DOMAIN}`)"
       - "traefik.http.routers.bergastream-router.entrypoints=websecure"
       - "traefik.http.routers.bergastream-router.tls=true"
       - "traefik.http.routers.bergastream-router.service=bergastream-service"
-      - "traefik.http.routers.bergastream-router.middlewares=crowdsec-bouncer@file,public-auth@file"
-      - "traefik.http.routers.bergastream-router.priority=100"
+      - "traefik.http.routers.bergastream-router.middlewares=crowdsec-bouncer@file"
 
-      # Aparelhos de confiança: direto.
-      - "traefik.http.routers.bergastream-direct.rule=Host(`bergastream.${DOMAIN}`) && (ClientIP(`192.168.10.140/32`) || ClientIP(`192.168.10.121/32`) || ClientIP(`192.168.10.1/32`))"
-      - "traefik.http.routers.bergastream-direct.entrypoints=websecure"
-      - "traefik.http.routers.bergastream-direct.tls=true"
-      - "traefik.http.routers.bergastream-direct.service=bergastream-service"
-      - "traefik.http.routers.bergastream-direct.priority=110"
-
-      # Apps (Android/Windows/Linux): servidor = https://bergastream.${DOMAIN}
-      # (o app descobre o prefixo sozinho). O prefixo é removido antes do
-      # nginx. Só a API passa (o app web segue atrás do Authentik); ela tem
-      # login próprio (JWT + limite de tentativas).
+      # TEMPORÁRIO: apps 0.3.x salvaram o servidor com /api-access-bypass. A
+      # 0.4 volta sozinha para o endereço simples ao abrir. Remover estas
+      # linhas quando todos os aparelhos estiverem na 0.4 (antes de tirar o
+      # middleware api-access-bypass do dynamic.yml).
       - "traefik.http.routers.bergastream-bypass.rule=Host(`bergastream.${DOMAIN}`) && PathPrefix(`/api-access-bypass/api`)"
       - "traefik.http.routers.bergastream-bypass.entrypoints=websecure"
       - "traefik.http.routers.bergastream-bypass.tls=true"

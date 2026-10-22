@@ -27,6 +27,7 @@ import '../player/track_menu.dart';
 import '../playlists/playlist_shuffle.dart';
 import '../playlists/playlist_store.dart';
 import 'library_providers.dart';
+import 'playlist_cover.dart';
 
 /// Detalhe da playlist (Seção 6.4).
 /// Aviso das ações que dependem do servidor, quando offline.
@@ -425,14 +426,14 @@ class _PlaylistScreenState extends ConsumerState<PlaylistScreen> {
                 : null,
             // Botão direito na capa: o menu da playlist (⋮).
             onSecondaryTap: () => _openMenu(p),
-            // Capa baixada (file://) ou do servidor.
-            child: Cover.playlist(
-              size: constraints.maxWidth.clamp(
-                0,
-                BergaSizes.playlistCoverMaxHeight,
-              ),
+            // Foto guardada no aparelho (aparece offline) ou do servidor.
+            child: ServerPlaylistCover(
+              id: p.id,
+              coverUrl: p.coverUrl,
+              size: constraints.maxWidth
+                  .clamp(0, BergaSizes.playlistCoverMaxHeight)
+                  .toDouble(),
               initialSize: 60,
-              image: serverImage(ref, p.coverUrl),
             ),
           ),
         ),

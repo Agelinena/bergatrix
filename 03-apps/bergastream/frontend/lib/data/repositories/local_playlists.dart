@@ -1,9 +1,12 @@
 import 'dart:convert';
+import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/platform/app_platform.dart';
 import '../../core/storage/key_value_store.dart';
+import '../../features/downloads/download_manager.dart';
 
 /// Playlist criada no aparelho sem login ("Só neste aparelho", Seção 6.4).
 class LocalPlaylist {
@@ -11,16 +14,32 @@ class LocalPlaylist {
     required this.id,
     required this.name,
     this.trackIds = const [],
+    this.coverPath,
   });
 
   factory LocalPlaylist.fromJson(Map<String, dynamic> json) => LocalPlaylist(
     id: json['id'] as String,
     name: json['name'] as String,
     trackIds: [for (final t in json['track_ids'] as List<dynamic>) t as String],
+    coverPath: json['cover_path'] as String?,
   );
 
   final String id;
   final String name;
+
+  /// Foto escolhida no aparelho (arquivo na pasta das capas).
+  final String? coverPath;
+
+  LocalPlaylist copyWith({
+    String? name,
+    String? coverPath,
+    bool clearCover = false,
+  }) => LocalPlaylist(
+    id: id,
+    name: name ?? this.name,
+    trackIds: trackIds,
+    coverPath: clearCover ? null : coverPath ?? this.coverPath,
+  );
 
   /// Ids das faixas baixadas (entram com o banco local, Passo 9).
   final List<String> trackIds;
@@ -29,6 +48,7 @@ class LocalPlaylist {
     'id': id,
     'name': name,
     'track_ids': trackIds,
+    'cover_path': ?coverPath,
   };
 }
 
@@ -74,21 +94,43 @@ class LocalPlaylists extends Notifier<List<LocalPlaylist>> {
   }
 
   Future<void> rename(String id, String name) async {
+    state = [for (final p in state) p.id == id ? p.copyWith(name: name) : p];
+    await _save();
+  }
+
+  /// "Trocar foto": guarda a imagem na pasta das capas (nome novo a cada
+  /// troca, para a tela não mostrar a antiga do cache de imagens).
+  Future<void> setCover(String id, List<int> bytes) async {
+    final current = state.where((p) => p.id == id).firstOrNull;
+    if (current == null) return;
+    final dir = (await ref.read(downloadPathsProvider)()).covers;
+    final path = '$dir/$id-${DateTime.now().millisecondsSinceEpoch}.img';
+    await File(path).writeAsBytes(bytes, flush: true);
+    _deleteCover(current.coverPath);
     state = [
-      for (final p in state)
-        p.id == id
-            ? LocalPlaylist(id: id, name: name, trackIds: p.trackIds)
-            : p,
+      for (final p in state) p.id == id ? p.copyWith(coverPath: path) : p,
     ];
     await _save();
   }
 
+  /// Apaga a playlist e a foto dela.
   Future<void> delete(String id) async {
+    final gone = state.where((p) => p.id == id).firstOrNull;
     state = [
       for (final p in state)
         if (p.id != id) p,
     ];
     await _save();
+    _deleteCover(gone?.coverPath);
+  }
+
+  static void _deleteCover(String? path) {
+    if (path == null) return;
+    try {
+      File(path).deleteSync();
+    } on FileSystemException catch (e) {
+      debugPrint('Foto da playlist local não apagada: ${e.message}');
+    }
   }
 }
 

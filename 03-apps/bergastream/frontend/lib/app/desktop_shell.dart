@@ -18,6 +18,8 @@ import '../features/player/player_messages.dart';
 import '../features/player/lyrics.dart';
 import '../features/player/queue_panel.dart';
 import 'app_shell.dart';
+import '../features/sync/sync_now_button.dart';
+import '../features/library/playlist_cover.dart';
 
 /// Layout de navegador (Seção 6.8), no estilo do Spotify Web: barra lateral
 /// com navegação e biblioteca, conteúdo largo e barra do player embaixo.
@@ -193,11 +195,21 @@ class _Sidebar extends StatelessWidget {
                   const Expanded(child: _SidebarPlaylists()),
                   Padding(
                     padding: const EdgeInsets.all(12),
-                    child: Consumer(
-                      builder: (context, ref, _) => PrimaryButton(
-                        label: 'Nova playlist',
-                        onPressed: () => createPlaylist(context, ref),
-                      ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Align(
+                            alignment: Alignment.centerLeft,
+                            child: Consumer(
+                              builder: (context, ref, _) => PrimaryButton(
+                                label: 'Nova playlist',
+                                onPressed: () => createPlaylist(context, ref),
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SyncNowButton(),
+                      ],
                     ),
                   ),
                 ],
@@ -238,7 +250,7 @@ class _SidebarPlaylists extends ConsumerWidget {
               tracks: p.trackCount,
               people: p.peopleCount,
             ),
-            cover: serverImage(ref, p.coverUrl),
+            cover: playlistImage(ref, p.id, p.coverUrl),
             coverSize: 48,
             onTap: () => GoRouter.of(context).go(AppRoutes.playlist(p.id)),
             onMenu: () => showPlaylistMenu(
@@ -246,13 +258,14 @@ class _SidebarPlaylists extends ConsumerWidget {
               ref,
               id: p.id,
               name: p.name,
-              cover: serverImage(ref, p.coverUrl),
+              cover: playlistImage(ref, p.id, p.coverUrl),
             ),
           ),
         for (final p in local)
           PlaylistRow(
             title: p.name,
             subtitle: 'Só neste aparelho',
+            cover: localPlaylistImage(p),
             coverSize: 48,
             onTap: () => GoRouter.of(context).go(AppRoutes.localPlaylist(p.id)),
           ),

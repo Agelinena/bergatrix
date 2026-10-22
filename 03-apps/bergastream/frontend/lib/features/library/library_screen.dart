@@ -18,6 +18,8 @@ import '../playlists/playlist_store.dart';
 import '../playlists/sync_notices.dart';
 import 'library_providers.dart';
 import 'playlist_menu.dart';
+import '../sync/sync_now_button.dart';
+import 'playlist_cover.dart';
 
 /// Aba Biblioteca (Seção 6.4): playlists do servidor (suas e compartilhadas)
 /// e as locais ("Só neste aparelho").
@@ -66,16 +68,20 @@ class LibraryScreen extends ConsumerWidget {
 
     return RefreshIndicator(
       color: c.gr,
-      onRefresh: () async {
-        await ref.read(playlistSyncProvider.notifier).flush();
-        ref.invalidate(serverPlaylistsProvider);
-        await ref.read(serverPlaylistsProvider.future);
-      },
+      // Puxar para baixo = "Sincronizar agora" (envia, busca e atualiza as
+      // baixadas).
+      onRefresh: () => syncNow(context, ref),
       child: ListView(
         key: const PageStorageKey('library'),
         padding: AppLayout.screenPadding(context),
         children: [
-          const ScreenTitle('Biblioteca'),
+          const Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(child: ScreenTitle('Biblioteca')),
+              SyncNowButton(),
+            ],
+          ),
           const SyncNoticesBanner(),
           if (server.hasError && serverList.isEmpty)
             Text(
@@ -98,14 +104,14 @@ class LibraryScreen extends ConsumerWidget {
                 tracks: p.trackCount,
                 people: p.peopleCount,
               ),
-              cover: serverImage(ref, p.coverUrl),
+              cover: playlistImage(ref, p.id, p.coverUrl),
               onTap: () => context.push(AppRoutes.playlist(p.id)),
               onMenu: () => showPlaylistMenu(
                 context,
                 ref,
                 id: p.id,
                 name: p.name,
-                cover: serverImage(ref, p.coverUrl),
+                cover: playlistImage(ref, p.id, p.coverUrl),
               ),
               trailing: trailing(p),
             ),
@@ -113,6 +119,7 @@ class LibraryScreen extends ConsumerWidget {
             PlaylistRow(
               title: p.name,
               subtitle: 'Baixada',
+              cover: playlistImage(ref, p.id, p.coverUrl),
               onTap: () => context.push(AppRoutes.playlist(p.id)),
               trailing: const DownloadStateIcon(state: DownloadState.baixada),
             ),
@@ -120,6 +127,7 @@ class LibraryScreen extends ConsumerWidget {
             PlaylistRow(
               title: p.name,
               subtitle: 'Só neste aparelho',
+              cover: localPlaylistImage(p),
               onTap: () => context.push(AppRoutes.localPlaylist(p.id)),
             ),
           const SizedBox(height: 14),

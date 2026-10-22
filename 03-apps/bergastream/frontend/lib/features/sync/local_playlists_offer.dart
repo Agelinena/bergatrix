@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -68,6 +70,19 @@ Future<void> offerUpload(BuildContext context, WidgetRef ref) async {
           if (await db?.track(id) case final t?) t.asResult,
       ];
       if (tracks.isNotEmpty) await repo.addTracks(created.id, tracks);
+      // A foto escolhida no aparelho vai junto (sem ela, segue sem foto).
+      if (p.coverPath case final cover?) {
+        try {
+          await repo.uploadCover(
+            created.id,
+            await File(cover).readAsBytes(),
+            filename: 'capa.jpg',
+            mimeType: 'image/jpeg',
+          );
+        } on Object catch (e) {
+          debugPrint('Foto da playlist local não enviada: $e');
+        }
+      }
       await ref.read(localPlaylistsProvider.notifier).delete(p.id);
       sent++;
     } on ApiException catch (e) {

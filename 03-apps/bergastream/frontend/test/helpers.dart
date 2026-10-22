@@ -17,7 +17,13 @@ import 'package:bergastream/data/repositories/playlist_repository.dart';
 import 'package:bergastream/data/repositories/search_repository.dart';
 import 'package:bergastream/features/player/audio_engine.dart';
 import 'package:bergastream/features/player/player_controller.dart';
+import 'package:bergastream/data/repositories/account_repository.dart';
+import 'package:bergastream/features/account/account_providers.dart';
+import 'package:bergastream/features/auth/oidc_launcher.dart';
 import 'package:bergastream/features/auth/session.dart';
+import 'package:bergastream/features/library/playlist_cover.dart';
+import 'package:bergastream/features/playlists/playlist_store.dart';
+import 'package:bergastream/features/update/web_version_watcher.dart';
 import 'package:bergastream/data/repositories/lyrics_repository.dart';
 import 'package:bergastream/data/repositories/session_repository.dart';
 import 'package:bergastream/features/session/group_session.dart';
@@ -31,6 +37,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'app_harness.dart';
 import 'fake_player.dart';
+import 'fake_oidc.dart';
 import 'fake_update.dart';
 
 /// Envolve [child] em um app com o tema do Bergastream (escuro por padrão)
@@ -89,6 +96,7 @@ Widget wrap(
       authRepositoryProvider.overrideWithValue(
         FakeAuthRepository(delay: Duration.zero),
       ),
+      oidcLauncherProvider.overrideWithValue(FakeOidcLauncher()),
       searchRepositoryProvider.overrideWithValue(
         search ?? FakeSearchRepository(),
       ),
@@ -113,6 +121,11 @@ Widget wrap(
       serverPingProvider.overrideWithValue(ping ?? (_) async => true),
       connectivityChangesProvider.overrideWithValue(const Stream.empty()),
       serverRetryIntervalProvider.overrideWithValue(null),
+      playlistRetryDelayProvider.overrideWithValue(null),
+      webVersionFetcherProvider.overrideWithValue(null),
+      coverFetcherProvider.overrideWithValue(_NoFetcher()),
+      accountRepositoryProvider.overrideWithValue(FakeAccountRepository()),
+      externalLinkProvider.overrideWithValue((url) async {}),
       downloadPathsProvider.overrideWithValue(
         () async => DownloadPaths(
           audio: Directory.systemTemp.path,

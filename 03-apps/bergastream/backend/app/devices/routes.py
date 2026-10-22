@@ -25,6 +25,7 @@ Mensagens (JSON):
     command   {command, from}
     handoff   {to}                   pare e mande o estado completo
     play_here {state}                agora é aqui que toca
+    playlists_changed {playlists}    playlists da pessoa mudaram (atualizar)
     pong / error
 Fecha com 4401 (login inválido) e 4409 (mesmo aparelho conectou de novo).
 """
@@ -95,6 +96,14 @@ async def _broadcast(ud: UserDevices, message: dict, skip: str | None = None) ->
     for d in list(ud.devices.values()):
         if d.id != skip:
             await _send(d, message)
+
+
+async def notify_users(user_ids, message: dict) -> None:
+    """Mensagem para todos os aparelhos conectados dessas pessoas."""
+    for user_id in set(user_ids):
+        ud = _users.get(user_id)
+        if ud is not None:
+            await _broadcast(ud, message)
 
 
 async def _set_active(ud: UserDevices, device_id: str | None) -> None:

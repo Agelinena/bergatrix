@@ -8,7 +8,7 @@ from uuid import UUID
 if TYPE_CHECKING:
     import asyncpg
 
-_USER_COLUMNS = "id, username, name, password_hash, is_admin"
+_USER_COLUMNS = "id, username, name, password_hash, is_admin, disabled_at"
 
 
 async def get_user_by_username(pool: "asyncpg.Pool", username: str):

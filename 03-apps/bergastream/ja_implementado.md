@@ -42,8 +42,9 @@ backend/
 │   │   ├── service.py           ← Login, renovação com rotação/reuso, logout
 │   │   ├── rate_limit.py        ← 5 falhas por usuário+IP → bloqueio de 15 min (Redis)
 │   │   ├── dependencies.py      ← current_user, admin_user, stream_user
-│   │   ├── routes.py            ← /api/auth/config|login|register|refresh|logout|me
-│   │   └── cli.py               ← create-user, set-password, list-users
+│   │   ├── routes.py            ← /api/auth/config|login|register|refresh|logout|me|oidc/*
+│   │   ├── oidc.py              ← Login pelo Authentik (OIDC, PKCE, ligação das contas)
+│   │   └── cli.py               ← create-user, set-password, list-users, set-email, unlink-authentik
 │   ├── search/
 │   │   ├── models.py            ← SearchResult (provider, external_id, title, artist...)
 │   │   ├── spotify.py           ← Busca via Spotify Client Credentials
@@ -405,6 +406,50 @@ Rodado na imagem `ghcr.io/cirruslabs/flutter:stable` (Flutter 3.44.0 / Dart 3.12
 - Testes: `test_quality` 61, `test_upgrade_flow` 10 (novo; banco real e Lidarr falso). Validado
   contra o MusicBrainz e um Lidarr local (ISRC → álbum de estúdio → `album/lookup` por MBID).
 
+### Versão 0.4.0 — login pelo Authentik, sincronização com a nuvem e capas
+- **Login pelo Authentik (OIDC)** no lugar do usuário e senha, nos apps e na web. O servidor é
+  o cliente OIDC (confidencial, PKCE, `nonce`, `id_token` validado pelo JWKS) e entrega os
+  tokens de sempre do Bergastream (`/api/auth/oidc/start|callback|exchange`). Volta ao app: link
+  `com.bergatrix.bergastream://auth` no Android, endereço local `127.0.0.1` no Windows/Linux, a
+  própria página na web. **Contas existentes são ligadas no 1º login** (pelo nome de usuário ou
+  e-mail), com playlists, músicas e histórico. Grupos do Authentik para entrar e para ser admin.
+  Login por senha desligado quando o OIDC está configurado (`PASSWORD_LOGIN=auto|true|false`).
+  Migração `0016_oidc.sql` (`oidc_subject`, `email`, `last_login_at`); CLI `set-email` e
+  `unlink-authentik`. Guia: [docs/AUTHENTIK.md](docs/AUTHENTIK.md).
+- **Acesso no modelo E:** uma rota pública só, com CrowdSec e sem forward-auth; saíram as rotas
+  por IP fixo. A rota `/api-access-bypass` fica temporária para os apps 0.3.x; a 0.4 volta sozinha
+  para o endereço simples.
+- **Sincronização das playlists:**
+  - o servidor avisa os aparelhos conectados quando uma playlist muda (`playlists_changed` pelo
+    WebSocket de "Tocar em…", também para as pessoas da playlist e durante importações grandes)
+    e o app busca de novo na hora;
+  - ao voltar ao app e ao reconectar, envia o pendente e busca o que mudou nos outros;
+  - a fila de alterações tenta de novo sozinha (5 s, dobrando até 5 min) e uma alteração que o
+    servidor recusa não trava mais as outras (lotes de 20, depois uma por vez);
+  - nomes até 100 letras e descrições até 500 (antes um nome maior travava a fila).
+- **"Sincronizar agora"** em Ajustes, na Biblioteca (ícone de nuvem e puxar para baixo) e na barra
+  lateral do computador: envia alterações e reproduções pendentes, traz as playlists e atualiza
+  as baixadas (mesmo sem "baixar novas automaticamente"); mostra o resultado.
+- **App web atualizado:** o nginx manda o navegador conferir os arquivos a cada abertura (o
+  `main.dart.js` não muda de nome e ficava a versão antiga), e uma aba aberta há tempo mostra
+  "Nova versão do Bergastream → Recarregar".
+- **Capas:** a foto de cada playlist fica guardada no aparelho (aparece offline e não é baixada de
+  novo a cada mudança); playlists "Só neste aparelho" ganham foto (vai junto ao enviar ao
+  servidor); capas aparecem nas baixadas da Biblioteca offline.
+- **Gestão de contas** (Ajustes → Conta → Usuários, só admin): criar conta com convite por
+  e-mail, editar nome/usuário/e-mail, admin, redefinir senha (link por e-mail ou senha
+  temporária), desconectar aparelhos, desligar do Authentik, desativar/reativar (playlists
+  ficam) e aviso livre por e-mail. **Minha conta**: editar perfil e trocar senha, ou "Gerenciar
+  no Authentik" quando a conta vem de lá. **Esqueci minha senha** na tela de login (link por
+  e-mail, página no servidor, uso único). Regras para não perder a ligação com o Authentik: conta
+  ligada tem usuário/nome/e-mail/senha só leitura aqui e copiados do Authentik a cada login (a
+  ligação é pelo `sub`); conta não ligada avisa antes de mudar usuário ou e-mail; e-mail único.
+  Migração `0017_accounts.sql` (`disabled_at`, e-mail único, `password_resets`).
+- **E-mail por SMTP** (`app/core/mail.py`, `SMTP_*`): avisos de senha trocada, e-mail e usuário
+  trocados (o e-mail antigo também), convite, conta desativada/reativada, teste.
+- Testes: backend `test_oidc` 15 (novo), `test_accounts` 51 (novo), `test_devices` 21; app 421.
+  Envio real conferido num servidor SMTP de teste (Mailpit).
+
 ### Versão 0.3.2 — reprodução, volume e atalhos de computador
 - **Pausado em segundo plano (Android):** o serviço de mídia segue em primeiro plano pausado (o
   Android encerrava o app logo depois de pausar e não dava para retomar pela notificação); depois
@@ -700,11 +745,11 @@ conferidas com ffprobe (título diferente → descarta e baixa do YouTube).
 | Suíte | Resultado |
 |---|---|
 | Flutter `flutter analyze` | ✅ sem problemas |
-| Flutter `flutter test` | ✅ 363 |
+| Flutter `flutter test` | ✅ 421 |
 | Flutter `integration_test` (flutter-tester) | ✅ 2 |
-| Backend auth / playlists / history / resolve / catalog / downloads / images | ✅ 38 / 32 / 27 / 17 / 18 / 13 / 12 |
+| Backend auth / OIDC / contas / playlists / ops / history / resolve / catalog / downloads / images | ✅ 38 / 15 / 51 / 32 / 37 / 27 / 17 / 18 / 13 / 12 |
 | Backend qualidade / versões por nível / permanência (pastas) / busca de playlists | ✅ 42 / 18 / 13 / 13 |
-| Backend sessões (estado / REST + WebSocket) / aparelhos | ✅ 28 / 38 / 15 |
+| Backend sessões (estado / REST + WebSocket) / aparelhos | ✅ 28 / 38 / 21 |
 | E2E no Chrome (8080): sem sessão → login; busca; capas pelo proxy; recarregar mantém sessão | ✅ |
 | APK release, AAB, Linux release | ✅ compilam |
 | Windows | ⏳ compila só no CI (windows-latest) |
@@ -722,7 +767,7 @@ conferidas com ffprobe (título diferente → descarta e baixa do YouTube).
 | 4 | Teste em aparelho Android físico (segundo plano, bateria, notificação, tela de bloqueio). |
 | 5 | Proposta 8.7 da Documentação adotada em parte: Drift só nos apps; a web não guarda dados locais. |
 | 6 | Apps Windows/Linux sem assinatura de código; Linux precisa de `libmpv` instalado. |
-| 7 | Sem comando para remover usuário. |
+| 7 | Sem botão para apagar usuário de vez (só desativar, de propósito). |
 | 8 | `backend/static/index.html` (página de teste antiga, não versionada) ainda é servida na porta interna da API. |
 | 9 | Fonte reserva Roboto vem de fonts.gstatic.com (títulos com caracteres fora da Bricolage). |
 

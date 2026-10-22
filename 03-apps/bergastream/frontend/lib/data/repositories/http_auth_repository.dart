@@ -122,19 +122,63 @@ class HttpAuthRepository implements AuthRepository {
   }
 
   @override
-  Future<bool> canRegister(String server) async {
+  Future<AuthOptions> options(String server) async {
     try {
       final response = await _dio.get<Map<String, dynamic>>(
         '$server/api/auth/config',
       );
-      return response.data?['registration_enabled'] == true;
+      return AuthOptions.fromJson(response.data ?? const {});
     } on Object {
-      return false;
+      return const AuthOptions();
+    }
+  }
+
+  @override
+  Future<void> forgotPassword({
+    required String server,
+    required String login,
+  }) async {
+    try {
+      await _dio.post<void>(
+        '$server/api/auth/password/forgot',
+        data: {'login': login.trim()},
+      );
+    } on DioException catch (e) {
+      throw ApiException.fromDio(e);
+    }
+  }
+
+  @override
+  Future<TokenResponse> exchangeOidc({
+    required String server,
+    required String code,
+    required String verifier,
+  }) async {
+    try {
+      final response = await _dio.post<Map<String, dynamic>>(
+        '$server/api/auth/oidc/exchange',
+        data: {'code': code, 'verifier': verifier},
+      );
+      return TokenResponse.fromJson(response.data!);
+    } on DioException catch (e) {
+      final status = e.response?.statusCode;
+      throw AuthException(
+        status == 401 || status == 422
+            ? AuthError.authentikFalhou
+            : _loginError(e),
+      );
     }
   }
 
   static AuthError _loginError(DioException e) {
     final status = e.response?.statusCode;
+    // Servidor só com o login pelo Authentik (senha desligada).
+    final data = e.response?.data;
+    if (status == 403 &&
+        data is Map &&
+        '${data['detail']}'.contains('Authentik')) {
+      return AuthError.useAuthentik;
+    }
     // 400/422: campos vazios ou inválidos (o backend valida o formato).
     if (const {400, 401, 403, 422}.contains(status)) {
       return AuthError.credenciaisInvalidas;

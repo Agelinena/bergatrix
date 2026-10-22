@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings
 
 
@@ -79,8 +80,93 @@ class Settings(BaseSettings):
     login_max_failures: int = 5
     login_block_minutes: int = 15
 
+    # ── Login pelo Authentik (OIDC) ───────────────────────────
+    # O servidor é o cliente OIDC (confidencial): o app abre o navegador no
+    # Authentik e recebe de volta os tokens do Bergastream. Sem OIDC_ISSUER,
+    # só o login por senha.
+    oidc_issuer: str = ""          # https://authentik.example.com/application/o/bergastream/
+    # Nomes do padrão (docs/05-acesso.md na raiz): BERGASTREAM_SSO_CLIENT_ID e
+    # BERGASTREAM_SSO_CLIENT_SECRET. OIDC_CLIENT_ID/SECRET também valem.
+    oidc_client_id: str = Field(
+        "", validation_alias=AliasChoices("BERGASTREAM_SSO_CLIENT_ID", "OIDC_CLIENT_ID"))
+    oidc_client_secret: str = Field(
+        "", validation_alias=AliasChoices("BERGASTREAM_SSO_CLIENT_SECRET", "OIDC_CLIENT_SECRET"))
+    # Exatamente o cadastrado no provider: https://bergastream.example.com/api/auth/oidc/callback
+    oidc_redirect_uri: str = ""
+    # Opcional: endereço interno para o servidor falar com o Authentik (ex.:
+    # http://authentik-server:9000, com a API na rede bergatrix-proxy). Vazio =
+    # usa o endereço público do issuer.
+    oidc_internal_url: str = ""
+    oidc_group_claim: str = "groups"
+    oidc_required_group: str = ""  # vazio = qualquer conta do Authentik que tenha acesso ao app
+    oidc_admin_group: str = ""     # vazio = não mexe em quem é admin
+    # Conta do Authentik sem usuário correspondente aqui: cria um novo.
+    oidc_auto_create: bool = True
+    # Login por usuário e senha do Bergastream: "auto" = só sem OIDC; "true"
+    # mantém (emergência); "false" desliga.
+    password_login: str = "auto"
+
+    @property
+    def oidc_enabled(self) -> bool:
+        return bool(self.oidc_issuer and self.oidc_client_id and self.oidc_redirect_uri)
+
+    @property
+    def password_login_enabled(self) -> bool:
+        if self.password_login.lower() in ("true", "1", "yes"):
+            return True
+        if self.password_login.lower() in ("false", "0", "no"):
+            return False
+        return not self.oidc_enabled
+
+    # Página "Minha conta" do Authentik (trocar usuário, e-mail e senha) e a
+    # de usuários do admin. Vazio = deduzidas do issuer.
+    oidc_account_url: str = ""
+
+    @property
+    def authentik_account_url(self) -> str:
+        if self.oidc_account_url:
+            return self.oidc_account_url
+        return f"{_origin(self.oidc_issuer)}/if/user/#/settings" if self.oidc_issuer else ""
+
+    @property
+    def authentik_admin_url(self) -> str:
+        return f"{_origin(self.oidc_issuer)}/if/admin/#/identity/users" if self.oidc_issuer else ""
+
+    # ── E-mail (SMTP) ─────────────────────────────────────────
+    # Avisos para as pessoas (senha trocada, convite, redefinir senha). Sem
+    # SMTP_HOST, nada é enviado e o resto funciona igual.
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_username: str = ""
+    smtp_password: str = ""
+    smtp_from: str = ""            # "Bergastream <bergastream@example.com>"
+    smtp_security: str = "starttls"  # starttls | ssl | none
+    smtp_timeout_seconds: int = 20
+    # Endereço público do app, para os links dos e-mails. Vazio = deduzido do
+    # OIDC_REDIRECT_URI.
+    app_url: str = ""
+    # Validade do link de "redefinir senha" e do convite.
+    password_reset_hours: int = 2
+    invite_hours: int = 72
+
+    @property
+    def mail_enabled(self) -> bool:
+        return bool(self.smtp_host and self.smtp_from)
+
+    @property
+    def public_url(self) -> str:
+        if self.app_url:
+            return self.app_url.rstrip("/")
+        return _origin(self.oidc_redirect_uri) if self.oidc_redirect_uri else ""
+
     # ── App ───────────────────────────────────────────────────
     log_level: str = "INFO"
+
+
+def _origin(url: str) -> str:
+    from urllib.parse import urlsplit
+    parts = urlsplit(url)
+    return f"{parts.scheme}://{parts.netloc}"
 
 
 settings = Settings()

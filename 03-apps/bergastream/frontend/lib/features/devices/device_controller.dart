@@ -9,6 +9,7 @@ import '../auth/session.dart';
 import '../player/play_queue.dart';
 import '../player/player_controller.dart';
 import '../session/group_session.dart';
+import '../sync/playlist_signal.dart';
 import 'device_identity.dart';
 
 /// "Tocar em…" (como o Spotify Connect): os aparelhos da pessoa ficam
@@ -141,6 +142,9 @@ class DeviceController extends Notifier<DevicesState> implements RemoteControl {
   Timer? _reconnect;
   int _attempt = 0;
   bool _replaced = false;
+
+  /// Já conectou antes: numa reconexão, pode ter perdido avisos.
+  bool _helloBefore = false;
 
   /// Player que este controlador pôs em modo remoto (para soltar no fim).
   PlayerController? _attached;
@@ -315,6 +319,10 @@ class DeviceController extends Notifier<DevicesState> implements RemoteControl {
     switch (message['type']) {
       case 'hello':
         _attempt = 0;
+        if (_helloBefore) {
+          ref.read(playlistsChangedSignalProvider).add(const []);
+        }
+        _helloBefore = true;
         state = state.copyWith(
           connected: true,
           myId: message['device_id'] as String?,
@@ -375,6 +383,11 @@ class DeviceController extends Notifier<DevicesState> implements RemoteControl {
       case 'error':
         final text = message['message'] as String?;
         if (text != null) _player.showMessage(text);
+      case 'playlists_changed':
+        ref.read(playlistsChangedSignalProvider).add([
+          for (final id in message['playlists'] as List<dynamic>? ?? const [])
+            '$id',
+        ]);
     }
   }
 

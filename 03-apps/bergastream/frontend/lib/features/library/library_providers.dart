@@ -13,7 +13,10 @@ import '../player/player_texts.dart';
 /// Imagem do servidor a partir de caminho relativo (`/api/...`).
 ImageProvider? serverImage(WidgetRef ref, String? path) {
   if (path == null) return null;
-  if (path.startsWith('http')) return imageFor(path);
+  // Endereço completo ou arquivo do aparelho (file://).
+  if (path.startsWith('http') || path.startsWith('file:')) {
+    return imageFor(path);
+  }
   final server = ref.read(sessionProvider).server ?? '';
   return NetworkImage('$server$path');
 }
