@@ -5,6 +5,8 @@ services:
     restart: unless-stopped
     environment:
       GID: ${PGID}
+      # SQLite com WAL: leituras não esperam as gravações (lista da comunidade)
+      USE_WAL: "true"
       COLLECTIONS: "crowdsecurity/traefik crowdsecurity/http-cve crowdsecurity/base-http-scenarios"
     volumes:
       - ${APPDATA_PATH:?}/crowdsec/config:/etc/crowdsec

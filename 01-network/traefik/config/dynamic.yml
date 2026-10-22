@@ -36,7 +36,15 @@ http:
       plugin:
         bouncer:
           enabled: true
-          crowdsecMode: "live"
+          # stream: o Traefik guarda a lista de bans e sincroniza a cada 60 s,
+          # sem consultar o CrowdSec a cada requisição. No modo live, um
+          # CrowdSec lento (ex.: subindo tudo de uma vez) dava 403 em tudo.
+          crowdsecMode: "stream"
+          updateIntervalSeconds: 60
+          # -1: se o CrowdSec não responder, continua valendo a última lista
+          # de bans, em vez de bloquear todo o tráfego. O Authentik continua
+          # na frente de tudo.
+          updateMaxFailure: -1
           crowdsecLapiKey: "${CROWDSEC_BOUNCER_KEY}"
           crowdsecLapiHost: "crowdsec:8080"
 
