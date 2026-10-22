@@ -20,7 +20,7 @@ Se uma stack existente foge de alguma regra, ela está listada em [Dívidas conh
 | `01-network` | Entrada de tráfego (Traefik) |
 | `02-security` | Identidade, segredos e proteção (Authentik, Vaultwarden, CrowdSec) |
 | `03-apps` | Aplicações |
-| `04-monitoring` | Observabilidade (Homepage, Wazuh) |
+| `04-monitoring` | Observabilidade e segurança (Wazuh) |
 
 **O nome da stack é o nome da pasta.** É o nome usado em `${APPDATA_PATH}/<stack>` e `${CACHE_PATH}/<stack>`. Renomear a pasta obriga a renomear essas pastas no servidor.
 
@@ -144,7 +144,7 @@ Stacks existentes que ainda não seguem o padrão. Nenhuma delas impede a migra�
 
 | Stack | Fora do padrão |
 |---|---|
-| várias | Imagens sem versão fixa: Jellyfin, *arr, SABnzbd, Deemix, Lidarr, Vaultwarden, CrowdSec, CloudBeaver, Ollama, Open WebUI, n8n, LiteLLM, Homepage, FlareSolverr |
+| várias | Imagens sem versão fixa: Jellyfin, *arr, SABnzbd, Deemix, Lidarr, Vaultwarden, CrowdSec, CloudBeaver, Ollama, Open WebUI, n8n, LiteLLM, FlareSolverr |
 | várias | `container_name` antigos (`bitwarden`, `ollama`, `sonarr`…). Mantidos porque outras stacks os usam como endereço; mudam junto com a revisão de acesso. |
 | várias | IPs de confiança escritos nas labels e no `dynamic.yml`. Saem com a migração para OIDC. |
 | jellyfin | Legendarr (web, worker, optimizer) roda como root. O optimizer guarda `requires_redownload.txt` fora de volume. |

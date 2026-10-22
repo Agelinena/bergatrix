@@ -56,7 +56,6 @@ Rede local ───────────────────────
 | 03 | n8n | n8n com Python | `n8n` | appdata |
 | 03 | openuiweb | Open WebUI, Ollama (GPU) | `chat` | appdata, cache |
 | 03 | transcriptor | Transcrição com faster-whisper (GPU) | `transcriptor` | appdata, cache |
-| 04 | homepage | Homepage | `homepage` | appdata |
 | 04 | wazuh | Wazuh manager, indexer, dashboard | `wazuh` (+ portas 1514, 1515, 514/udp, 55000 para agentes) | appdata |
 
 ### Ordem de subida

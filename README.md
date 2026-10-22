@@ -15,7 +15,7 @@ O servidor roda **Proxmox VE** com duas VMs: um **OpenMediaVault** (NAS, HD de 4
 | **`01`** | **Network** | Entrada de tráfego com **Traefik** (TLS curinga, roteamento por labels). |
 | **`02`** | **Security** | **Authentik** (SSO/IdP), **Vaultwarden** (senhas) e **CrowdSec** (bloqueio de IPs). |
 | **`03`** | **Apps** | Aplicações de produtividade, automação, IA e mídia. |
-| **`04`** | **Monitoring** | **Homepage** (painel) e **Wazuh** (SIEM). |
+| **`04`** | **Monitoring** | **Wazuh** (SIEM). |
 
 📖 Documentação completa, padrões e guia para novas stacks: [`docs/`](docs/README.md).
 

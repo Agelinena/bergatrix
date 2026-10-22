@@ -86,7 +86,6 @@ ${USERDATA_PATH}/nextcloud/
 | n8n | `data` | – | – |
 | openuiweb | `open-webui` | `ollama` | – |
 | transcriptor | `data` | `models` | – |
-| homepage | `config` | – | – |
 | wazuh | `wazuh_manager`, `wazuh_indexer`, `wazuh_dashboard`, `filebeat`, `config` | – | – |
 
 ## Montagem no servidor Docker
