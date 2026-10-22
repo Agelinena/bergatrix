@@ -73,7 +73,7 @@ ${USERDATA_PATH}/nextcloud/
 | Stack | `APPDATA_PATH/<stack>/` | `CACHE_PATH/<stack>/` | `MEDIA_PATH/` |
 |---|---|---|---|
 | cloudbeaver | `workspace` | – | – |
-| traefik | `acme` (acme.json), `logs` | – | – |
+| traefik | `acme` (acme.json), `logs` | `plugins` | – |
 | authentik | `postgres`, `redis`, `media`, `templates`, `certs` | – | – |
 | bitwarden | `vaultwarden` | – | – |
 | crowdsec | `config`, `data` (lê `traefik/logs`) | – | – |

@@ -26,6 +26,10 @@ services:
       - ${APPDATA_PATH:?}/traefik/acme:/acme
       # access.log lido também pelo CrowdSec
       - ${APPDATA_PATH:?}/traefik/logs:/var/log/traefik
+      # Plugins baixados (bouncer do CrowdSec): guardados para a recriação do
+      # container não depender de baixar de novo. Sem o plugin, toda rota com
+      # crowdsec-bouncer@file é descartada (404).
+      - ${CACHE_PATH:?}/traefik/plugins:/plugins-storage
     environment:
       - DOMAIN=${DOMAIN}
       - DESEC_TOKEN=${DESEC_TOKEN}
