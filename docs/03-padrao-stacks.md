@@ -113,6 +113,7 @@ O banco nunca fica na `bergatrix-proxy`.
 - **`restart: unless-stopped`**, exceto jobs de uma vez (migrações): `restart: "no"`.
 - **`security_opt: [no-new-privileges:true]`**, e rodar como usuário não-root quando a imagem permitir.
 - **Imagem com versão fixa** (`postgres:16-alpine`, `traefik:v3.6.2`), nunca `latest` ou sem tag.
+- **Ao fixar a versão de uma imagem que hoje roda em `latest`**, confira antes a versão em execução (`docker exec <container> ... --version` ou `docker image inspect`) e as releases do projeto. Fixar uma versão mais antiga do que a que está rodando é um **downgrade**: o banco já pode ter sido migrado, e os clientes mais novos podem parar de funcionar.
 - **Banco com `healthcheck`**, e quem depende dele usa `depends_on: condition: service_healthy`.
 - **Migrações** num serviço `migrate` (`dbmate`) que roda antes da API (`service_completed_successfully`).
 
