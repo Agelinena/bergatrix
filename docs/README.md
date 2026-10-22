@@ -8,6 +8,7 @@ Ponto de partida para entender o servidor e criar ou alterar qualquer stack.
 | [02-armazenamento.md](02-armazenamento.md) | As quatro raízes de dados, o que vai em cada uma, montagem e backup |
 | [03-padrao-stacks.md](03-padrao-stacks.md) | O padrão de toda stack: pastas, variáveis, volumes, redes e checklist de stack nova |
 | [04-migracao-armazenamento.md](04-migracao-armazenamento.md) | Passo a passo da migração para o novo armazenamento (uso único) |
+| [guias/autenticacao-ldap.md](guias/autenticacao-ldap.md) | Login pelo Authentik em apps sem OIDC, via LDAP (ex.: Jellyfin) |
 | [templates/](templates/) | `docker-compose.yml` e `.env.example` modelo |
 | [legado/](legado/) | Documentação anterior, desatualizada. Fica só como consulta até ser reescrita. |
 

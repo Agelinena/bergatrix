@@ -126,6 +126,8 @@ Para apps novos, siga já o modelo de destino, que o Bergalink usa:
 - o próprio app autentica pelo Authentik (OIDC) e valida o token;
 - painéis administrativos sem login próprio recebem `internal-only@file`.
 
+App sem OIDC, mas com suporte a LDAP (como o Jellyfin): login pelo outpost LDAP do Authentik. Ver [guias/autenticacao-ldap.md](guias/autenticacao-ldap.md).
+
 ## Checklist de stack nova
 
 1. Pasta em `<camada>/<stack>/`, partindo dos [templates](templates/).
