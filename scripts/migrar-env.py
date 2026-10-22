@@ -131,6 +131,17 @@ def migrar(pasta, rel, padroes):
     return linhas, novas, avisos, caminhos_antigos
 
 
+def mascarar(linha):
+    """Esconde valores na saída, menos os que não são segredo (caminhos, domínios, base)."""
+    corpo = linha[len(MARCA):] if linha.startswith(MARCA) else linha
+    nome = chave(corpo)
+    if nome is None or nome in BASE or nome == "TIMEZONE" or CAMINHO_RE.search(nome) or "DOMAIN" in nome:
+        return linha
+    m = LINHA_RE.match(corpo)
+    oculto = m.group(1) + nome + "=****" if valor(corpo) else corpo
+    return (MARCA if linha.startswith(MARCA) else "") + oculto
+
+
 def validar(pasta):
     try:
         r = subprocess.run(
@@ -196,7 +207,7 @@ def main():
             print(f"\n~ {rel}")
             for linha in difflib.unified_diff(antes, depois, "antes", "depois", lineterm="", n=0):
                 if not linha.startswith(("---", "+++", "@@")):
-                    print(f"    {linha}")
+                    print(f"    {linha[0]}{mascarar(linha[1:])}")
             if args.aplicar:
                 backup = pasta / f".env.antes-migracao-{carimbo}"
                 shutil.copy2(pasta / ".env", backup)
