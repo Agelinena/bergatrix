@@ -10,6 +10,7 @@ services:
       - "/start-traefik.sh"
     networks:
       - bergatrix-proxy
+      - bergatrix-drop
     ports:
       - 80:80
       - 443:443
@@ -41,4 +42,6 @@ services:
 networks:
   bergatrix-proxy:
     name: bergatrix-proxy
+    external: true
+  bergatrix-drop:
     external: true

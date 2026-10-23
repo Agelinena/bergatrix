@@ -1,198 +1,342 @@
+"""Drop: relay cego entre dois navegadores.
+
+O servidor nunca vê o código, a chave nem o conteúdo. Cada sala é
+identificada por um ID derivado do código no navegador (HKDF) e tem dois
+lugares: o receptor, que cria a sala, e o emissor. Tudo o que chega como
+frame binário de um lado é repassado, igual, para o outro. Frames de texto
+são só controle (entrar na sala e ping).
+
+Nada vai para o disco: as salas ficam em memória e expiram em 10 minutos.
+O backpressure do uvicorn (websockets-sansio) limita a memória por conexão a
+um frame e aos buffers do socket, mesmo com arquivos grandes.
+
+O container fica numa rede interna que só o Traefik alcança, então o
+X-Real-Ip que chega aqui é o que o Traefik gravou.
+"""
+from __future__ import annotations
+
 import asyncio
-import base64
-import binascii
+import json
+import logging
+import mimetypes
 import re
 import time
-from collections import deque
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Deque, Dict, Optional
+from urllib.parse import urlsplit
 
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse, HTMLResponse
-from pydantic import BaseModel, Field
+from starlette.applications import Starlette
+from starlette.responses import FileResponse, JSONResponse, PlainTextResponse
+from starlette.routing import Mount, Route, WebSocketRoute
+from starlette.staticfiles import StaticFiles
+from starlette.websockets import WebSocket, WebSocketDisconnect
 
-SESSION_TTL_SECONDS = 600
-MAX_ACTIVE_SESSIONS = 2048
-MAX_MESSAGES_PER_MINUTE = 20
-MAX_MESSAGE_BYTES = 16 * 1024
-SESSION_ID_PATTERN = re.compile(r"^[a-f0-9]{64}$")
+logger = logging.getLogger("drop")
 
+PROTOCOL_VERSION = 2
+ROOM_TTL_SECONDS = 600
+JOIN_TIMEOUT_SECONDS = 10
+MAX_ROOMS = 256
+MAX_ROOMS_PER_CLIENT = 4
+# Um pedaço de arquivo cifrado (64 KiB + cabeçalhos) cabe com folga.
+MAX_FRAME_BYTES = 66 * 1024
+# Por sala, somando os dois sentidos: um envio de 25 MiB e respostas.
+MAX_ROOM_BYTES = 40 * 1024 * 1024
+MAX_ROOM_FRAMES = 4000
+MAX_CONTROL_BYTES = 256
+ROOM_ID = re.compile(r"[a-f0-9]{64}")
+ROLES = ("receiver", "sender")
 
-class SendPayload(BaseModel):
-    encrypted_payload: str = Field(min_length=40, max_length=22000)
+# Códigos de fechamento (4000-4999 são da aplicação).
+CLOSE_BAD_REQUEST = 4000
+CLOSE_FORBIDDEN = 4003
+CLOSE_NOT_FOUND = 4004
+CLOSE_EXPIRED = 4008
+CLOSE_BUSY = 4009
+CLOSE_FULL = 4013
+CLOSE_LIMIT = 4029
+
 
 @dataclass
-class Session:
-    created_at: float
-    websocket: Optional[WebSocket] = None
-    sent_at: Deque[float] = field(default_factory=deque)
-    send_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+class Peer:
+    websocket: WebSocket
+    lock: asyncio.Lock = field(default_factory=asyncio.Lock)
 
+    async def send_bytes(self, data: bytes) -> None:
+        async with self.lock:
+            await self.websocket.send_bytes(data)
 
-class ConnectionManager:
-    def __init__(self):
-        self.sessions: Dict[str, Session] = {}
+    async def send_json(self, data: dict) -> None:
+        async with self.lock:
+            await self.websocket.send_text(json.dumps(data, separators=(",", ":")))
 
-    def cleanup(self):
-        now = time.monotonic()
-        expired = [
-            session_id for session_id, session in self.sessions.items()
-            if now - session.created_at >= SESSION_TTL_SECONDS
-        ]
-        for session_id in expired:
-            session = self.sessions.pop(session_id)
-            if session.websocket is not None:
-                asyncio.create_task(
-                    session.websocket.close(code=1001, reason="Session expired")
-                )
-
-    async def connect(self, session_id: str, websocket: WebSocket) -> bool:
-        if not SESSION_ID_PATTERN.fullmatch(session_id):
-            await websocket.close(code=1008, reason="Invalid session")
-            return False
-
-        await websocket.accept()
-        self.cleanup()
-        session = self.sessions.get(session_id)
-        if session is None:
-            if len(self.sessions) >= MAX_ACTIVE_SESSIONS:
-                await websocket.close(code=1013, reason="Server busy")
-                return False
-            session = Session(created_at=time.monotonic())
-            self.sessions[session_id] = session
-        elif session.websocket is not None:
-            await websocket.close(code=1008, reason="Session busy")
-            return False
-
-        session.websocket = websocket
-        return True
-
-    def disconnect(self, session_id: str, websocket: WebSocket):
-        session = self.sessions.get(session_id)
-        if session is not None and session.websocket is websocket:
-            session.websocket = None
-
-    async def send_to_session(self, session_id: str, message: str) -> bool:
-        self.cleanup()
-        session = self.sessions.get(session_id)
-        if session is None or session.websocket is None:
-            return False
-
-        now = time.monotonic()
-        while session.sent_at and now - session.sent_at[0] >= 60:
-            session.sent_at.popleft()
-        if len(session.sent_at) >= MAX_MESSAGES_PER_MINUTE:
-            raise HTTPException(status_code=429, detail="Too many messages")
-        session.sent_at.append(now)
-
+    async def close(self, code: int, reason: str = "") -> None:
         try:
-            async with session.send_lock:
-                if session.websocket is None:
-                    return False
-                await session.websocket.send_text(message)
-            return True
+            async with self.lock:
+                await self.websocket.close(code=code, reason=reason)
         except Exception:
-            session.websocket = None
-            return False
-
-manager = ConnectionManager()
-
-
-async def expire_sessions():
-    while True:
-        await asyncio.sleep(15)
-        manager.cleanup()
-
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    cleanup_task = asyncio.create_task(expire_sessions())
-    try:
-        yield
-    finally:
-        cleanup_task.cancel()
-        try:
-            await cleanup_task
-        except asyncio.CancelledError:
             pass
 
 
-app = FastAPI(lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
-APP_DIRECTORY = Path(__file__).resolve().parent
-html_content = (APP_DIRECTORY / "index.html").read_text(encoding="utf-8")
+@dataclass
+class Room:
+    created_at: float
+    client: str
+    peers: dict[str, Peer | None] = field(default_factory=lambda: dict.fromkeys(ROLES))
+    bytes_relayed: int = 0
+    frames: int = 0
+
+    def expires_in(self, now: float | None = None) -> float:
+        return self.created_at + ROOM_TTL_SECONDS - (time.monotonic() if now is None else now)
 
 
-@app.middleware("http")
-async def add_security_headers(request, call_next):
-    response = await call_next(request)
-    response.headers["Cache-Control"] = "no-store"
-    response.headers["X-Content-Type-Options"] = "nosniff"
-    response.headers["X-Frame-Options"] = "DENY"
-    response.headers["Referrer-Policy"] = "no-referrer"
-    response.headers["Strict-Transport-Security"] = "max-age=31536000"
-    response.headers["Permissions-Policy"] = "camera=(self), clipboard-write=(self)"
-    response.headers["Content-Security-Policy"] = (
-        "default-src 'self'; "
-        "script-src 'self' https://cdnjs.cloudflare.com "
-        "https://unpkg.com; "
-        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
-        "font-src 'self' https://fonts.gstatic.com; "
-        "img-src 'self' data: blob:; connect-src 'self' wss:; "
-        "media-src 'self' blob:; frame-ancestors 'none'; base-uri 'none'; "
-        "form-action 'self'; object-src 'none'"
-    )
-    return response
+class Rooms:
+    def __init__(self):
+        self.rooms: dict[str, Room] = {}
 
-@app.get("/")
-async def get():
-    return HTMLResponse(html_content)
+    def cleanup(self) -> None:
+        now = time.monotonic()
+        for room_id in [rid for rid, room in self.rooms.items() if room.expires_in(now) <= 0]:
+            room = self.rooms.pop(room_id)
+            for peer in room.peers.values():
+                if peer is not None:
+                    asyncio.create_task(peer.close(CLOSE_EXPIRED, "expired"))
 
+    def join(self, room_id: str, role: str, client: str, peer: Peer) -> tuple[Room | None, int]:
+        """Lugar na sala, ou o código de fechamento que explica a recusa."""
+        self.cleanup()
+        room = self.rooms.get(room_id)
+        if room is None:
+            if role != "receiver":
+                return None, CLOSE_NOT_FOUND
+            if len(self.rooms) >= MAX_ROOMS:
+                return None, CLOSE_FULL
+            if sum(r.client == client for r in self.rooms.values()) >= MAX_ROOMS_PER_CLIENT:
+                return None, CLOSE_LIMIT
+            room = self.rooms[room_id] = Room(created_at=time.monotonic(), client=client)
+        elif room.peers[role] is not None:
+            return None, CLOSE_BUSY
+        room.peers[role] = peer
+        return room, 0
 
-@app.get("/app.js")
-async def get_app_script():
-    return FileResponse(APP_DIRECTORY / "app.js", media_type="application/javascript")
-
-
-@app.get("/app.css")
-async def get_app_styles():
-    return FileResponse(APP_DIRECTORY / "app.css", media_type="text/css")
-
-
-@app.get("/healthz")
-async def healthcheck():
-    return {"status": "ok"}
+    def leave(self, room_id: str, role: str, peer: Peer) -> Room | None:
+        room = self.rooms.get(room_id)
+        if room is not None and room.peers[role] is peer:
+            room.peers[role] = None
+            return room
+        return None
 
 
-@app.websocket("/ws/{session_id}")
-async def websocket_endpoint(websocket: WebSocket, session_id: str):
-    success = await manager.connect(session_id, websocket)
-    if not success:
+rooms = Rooms()
+
+
+def other(role: str) -> str:
+    return "sender" if role == "receiver" else "receiver"
+
+
+def client_address(websocket: WebSocket) -> str:
+    return websocket.headers.get("x-real-ip") or (websocket.client.host if websocket.client else "")
+
+
+def same_origin(websocket: WebSocket) -> bool:
+    """Só a página do próprio Drop abre o WebSocket: impede outros sites de
+    usarem o relay."""
+    origin = websocket.headers.get("origin", "")
+    host = websocket.headers.get("host", "")
+    return bool(origin and host) and urlsplit(origin).netloc == host
+
+
+async def read_join(websocket: WebSocket) -> tuple[str, str] | None:
+    try:
+        message = await asyncio.wait_for(websocket.receive(), JOIN_TIMEOUT_SECONDS)
+    except asyncio.TimeoutError:
+        return None
+    text = message.get("text")
+    if message.get("type") != "websocket.receive" or not text or len(text) > MAX_CONTROL_BYTES:
+        return None
+    try:
+        data = json.loads(text)
+    except ValueError:
+        return None
+    if not isinstance(data, dict) or data.get("type") != "join" or data.get("v") != PROTOCOL_VERSION:
+        return None
+    room_id, role = data.get("room"), data.get("role")
+    if not isinstance(room_id, str) or not ROOM_ID.fullmatch(room_id) or role not in ROLES:
+        return None
+    return room_id, role
+
+
+async def relay(room: Room, role: str, peer: Peer, data: bytes) -> bool:
+    """Repassa um frame ao outro lado. False encerra a conexão de origem."""
+    if not data or len(data) > MAX_FRAME_BYTES:
+        await peer.close(CLOSE_LIMIT, "frame")
+        return False
+    room.bytes_relayed += len(data)
+    room.frames += 1
+    if room.bytes_relayed > MAX_ROOM_BYTES or room.frames > MAX_ROOM_FRAMES:
+        await peer.close(CLOSE_LIMIT, "room")
+        return False
+    target = room.peers[other(role)]
+    if target is None:
+        await peer.send_json({"type": "error", "code": "peer-missing"})
+        return True
+    try:
+        await target.send_bytes(data)
+    except Exception:
+        await peer.send_json({"type": "error", "code": "peer-missing"})
+    return True
+
+
+async def websocket_endpoint(websocket: WebSocket) -> None:
+    if not same_origin(websocket):
+        await websocket.close(code=CLOSE_FORBIDDEN)
+        return
+    await websocket.accept()
+    peer = Peer(websocket)
+    joined = await read_join(websocket)
+    if joined is None:
+        await peer.close(CLOSE_BAD_REQUEST, "join")
+        return
+    room_id, role = joined
+    room, refusal = rooms.join(room_id, role, client_address(websocket), peer)
+    if room is None:
+        await peer.close(refusal)
         return
 
+    partner = room.peers[other(role)]
     try:
+        await peer.send_json({"type": "ready", "role": role, "peer": partner is not None,
+                              "expiresIn": int(room.expires_in())})
+        if partner is not None:
+            await partner.send_json({"type": "peer", "present": True})
         while True:
-            if await websocket.receive_text() != "ping":
-                await websocket.close(code=1008, reason="Invalid message")
+            message = await websocket.receive()
+            if message["type"] == "websocket.disconnect":
                 break
-    except WebSocketDisconnect:
+            if room.expires_in() <= 0 or rooms.rooms.get(room_id) is not room:
+                await peer.close(CLOSE_EXPIRED, "expired")
+                break
+            if message.get("bytes") is not None:
+                if not await relay(room, role, peer, message["bytes"]):
+                    break
+            elif message.get("text") != "ping":
+                await peer.close(CLOSE_BAD_REQUEST, "control")
+                break
+    except (WebSocketDisconnect, RuntimeError):
         pass
     finally:
-        manager.disconnect(session_id, websocket)
+        left = rooms.leave(room_id, role, peer)
+        partner = left.peers[other(role)] if left is not None else None
+        if partner is not None:
+            try:
+                await partner.send_json({"type": "peer", "present": False})
+            except Exception:
+                pass
 
-@app.post("/api/send/{session_id}")
-async def send_message(session_id: str, data: SendPayload):
-    if not SESSION_ID_PATTERN.fullmatch(session_id):
-        raise HTTPException(status_code=404, detail="Receiver not connected")
+
+# ── HTTP ─────────────────────────────────────────────────────────────
+
+STATIC = Path(__file__).resolve().parent / "static"
+# A imagem slim não tem /etc/mime.types: sem isto, o nosniff bloqueia os módulos.
+mimetypes.add_type("text/javascript", ".mjs")
+mimetypes.add_type("text/javascript", ".js")
+mimetypes.add_type("font/woff2", ".woff2")
+
+CONTENT_SECURITY_POLICY = "; ".join((
+    "default-src 'none'",
+    "script-src 'self'",
+    "style-src 'self'",
+    "font-src 'self'",
+    "img-src 'self' blob:",
+    "media-src 'self' blob:",
+    "connect-src 'self'",
+    "manifest-src 'self'",
+    "base-uri 'none'",
+    "form-action 'none'",
+    "frame-ancestors 'none'",
+    "require-trusted-types-for 'script'",
+    "trusted-types 'none'",
+))
+
+SECURITY_HEADERS = [
+    (b"content-security-policy", CONTENT_SECURITY_POLICY.encode()),
+    (b"cross-origin-opener-policy", b"same-origin"),
+    (b"cross-origin-embedder-policy", b"require-corp"),
+    (b"cross-origin-resource-policy", b"same-origin"),
+    (b"permissions-policy",
+     b"camera=(self), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()"),
+    (b"referrer-policy", b"no-referrer"),
+    (b"strict-transport-security", b"max-age=31536000"),
+    (b"x-content-type-options", b"nosniff"),
+    (b"x-frame-options", b"DENY"),
+]
+
+
+class SecurityHeaders:
+    """Cabeçalhos em toda resposta HTTP. A página nunca vai para cache; os
+    arquivos estáticos são revalidados a cada visita."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+        cache = b"no-store" if scope["path"] == "/" else b"no-cache"
+
+        async def send_with_headers(message):
+            if message["type"] == "http.response.start":
+                headers = [(k, v) for k, v in message.get("headers", [])
+                           if k.lower() != b"cache-control"]
+                message["headers"] = headers + SECURITY_HEADERS + [(b"cache-control", cache)]
+            await send(message)
+
+        await self.app(scope, receive, send_with_headers)
+
+
+async def index(request):
+    return FileResponse(STATIC / "index.html", media_type="text/html; charset=utf-8")
+
+
+async def icon(request):
+    return FileResponse(STATIC / "assets" / "icon.svg", media_type="image/svg+xml")
+
+
+async def robots(request):
+    return PlainTextResponse("User-agent: *\nDisallow: /\n")
+
+
+async def healthz(request):
+    return JSONResponse({"status": "ok"})
+
+
+async def expire_rooms():
+    while True:
+        await asyncio.sleep(15)
+        rooms.cleanup()
+
+
+@asynccontextmanager
+async def lifespan(app):
+    task = asyncio.create_task(expire_rooms())
     try:
-        encrypted = base64.b64decode(data.encrypted_payload, validate=True)
-    except (binascii.Error, ValueError):
-        raise HTTPException(status_code=422, detail="Invalid encrypted payload")
-    if not 28 <= len(encrypted) <= MAX_MESSAGE_BYTES + 28:
-        raise HTTPException(status_code=413, detail="Message size is not allowed")
+        yield
+    finally:
+        task.cancel()
 
-    success = await manager.send_to_session(session_id, data.encrypted_payload)
-    if success:
-        return {"status": "sent"}
-    raise HTTPException(status_code=409, detail="Receiver not connected")
+
+app = SecurityHeaders(Starlette(
+    routes=[
+        Route("/", index),
+        # Sem 404 para o que todo navegador e robô pede: o CrowdSec bane IPs
+        # que acumulam 404 (http-probing).
+        Route("/favicon.ico", icon),
+        Route("/robots.txt", robots),
+        Route("/healthz", healthz),
+        WebSocketRoute("/ws", websocket_endpoint),
+        Mount("/assets", StaticFiles(directory=STATIC / "assets")),
+    ],
+    lifespan=lifespan,
+))

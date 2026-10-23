@@ -1,0 +1,5 @@
+# Dependências diretas. O requirements.txt (com hashes) sai daqui:
+#   pip-compile --generate-hashes --strip-extras requirements.in
+starlette==1.9.0
+uvicorn==0.54.0
+websockets==17.3

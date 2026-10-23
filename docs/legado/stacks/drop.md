@@ -1,5 +1,7 @@
 # drop — Transferência segura e efêmera de mensagens/segredos entre dois dispositivos, com criptografia ponta-a-ponta no navegador e servidor como relay zero-knowledge.
 
+> **Desatualizado (out/2026):** o Drop foi reescrito (protocolo v2, arquivos, rede isolada). Vale o [README da stack](../../../03-apps/drop/README.md).
+
 > **Categoria:** app | **Caminho:** `03-apps/drop` | **Status:** documented
 
 ## 🎯 Finalidade

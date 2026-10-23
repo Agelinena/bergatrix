@@ -1,40 +1,49 @@
+# Drop: texto e arquivos (até 25 MiB) entre dois navegadores, cifrados de ponta
+# a ponta. Sem conta e sem disco. Público por natureza (docs/05-acesso.md).
+#
+# Isolado: fica só na rede bergatrix-drop (01-network/redes), interna e sem
+# internet. Daqui não se alcança nenhum outro container, a rede de casa
+# nem a internet; só o Traefik chega até ele.
 services:
   drop:
     build:
       context: .
-      dockerfile: Dockerfile
     container_name: drop
     restart: unless-stopped
+    read_only: true
     security_opt:
       - no-new-privileges:true
     cap_drop:
       - ALL
-    read_only: true
     tmpfs:
-      - /tmp:rw,noexec,nosuid,size=16m
-    pids_limit: 100
+      - /tmp:rw,noexec,nosuid,nodev,size=1m
+    pids_limit: 64
     mem_limit: 256m
+    memswap_limit: 256m
     cpus: 1.0
+    ulimits:
+      nofile: 2048
     logging:
       driver: json-file
       options:
         max-size: 10m
         max-file: "3"
     networks:
-      - bergatrix-proxy
+      - bergatrix-drop
     labels:
       - "traefik.enable=true"
-      - "traefik.docker.network=bergatrix-proxy"
-      - "traefik.http.middlewares.drop-rate-limit.ratelimit.average=30"
-      - "traefik.http.middlewares.drop-rate-limit.ratelimit.period=1m"
-      - "traefik.http.middlewares.drop-rate-limit.ratelimit.burst=10"
-      - "traefik.http.routers.drop-router.rule=Host(`drop.${DOMAIN}`)"
-      - "traefik.http.routers.drop-router.entrypoints=websecure"
-      - "traefik.http.routers.drop-router.tls=true"
-      - "traefik.http.routers.drop-router.service=drop-service"
-      - "traefik.http.routers.drop-router.middlewares=drop-rate-limit"
-      - "traefik.http.services.drop-service.loadbalancer.server.port=8000"
+      - "traefik.docker.network=bergatrix-drop"
+      - "traefik.http.routers.drop.rule=Host(`drop.${DOMAIN}`)"
+      - "traefik.http.routers.drop.entrypoints=websecure"
+      - "traefik.http.routers.drop.tls=true"
+      - "traefik.http.routers.drop.service=drop"
+      - "traefik.http.routers.drop.middlewares=crowdsec-bouncer@file,drop-ratelimit"
+      # Por IP de origem. Abrir a página faz ~13 pedidos; cada sessão é 1 WebSocket.
+      - "traefik.http.middlewares.drop-ratelimit.ratelimit.average=60"
+      - "traefik.http.middlewares.drop-ratelimit.ratelimit.period=1m"
+      - "traefik.http.middlewares.drop-ratelimit.ratelimit.burst=30"
+      - "traefik.http.services.drop.loadbalancer.server.port=8000"
 
 networks:
-  bergatrix-proxy:
+  bergatrix-drop:
     external: true

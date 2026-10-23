@@ -1,0 +1,12 @@
+{
+    "name": "Drop",
+    "short_name": "Drop",
+    "description": "Senhas, textos e arquivos entre seus dispositivos, cifrados no navegador.",
+    "lang": "pt-BR",
+    "start_url": "/",
+    "scope": "/",
+    "display": "standalone",
+    "background_color": "#eef2ec",
+    "theme_color": "#1b5a4d",
+    "icons": [{ "src": "/assets/icon.svg", "sizes": "any", "type": "image/svg+xml" }]
+}

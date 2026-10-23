@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="color-scheme" content="light dark">
+    <meta name="theme-color" content="#eef2ec">
+    <meta name="referrer" content="no-referrer">
+    <title>Drop · Transferência privada</title>
+    <link rel="icon" href="/assets/icon.svg" type="image/svg+xml">
+    <link rel="manifest" href="/assets/manifest.json">
+    <link rel="stylesheet" href="/assets/css/app.css">
+    <script src="/assets/vendor/jsQR.js" defer></script>
+    <script src="/assets/js/app.js" type="module"></script>
+</head>
+
+<body>
+    <div class="shell">
+        <header class="topbar">
+            <a class="brand" href="/" aria-label="Drop, início">
+                <span class="brand-mark" aria-hidden="true"><span></span><span></span></span>
+                <span class="brand-name">drop</span>
+            </a>
+            <div class="topbar-actions">
+                <p id="session-pill" class="session-pill" hidden>
+                    <span class="live-dot" aria-hidden="true"></span>
+                    <span id="session-label">Sessão</span>
+                    <time id="countdown" class="countdown">10:00</time>
+                </p>
+                <button id="theme-toggle" class="icon-button" data-action="theme" type="button"
+                    aria-label="Ativar tema escuro" aria-pressed="false" title="Alternar tema">
+                    <span id="theme-icon" aria-hidden="true">☾</span>
+                </button>
+            </div>
+        </header>
+
+        <main class="main">
+            <noscript>
+                <p class="notice notice--error">O Drop precisa de JavaScript: a criptografia acontece no seu navegador.</p>
+            </noscript>
+            <p id="unsupported" class="notice notice--error" hidden>
+                Este navegador não tem a criptografia necessária, ou a página não está em HTTPS.
+            </p>
+
+            <!-- Início -->
+            <section id="view-home" class="view view-home" aria-labelledby="home-title">
+                <div class="hero">
+                    <p class="eyebrow">Transferência privada</p>
+                    <h1 id="home-title">Senhas, textos e arquivos <em>entre seus dispositivos.</em></h1>
+                    <p class="lede">Cifrado no navegador. O servidor só repassa o que não consegue ler, e a sessão
+                        some sozinha em 10 minutos.</p>
+                </div>
+                <div class="choices">
+                    <button class="choice choice--receive" data-action="receive" type="button">
+                        <span class="choice-icon" aria-hidden="true">↓</span>
+                        <span class="choice-text"><b>Receber</b><small>Mostrar um código neste dispositivo</small></span>
+                        <span class="choice-arrow" aria-hidden="true">→</span>
+                    </button>
+                    <button class="choice choice--send" data-action="send" type="button">
+                        <span class="choice-icon" aria-hidden="true">↑</span>
+                        <span class="choice-text"><b>Enviar</b><small>Ler o QR ou digitar o código</small></span>
+                        <span class="choice-arrow" aria-hidden="true">→</span>
+                    </button>
+                </div>
+                <ol class="steps">
+                    <li><b>Receber</b> no dispositivo que vai ficar com o conteúdo.</li>
+                    <li><b>Enviar</b> no outro, lendo o QR ou digitando o código.</li>
+                    <li>Mande o texto ou os arquivos (até 25 MiB). O recebimento é confirmado.</li>
+                </ol>
+            </section>
+
+            <!-- Receber -->
+            <section id="view-receiver" class="view" aria-labelledby="receiver-title" hidden>
+                <div class="view-head">
+                    <div>
+                        <p class="eyebrow">Receber</p>
+                        <h2 id="receiver-title">Conecte o outro dispositivo</h2>
+                    </div>
+                    <button class="text-button" data-action="reset" type="button">Encerrar</button>
+                </div>
+
+                <div class="pairing">
+                    <div id="qr" class="qr" role="img" aria-label="QR code com o link de conexão"></div>
+                    <div class="pairing-code">
+                        <p class="label">Código</p>
+                        <p id="receiver-code" class="code" translate="no"></p>
+                        <div class="button-row">
+                            <button class="secondary-button" data-action="copy-code" type="button">Copiar código</button>
+                            <button class="secondary-button" data-action="copy-link" type="button">Copiar link</button>
+                            <button class="secondary-button" data-action="share-link" id="share-link" type="button" hidden>Compartilhar</button>
+                        </div>
+                        <p class="hint">Mostre só para quem vai enviar. Quem tem o código entra na sessão.</p>
+                    </div>
+                </div>
+
+                <p id="receiver-status" class="status" role="status" aria-live="polite"></p>
+
+                <div class="inbox-head" id="inbox-head" hidden>
+                    <h3>Recebidos</h3>
+                    <button class="text-button" data-action="clear-inbox" type="button">Apagar tudo</button>
+                </div>
+                <ul id="inbox" class="items"></ul>
+            </section>
+
+            <!-- Enviar -->
+            <section id="view-sender" class="view" aria-labelledby="sender-title" hidden>
+                <div class="view-head">
+                    <div>
+                        <p class="eyebrow">Enviar</p>
+                        <h2 id="sender-title">Conectar ao receptor</h2>
+                    </div>
+                    <button class="text-button" data-action="reset" type="button">Cancelar</button>
+                </div>
+
+                <div id="connect-step" class="connect-step">
+                    <button id="scan-button" class="scan-button" data-action="scan" type="button">
+                        <span class="scan-icon" aria-hidden="true"></span>
+                        <span><b>Ler o QR code</b><small>Abre a câmera deste dispositivo</small></span>
+                    </button>
+
+                    <div id="scanner" class="scanner" hidden>
+                        <div class="scanner-viewport">
+                            <video id="scanner-video" playsinline muted></video>
+                            <span class="scanner-frame" aria-hidden="true"></span>
+                        </div>
+                        <div class="button-row button-row--center">
+                            <button id="switch-camera" class="secondary-button" data-action="switch-camera" type="button" hidden>Trocar câmera</button>
+                            <button id="torch" class="secondary-button" data-action="torch" type="button" aria-pressed="false" hidden>Lanterna</button>
+                            <button class="secondary-button" data-action="stop-scan" type="button">Fechar câmera</button>
+                        </div>
+                        <p id="scanner-status" class="hint hint--center" role="status" aria-live="polite">Aponte para o QR code do outro dispositivo.</p>
+                    </div>
+
+                    <div class="divider"><span>ou digite o código</span></div>
+
+                    <form id="code-form" class="code-form" novalidate>
+                        <label for="code-input" class="label">Código de 20 caracteres</label>
+                        <div class="input-row">
+                            <input id="code-input" class="code-input" type="text" inputmode="text" autocomplete="off"
+                                autocapitalize="characters" autocorrect="off" spellcheck="false" maxlength="40"
+                                placeholder="XXXX-XXXX-XXXX-XXXX-XXXX" aria-describedby="code-error" translate="no">
+                            <button class="secondary-button" data-action="paste-code" id="paste-code" type="button">Colar</button>
+                        </div>
+                        <p id="code-error" class="field-error" role="alert"></p>
+                        <button class="primary-button" type="submit">Conectar <span aria-hidden="true">→</span></button>
+                    </form>
+                </div>
+
+                <div id="compose-step" class="compose-step" hidden>
+                    <p id="sender-status" class="status" role="status" aria-live="polite"></p>
+
+                    <div class="tabs" role="tablist" aria-label="O que enviar">
+                        <button id="tab-text" class="tab" role="tab" type="button" aria-selected="true"
+                            aria-controls="panel-text" data-action="tab" data-tab="text">Texto</button>
+                        <button id="tab-files" class="tab" role="tab" type="button" aria-selected="false"
+                            aria-controls="panel-files" data-action="tab" data-tab="files" tabindex="-1">Arquivos</button>
+                    </div>
+
+                    <div id="panel-text" class="panel" role="tabpanel" aria-labelledby="tab-text">
+                        <label for="text-input" class="label">Texto, senha ou token</label>
+                        <textarea id="text-input" class="text-input" rows="6" autocomplete="off" autocapitalize="off"
+                            autocorrect="off" spellcheck="false" translate="no" placeholder="Cole ou digite aqui"></textarea>
+                        <p class="meter"><span id="text-size">0 B</span> de 16 KiB</p>
+                    </div>
+
+                    <div id="panel-files" class="panel" role="tabpanel" aria-labelledby="tab-files" hidden>
+                        <label id="dropzone" class="dropzone">
+                            <input id="file-input" class="visually-hidden" type="file" multiple>
+                            <b>Escolher arquivos</b>
+                            <span>ou arraste para cá · até 25 MiB no total</span>
+                        </label>
+                        <ul id="file-list" class="file-list"></ul>
+                    </div>
+
+                    <button id="send-button" class="primary-button" data-action="send-now" type="button">Enviar <span aria-hidden="true">→</span></button>
+                    <ul id="outbox" class="items"></ul>
+                </div>
+            </section>
+        </main>
+
+        <footer class="footer">
+            <span>Cifrado de ponta a ponta no navegador</span>
+            <span>Nada fica gravado no servidor</span>
+        </footer>
+    </div>
+
+    <!-- Modelos (clonados pelo app.js: nada de innerHTML) -->
+    <template id="tpl-text-item">
+        <li class="item item--text">
+            <div class="item-head">
+                <span class="item-kind">Texto</span>
+                <span class="item-meta"></span>
+            </div>
+            <textarea class="item-text is-masked" readonly rows="3" autocomplete="off" spellcheck="false" translate="no"></textarea>
+            <div class="button-row">
+                <button class="secondary-button" data-item-action="reveal" type="button" aria-pressed="false">Mostrar</button>
+                <button class="secondary-button" data-item-action="copy" type="button">Copiar</button>
+                <button class="text-button" data-item-action="remove" type="button">Apagar</button>
+            </div>
+        </li>
+    </template>
+
+    <template id="tpl-file-item">
+        <li class="item item--file">
+            <div class="item-head">
+                <span class="item-kind">Arquivo</span>
+                <span class="item-meta"></span>
+            </div>
+            <p class="item-name"></p>
+            <progress class="item-progress" max="1" value="0"></progress>
+            <div class="button-row">
+                <a class="primary-button item-download" hidden>Baixar</a>
+                <button class="text-button" data-item-action="remove" type="button">Apagar</button>
+            </div>
+        </li>
+    </template>
+
+    <template id="tpl-out-item">
+        <li class="item item--out">
+            <div class="item-head">
+                <span class="item-kind"></span>
+                <span class="item-meta"></span>
+            </div>
+            <p class="item-name"></p>
+            <progress class="item-progress" max="1" value="0"></progress>
+        </li>
+    </template>
+
+    <template id="tpl-file-row">
+        <li class="file-row">
+            <span class="file-name"></span>
+            <span class="file-size"></span>
+            <button class="text-button" data-file-action="remove" type="button" aria-label="Remover arquivo">×</button>
+        </li>
+    </template>
+</body>
+
+</html>

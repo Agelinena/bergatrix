@@ -20,6 +20,7 @@ services:
       - bergatrix-media
       - bergatrix-ldap
       - bergatrix-ai
+      - bergatrix-drop
 
 networks:
   # Traefik e os serviços com rota. Também o CrowdSec, que o bouncer do
@@ -43,3 +44,9 @@ networks:
   # `ollama pull` baixar modelos.
   bergatrix-ai:
     name: bergatrix-ai
+
+  # Só o Traefik e o Drop, que é público e sem conta. Sem internet e sem
+  # nenhum outro serviço: um Drop invadido não alcança mais nada.
+  bergatrix-drop:
+    name: bergatrix-drop
+    internal: true
