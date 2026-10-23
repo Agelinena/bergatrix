@@ -14,9 +14,12 @@ import '../../data/repositories/auth_repository.dart';
 import 'session.dart';
 
 /// Tela de login (Seção 2.2). Na web não tem o campo de servidor nem
-/// "Continuar sem entrar". Com o Authentik no servidor, o login principal é
-/// "Entrar com o Authentik"; usuário e senha ficam recolhidos (ou somem, se
-/// o servidor desligou o login por senha).
+/// "Continuar sem entrar".
+///
+/// Mostra sempre as duas formas de entrar (Authentik e usuário e senha).
+/// "Conferir servidor" (no app; na web e com servidor salvo, sozinho ao
+/// abrir) pergunta ao servidor quais ele aceita e esconde a que sobra. Sem
+/// resposta, ficam as duas, por precaução.
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
 
@@ -30,33 +33,46 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _password = TextEditingController();
   bool _showPassword = false;
 
-  /// "Entrar com usuário e senha" aberto (quando há Authentik).
-  bool _passwordOpen = false;
-
-  /// Servidor cujas opções de login valem (muda ao sair do campo).
-  String? _optionsServer;
-
-  /// Últimas opções recebidas: valem enquanto as do endereço novo chegam.
-  AuthOptions? _lastOptions;
-  bool _gotOptions = false;
+  /// Última conferência do servidor; vale para o texto [_checkedServer]
+  /// (mexer no campo volta às duas formas de entrar).
+  ServerCheck? _check;
+  String? _checkedServer;
+  bool _checking = false;
 
   @override
   void initState() {
     super.initState();
     // Sem o caminho antigo dos apps 0.3.x (/api-access-bypass) no campo.
     final saved = ref.read(sessionProvider).server;
-    _optionsServer = saved != null && saved.endsWith(bypassPrefix)
+    final initial = saved != null && saved.endsWith(bypassPrefix)
         ? saved.substring(0, saved.length - bypassPrefix.length)
         : saved;
-    _server = TextEditingController(text: _optionsServer ?? '');
-  }
-
-  void _serverChanged() {
-    final text = _server.text.trim();
-    if (text.isNotEmpty && text != _optionsServer) {
-      setState(() => _optionsServer = text);
+    _server = TextEditingController(text: initial ?? '');
+    // Web (o próprio domínio) ou servidor já salvo: confere ao abrir.
+    if (ref.read(appPlatformProvider).isWeb || (initial ?? '').isNotEmpty) {
+      Future.microtask(_checkServer);
     }
   }
+
+  /// "Conferir servidor".
+  Future<void> _checkServer() async {
+    if (_checking || !mounted) return;
+    final text = _server.text.trim();
+    final web = ref.read(appPlatformProvider).isWeb;
+    if (!web && text.isEmpty) return;
+    setState(() => _checking = true);
+    final check = await ref.read(sessionProvider.notifier).checkServer(text);
+    if (!mounted) return;
+    setState(() {
+      _checking = false;
+      _check = check;
+      _checkedServer = text;
+    });
+  }
+
+  /// Opções valendo para o que está no campo agora (nulo: não conferido).
+  AuthOptions? get _options =>
+      _checkedServer == _server.text.trim() ? _check?.options : null;
 
   @override
   void dispose() {
@@ -123,6 +139,23 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     if (mounted) context.go(AppRoutes.home);
   }
 
+  /// Linha abaixo do servidor com o resultado da conferência.
+  String? _checkMessage() {
+    final check = _check;
+    if (check == null || _checkedServer != _server.text.trim()) return null;
+    final options = check.options;
+    if (options == null) {
+      return '${messageFor(check.error ?? AuthError.servidorNaoEncontrado)} '
+          'As duas formas de entrar continuam aqui.';
+    }
+    return switch ((options.oidcEnabled, options.passwordLoginEnabled)) {
+      (true, true) => 'Servidor conferido: entra pelo Authentik ou com senha.',
+      (true, false) => 'Servidor conferido: entra pelo Authentik.',
+      (false, true) => 'Servidor conferido: entra com usuário e senha.',
+      (false, false) => 'Servidor conferido.',
+    };
+  }
+
   static String messageFor(AuthError error) => switch (error) {
     AuthError.servidorNaoEncontrado =>
       'Servidor não encontrado. Confira o endereço.',
@@ -138,6 +171,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       'Este servidor não tem login pelo Authentik. Entre com usuário e senha.',
     AuthError.authentikFalhou =>
       'O login pelo Authentik não terminou. Tente de novo.',
+    AuthError.acessoBloqueado =>
+      'O servidor recusou este aparelho (bloqueio do firewall ou do '
+          'CrowdSec). Fale com o administrador.',
+    AuthError.certificadoInvalido =>
+      'O certificado do servidor não é válido. Confira o endereço.',
   };
 
   @override
@@ -147,19 +185,18 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     final session = ref.watch(sessionProvider);
     final error = session.loginError;
     final loading = session.status == SessionStatus.logando;
-    final optionsAsync = ref.watch(_loginOptionsProvider(_optionsServer));
-    if (optionsAsync.hasValue) {
-      _lastOptions = optionsAsync.value;
-      _gotOptions = true;
-    }
-    // Só na primeira consulta: depois valem as últimas opções.
-    final checking = !_gotOptions;
-    final options = _lastOptions;
-    // Servidor ainda não informado (app): mostra os dois jeitos, abertos.
-    final oidc = !checking && (options?.oidcEnabled ?? true);
-    final password = !checking && (options?.passwordLoginEnabled ?? true);
+    final options = _options;
+    // Não conferido (ou sem resposta): as duas. Conferido: só as aceitas
+    // (se o servidor disser que nenhuma, mostra as duas mesmo assim).
+    final none =
+        options != null &&
+        !options.oidcEnabled &&
+        !options.passwordLoginEnabled;
+    final oidc = options == null || none || options.oidcEnabled;
+    final password = options == null || none || options.passwordLoginEnabled;
     final canRegister = options?.registrationEnabled ?? false;
-    final showForm = password && (!oidc || _passwordOpen || options == null);
+    final checkMessage = _checkMessage();
+    final checkOk = _check?.ok ?? false;
 
     Widget errorText(AuthError e) => Padding(
       padding: const EdgeInsets.only(top: 6),
@@ -188,48 +225,68 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     const SizedBox(height: 22),
                     if (platform.isApp) ...[
                       const _Label('Endereço do servidor'),
-                      Focus(
-                        onFocusChange: (focused) {
-                          if (!focused) _serverChanged();
-                        },
-                        child: AppTextField(
-                          hint: 'https://musica.meuservidor.com',
-                          controller: _server,
-                          keyboardType: TextInputType.url,
-                          textInputAction: TextInputAction.next,
-                          onSubmitted: (_) => _serverChanged(),
-                        ),
+                      AppTextField(
+                        hint: 'https://musica.meuservidor.com',
+                        controller: _server,
+                        keyboardType: TextInputType.url,
+                        textInputAction: TextInputAction.next,
+                        // Mexeu no endereço: volta às duas formas de entrar.
+                        onChanged: (_) => setState(() {}),
+                        onSubmitted: (_) => _checkServer(),
                       ),
                       if (error == AuthError.servidorNaoEncontrado)
                         errorText(error!),
-                      const SizedBox(height: 14),
-                    ],
-                    if (checking)
-                      const Center(
-                        child: Padding(
-                          padding: EdgeInsets.all(12),
-                          child: CircularProgressIndicator(),
+                      const SizedBox(height: 10),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: AppChip(
+                          label: _checking
+                              ? 'Conferindo…'
+                              : 'Conferir servidor',
+                          icon: Icons.dns_outlined,
+                          onTap: _checking ? null : _checkServer,
                         ),
                       ),
-                    if (oidc) ...[
+                    ],
+                    if (_checking && platform.isWeb)
+                      Text(
+                        'Conferindo o servidor…',
+                        style: BergaText.secondary.copyWith(color: c.mu),
+                      ),
+                    if (checkMessage != null && (platform.isApp || !checkOk))
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: Text(
+                          checkMessage,
+                          style: BergaText.secondary.copyWith(
+                            color: checkOk ? c.gr : c.ac,
+                          ),
+                        ),
+                      ),
+                    const SizedBox(height: 18),
+                    if (oidc)
                       PrimaryButton(
                         label: loading ? 'Entrando…' : 'Entrar com o Authentik',
                         icon: Icons.login,
                         expanded: true,
                         onPressed: loading ? null : _submitOidc,
                       ),
-                      if (password && !showForm) ...[
-                        const SizedBox(height: 14),
-                        Center(
-                          child: AppChip(
-                            label: 'Entrar com usuário e senha',
-                            onTap: () => setState(() => _passwordOpen = true),
-                          ),
+                    if (oidc && password)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        child: Row(
+                          spacing: 10,
+                          children: [
+                            Expanded(child: Divider(color: c.card)),
+                            Text(
+                              'ou com usuário e senha',
+                              style: BergaText.secondary.copyWith(color: c.mu),
+                            ),
+                            Expanded(child: Divider(color: c.card)),
+                          ],
                         ),
-                      ],
-                      if (showForm) const SizedBox(height: 22),
-                    ],
-                    if (showForm) ...[
+                      ),
+                    if (password) ...[
                       const _Label('Usuário'),
                       AppTextField(
                         hint: 'Seu usuário',
@@ -276,7 +333,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         (error != AuthError.servidorNaoEncontrado ||
                             platform.isWeb))
                       errorText(error),
-                    if (showForm &&
+                    if (password &&
                         (options?.passwordResetEnabled ?? false)) ...[
                       const SizedBox(height: 14),
                       Center(
@@ -289,7 +346,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         ),
                       ),
                     ],
-                    if (canRegister && showForm) ...[
+                    if (canRegister && password) ...[
                       const SizedBox(height: 14),
                       Center(
                         child: GestureDetector(
@@ -323,14 +380,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     );
   }
 }
-
-/// Como o servidor aceita o login (nulo: servidor ainda não informado).
-final _loginOptionsProvider = FutureProvider.autoDispose
-    .family<AuthOptions?, String?>((ref, server) async {
-      final web = ref.read(appPlatformProvider).isWeb;
-      if (!web && (server == null || server.trim().isEmpty)) return null;
-      return ref.read(sessionProvider.notifier).loginOptions(server);
-    });
 
 class _Label extends StatelessWidget {
   const _Label(this.text);

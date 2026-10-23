@@ -75,11 +75,15 @@ class FakeAuthRepository implements AuthRepository {
     return user;
   }
 
-  /// O que o servidor falso diz aceitar (padrão: só senha).
-  AuthOptions authOptions = const AuthOptions();
+  /// O que o servidor falso diz aceitar (padrão: só senha). Nulo: não
+  /// respondeu.
+  AuthOptions? authOptions = const AuthOptions();
 
   @override
-  Future<AuthOptions> options(String server) async => authOptions;
+  Future<AuthOptions?> options(String server) async {
+    _checkServer(server);
+    return authOptions;
+  }
 
   /// Pedidos de "esqueci minha senha" recebidos.
   final forgotten = <String>[];

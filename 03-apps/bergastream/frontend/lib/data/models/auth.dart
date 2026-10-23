@@ -75,6 +75,27 @@ enum AuthError {
 
   /// O login pelo Authentik não terminou (cancelado, expirou, recusado).
   authentikFalhou,
+
+  /// O servidor (ou o firewall/CrowdSec na frente dele) recusou este
+  /// aparelho (403 ao procurar o servidor).
+  acessoBloqueado,
+
+  /// O certificado HTTPS do endereço não é válido.
+  certificadoInvalido,
+}
+
+/// Resultado de "Conferir servidor": o endereço que respondeu e como ele
+/// aceita o login; ou o motivo de não ter dado para conferir.
+class ServerCheck {
+  const ServerCheck({this.address, this.options, this.error});
+
+  final String? address;
+
+  /// Nulo: não deu para conferir (a tela mostra as duas formas de entrar).
+  final AuthOptions? options;
+  final AuthError? error;
+
+  bool get ok => options != null;
 }
 
 /// Como o servidor aceita o login (`/api/auth/config`).

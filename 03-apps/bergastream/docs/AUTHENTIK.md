@@ -143,8 +143,9 @@ e-mail de outra pessoa e entrar na conta dela. Depois de ligada, a conta só res
 - Apps **0.3.x** só sabem entrar por senha e usam o caminho `/api-access-bypass` (o nginx trata
   como o endereço normal). Eles mostram a atualização ao abrir; depois de atualizados, entram
   pelo Authentik.
-- Enquanto alguém usar a 0.3.x, mantenha `PASSWORD_LOGIN=true` (a tela da 0.4 mostra
-  "Entrar com o Authentik" e, recolhido, "Entrar com usuário e senha").
+- Enquanto alguém usar a 0.3.x, mantenha `PASSWORD_LOGIN=true`. A tela de login mostra sempre
+  as duas formas de entrar; "Conferir servidor" pergunta ao servidor quais ele aceita e esconde a
+  que sobra (sem resposta, ficam as duas).
 - Todos na 0.4: `PASSWORD_LOGIN=auto` (só Authentik).
 - Quem já está logado continua logado: a sessão do Bergastream não depende do Authentik.
   "Sair" e entrar de novo passa pelo Authentik.

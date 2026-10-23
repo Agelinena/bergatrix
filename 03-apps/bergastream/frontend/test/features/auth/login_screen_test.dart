@@ -136,18 +136,89 @@ void main() {
       expect(find.byType(LoginScreen), findsNothing);
     });
 
-    testWidgets('Authentik e senha: a senha fica recolhida', (tester) async {
+    testWidgets('Authentik e senha: os dois aparecem', (tester) async {
       await pumpBergastream(
         tester,
         platform: const AppPlatform.web(),
         session: web,
-        size: const Size(1200, 800),
+        size: const Size(1200, 900),
         auth: authWith(const AuthOptions(oidcEnabled: true)),
       );
       expect(find.text('Entrar com o Authentik'), findsOneWidget);
-      expect(find.text('Seu usuário'), findsNothing);
-      await tester.tap(find.text('Entrar com usuário e senha'));
+      expect(field('Seu usuário'), findsOneWidget);
+      expect(find.text('ou com usuário e senha'), findsOneWidget);
+    });
+
+    testWidgets('servidor sem resposta: mantém os dois e diz o motivo', (
+      tester,
+    ) async {
+      await pumpBergastream(
+        tester,
+        platform: const AppPlatform.web(),
+        session: web,
+        size: const Size(1200, 900),
+        auth: FakeAuthRepository(delay: Duration.zero)..authOptions = null,
+      );
+      expect(find.text('Entrar com o Authentik'), findsOneWidget);
+      expect(field('Seu usuário'), findsOneWidget);
+      expect(
+        find.textContaining('As duas formas de entrar continuam aqui.'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('app: "Conferir servidor" tira o botão que sobra', (
+      tester,
+    ) async {
+      await pumpBergastream(
+        tester,
+        session: noServer,
+        size: const Size(400, 1000),
+        auth: authWith(
+          const AuthOptions(oidcEnabled: true, passwordLoginEnabled: false),
+        ),
+      );
+      // Antes de conferir: as duas.
+      expect(find.text('Entrar com o Authentik'), findsOneWidget);
+      expect(field('Seu usuário'), findsOneWidget);
+
+      await tester.enterText(
+        field('https://musica.meuservidor.com'),
+        'musica.com',
+      );
+      await tester.tap(find.text('Conferir servidor'));
       await tester.pumpAndSettle();
+      expect(
+        find.text('Servidor conferido: entra pelo Authentik.'),
+        findsOneWidget,
+      );
+      expect(find.text('Entrar com o Authentik'), findsOneWidget);
+      expect(field('Seu usuário'), findsNothing);
+
+      // Mexeu no endereço: volta às duas até conferir de novo.
+      await tester.enterText(
+        field('https://musica.meuservidor.com'),
+        'outro.com',
+      );
+      await tester.pumpAndSettle();
+      expect(field('Seu usuário'), findsOneWidget);
+    });
+
+    testWidgets('app: servidor que não existe mantém os dois', (tester) async {
+      await pumpBergastream(
+        tester,
+        session: noServer,
+        size: const Size(400, 1000),
+        auth: authWith(const AuthOptions(oidcEnabled: true)),
+      );
+      await tester.enterText(
+        field('https://musica.meuservidor.com'),
+        'naoexiste.com',
+      );
+      await tester.tap(find.text('Conferir servidor'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('Servidor não encontrado'), findsOneWidget);
+      expect(find.text('Entrar com o Authentik'), findsOneWidget);
       expect(field('Seu usuário'), findsOneWidget);
     });
 

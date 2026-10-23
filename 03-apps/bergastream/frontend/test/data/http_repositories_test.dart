@@ -148,7 +148,10 @@ void main() {
       final repo = repoWith(
         FakeAdapter((_) async => jsonBody({'registration_enabled': true})),
       );
-      expect((await repo.options('https://s.com')).registrationEnabled, isTrue);
+      expect(
+        (await repo.options('https://s.com'))!.registrationEnabled,
+        isTrue,
+      );
       final offline = repoWith(
         FakeAdapter(
           (o) async => throw DioException.connectionError(
@@ -157,9 +160,53 @@ void main() {
           ),
         ),
       );
+      // Sem resposta: nulo (a tela mostra as duas formas de entrar).
+      expect(await offline.options('https://s.com'), isNull);
+      final html = repoWith(
+        FakeAdapter(
+          (_) async => ResponseBody.fromString(
+            '<html>bloqueado</html>',
+            403,
+            headers: {
+              Headers.contentTypeHeader: ['text/html'],
+            },
+          ),
+        ),
+      );
+      expect(await html.options('https://s.com'), isNull);
+    });
+
+    test('procurar o servidor: bloqueio e certificado', () async {
+      Future<AuthError> errorFor(FakeAdapter adapter) async {
+        try {
+          await repoWith(adapter).discoverServer('https://b.com');
+          return AuthError.servidorNaoEncontrado;
+        } on AuthException catch (e) {
+          return e.error;
+        }
+      }
+
       expect(
-        (await offline.options('https://s.com')).registrationEnabled,
-        isFalse,
+        await errorFor(
+          FakeAdapter(
+            (_) async => ResponseBody.fromString(
+              '<html>403 Forbidden</html>',
+              403,
+              headers: {
+                Headers.contentTypeHeader: ['text/html'],
+              },
+            ),
+          ),
+        ),
+        AuthError.acessoBloqueado,
+      );
+      expect(
+        await errorFor(
+          FakeAdapter(
+            (o) async => throw DioException.badCertificate(requestOptions: o),
+          ),
+        ),
+        AuthError.certificadoInvalido,
       );
     });
 
@@ -176,7 +223,7 @@ void main() {
             : jsonBody({'detail': 'Código inválido'}, status: 401),
       );
       final repo = repoWith(adapter);
-      final options = await repo.options('https://s.com');
+      final options = (await repo.options('https://s.com'))!;
       expect(options.oidcEnabled, isTrue);
       expect(options.passwordLoginEnabled, isFalse);
       final tokens = await repo.exchangeOidc(

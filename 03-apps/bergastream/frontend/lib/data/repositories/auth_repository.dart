@@ -31,9 +31,9 @@ abstract interface class AuthRepository {
   /// Lança [AuthException] se nenhum candidato responder.
   Future<String> discoverServer(String server);
 
-  /// Como o servidor aceita o login (Authentik, senha, cadastro).
-  /// Sem resposta: só senha, como antes.
-  Future<AuthOptions> options(String server);
+  /// Como o servidor aceita o login (Authentik, senha, cadastro). Nulo se
+  /// não respondeu (aí não dá para saber: a tela mostra as duas formas).
+  Future<AuthOptions?> options(String server);
 
   /// "Esqueci minha senha": o servidor manda o link para o e-mail da conta
   /// ([login] = usuário ou e-mail). Não diz se a conta existe.

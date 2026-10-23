@@ -294,13 +294,20 @@ class SessionController extends Notifier<SessionState> {
       ? _repository.discoverServer(previous.server ?? webServerAddress() ?? '')
       : _repository.discoverServer(normalizeServer(server ?? ''));
 
-  /// Como o servidor aceita o login (mostra "Entrar com o Authentik" e/ou
-  /// usuário e senha).
-  Future<AuthOptions> loginOptions(String? server) async {
+  /// "Conferir servidor": acha o endereço e pergunta como ele aceita o login
+  /// (Authentik, senha ou os dois). Sem resposta, devolve o motivo e nenhuma
+  /// opção: a tela mantém as duas formas de entrar.
+  Future<ServerCheck> checkServer(String? server) async {
     try {
-      return await _repository.options(await _discover(state, server));
-    } on AuthException {
-      return const AuthOptions();
+      final address = await _discover(state, server);
+      final options = await _repository.options(address);
+      return ServerCheck(
+        address: address,
+        options: options,
+        error: options == null ? AuthError.servidorNaoEncontrado : null,
+      );
+    } on AuthException catch (e) {
+      return ServerCheck(error: e.error);
     }
   }
 
@@ -316,7 +323,10 @@ class SessionController extends Notifier<SessionState> {
     final launcher = ref.read(oidcLauncherProvider);
     try {
       final address = await _discover(previous, server);
-      if (!(await _repository.options(address)).oidcEnabled) {
+      // Só desiste se o servidor respondeu que não tem Authentik; sem
+      // resposta, tenta (a página do servidor explica se não der).
+      final options = await _repository.options(address);
+      if (options != null && !options.oidcEnabled) {
         throw const AuthException(AuthError.semAuthentik);
       }
       final verifier = _pkceVerifier();

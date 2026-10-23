@@ -406,6 +406,17 @@ Rodado na imagem `ghcr.io/cirruslabs/flutter:stable` (Flutter 3.44.0 / Dart 3.12
 - Testes: `test_quality` 61, `test_upgrade_flow` 10 (novo; banco real e Lidarr falso). Validado
   contra o MusicBrainz e um Lidarr local (ISRC → álbum de estúdio → `album/lookup` por MBID).
 
+### Versão 0.4.1 — tela de login com as duas formas de entrar
+- A tela mostra sempre "Entrar com o Authentik" e usuário e senha. **Conferir servidor** (no
+  app; na web e com servidor salvo, sozinho ao abrir) pergunta ao servidor quais ele aceita e
+  esconde a que sobra; sem resposta, ficam as duas e a tela diz o motivo. Antes, uma falha ao
+  consultar o servidor era lida como "só senha" e o botão do Authentik sumia.
+- Motivos mais claros ao procurar o servidor: acesso bloqueado (403 do firewall/CrowdSec) e
+  certificado inválido, além de "não encontrado" e "sem conexão".
+- Endereço salvo pela 0.3.x (`/api-access-bypass`) tenta primeiro o endereço normal e aparece sem
+  esse caminho no campo; no servidor, o nginx trata o caminho antigo como o normal.
+- Testes: app 427.
+
 ### Versão 0.4.0 — login pelo Authentik, sincronização com a nuvem e capas
 - **Login pelo Authentik (OIDC)** no lugar do usuário e senha, nos apps e na web. O servidor é
   o cliente OIDC (confidencial, PKCE, `nonce`, `id_token` validado pelo JWKS) e entrega os
@@ -745,7 +756,7 @@ conferidas com ffprobe (título diferente → descarta e baixa do YouTube).
 | Suíte | Resultado |
 |---|---|
 | Flutter `flutter analyze` | ✅ sem problemas |
-| Flutter `flutter test` | ✅ 421 |
+| Flutter `flutter test` | ✅ 427 |
 | Flutter `integration_test` (flutter-tester) | ✅ 2 |
 | Backend auth / OIDC / contas / playlists / ops / history / resolve / catalog / downloads / images | ✅ 38 / 15 / 51 / 32 / 37 / 27 / 17 / 18 / 13 / 12 |
 | Backend qualidade / versões por nível / permanência (pastas) / busca de playlists | ✅ 42 / 18 / 13 / 13 |

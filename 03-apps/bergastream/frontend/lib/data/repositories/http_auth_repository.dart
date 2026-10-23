@@ -113,6 +113,12 @@ class HttpAuthRepository implements AuthRepository {
         };
         if (network.contains(e.type) && !ApiException.isHostNotFound(e)) {
           error = AuthError.semConexao;
+        } else if (e.type == DioExceptionType.badCertificate) {
+          error = AuthError.certificadoInvalido;
+        } else if (e.response?.statusCode == 403 &&
+            error == AuthError.servidorNaoEncontrado) {
+          // Bloqueio na frente do servidor (CrowdSec, firewall).
+          error = AuthError.acessoBloqueado;
         }
       } on Object {
         // Respondeu outra coisa (página de login do Authentik, outro site).
@@ -122,14 +128,18 @@ class HttpAuthRepository implements AuthRepository {
   }
 
   @override
-  Future<AuthOptions> options(String server) async {
+  Future<AuthOptions?> options(String server) async {
     try {
       final response = await _dio.get<Map<String, dynamic>>(
         '$server/api/auth/config',
       );
-      return AuthOptions.fromJson(response.data ?? const {});
+      final data = response.data;
+      if (data == null || !data.containsKey('registration_enabled')) {
+        return null;
+      }
+      return AuthOptions.fromJson(data);
     } on Object {
-      return const AuthOptions();
+      return null;
     }
   }
 
