@@ -53,6 +53,7 @@ Rede local ───────────────────────
 | 03 | homeassistant | Home Assistant | `ha` | appdata |
 | 03 | immich | Fotos e vídeos: server, machine learning (GPU), Postgres (VectorChord), Valkey | `fotos` | appdata, cache, userdata |
 | 03 | jellyfin | Jellyfin, Seerr, qBittorrent, Sonarr, Radarr, Prowlarr, Bazarr, SABnzbd, FlareSolverr, indexador BR, Recyclarr, Legendarr (web, worker, optimizer) | `jellyflix`, `catalogo`, `legendarr` e um por serviço *arr | appdata, cache, media |
+| 03 | nextcloud | Arquivos, agenda e contatos: Nextcloud (Apache), cron, Postgres, Redis | `storange` | appdata, userdata |
 | 03 | ollama | Ollama (GPU), sem rota | – | cache |
 | 03 | transcriptor | Transcrição com faster-whisper (GPU): API, worker, Postgres, proxy de saída | `transcriptor` | appdata, cache |
 | 04 | wazuh | Wazuh manager, indexer, dashboard | `wazuh` (+ portas 1514, 1515, 514/udp, 55000 para agentes) | appdata |

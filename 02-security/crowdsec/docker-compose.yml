@@ -8,6 +8,11 @@ services:
       # SQLite com WAL: leituras não esperam as gravações (lista da comunidade)
       USE_WAL: "true"
       COLLECTIONS: "crowdsecurity/traefik crowdsecurity/http-cve crowdsecurity/base-http-scenarios"
+      # Nextcloud: ignora os 404 normais do WebDAV (PROPFIND/GET/DELETE em
+      # /remote.php/dav/) e das miniaturas, que o http-probing leria como
+      # varredura. Vale para qualquer host; os outros 404 continuam contando.
+      # Conferido com `cscli explain --type traefik` (03-apps/nextcloud/README.md).
+      PARSERS: "crowdsecurity/nextcloud-whitelist"
     volumes:
       - ${APPDATA_PATH:?}/crowdsec/config:/etc/crowdsec
       - ${APPDATA_PATH:?}/crowdsec/data:/var/lib/crowdsec/data

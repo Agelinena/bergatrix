@@ -84,6 +84,7 @@ Como em `APPDATA_PATH`, cada stack tem a sua pasta, com o nome da stack. Só ent
 | homeassistant | `config` | – | – | – |
 | immich | `postgres` | `thumbs`, `encoded-video`, `model-cache`, `redis` | – | `immich` (`library`, `upload`, `profile`, `backups`) |
 | jellyfin | `jellyfin`, `catalogo`, `qbittorrent`, `sonarr`, `radarr`, `prowlarr`, `bazarr`, `sabnzbd`, `recyclarr`, `legendarr/jobs`, `legendarr/stats` | `jellyfin` (transcodes), `optimizer`, `incomplete` | raiz inteira (Jellyfin), `filmes`, `series`, `downloads` | – |
+| nextcloud | `html` (código, `config`, `custom_apps`), `postgres` | – | – | `nextcloud` (`data`: arquivos, versões, lixeira e miniaturas) |
 | ollama | – | `models` | – | – |
 | transcriptor | `postgres` | `models`, `work` (uploads e áudio para ouvir) | – | – |
 | wazuh | `wazuh_manager`, `wazuh_indexer`, `wazuh_dashboard`, `filebeat`, `config` | – | – | – |

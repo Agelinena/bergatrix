@@ -148,5 +148,6 @@ Stacks existentes que ainda não seguem o padrão. Nenhuma delas impede a migra�
 | homeassistant | Rotas antigas com IPs fixos, bypass e `public-auth`. Saem conforme o [plano de acesso](plano-acesso.md). |
 | jellyfin | Legendarr (web, worker, optimizer) roda como root. O optimizer guarda `requires_redownload.txt` fora de volume. |
 | bitwarden | O nome da pasta é `bitwarden`, mas o app é o Vaultwarden. |
+| nextcloud | As miniaturas (`appdata_*/preview`) ficam no NAS, dentro da pasta de dados: o Nextcloud não tem opção para separá-las. O backup pode excluir essa pasta. |
 | cloudbeaver | Ficou sem banco para acessar desde que o Postgres global saiu: cada stack tem o seu, em rede interna. |
 | quase todas | Sem `README.md` próprio (só bergastream, bergalink e wazuh têm). |

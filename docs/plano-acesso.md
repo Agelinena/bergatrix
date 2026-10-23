@@ -5,7 +5,7 @@ Plano para trocar o modelo atual de três rotas (forward-auth do Authentik, aces
 ## Decisões tomadas (outubro de 2026)
 
 - **Login único pelo Authentik**, com 2FA, para todos os serviços com interface:
-  - **OIDC no app:** Bergalink, Bergastream, Transcriptor, Vaultwarden, Immich e Home Assistant;
+  - **OIDC no app:** Bergalink, Bergastream, Transcriptor, Vaultwarden, Immich, Nextcloud e Home Assistant;
   - **forward-auth:** Wazuh, CloudBeaver, os *arr, o painel do Traefik e o Legendarr.
 - **Público sem Authentik:** só o Drop.
 - **Só pela VPN:** Proxmox, OMV e o Ubuntu (SSH e o host Docker). A VPN é o Tailscale, gerenciado no firewall, fora da VM do Docker.
@@ -49,6 +49,7 @@ Para quem usa, A, B e C dão o mesmo resultado: a tela do Authentik, o mesmo 2FA
 | jellyfin | jellyfin | `jellyflix` | E, sem CrowdSec | **B** (LDAP) | LDAP feito. `crowdsec-bouncer` com exceção para imagens e streaming (`02-security/crowdsec/whitelists`). | No repositório (falta subir) |
 | jellyfin | catalogo (Seerr) | `catalogo` | Forward-auth + IP | **E** | Login pela conta do Jellyfin, que já usa LDAP (a senha conferida é a do Authentik). Login local do Seerr desligado em *Settings → Users*. Observar bans do CrowdSec por pôsteres com 404. | ✓ |
 | immich | immich-server | `fotos` | – (stack nova) | **A** (OIDC) | Uma rota, sem forward-auth, porque o app do celular fala direto com a API. Redirect URIs `app.immich:///oauth-callback`, `/auth/login` e `/user-settings`; grupo `immich_users`. Login por senha desligado depois do teste (`immich-admin enable-password-login` em emergência). O client secret fica no banco do Immich, não no `.env`. Precisa do `readTimeout` de 600 s no Traefik. | No repositório (falta subir) |
+| nextcloud | app | `storange` | – (stack nova) | **A** (OIDC) | Uma rota, sem forward-auth: os clientes de desktop e de celular entram pelo navegador (Login Flow v2) e o WebDAV, o CalDAV e o CardDAV usam senha de app. App `user_oidc`, grupo `nextcloud_users`, grupos do Nextcloud pelos *entitlements* (`admin` é o de administradores). Admin local desativado depois do teste (`occ user:enable` em emergência). CrowdSec com o parser `crowdsecurity/nextcloud-whitelist`. | No repositório (falta subir) |
 | homeassistant | homeassistant | `ha` | 3 rotas (bypass para o Companion) | **A** (OIDC) | Sem OIDC nativo: usa a integração da comunidade `hass-oidc-auth` (HACS). A rota fica pública, sem forward-auth, porque o app Companion fala direto com a API. Manter um usuário local com MFA como acesso de emergência. Configurar `trusted_proxies`. | – |
 | drop | drop | `drop` | E | **E** | Público por decisão. Uma rota com `crowdsec-bouncer` e rate limit, rede isolada `bergatrix-drop`. | No repositório (falta subir) |
 | authentik | server | `authentik` | Público; `/if/admin` em D | **E**, com 2FA obrigatório para admins | É a porta de entrada de tudo, então o 2FA e as atualizações são inegociáveis. `/if/admin` pode continuar em D. | ✓ |
@@ -103,3 +104,4 @@ Feito: base no Authentik, redes, painel do Traefik, *arr, Lidarr, Legendarr, See
 6. **Wazuh:** revisar a porta 55000.
 7. **Bergastream:** OIDC no código, seguindo o Bergalink.
 8. **Immich:** subir com o OIDC e o timeout novo do Traefik. Ver o [README](../03-apps/immich/README.md#subir). Fotos de verdade só depois do backup do `USERDATA_PATH`.
+9. **Nextcloud:** subir com o OIDC e o parser novo do CrowdSec. Ver o [README](../03-apps/nextcloud/README.md#1-authentik). Arquivos de verdade só depois do backup do `USERDATA_PATH`.

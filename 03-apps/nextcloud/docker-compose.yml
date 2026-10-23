@@ -1,0 +1,150 @@
+# Nextcloud — arquivos, agenda (CalDAV) e contatos (CardDAV).
+# Padrão: docs/03-padrao-stacks.md. Passo a passo: README.md desta pasta.
+#
+# Acesso (docs/05-acesso.md): uma rota só, com CrowdSec e sem forward-auth,
+# porque os clientes de desktop e de celular e o WebDAV falam direto com o
+# servidor. O login é pelo Authentik, por OIDC (app user_oidc); os clientes
+# entram pelo navegador (Login Flow v2) e recebem uma senha de app.
+#
+#   storange.${DOMAIN}   → web, WebDAV, CalDAV e CardDAV
+#
+# Código, config e apps em ${APPDATA_PATH}/nextcloud/html (disco local);
+# arquivos dos usuários em ${USERDATA_PATH}/nextcloud/data (NFS, com backup).
+services:
+  app:
+    # Atualize uma versão major por vez (34 → 35 → 36), sempre a partir do
+    # último patch da atual. Downgrade não existe: o container se recusa a subir.
+    image: nextcloud:34.0.5-apache
+    container_name: nextcloud-app
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    environment: &nextcloud-env
+      TZ: ${TZ}
+      # Banco e administrador: só valem na instalação (primeira subida)
+      POSTGRES_HOST: db
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      NEXTCLOUD_ADMIN_USER: ${NEXTCLOUD_ADMIN_USER}
+      NEXTCLOUD_ADMIN_PASSWORD: ${NEXTCLOUD_ADMIN_PASSWORD}
+      NEXTCLOUD_DATA_DIR: /var/www/data
+      NEXTCLOUD_TRUSTED_DOMAINS: storange.${DOMAIN}
+      # Lidas a cada requisição (config/redis.config.php): cache e locks de
+      # arquivo no Redis, e não no banco nem no NFS
+      REDIS_HOST: redis
+      REDIS_HOST_PASSWORD: ${NEXTCLOUD_REDIS_PASSWORD}
+      # Atrás do Traefik (lidas a cada requisição, config/reverse-proxy.config.php).
+      # Sem o REWRITE_IP, o Apache troca o IP pelo X-Real-IP sozinho e o
+      # Nextcloud não aplica o trusted_proxies. A faixa é a das redes do
+      # Docker, como o AUTHENTIK_TRUSTED_PROXY_CIDRS: não muda quando a
+      # bergatrix-proxy é recriada.
+      APACHE_DISABLE_REWRITE_IP: "1"
+      TRUSTED_PROXIES: 172.16.0.0/12
+      OVERWRITEPROTOCOL: https
+      OVERWRITEHOST: storange.${DOMAIN}
+      OVERWRITECLIURL: https://storange.${DOMAIN}
+      PHP_MEMORY_LIMIT: ${NEXTCLOUD_PHP_MEMORY_LIMIT:-512M}
+      PHP_UPLOAD_LIMIT: ${NEXTCLOUD_PHP_UPLOAD_LIMIT:-512M}
+    volumes: &nextcloud-volumes
+      # Código, config.php, apps e temas (backup: o config.php tem os segredos da instância)
+      - ${APPDATA_PATH:?}/nextcloud/html:/var/www/html
+      # Arquivos dos usuários, fora da pasta web (NFS; dono 1000 no NAS pelo all_squash)
+      - ${USERDATA_PATH:?}/nextcloud/data:/var/www/data
+      # Não deixa o Apache subir sem o Nextcloud instalado (ver o script)
+      - ./hooks/before-starting:/docker-entrypoint-hooks.d/before-starting:ro
+    networks:
+      - nextcloud-internal
+      - bergatrix-proxy
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=bergatrix-proxy"
+      - "traefik.http.routers.nextcloud.rule=Host(`storange.${DOMAIN}`)"
+      - "traefik.http.routers.nextcloud.entrypoints=websecure"
+      - "traefik.http.routers.nextcloud.tls=true"
+      - "traefik.http.routers.nextcloud.service=nextcloud"
+      - "traefik.http.routers.nextcloud.middlewares=crowdsec-bouncer@file,nextcloud-dav,nextcloud-hsts"
+      - "traefik.http.services.nextcloud.loadbalancer.server.port=80"
+      # /.well-known/caldav e carddav: o Apache do container redirecionaria
+      # para http (ele não vê o https do Traefik), então o redirect é feito aqui.
+      - "traefik.http.middlewares.nextcloud-dav.redirectregex.regex=^https://([^/]+)/\\.well-known/(?:card|cal)dav"
+      - "traefik.http.middlewares.nextcloud-dav.redirectregex.replacement=https://$${1}/remote.php/dav/"
+      - "traefik.http.middlewares.nextcloud-dav.redirectregex.permanent=true"
+      # HSTS de 180 dias: mínimo pedido pela verificação de segurança do Nextcloud
+      - "traefik.http.middlewares.nextcloud-hsts.headers.stsSeconds=15552000"
+
+  # Tarefas em segundo plano (occ background:cron), a cada 5 minutos. Mesma
+  # imagem, mesmas variáveis e mesmos volumes do app.
+  cron:
+    image: nextcloud:34.0.5-apache
+    container_name: nextcloud-cron
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    entrypoint: /cron.sh
+    environment: *nextcloud-env
+    volumes: *nextcloud-volumes
+    networks:
+      - nextcloud-internal
+      - nextcloud-egress   # calendários assinados, loja de apps, verificação de versão
+    depends_on:
+      app:
+        condition: service_started
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  db:
+    image: postgres:16-alpine
+    container_name: nextcloud-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      TZ: ${TZ}
+    volumes:
+      - ${APPDATA_PATH:?}/nextcloud/postgres:/var/lib/postgresql/data
+    networks:
+      - nextcloud-internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
+  # Só cache e locks: sem persistência e sem volume (se refaz sozinho).
+  redis:
+    image: redis:7-alpine
+    container_name: nextcloud-redis
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    command: ["redis-server", "--requirepass", "${NEXTCLOUD_REDIS_PASSWORD}", "--save", "", "--appendonly", "no"]
+    environment:
+      REDISCLI_AUTH: ${NEXTCLOUD_REDIS_PASSWORD}
+    networks:
+      - nextcloud-internal
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+networks:
+  # Banco e Redis sem saída para a internet
+  nextcloud-internal:
+    name: nextcloud-internal
+    internal: true
+  # O cron não tem rota, então fica fora da bergatrix-proxy
+  nextcloud-egress:
+    name: nextcloud-egress
+  bergatrix-proxy:
+    external: true

@@ -21,6 +21,7 @@
 03-apps/bergastream
 03-apps/bergalink
 03-apps/immich
+03-apps/nextcloud
 03-apps/transcriptor
 03-apps/drop
 03-apps/homeassistant
