@@ -37,6 +37,21 @@ JOB_HEARTBEAT_SECONDS = 20
 HOUSEKEEPING_SECONDS = 600
 HEALTH_FILE = Path("/tmp/healthy")
 GENERIC_ERROR = "Falha inesperada no processamento. Tente de novo."
+STORAGE_RETRY_SECONDS = 30
+
+
+def storage_problem() -> str | None:
+    """As pastas que o worker grava, se alguma não aceitar escrita."""
+    for folder in (settings.work_dir, settings.models_dir):
+        probe = Path(folder) / f".escrita-{os.getpid()}"
+        try:
+            Path(folder).mkdir(parents=True, exist_ok=True)
+            probe.write_bytes(b"ok")
+            probe.unlink()
+        except OSError as error:
+            return (f"sem permissão de escrita em {folder} ({error.strerror}). No servidor: "
+                    f"sudo chown -R 1000:1000 ${{CACHE_PATH}}/transcriptor")
+    return None
 
 
 class Worker:
@@ -107,11 +122,21 @@ class Worker:
 
     # ── Laço principal ───────────────────────────────────────────────
 
+    async def wait_for_storage(self) -> None:
+        """Sem permissão nas pastas, avisa (log e página do administrador) e
+        espera, em vez de cair e reiniciar em laço. Volta sozinho depois do chown."""
+        while (problem := storage_problem()) is not None:
+            if self.detail.get("error") != problem:
+                logger.error("[worker] %s", problem)
+            await self.report("error", error=problem)
+            await asyncio.sleep(STORAGE_RETRY_SECONDS)
+        self.detail.pop("error", None)
+
     async def run(self) -> None:
         self.pool = await db.create_pool(max_size=4)
-        Path(settings.work_dir).mkdir(parents=True, exist_ok=True)
         self.detail["gpu"] = await asyncio.to_thread(gpu_info)
         await self.report("starting")
+        await self.wait_for_storage()
         # O que este worker rodava quando caiu volta para a fila.
         await self.pool.execute(
             """UPDATE jobs SET status = 'queued', progress = 0 WHERE worker = $1 AND status = ANY($2::text[])""",
@@ -140,7 +165,12 @@ class Worker:
                         pass
                     continue
                 await self.report("busy", job=str(job["id"]))
-                await self.process(job)
+                try:
+                    await self.process(job)
+                except Exception:
+                    # Nunca derruba o worker: o job falha e a fila segue.
+                    logger.exception("[worker] erro fora do tratamento do job %s", job["id"])
+                    await repo.finish(self.pool, job["id"], "failed", GENERIC_ERROR)
                 self.detail.pop("job", None)
         finally:
             listener.cancel()
@@ -150,12 +180,17 @@ class Worker:
     async def process(self, job) -> None:
         job_id: UUID = job["id"]
         directory = repo.work_dir(job_id)
-        directory.mkdir(parents=True, exist_ok=True)
         cancel = asyncio.Event()
         heartbeat = asyncio.create_task(self.job_heartbeat(job_id, cancel))
         loop = asyncio.get_running_loop()
         wav = None
         try:
+            try:
+                directory.mkdir(parents=True, exist_ok=True)
+            except OSError as error:
+                logger.error("[worker] %s: %s", job_id, error)
+                raise media.MediaError("O servidor não conseguiu gravar os arquivos temporários. "
+                                       "Avise o administrador.") from error
             max_seconds = settings.max_duration_minutes * 60
             if job["source_kind"] == "url":
                 progress = {"value": 0.0}

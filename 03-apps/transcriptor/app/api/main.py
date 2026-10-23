@@ -393,8 +393,13 @@ async def start_upload(request: Request, body: UploadStart, user: auth.User = De
     row = await repo.create(pool(request), user.id, title=body.name.strip()[:200], source_kind="upload",
                             source_bytes=body.size, model=model, language=language, prompt=prompt,
                             status="uploading")
-    repo.work_dir(row["id"]).mkdir(parents=True, exist_ok=True)
-    repo.upload_path(row["id"]).touch()
+    try:
+        repo.work_dir(row["id"]).mkdir(parents=True, exist_ok=True)
+        repo.upload_path(row["id"]).touch()
+    except OSError as error:
+        logger.error("[upload] sem permissão em %s: %s", settings.work_dir, error)
+        await pool(request).execute("DELETE FROM jobs WHERE id = $1", row["id"])
+        raise HTTPException(507, "O servidor não conseguiu gravar o arquivo. Avise o administrador.") from error
     return {**repo.public(row), "received": 0, "chunk_bytes": UPLOAD_CHUNK_BYTES}
 
 

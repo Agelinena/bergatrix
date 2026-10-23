@@ -317,3 +317,34 @@ def test_worker_rejects_bad_media(client, oidc):
 
     row = run(scenario())
     assert row["status"] == "failed" and "Formato não reconhecido" in row["error"]
+
+
+def test_worker_survives_unwritable_work_dir(client, oidc, tmp_path, monkeypatch):
+    """Sem permissão na pasta de trabalho: o job falha com aviso e o worker segue de pé."""
+    from app.worker import main as worker_main
+    from app.worker.main import Worker
+
+    login(client, oidc)
+    job_id = client.post("/api/jobs", json={"url": "https://e.com/v"}, headers=HEADERS).json()["id"]
+    locked = tmp_path / "travada"
+    locked.mkdir()
+    locked.chmod(0o500)
+    monkeypatch.setattr(worker_main.repo, "work_dir", lambda jid: locked / str(jid))
+    monkeypatch.setattr(worker_main.settings, "work_dir", str(locked))
+
+    async def scenario():
+        worker = Worker()
+        worker.pool = await asyncpg.create_pool(TEST_DATABASE_URL, init=db._init)  # noqa: SLF001
+        job = await repo.claim(worker.pool, "gpu")
+        await worker.process(job)
+        row = await worker.pool.fetchrow("SELECT status, error FROM jobs WHERE id = $1", job["id"])
+        await worker.pool.close()
+        return row
+
+    try:
+        assert "sem permissão de escrita" in worker_main.storage_problem()
+        row = run(scenario())
+    finally:
+        locked.chmod(0o700)
+    assert row["status"] == "failed" and "arquivos temporários" in row["error"]
+    assert worker_main.storage_problem() is None
