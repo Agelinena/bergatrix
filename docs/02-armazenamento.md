@@ -13,7 +13,7 @@ Toda stack usa só estas quatro raízes. Nenhum compose aponta para um caminho a
 | `MEDIA_PATH` | NAS (NFS) | `/mnt/nas/media` | Mídia que pode ser baixada de novo: filmes, séries, músicas, downloads concluídos | Não |
 | `USERDATA_PATH` | NAS (NFS) | `/mnt/nas/userdata` | Acervos pessoais que **não** podem ser baixados de novo: fotos (Immich), arquivos (Nextcloud) | **Sim** |
 
-`USERDATA_PATH` ainda não é usada por nenhuma stack; está reservada para Immich e Nextcloud.
+`USERDATA_PATH` guarda acervos que só existem aqui. Hoje, o Immich usa essa raiz.
 
 ### Como decidir onde um volume vai
 
@@ -61,30 +61,32 @@ A mídia é organizada por tipo, e não por stack, porque vários stacks leem as
 
 Os downloads ficam na mesma raiz da biblioteca de propósito: hardlinks e `mv` só funcionam dentro do mesmo sistema de arquivos.
 
-### `USERDATA_PATH`: uma pasta por stack (futuro)
+### `USERDATA_PATH`: uma pasta por stack
 
 ```
-${USERDATA_PATH}/immich/
-${USERDATA_PATH}/nextcloud/
+${USERDATA_PATH}/<stack>/
 ```
+
+Como em `APPDATA_PATH`, cada stack tem a sua pasta, com o nome da stack. Só entra aqui o acervo das pessoas. O que o app recria (miniaturas, vídeos convertidos) vai para `CACHE_PATH`, mesmo quando o app guarda isso junto dos originais por padrão. O Immich, por exemplo, monta `thumbs` e `encoded-video` do cache por cima da pasta do NAS.
 
 ## Mapa atual por stack
 
-| Stack | `APPDATA_PATH/<stack>/` | `CACHE_PATH/<stack>/` | `MEDIA_PATH/` |
-|---|---|---|---|
-| cloudbeaver | `workspace` | – | – |
-| traefik | `acme` (acme.json), `logs` | `plugins` | – |
-| authentik | `postgres`, `redis`, `media`, `templates`, `certs` | – | – |
-| bitwarden | `vaultwarden` | – | – |
-| crowdsec | `config`, `data` (lê `traefik/logs`) | – | – |
-| bergalink | `postgres`, `avatars`, `secrets` | – | – |
-| bergastream | `postgres`, `redis`, `deemix`, `lidarr`, `youtube` | `pydeps` | `musica/bergastream`, `musica/lidarr`, `downloads` |
-| drop | – | – | – |
-| homeassistant | `config` | – | – |
-| jellyfin | `jellyfin`, `catalogo`, `qbittorrent`, `sonarr`, `radarr`, `prowlarr`, `bazarr`, `sabnzbd`, `recyclarr`, `legendarr/jobs`, `legendarr/stats` | `jellyfin` (transcodes), `optimizer`, `incomplete` | raiz inteira (Jellyfin), `filmes`, `series`, `downloads` |
-| ollama | – | `models` | – |
-| transcriptor | `postgres` | `models`, `work` (uploads e áudio para ouvir) | – |
-| wazuh | `wazuh_manager`, `wazuh_indexer`, `wazuh_dashboard`, `filebeat`, `config` | – | – |
+| Stack | `APPDATA_PATH/<stack>/` | `CACHE_PATH/<stack>/` | `MEDIA_PATH/` | `USERDATA_PATH/` |
+|---|---|---|---|---|
+| cloudbeaver | `workspace` | – | – | – |
+| traefik | `acme` (acme.json), `logs` | `plugins` | – | – |
+| authentik | `postgres`, `redis`, `media`, `templates`, `certs` | – | – | – |
+| bitwarden | `vaultwarden` | – | – | – |
+| crowdsec | `config`, `data` (lê `traefik/logs`) | – | – | – |
+| bergalink | `postgres`, `avatars`, `secrets` | – | – | – |
+| bergastream | `postgres`, `redis`, `deemix`, `lidarr`, `youtube` | `pydeps` | `musica/bergastream`, `musica/lidarr`, `downloads` | – |
+| drop | – | – | – | – |
+| homeassistant | `config` | – | – | – |
+| immich | `postgres` | `thumbs`, `encoded-video`, `model-cache`, `redis` | – | `immich` (`library`, `upload`, `profile`, `backups`) |
+| jellyfin | `jellyfin`, `catalogo`, `qbittorrent`, `sonarr`, `radarr`, `prowlarr`, `bazarr`, `sabnzbd`, `recyclarr`, `legendarr/jobs`, `legendarr/stats` | `jellyfin` (transcodes), `optimizer`, `incomplete` | raiz inteira (Jellyfin), `filmes`, `series`, `downloads` | – |
+| ollama | – | `models` | – | – |
+| transcriptor | `postgres` | `models`, `work` (uploads e áudio para ouvir) | – | – |
+| wazuh | `wazuh_manager`, `wazuh_indexer`, `wazuh_dashboard`, `filebeat`, `config` | – | – | – |
 
 ## Montagem no servidor Docker
 
@@ -137,7 +139,7 @@ Se o Docker iniciar antes do NAS, os containers gravam dentro da pasta de montag
 
    ```ini
    [Unit]
-   RequiresMountsFor=/srv /mnt/nas/media
+   RequiresMountsFor=/srv /mnt/nas/media /mnt/nas/userdata
    ```
 
 3. **Nos composes:** toda raiz é usada como `${APPDATA_PATH:?}`. Se a variável faltar no `.env`, o `docker compose` para com erro, em vez de criar pastas em `/`.
@@ -146,7 +148,7 @@ Se o Docker iniciar antes do NAS, os containers gravam dentro da pasta de montag
 
 - Os containers gravam como `PUID:PGID`, que por padrão é `1000:1000`. As pastas criadas à mão precisam desse dono: `sudo chown -R 1000:1000 <pasta>`.
 - **Export `media`:** use `all_squash,anonuid=1000,anongid=1000` no OMV. Todo arquivo gravado pelo NFS fica com o dono 1000, inclusive o de containers que ainda rodam como root (Legendarr, optimizer). O UID 1000 precisa ser o dono da pasta compartilhada no OMV.
-- **Export `userdata`:** as opções serão definidas quando o Immich e o Nextcloud entrarem, pois cada um grava com o próprio usuário.
+- **Export `userdata`:** também com `all_squash,anonuid=1000,anongid=1000`. Todo arquivo fica com o dono 1000, seja qual for o usuário do container. Pelo NFS, o `chown` não tem efeito, então quem corrige o dono de uma pasta é o OMV, na pasta local do export.
 
 ### O que não vai para o NAS
 

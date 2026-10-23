@@ -24,6 +24,12 @@ entryPoints:
 
   websecure:
     address: ":443"
+    # O padrão do Traefik corta a requisição em 60 s, e o upload de um vídeo
+    # grande pelo app do Immich falha (499). 600 s é o que o Immich recomenda.
+    transport:
+      respondingTimeouts:
+        readTimeout: 600s
+        idleTimeout: 600s
     proxyProtocol:
       trustedIPs:
         - "10.100.0.1/32"

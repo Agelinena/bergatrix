@@ -1,0 +1,159 @@
+# Immich: fotos e vídeos da família, com backup do celular e busca por IA.
+# Guia: README.md desta pasta. Base: compose oficial da v3.3.5 (variante rootless).
+#
+#   immich-server            interface web, API dos apps e jobs (miniaturas,
+#                            vídeos). Login pelo Authentik (OIDC, modelo A de
+#                            docs/05-acesso.md). Uma rota só, sem forward-auth.
+#   immich-machine-learning  busca inteligente, rostos e OCR na GPU (CUDA). Sem
+#                            rota; sai para a internet só para baixar modelos.
+#   redis                    fila de jobs (Valkey).
+#   database                 Postgres com VectorChord (imagem do Immich).
+#
+# Os nomes dos serviços são os do compose oficial: o servidor acha os outros
+# por eles (database, redis, immich-machine-learning), sem configuração.
+#
+# Dados:
+#   ${USERDATA_PATH}/immich      originais, avatares e dumps do banco (NAS, backup)
+#   ${CACHE_PATH}/immich         miniaturas, vídeos convertidos, modelos e fila
+#   ${APPDATA_PATH}/immich       banco (disco local, nunca NFS)
+services:
+  immich-server:
+    # Mesma versão no server e no machine learning.
+    image: ghcr.io/immich-app/immich-server:v3.3.5
+    container_name: immich-server
+    restart: unless-stopped
+    user: ${PUID}:${PGID}
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - NET_RAW
+    environment:
+      TZ: ${TZ}
+      DB_USERNAME: ${POSTGRES_USER}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      DB_DATABASE_NAME: ${POSTGRES_DB}
+      IMMICH_LOG_LEVEL: ${IMMICH_LOG_LEVEL:-log}
+    volumes:
+      # Originais (upload/ e library/), avatares (profile/) e dumps diários do
+      # banco (backups/). O Immich recusa subir se o NFS não estiver montado.
+      - ${USERDATA_PATH:?}/immich:/data
+      # Recriáveis pelos jobs do Immich: ficam no disco local, sem backup.
+      # Montados por cima de /data, como no guia "Custom Locations".
+      - ${CACHE_PATH:?}/immich/thumbs:/data/thumbs
+      - ${CACHE_PATH:?}/immich/encoded-video:/data/encoded-video
+    networks:
+      - immich-internal
+      # Rota no Traefik e saída para o issuer do Authentik (URL pública).
+      - bergatrix-proxy
+    depends_on:
+      database:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=bergatrix-proxy"
+      # Modelo A (OIDC no app): uma rota, sem forward-auth, porque o app do
+      # celular fala direto com a API. Login por senha desligado no Immich.
+      # Upload de vídeo grande depende do readTimeout de 600 s do entrypoint
+      # websecure (01-network/traefik/config/traefik.yml).
+      - "traefik.http.routers.immich.rule=Host(`fotos.${DOMAIN}`)"
+      - "traefik.http.routers.immich.entrypoints=websecure"
+      - "traefik.http.routers.immich.tls=true"
+      - "traefik.http.routers.immich.service=immich"
+      - "traefik.http.routers.immich.middlewares=crowdsec-bouncer@file"
+      - "traefik.http.services.immich.loadbalancer.server.port=2283"
+
+  immich-machine-learning:
+    image: ghcr.io/immich-app/immich-machine-learning:v3.3.5-cuda
+    container_name: immich-ml
+    restart: unless-stopped
+    user: ${PUID}:${PGID}
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - NET_RAW
+    environment:
+      TZ: ${TZ}
+      IMMICH_LOG_LEVEL: ${IMMICH_LOG_LEVEL:-log}
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+    volumes:
+      # Modelos baixados do Hugging Face (rebaixáveis): cache, sem backup
+      - ${CACHE_PATH:?}/immich/model-cache:/cache
+    networks:
+      - immich-internal
+      # Só para baixar os modelos; não tem rota nem fala com outras stacks.
+      - immich-egress
+    # GPU dividida com Jellyfin, Ollama, Transcriptor e Legendarr. Os modelos
+    # saem da VRAM depois de 5 min parados (MACHINE_LEARNING_MODEL_TTL padrão).
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  redis:
+    image: docker.io/valkey/valkey:9@sha256:c123e3715db63d06d4ad6964884037aa0d5d4d703939b9929954112889708e1d
+    container_name: immich-redis
+    restart: unless-stopped
+    user: ${PUID}:${PGID}
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - NET_RAW
+    volumes:
+      # Fila de jobs. Sem uma pasta gravável, o Valkey não salva e para de
+      # aceitar escritas quando roda como usuário comum.
+      - ${CACHE_PATH:?}/immich/redis:/data
+    networks:
+      - immich-internal
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping | grep -q PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  database:
+    # Imagem do Immich (Postgres 14 + VectorChord). Ao atualizar o Immich,
+    # copie a linha do docker-compose.yml da release.
+    image: ghcr.io/immich-app/postgres:14-vectorchord0.4.3-pgvectors0.2.0@sha256:bcf63357191b76a916ae5eb93464d65c07511da41e3bf7a8416db519b40b1c23
+    container_name: immich-db
+    restart: unless-stopped
+    user: ${PUID}:${PGID}
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - NET_RAW
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_INITDB_ARGS: --data-checksums
+      # O banco fica no HD de /srv, não em SSD.
+      DB_STORAGE_TYPE: HDD
+      TZ: ${TZ}
+    volumes:
+      - ${APPDATA_PATH:?}/immich/postgres:/var/lib/postgresql/data
+    shm_size: 128mb
+    networks:
+      - immich-internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
+networks:
+  # Banco, fila e a ligação server ↔ machine learning, sem internet
+  immich-internal:
+    name: immich-internal
+    internal: true
+  # Saída do machine learning para baixar modelos
+  immich-egress:
+    name: immich-egress
+  bergatrix-proxy:
+    external: true

@@ -16,7 +16,7 @@ Servidor físico ─ Proxmox VE
 └── VM Ubuntu Server (Docker)
     ├── HD 1 TB ───── /srv: appdata (configs e bancos) e cache
     ├── NFS ───────── /mnt/nas/media, /mnt/nas/userdata
-    └── GPU ───────── passthrough: Jellyfin, Ollama, Transcriptor, optimizer
+    └── GPU ───────── passthrough: Jellyfin, Ollama, Transcriptor, optimizer, Immich (ML)
 ```
 
 | Disco | Dono | Papel |
@@ -51,6 +51,7 @@ Rede local ───────────────────────
 | 03 | bergastream | Streaming de música próprio: API, worker, web, Postgres, Redis, Deemix, Lidarr, PO Token | `bergastream`, `lidarr` | appdata, cache, media |
 | 03 | drop | Texto e arquivos (até 25 MiB) cifrados no navegador, sem disco; rede isolada `bergatrix-drop` | `drop` | – |
 | 03 | homeassistant | Home Assistant | `ha` | appdata |
+| 03 | immich | Fotos e vídeos: server, machine learning (GPU), Postgres (VectorChord), Valkey | `fotos` | appdata, cache, userdata |
 | 03 | jellyfin | Jellyfin, Seerr, qBittorrent, Sonarr, Radarr, Prowlarr, Bazarr, SABnzbd, FlareSolverr, indexador BR, Recyclarr, Legendarr (web, worker, optimizer) | `jellyflix`, `catalogo`, `legendarr` e um por serviço *arr | appdata, cache, media |
 | 03 | ollama | Ollama (GPU), sem rota | – | cache |
 | 03 | transcriptor | Transcrição com faster-whisper (GPU): API, worker, Postgres, proxy de saída | `transcriptor` | appdata, cache |
