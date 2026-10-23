@@ -57,7 +57,7 @@ Use o padrão OIDC de [05-acesso.md](../../docs/05-acesso.md#oidc-uma-aplicaçã
 
      return {
          "name": request.user.name,
-         "groups": groups,
+         "nextcloud_groups": groups,
          "quota": quota,
          "user_id": request.user.attributes.get("nextcloud_user_id", str(request.user.uuid)),
      }
@@ -79,6 +79,7 @@ Use o padrão OIDC de [05-acesso.md](../../docs/05-acesso.md#oidc-uma-aplicaçã
    - `admin`: obrigatório, e o nome é fixo. É o grupo de administradores do Nextcloud. Faça o *binding* só da sua conta.
    - Outros grupos, se quiser compartilhar pastas por grupo (ex.: `familia`).
    - Com o provisionamento de grupos ligado, a cada login o Nextcloud deixa a pessoa **só** nos grupos que vieram do Authentik. Crie e mude os grupos sempre por aqui.
+   - O claim se chama `nextcloud_groups`, e não `groups`, de propósito: o scope `profile` padrão do Authentik já manda um `groups` com **todos** os grupos do Authentik (`authentik Admins`, `jellyfin_users`…), que iriam parar no Nextcloud.
 6. **Nome da conta** (antes do primeiro login de cada pessoa): nos atributos do usuário, coloque `nextcloud_user_id: lucas`.
    - Sem isso, o ID no Nextcloud e o nome da pasta no NAS ficam sendo o UUID do Authentik.
    - **Não mude depois:** um ID novo cria uma conta nova e vazia.
@@ -201,7 +202,7 @@ done
      --mapping-display-name=name \
      --mapping-email=email \
      --mapping-quota=quota \
-     --mapping-groups=groups \
+     --mapping-groups=nextcloud_groups \
      --group-provisioning=1 \
      --send-id-token-hint=1
    occ user_oidc:provider Authentik   # confere
