@@ -1,5 +1,7 @@
 # transcriptor — Serviço de transcrição de áudio/vídeo com Whisper (faster-whisper) acelerado por GPU, com UI web, fila e API REST v1
 
+> **Desatualizado (out/2026):** o Transcriptor foi reescrito (OIDC, Postgres, worker isolado, modelos conferidos). Vale o [README da stack](../../../03-apps/transcriptor/README.md).
+
 > **Categoria:** app | **Caminho:** `03-apps/transcriptor` | **Status:** Ativo (produção) — `transcriptor.${DOMAIN}`
 
 ## 🎯 Finalidade

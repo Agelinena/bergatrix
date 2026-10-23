@@ -57,12 +57,12 @@ Depois do bloco base, uma seção por assunto (`# ── Banco ──`, `# ─�
 
 | Regra | Exemplo |
 |---|---|
-| Prefixo com o nome do app | `VAULTWARDEN_ADMIN_TOKEN`, `TRANSCRIPTOR_API_KEY`, `OUTPOST_LDAP_TOKEN` |
+| Prefixo com o nome do app | `VAULTWARDEN_ADMIN_TOKEN`, `TRANSCRIPTOR_SSO_CLIENT_SECRET`, `OUTPOST_LDAP_TOKEN` |
 | O Postgres próprio da stack usa os nomes da imagem oficial (um banco por stack, sem colisão) | `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD` |
 | Serviços de terceiros usam o nome do serviço | `OPENROUTER_API_KEY`, `DESEC_TOKEN`, `HF_TOKEN`, `DEEMIX_ARL` |
 | Variáveis lidas diretamente pelo app via `env_file` mantêm o nome que o app espera | `AUTHENTIK_*` e as configurações do Bergastream e do Legendarr |
 | Endereço nunca é variável: o subdomínio fica escrito no compose | `Host(\`drop.${DOMAIN}\`)`, e não `${DROP_DOMAIN}` |
-| Caminho nunca é variável própria: deriva de uma raiz | `${APPDATA_PATH}/transcriptor/data`, e não `TRANSCRIPTOR_DATA_DIR` |
+| Caminho nunca é variável própria: deriva de uma raiz | `${APPDATA_PATH}/transcriptor/postgres`, e não `TRANSCRIPTOR_DATA_DIR` |
 
 ### No compose
 
@@ -145,7 +145,7 @@ Stacks existentes que ainda não seguem o padrão. Nenhuma delas impede a migra�
 |---|---|
 | várias | Imagens sem versão fixa: Jellyfin, *arr, SABnzbd, Deemix, Lidarr, CrowdSec, CloudBeaver, Ollama, FlareSolverr |
 | várias | `container_name` antigos (`bitwarden`, `ollama`, `sonarr`…). Mantidos porque outras stacks os usam como endereço; mudam junto com a revisão de acesso. |
-| homeassistant, transcriptor | Rotas antigas com IPs fixos, bypass e `public-auth`. Saem conforme o [plano de acesso](plano-acesso.md). |
+| homeassistant | Rotas antigas com IPs fixos, bypass e `public-auth`. Saem conforme o [plano de acesso](plano-acesso.md). |
 | jellyfin | Legendarr (web, worker, optimizer) roda como root. O optimizer guarda `requires_redownload.txt` fora de volume. |
 | bitwarden | O nome da pasta é `bitwarden`, mas o app é o Vaultwarden. |
 | cloudbeaver | Ficou sem banco para acessar desde que o Postgres global saiu: cada stack tem o seu, em rede interna. |

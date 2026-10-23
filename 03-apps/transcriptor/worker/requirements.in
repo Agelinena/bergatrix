@@ -1,0 +1,14 @@
+# Worker (Python 3.10 do Ubuntu 22.04, imagem CUDA 12 + cuDNN 8). O
+# requirements.txt (com hashes) sai daqui:
+#   docker run --rm -v "$PWD":/w -w /w python:3.10-slim sh -c \
+#     "pip install -q pip-tools && pip-compile --generate-hashes --strip-extras worker/requirements.in"
+faster-whisper==1.2.1
+# 4.4.0 é a última versão com CUDA 12 + cuDNN 8; da 4.5 em diante exige cuDNN 9.
+# É a combinação que roda na GTX 1060 (Pascal).
+ctranslate2==4.4.0
+# O ctranslate2 4.4.0 é de antes do NumPy 2.
+numpy<2
+yt-dlp[default]==2026.10.21
+huggingface-hub>=0.30,<3
+asyncpg==0.32.0
+pydantic-settings>=2.6,<3

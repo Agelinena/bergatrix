@@ -1,0 +1,9 @@
+# API (Python 3.13). O requirements.txt (com hashes) sai daqui:
+#   docker run --rm -v "$PWD":/w -w /w python:3.13.17-slim-trixie sh -c \
+#     "pip install -q pip-tools && pip-compile --generate-hashes --strip-extras api/requirements.in"
+fastapi==0.161.1
+uvicorn==0.54.0
+asyncpg==0.32.0
+httpx==0.28.1
+PyJWT[crypto]==2.15.1
+pydantic-settings==2.16.1

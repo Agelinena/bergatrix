@@ -83,7 +83,7 @@ ${USERDATA_PATH}/nextcloud/
 | homeassistant | `config` | – | – |
 | jellyfin | `jellyfin`, `catalogo`, `qbittorrent`, `sonarr`, `radarr`, `prowlarr`, `bazarr`, `sabnzbd`, `recyclarr`, `legendarr/jobs`, `legendarr/stats` | `jellyfin` (transcodes), `optimizer`, `incomplete` | raiz inteira (Jellyfin), `filmes`, `series`, `downloads` |
 | ollama | – | `models` | – |
-| transcriptor | `data` | `models` | – |
+| transcriptor | `postgres` | `models`, `work` (uploads e áudio para ouvir) | – |
 | wazuh | `wazuh_manager`, `wazuh_indexer`, `wazuh_dashboard`, `filebeat`, `config` | – | – |
 
 ## Montagem no servidor Docker

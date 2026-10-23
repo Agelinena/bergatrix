@@ -14,6 +14,7 @@ Ficam em [`01-network/redes/docker-compose.yml`](../01-network/redes/docker-comp
 | `bergatrix-media` | Jellyfin, Seerr, *arr, SABnzbd, qBittorrent, indexadores, Legendarr e o Lidarr do bergastream | Sim |
 | `bergatrix-ldap` | O outpost LDAP do Authentik e os apps que fazem login por LDAP (Jellyfin) | Não |
 | `bergatrix-ai` | O Ollama e quem usa ele (worker do Legendarr) | Sim |
+| `bergatrix-drop` | Só o Traefik e o Drop. O Drop é público, então fica fora da `bergatrix-proxy`: não alcança nenhum outro container | Não |
 
 ### Da própria stack
 
@@ -24,12 +25,15 @@ Declaradas no compose da stack e usadas só por ela.
 | `<stack>-internal` | Banco, Redis e serviços internos | `name: <stack>-internal` e `internal: true` |
 | `<stack>-egress` | Serviço interno que precisa de internet, mas não do Traefik | `name: <stack>-egress` |
 
-Hoje existem: `authentik-internal`, `bergastream-internal`, `bergastream-egress`, `bergalink-internal` e a rede padrão do Wazuh.
+Hoje existem: `authentik-internal`, `bergastream-internal`, `bergastream-egress`, `bergalink-internal`, `transcriptor-internal`, `transcriptor-egress` e a rede padrão do Wazuh.
+
+No Transcriptor, o worker (que baixa links enviados pelas pessoas) fica só na `transcriptor-internal` e sai para a internet por um proxy (smokescreen) que recusa destinos em redes privadas. É o modelo para qualquer serviço que busque URLs vindas de usuários.
 
 ## Regras
 
 - **Rede compartilhada só no arquivo de redes.** A stack usa a rede com `external: true` e nunca a cria.
 - **Rede que só uma stack usa fica na stack**, com o nome `<stack>-internal` ou `<stack>-egress`.
+- **Serviço público sem conta tem rede própria com o Traefik** (`bergatrix-drop`), e não entra na `bergatrix-proxy`.
 - **`bergatrix-proxy` é só para quem tem rota no Traefik.** Um serviço sem labels do Traefik não entra nela. Para falar com outra stack, use a rede do assunto (`bergatrix-media`, `bergatrix-ai`…).
 - **O banco nunca fica numa rede compartilhada.** Ele fica só na `<stack>-internal`.
 - **`internal: true` sempre que der:** a rede não tem saída para a internet.

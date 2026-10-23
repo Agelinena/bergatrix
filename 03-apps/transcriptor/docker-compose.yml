@@ -1,63 +1,184 @@
+# Transcriptor: transcrição de áudio e vídeo com Whisper (faster-whisper) na GPU.
+# Guia: README.md desta pasta.
+#
+#   api      interface web e API; login pelo Authentik (OIDC, modelo A de
+#            docs/05-acesso.md). Uma rota só, sem forward-auth.
+#   worker   GPU (GTX 1060): pega os jobs da fila no Postgres. Sem rota e sem
+#            internet direta: sai só pelo proxy `egress`.
+#   egress   proxy de saída (smokescreen): recusa destinos em redes privadas,
+#            então um link não alcança o NAS, o roteador nem outros containers.
+#   db       Postgres: usuários, fila, transcrições.
+#
+# Dados: banco em ${APPDATA_PATH}/transcriptor/postgres (backup); modelos e
+# arquivos temporários em ${CACHE_PATH}/transcriptor (sem backup).
+
+x-env: &env
+  TZ: ${TZ}
+  TRANSCRIPTOR_DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+  TRANSCRIPTOR_PUBLIC_URL: https://transcriptor.${DOMAIN}
+  TRANSCRIPTOR_MAX_UPLOAD_MB: ${TRANSCRIPTOR_MAX_UPLOAD_MB:-2048}
+  TRANSCRIPTOR_MAX_DURATION_MINUTES: ${TRANSCRIPTOR_MAX_DURATION_MINUTES:-240}
+  TRANSCRIPTOR_RETENTION_DAYS: ${TRANSCRIPTOR_RETENTION_DAYS:-180}
+  TRANSCRIPTOR_AUDIO_DAYS: ${TRANSCRIPTOR_AUDIO_DAYS:-7}
+  TRANSCRIPTOR_MODELS: ${TRANSCRIPTOR_MODELS:-small,turbo,large-v3}
+  TRANSCRIPTOR_DEFAULT_MODEL: ${TRANSCRIPTOR_DEFAULT_MODEL:-turbo}
+
 services:
-  transcriptor:
+  db:
+    image: postgres:16-alpine
+    container_name: transcriptor-db
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      TZ: ${TZ}
+    volumes:
+      - ${APPDATA_PATH:?}/transcriptor/postgres:/var/lib/postgresql/data
+    networks:
+      - transcriptor-internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
+  migrate:
+    image: ghcr.io/amacneil/dbmate:2
+    container_name: transcriptor-migrate
+    restart: "no"
+    volumes:
+      - ./db/migrations:/db/migrations:ro
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}?sslmode=disable
+    command: --migrations-dir /db/migrations --no-dump-schema up
+    networks:
+      - transcriptor-internal
+    depends_on:
+      db:
+        condition: service_healthy
+
+  api:
     build:
       context: .
-      network: host
-    container_name: transcriptor
+      dockerfile: api/Dockerfile
+    container_name: transcriptor-api
     restart: unless-stopped
-    shm_size: 8gb
-    mem_limit: 4g
-    memswap_limit: 6g
-    dns:
-      - 8.8.8.8
-      - 1.1.1.1
-    command: uvicorn main:app --host 0.0.0.0 --port 8000
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+    mem_limit: 512m
     environment:
-      - API_KEY=${TRANSCRIPTOR_API_KEY}
-      - SECRET_KEY=${TRANSCRIPTOR_SECRET_KEY}
-      - NVIDIA_VISIBLE_DEVICES=all
-      - HF_TOKEN=${HF_TOKEN}
-      - COMPUTE_TYPE=int8
-      - ROOT_DIR=/media
-      - OMP_NUM_THREADS=1
-      - MKL_NUM_THREADS=1
-      - OPENBLAS_NUM_THREADS=1
-      - VECLIB_MAXIMUM_THREADS=1
-      - NUMEXPR_NUM_THREADS=1
-      - KMP_DUPLICATE_LIB_OK=TRUE
-    runtime: nvidia
+      <<: *env
+      HOME: /tmp
+      TRANSCRIPTOR_OIDC_ISSUER: ${TRANSCRIPTOR_OIDC_ISSUER}
+      TRANSCRIPTOR_SSO_CLIENT_ID: ${TRANSCRIPTOR_SSO_CLIENT_ID}
+      TRANSCRIPTOR_SSO_CLIENT_SECRET: ${TRANSCRIPTOR_SSO_CLIENT_SECRET}
+      # O servidor fala com o Authentik direto, sem passar pelo Traefik.
+      TRANSCRIPTOR_OIDC_INTERNAL_URL: http://authentik-server:9000
+      TRANSCRIPTOR_USERS_GROUP: ${TRANSCRIPTOR_USERS_GROUP:-transcriptor_users}
+      TRANSCRIPTOR_ADMINS_GROUP: ${TRANSCRIPTOR_ADMINS_GROUP:-transcriptor_admins}
     volumes:
-      - ${APPDATA_PATH:?}/transcriptor/data:/app/data
-      # Modelos Whisper (whisper-small, whisper-medium, whisper-large-v3): cache, sem backup
-      - ${CACHE_PATH:?}/transcriptor/models:/app/models
+      # Uploads (o worker lê daqui) e o áudio para ouvir junto com o texto.
+      - ${CACHE_PATH:?}/transcriptor/work:/work
     networks:
+      - transcriptor-internal
+      # Rota no Traefik e acesso ao Authentik (authentik-server:9000).
       - bergatrix-proxy
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=bergatrix-proxy"
+      # Modelo A (OIDC no app): uma rota, sem forward-auth. A interface exige
+      # o login pelo Authentik; a API exige a sessão ou um token pessoal.
+      - "traefik.http.routers.transcriptor.rule=Host(`transcriptor.${DOMAIN}`)"
+      - "traefik.http.routers.transcriptor.entrypoints=websecure"
+      - "traefik.http.routers.transcriptor.tls=true"
+      - "traefik.http.routers.transcriptor.service=transcriptor"
+      - "traefik.http.routers.transcriptor.middlewares=crowdsec-bouncer@file"
+      - "traefik.http.services.transcriptor.loadbalancer.server.port=8000"
+
+  worker:
+    build:
+      context: .
+      dockerfile: worker/Dockerfile
+    container_name: transcriptor-worker
+    restart: unless-stopped
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    tmpfs:
+      - /tmp:rw,nosuid,size=256m
+    # Um áudio de 4 h ocupa ~1 GB na memória durante a transcrição.
+    mem_limit: 6g
+    memswap_limit: 6g
+    stop_grace_period: 30s
+    environment:
+      <<: *env
+      TRANSCRIPTOR_WORKER_NAME: gpu
+      TRANSCRIPTOR_IDLE_UNLOAD_MINUTES: ${TRANSCRIPTOR_IDLE_UNLOAD_MINUTES:-5}
+      TRANSCRIPTOR_EGRESS_PROXY: http://transcriptor-egress:4750
+      HTTP_PROXY: http://transcriptor-egress:4750
+      HTTPS_PROXY: http://transcriptor-egress:4750
+      NO_PROXY: db,localhost,127.0.0.1
+      HOME: /tmp
+      HF_HOME: /models/.huggingface
+      DENO_DIR: /tmp/deno
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+    volumes:
+      - ${CACHE_PATH:?}/transcriptor/work:/work
+      # Modelos do catálogo (app/catalog.py), baixados e conferidos pelo worker.
+      - ${CACHE_PATH:?}/transcriptor/models:/models
+    networks:
+      # Só a rede interna: o banco e o proxy de saída. Nada mais.
+      - transcriptor-internal
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      egress:
+        condition: service_started
     deploy:
       resources:
         reservations:
           devices:
             - driver: nvidia
               count: 1
-              capabilities: [ gpu ]
-    labels:
-      - "traefik.enable=true"
-      - "traefik.docker.network=bergatrix-proxy"
-      - "traefik.http.routers.transcriptor.rule=Host(`transcriptor.${DOMAIN}`)"
-      - "traefik.http.routers.transcriptor.entrypoints=websecure"
-      - "traefik.http.routers.transcriptor.tls=true"
-      - "traefik.http.routers.transcriptor.middlewares=crowdsec-bouncer@file,public-auth@file,transcriptor-buffering"
-      - "traefik.http.routers.transcriptor.priority=100"
-      - "traefik.http.routers.transcriptor-direct.rule=Host(`transcriptor.${DOMAIN}`) && (ClientIP(`192.168.10.140/32`) || ClientIP(`192.168.10.121/32`) || ClientIP(`192.168.10.1/32`))"
-      - "traefik.http.routers.transcriptor-direct.entrypoints=websecure"
-      - "traefik.http.routers.transcriptor-direct.tls=true"
-      - "traefik.http.routers.transcriptor-direct.service=transcriptor-service"
-      - "traefik.http.routers.transcriptor-direct.middlewares=transcriptor-buffering"
-      - "traefik.http.routers.transcriptor-direct.priority=110"
-      - "traefik.http.middlewares.transcriptor-buffering.buffering.maxRequestBodyBytes=200000000"
-      - "traefik.http.middlewares.transcriptor-buffering.buffering.memRequestBodyBytes=200000000"
-      - "traefik.http.routers.transcriptor.service=transcriptor-service"
-      - "traefik.http.services.transcriptor-service.loadbalancer.server.port=8000"
+              capabilities: [gpu]
+
+  egress:
+    build:
+      context: egress
+    container_name: transcriptor-egress
+    restart: unless-stopped
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    mem_limit: 128m
+    networks:
+      - transcriptor-internal
+      - transcriptor-egress
 
 networks:
+  # Banco, worker e proxy. Sem saída para a internet.
+  transcriptor-internal:
+    name: transcriptor-internal
+    internal: true
+  # Só o proxy de saída usa a internet.
+  transcriptor-egress:
+    name: transcriptor-egress
   bergatrix-proxy:
     external: true

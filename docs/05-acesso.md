@@ -17,7 +17,7 @@ Exceções:
 
 | Exceção | Por quê | Middlewares |
 |---|---|---|
-| **Drop** (público) | Sem contas, por natureza. Cifra de ponta a ponta. | `crowdsec-bouncer@file` + rate limit |
+| **Drop** (público) | Sem contas, por natureza. Cifra de ponta a ponta. Fica só na rede `bergatrix-drop`, com o Traefik ([06-redes.md](06-redes.md)). | `crowdsec-bouncer@file` + rate limit |
 | **Caminho técnico** dentro de um app forward-auth (ex.: webhooks) | Chamado por máquinas que não fazem login no Authentik. Precisa ter autenticação própria (token, chave, assinatura). | `crowdsec-bouncer@file` |
 | **Infraestrutura** (Proxmox, OMV, SSH do Ubuntu) | Fica fora do Traefik | Só pela rede local e pelo Tailscale do firewall |
 
