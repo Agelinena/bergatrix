@@ -85,6 +85,16 @@ services:
       - "traefik.http.routers.authentik-callback.tls=true"
       - "traefik.http.routers.authentik-callback.service=authentik-service"
 
+      # --- Redirecionamento do domínio raiz (daberga.com) para o Authentik ---
+      - "traefik.http.middlewares.redirect-raiz.redirectregex.regex=^https?://${DOMAIN}/(.*)"
+      - "traefik.http.middlewares.redirect-raiz.redirectregex.replacement=https://authentik.${DOMAIN}/$${1}"
+      - "traefik.http.middlewares.redirect-raiz.redirectregex.permanent=true"
+
+      - "traefik.http.routers.daberga-raiz.rule=Host(`${DOMAIN}`)"
+      - "traefik.http.routers.daberga-raiz.entrypoints=websecure"
+      - "traefik.http.routers.daberga-raiz.tls=true"
+      - "traefik.http.routers.daberga-raiz.middlewares=redirect-raiz"
+
   worker:
     image: ghcr.io/goauthentik/server:2025.10.2
     container_name: authentik-worker
