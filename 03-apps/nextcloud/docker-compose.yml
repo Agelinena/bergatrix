@@ -137,6 +137,35 @@ services:
       interval: 10s
       timeout: 3s
       retries: 10
+  
+    # Editor de documentos (Collabora Online, edição CODE). Sem estado e sem volume.
+  # Sem forward-auth: o acesso é por token WOPI emitido pelo Nextcloud
+  # (o login do usuário continua sendo o OIDC, no Nextcloud).
+  collabora:
+    image: collabora/code:<versão-fixa>   # confira a tag atual no Docker Hub
+    container_name: nextcloud-collabora
+    restart: unless-stopped
+    cap_add:
+      - MKNOD            # necessário para o jail de documentos
+    environment:
+      TZ: ${TZ}
+      # Quais Nextcloud podem usar este Collabora (WOPI host permitido)
+      aliasgroup1: https://storange.${DOMAIN}:443
+      server_name: office.${DOMAIN}
+      dictionaries: pt_BR en_US
+      # TLS é do Traefik; console de admin desligado
+      extra_params: --o:ssl.enable=false --o:ssl.termination=true --o:admin_console.enable=false
+    networks:
+      - bergatrix-proxy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=bergatrix-proxy"
+      - "traefik.http.routers.collabora.rule=Host(`office.${DOMAIN}`)"
+      - "traefik.http.routers.collabora.entrypoints=websecure"
+      - "traefik.http.routers.collabora.tls=true"
+      - "traefik.http.routers.collabora.service=collabora"
+      - "traefik.http.routers.collabora.middlewares=crowdsec-bouncer@file"
+      - "traefik.http.services.collabora.loadbalancer.server.port=9980"
 
 networks:
   # Banco e Redis sem saída para a internet
