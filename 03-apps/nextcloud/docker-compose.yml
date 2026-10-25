@@ -1,12 +1,13 @@
-# Nextcloud — arquivos, agenda (CalDAV) e contatos (CardDAV).
+# Nextcloud — arquivos, agenda (CalDAV), contatos (CardDAV) e edição de documentos (Collabora).
 # Padrão: docs/03-padrao-stacks.md. Passo a passo: README.md desta pasta.
 #
-# Acesso (docs/05-acesso.md): uma rota só, com CrowdSec e sem forward-auth,
+# Acesso (docs/05-acesso.md): uma rota por serviço, com CrowdSec e sem forward-auth,
 # porque os clientes de desktop e de celular e o WebDAV falam direto com o
 # servidor. O login é pelo Authentik, por OIDC (app user_oidc); os clientes
 # entram pelo navegador (Login Flow v2) e recebem uma senha de app.
 #
 #   storange.${DOMAIN}   → web, WebDAV, CalDAV e CardDAV
+#   office.${DOMAIN}     → Collabora Online (editor de documentos)
 #
 # Código, config e apps em ${APPDATA_PATH}/nextcloud/html (disco local);
 # arquivos dos usuários em ${USERDATA_PATH}/nextcloud/data (NFS, com backup).
@@ -100,6 +101,46 @@ services:
       redis:
         condition: service_healthy
 
+  # Editor de documentos (Collabora Online, edição CODE), ligado pelo app richdocuments.
+  # Sem estado e sem volume.
+  #
+  # Acesso (docs/05-acesso.md, exceções): sem forward-auth. O login do usuário é o
+  # OIDC, no Nextcloud, que emite um token WOPI por arquivo e usuário; o Collabora
+  # só aceita o host do aliasgroup1. Console de admin desligado.
+  #
+  # Rede (docs/06-redes.md): só a bergatrix-office, com o Traefik, sem internet.
+  # O Collabora chega ao Nextcloud por storange.${DOMAIN}, que nessa rede é um
+  # alias do Traefik (definido no compose do Traefik). Sem o alias, o editor
+  # abre em branco ou não salva.
+  #
+  # Dívida (docs/03-padrao-stacks.md): sem no-new-privileges e com MKNOD, porque o
+  # Collabora monta um jail por documento com capabilities de arquivo.
+  collabora:
+    image: collabora/code:26.04.5.2.1
+    container_name: nextcloud-collabora
+    restart: unless-stopped
+    cap_add:
+      - MKNOD
+    environment:
+      TZ: ${TZ}
+      # Quais Nextcloud podem usar este Collabora (host WOPI permitido)
+      aliasgroup1: https://storange.${DOMAIN}:443
+      server_name: office.${DOMAIN}
+      dictionaries: pt_BR en_US
+      # TLS é do Traefik; console de admin desligado
+      extra_params: --o:ssl.enable=false --o:ssl.termination=true --o:admin_console.enable=false
+    networks:
+      - bergatrix-office
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=bergatrix-office"
+      - "traefik.http.routers.collabora.rule=Host(`office.${DOMAIN}`)"
+      - "traefik.http.routers.collabora.entrypoints=websecure"
+      - "traefik.http.routers.collabora.tls=true"
+      - "traefik.http.routers.collabora.service=collabora"
+      - "traefik.http.routers.collabora.middlewares=crowdsec-bouncer@file"
+      - "traefik.http.services.collabora.loadbalancer.server.port=9980"
+
   db:
     image: postgres:16-alpine
     container_name: nextcloud-db
@@ -137,35 +178,6 @@ services:
       interval: 10s
       timeout: 3s
       retries: 10
-  
-    # Editor de documentos (Collabora Online, edição CODE). Sem estado e sem volume.
-  # Sem forward-auth: o acesso é por token WOPI emitido pelo Nextcloud
-  # (o login do usuário continua sendo o OIDC, no Nextcloud).
-  collabora:
-    image: collabora/code:<versão-fixa>   # confira a tag atual no Docker Hub
-    container_name: nextcloud-collabora
-    restart: unless-stopped
-    cap_add:
-      - MKNOD            # necessário para o jail de documentos
-    environment:
-      TZ: ${TZ}
-      # Quais Nextcloud podem usar este Collabora (WOPI host permitido)
-      aliasgroup1: https://storange.${DOMAIN}:443
-      server_name: office.${DOMAIN}
-      dictionaries: pt_BR en_US
-      # TLS é do Traefik; console de admin desligado
-      extra_params: --o:ssl.enable=false --o:ssl.termination=true --o:admin_console.enable=false
-    networks:
-      - bergatrix-proxy
-    labels:
-      - "traefik.enable=true"
-      - "traefik.docker.network=bergatrix-proxy"
-      - "traefik.http.routers.collabora.rule=Host(`office.${DOMAIN}`)"
-      - "traefik.http.routers.collabora.entrypoints=websecure"
-      - "traefik.http.routers.collabora.tls=true"
-      - "traefik.http.routers.collabora.service=collabora"
-      - "traefik.http.routers.collabora.middlewares=crowdsec-bouncer@file"
-      - "traefik.http.services.collabora.loadbalancer.server.port=9980"
 
 networks:
   # Banco e Redis sem saída para a internet
@@ -176,4 +188,7 @@ networks:
   nextcloud-egress:
     name: nextcloud-egress
   bergatrix-proxy:
+    external: true
+  # Só o Traefik e o Collabora; criada em 01-network/redes
+  bergatrix-office:
     external: true

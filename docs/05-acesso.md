@@ -18,6 +18,7 @@ Exceções:
 | Exceção | Por quê | Middlewares |
 |---|---|---|
 | **Drop** (público) | Sem contas, por natureza. Cifra de ponta a ponta. Fica só na rede `bergatrix-drop`, com o Traefik ([06-redes.md](06-redes.md)). | `crowdsec-bouncer@file` + rate limit |
+| **Collabora** (`office`, editor do Nextcloud) | Abre em iframe no navegador e é chamado pelo Nextcloud por WOPI. O login OIDC acontece no Nextcloud, que emite um token WOPI por arquivo e usuário; o Collabora nunca fala com o Authentik. Forward-auth quebraria o iframe, os WebSockets e as chamadas entre servidores. Só aceita o Nextcloud listado em `aliasgroup1`, e o console de admin fica desligado. Fica só na rede `bergatrix-office`, com o Traefik ([06-redes.md](06-redes.md)). | `crowdsec-bouncer@file` |
 | **Caminho técnico** dentro de um app forward-auth (ex.: webhooks) | Chamado por máquinas que não fazem login no Authentik. Precisa ter autenticação própria (token, chave, assinatura). | `crowdsec-bouncer@file` |
 | **Infraestrutura** (Proxmox, OMV, SSH do Ubuntu) | Fica fora do Traefik | Só pela rede local e pelo Tailscale do firewall |
 
@@ -104,4 +105,4 @@ curl -sI https://<app>.<domínio> | grep -iE '^(HTTP|location)'
 curl -sI https://<app>.<domínio> | head -1
 ```
 
-No painel do Traefik, a rota deve ser **uma só**, mais as rotas de caminho técnico documentadas.
+No painel do Traefik, a rota deve ser **uma só**, mais as rotas de caminho técnico documentadas. O Collabora (`office`) é uma rota própria, prevista nas exceções.
