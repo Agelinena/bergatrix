@@ -9,8 +9,15 @@ services:
       - "/bin/sh"
       - "/start-traefik.sh"
     networks:
-      - bergatrix-proxy
-      - bergatrix-drop
+      bergatrix-proxy: {}
+      bergatrix-drop: {}
+      # Rede isolada do Collabora (docs/06-redes.md). O alias é como o Collabora
+      # chega ao Nextcloud sem sair da rede: ele resolve storange.${DOMAIN} para
+      # este Traefik, que encaminha ao Nextcloud pela rota normal (com CrowdSec).
+      # Sem o alias, o editor abre em branco ou não salva.
+      bergatrix-office:
+        aliases:
+          - storange.${DOMAIN}
     ports:
       - 80:80
       - 443:443
@@ -44,4 +51,6 @@ networks:
     name: bergatrix-proxy
     external: true
   bergatrix-drop:
+    external: true
+  bergatrix-office:
     external: true
