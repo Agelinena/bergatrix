@@ -21,6 +21,7 @@ services:
       - bergatrix-ldap
       - bergatrix-ai
       - bergatrix-drop
+      - bergatrix-office
 
 networks:
   # Traefik e os serviços com rota. Também o CrowdSec, que o bouncer do
@@ -49,4 +50,12 @@ networks:
   # nenhum outro serviço: um Drop invadido não alcança mais nada.
   bergatrix-drop:
     name: bergatrix-drop
+    internal: true
+
+  # Só o Traefik e o Collabora (editor de documentos do Nextcloud). Sem
+  # internet e sem nenhum outro serviço: um documento malicioso que escape do
+  # editor não alcança mais nada. O Collabora chega ao Nextcloud por um alias
+  # do Traefik nesta rede (storange.${DOMAIN}), definido no compose do Traefik.
+  bergatrix-office:
+    name: bergatrix-office
     internal: true
