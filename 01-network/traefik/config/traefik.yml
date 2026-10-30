@@ -16,6 +16,9 @@ accessLog:
 entryPoints:
   web:
     address: ":80"
+    proxyProtocol:
+      trustedIPs:
+        - "10.100.0.1/32"
     http:
       redirections:
         entryPoint:
