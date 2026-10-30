@@ -15,10 +15,7 @@ entryPoints:
   web:
     address: ":80"
     proxyProtocol:
-      trustedIPs:
-        - "10.100.0.1/32"
-        - "172.16.0.0/12"
-        - "192.168.0.0/16"
+      insecure: true
     http:
       redirections:
         entryPoint:
@@ -31,10 +28,7 @@ entryPoints:
         readTimeout: 600s
         idleTimeout: 600s
     proxyProtocol:
-      trustedIPs:
-        - "10.100.0.1/32"
-        - "172.16.0.0/12"
-        - "192.168.0.0/16"
+      insecure: true
     http:
       tls:
         certResolver: "letsencrypt"
