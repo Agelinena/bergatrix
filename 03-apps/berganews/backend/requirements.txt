@@ -1,0 +1,18 @@
+fastapi==0.115.0
+uvicorn[standard]==0.30.1
+pydantic-settings==2.5.2
+asyncpg==0.29.0
+httpx==0.27.2
+redis[hiredis]>=5.2
+PyJWT[crypto]==2.10.1
+# RSS/Atom e extração do texto completo (sem anúncio nem menu)
+feedparser==6.0.11
+trafilatura==2.0.0
+lxml==5.3.0
+lxml_html_clean==0.4.1
+# Limpeza do HTML (allowlist; sem script, estilo, iframe)
+nh3==0.2.18
+# OPML sem entidades externas (XXE)
+defusedxml==0.7.1
+# Idioma do artigo (botão de traduzir e busca)
+lingua-language-detector==2.0.2

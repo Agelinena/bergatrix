@@ -16,7 +16,7 @@ Servidor físico ─ Proxmox VE
 └── VM Ubuntu Server (Docker)
     ├── HD 1 TB ───── /srv: appdata (configs e bancos) e cache
     ├── NFS ───────── /mnt/nas/media, /mnt/nas/userdata
-    └── GPU ───────── passthrough: Jellyfin, Ollama, Transcriptor, optimizer, Immich (ML)
+    └── GPU ───────── passthrough: Jellyfin, Ollama (Legendarr, Berganews), Transcriptor, optimizer, Immich (ML)
 ```
 
 | Disco | Dono | Papel |
@@ -50,6 +50,7 @@ Rede local ───────────────────────
 | 02 | bitwarden | Vaultwarden | `bitwarden` | appdata |
 | 02 | crowdsec | CrowdSec | – | appdata |
 | 03 | bergalink | API própria (localização em família), Postgres | `bergalink` | appdata |
+| 03 | berganews | Notícias (RSS) com IA local: API, coleta, IA (Ollama), proxy de saída, Postgres (pgvector), Redis | `news` | appdata, cache |
 | 03 | bergastream | Streaming de música próprio: API, worker, web, Postgres, Redis, Deemix, Lidarr, PO Token | `bergastream`, `lidarr` | appdata, cache, media |
 | 03 | drop | Texto e arquivos (até 25 MiB) cifrados no navegador, sem disco; rede isolada `bergatrix-drop` | `drop` | – |
 | 03 | homeassistant | Home Assistant | `ha` | appdata |
@@ -70,11 +71,11 @@ Elas se falam pelo nome do container, numa rede compartilhada ([06-redes.md](06-
 
 | Quem usa | Usa o quê | Endereço | Rede |
 |---|---|---|---|
-| Traefik (forward-auth), Bergalink, Bergastream e Transcriptor (OIDC) | Authentik | `authentik-server:9000` | `bergatrix-proxy` |
+| Traefik (forward-auth), Bergalink, Bergastream, Berganews e Transcriptor (OIDC) | Authentik | `authentik-server:9000` | `bergatrix-proxy` |
 | Jellyfin (plugin LDAP) | Outpost LDAP do Authentik | `authentik-ldap:3389` | `bergatrix-ldap` |
 | Traefik (bouncer) | CrowdSec | `crowdsec:8080` | `bergatrix-proxy` |
 | CrowdSec | Log do Traefik | `${APPDATA_PATH}/traefik/logs` | (arquivo) |
-| Legendarr worker | Ollama | `ollama:11434` | `bergatrix-ai` |
+| Legendarr worker, Berganews (`ai`) | Ollama | `ollama:11434` | `bergatrix-ai` |
 | Lidarr (bergastream) | SABnzbd e Prowlarr (stack jellyfin) | `sabnzbd:8080`, `prowlarr:9696` | `bergatrix-media` |
 | Lidarr (bergastream) | Downloads do SABnzbd | `${MEDIA_PATH}/downloads` | (mesma pasta) |
 

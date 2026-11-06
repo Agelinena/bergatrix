@@ -13,7 +13,7 @@ Ficam em [`01-network/redes/docker-compose.yml`](../01-network/redes/docker-comp
 | `bergatrix-proxy` | O Traefik, os serviços **com rota** e o CrowdSec, que o Traefik consulta | Sim |
 | `bergatrix-media` | Jellyfin, Seerr, *arr, SABnzbd, qBittorrent, indexadores, Legendarr e o Lidarr do bergastream | Sim |
 | `bergatrix-ldap` | O outpost LDAP do Authentik e os apps que fazem login por LDAP (Jellyfin) | Não |
-| `bergatrix-ai` | O Ollama e quem usa ele (worker do Legendarr) | Sim |
+| `bergatrix-ai` | O Ollama e quem usa ele (worker do Legendarr, worker `ai` do Berganews) | Sim |
 | `bergatrix-drop` | Só o Traefik e o Drop. O Drop é público, então fica fora da `bergatrix-proxy`: não alcança nenhum outro container | Não |
 | `bergatrix-office` | Só o Traefik e o Collabora (editor de documentos do Nextcloud). O Traefik tem nela o alias `storange.${DOMAIN}`, que é como o Collabora chega ao Nextcloud | Não |
 
@@ -26,9 +26,9 @@ Declaradas no compose da stack e usadas só por ela.
 | `<stack>-internal` | Banco, Redis e serviços internos | `name: <stack>-internal` e `internal: true` |
 | `<stack>-egress` | Serviço interno que precisa de internet, mas não do Traefik | `name: <stack>-egress` |
 
-Hoje existem: `authentik-internal`, `bergastream-internal`, `bergastream-egress`, `bergalink-internal`, `transcriptor-internal`, `transcriptor-egress`, `immich-internal`, `immich-egress`, `nextcloud-internal`, `nextcloud-egress` e a rede padrão do Wazuh.
+Hoje existem: `authentik-internal`, `berganews-internal`, `berganews-egress`, `bergastream-internal`, `bergastream-egress`, `bergalink-internal`, `transcriptor-internal`, `transcriptor-egress`, `immich-internal`, `immich-egress`, `nextcloud-internal`, `nextcloud-egress` e a rede padrão do Wazuh.
 
-No Transcriptor, o worker (que baixa links enviados pelas pessoas) fica só na `transcriptor-internal` e sai para a internet por um proxy (smokescreen) que recusa destinos em redes privadas. É o modelo para qualquer serviço que busque URLs vindas de usuários.
+No Transcriptor, o worker (que baixa links enviados pelas pessoas) fica só na `transcriptor-internal` e sai para a internet por um proxy (smokescreen) que recusa destinos em redes privadas. É o modelo para qualquer serviço que busque URLs vindas de usuários, e o Berganews o segue (feeds, páginas e imagens cadastrados pelas pessoas).
 
 ### Collabora (editor de documentos do Nextcloud)
 
