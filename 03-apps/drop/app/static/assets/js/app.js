@@ -3,7 +3,7 @@ import * as P from './protocol.js';
 import { renderQr } from './qr.js';
 import { Scanner, cameraAvailable, cameraErrorMessage } from './scanner.js';
 
-const SESSION_KEY = 'drop:v2:session';
+const SESSION_KEY = 'drop:v3:session';
 const THEME_KEY = 'drop:theme';
 const SESSION_MS = 10 * 60 * 1000;
 const TEXT_TTL_MS = 2 * 60 * 1000;
@@ -14,12 +14,19 @@ const MAX_BUFFERED_BYTES = 1024 * 1024;
 const RECONNECT_DELAYS = [500, 1000, 2000, 4000, 8000];
 const MAX_NOT_FOUND_RETRIES = 4;
 const MAX_BUSY_RETRIES = 3;
+const SWAP_TIMEOUT_MS = 30_000;
+const SWAP_COMMIT_MS = 10_000;
+const SWAP_NOTE_MS = 6_000;
 
 const $ = id => document.getElementById(id);
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 const app = {
+    // Lugar na sala (fixo na conexão) e papel na tela (muda com "Inverter").
+    seat: null,
     role: null,
+    swaps: 0,
+    swap: { out: null, in: null, note: '', noteTimer: null },
     code: null,
     session: null,
     channel: null,
@@ -144,14 +151,15 @@ function closeMessage(code) {
 
 function saveSession() {
     try {
-        sessionStorage.setItem(SESSION_KEY, JSON.stringify({ role: app.role, code: app.code, expiresAt: app.expiresAt }));
+        sessionStorage.setItem(SESSION_KEY, JSON.stringify({ seat: app.seat, swaps: app.swaps, code: app.code, expiresAt: app.expiresAt }));
     } catch { /* sessão só desta aba; sem storage, recarregar encerra */ }
 }
 
 function loadSession() {
     try {
         const saved = JSON.parse(sessionStorage.getItem(SESSION_KEY) || 'null');
-        if (saved && (saved.role === 'receiver' || saved.role === 'sender') && P.normalizeCode(saved.code) === saved.code &&
+        if (saved && (saved.seat === 'receiver' || saved.seat === 'sender') && P.normalizeCode(saved.code) === saved.code &&
+            Number.isSafeInteger(saved.swaps) && saved.swaps >= 0 &&
             Number.isFinite(saved.expiresAt) && saved.expiresAt > Date.now() && saved.expiresAt - Date.now() <= SESSION_MS) {
             return saved;
         }
@@ -166,16 +174,18 @@ function forgetSession() {
     } catch { /* nada a limpar */ }
 }
 
-async function startSession(role, code, expiresAt = Date.now() + SESSION_MS) {
+async function startSession(seat, code, { expiresAt = Date.now() + SESSION_MS, swaps = 0 } = {}) {
     endSession();
-    app.role = role;
+    app.seat = seat;
+    app.swaps = swaps;
+    app.role = P.roleFor(seat, swaps);
     app.code = code;
     app.expiresAt = expiresAt;
     app.session = await P.deriveSession(code);
     saveSession();
-    app.channel = new Channel(app.session, role, {
+    app.channel = new Channel(app.session, seat, {
         control: onControl,
-        frame: frame => enqueue(() => (role === 'receiver' ? onReceiverFrame(frame) : onSenderFrame(frame))),
+        frame: frame => enqueue(() => onFrame(frame)),
         reconnecting: onReconnecting,
         stopped: onStopped,
     });
@@ -187,7 +197,10 @@ function endSession() {
     app.channel?.close();
     app.channel = null;
     app.session = null;
+    resetSwap();
+    app.seat = null;
     app.role = null;
+    app.swaps = 0;
     app.code = null;
     app.peer = false;
     app.queue = Promise.resolve();
@@ -198,6 +211,7 @@ function endSession() {
     clearInbox();
     $('session-pill').hidden = true;
     $('view-receiver').dataset.peer = 'false';
+    $('swap').hidden = true;
     forgetSession();
 }
 
@@ -210,7 +224,6 @@ function startTicker() {
     clearInterval(app.ticker);
     const pill = $('session-pill');
     pill.hidden = false;
-    $('session-label').textContent = app.role === 'receiver' ? 'Recebendo' : 'Enviando';
     const tick = () => {
         const left = Math.max(0, app.expiresAt - Date.now());
         const seconds = Math.ceil(left / 1000);
@@ -239,14 +252,17 @@ function onControl(data) {
         app.expiresAt = Math.min(app.expiresAt, Date.now() + data.expiresIn * 1000);
         saveSession();
         setPeer(Boolean(data.peer));
+        if (data.peer) sendSwapSync();
     } else if (data.type === 'peer') {
         setPeer(Boolean(data.present));
+        if (data.present) sendSwapSync();
     } else if (data.type === 'error' && data.code === 'peer-missing') {
         setPeer(false);
     }
 }
 
 function onReconnecting(code) {
+    resetSwap();
     if (app.role === 'receiver') {
         setStatus('receiver-status', 'Conexão perdida. Tentando de novo…', 'warn');
     } else if (code === 4004) {
@@ -282,7 +298,9 @@ function setPeer(present) {
             setStatus('receiver-status', 'Dispositivo conectado. Pode enviar.', 'ok');
         } else {
             setStatus('receiver-status', was
-                ? 'O outro dispositivo saiu. Ele pode voltar com o mesmo código.'
+                ? (app.seat === 'receiver'
+                    ? 'O outro dispositivo saiu. Ele pode voltar com o mesmo código.'
+                    : 'O outro dispositivo saiu. Se ele recarregar a página, volta para esta sessão.')
                 : 'Esperando o outro dispositivo. Leia o QR ou digite o código lá.', 'wait');
         }
     } else if (app.role === 'sender') {
@@ -293,30 +311,73 @@ function setPeer(present) {
             for (const pending of app.pendingAcks.values()) pending.resolve({ ok: false, reason: 'receptor saiu' });
         }
     }
+    if (!present) resetSwap();
     updateSendButton();
+    renderSwap();
+}
+
+// ── Papel na tela ────────────────────────────────────────────────────
+
+/** Monta a tela do papel atual. Na inversão, troca o histórico em vez de empilhar. */
+function renderRole({ replace = false } = {}) {
+    if (app.role === 'receiver') {
+        showView('receiver', { replace });
+        $('receiver-code').textContent = P.formatCode(app.code);
+        renderQr($('qr'), P.linkFor(location.origin, app.code));
+        $('share-link').hidden = typeof navigator.share !== 'function';
+        $('receiver-status').after($('swap'));
+    } else {
+        stopScanner();
+        showView('sender', { replace });
+        $('connect-step').hidden = true;
+        $('compose-step').hidden = false;
+        $('sender-title').textContent = 'O que enviar';
+        $('outbox').replaceChildren();
+        updateTextMeter();
+        renderFileList();
+        $('sender-status').after($('swap'));
+    }
+    $('session-label').textContent = app.role === 'receiver' ? 'Recebendo' : 'Enviando';
+    if (app.channel?.ready) {
+        setPeer(app.peer);
+    } else {
+        setStatus(`${app.role}-status`, app.role === 'receiver' ? 'Conectando…' : 'Conectando ao receptor…', 'wait');
+        renderSwap();
+    }
 }
 
 // ── Receber ──────────────────────────────────────────────────────────
 
-async function startReceiver(saved = null) {
+async function startReceiver() {
     showView('receiver');
-    const code = saved?.code ?? P.generateCode();
-    await startSession('receiver', code, saved?.expiresAt);
-    const link = P.linkFor(location.origin, code);
-    $('receiver-code').textContent = P.formatCode(code);
-    renderQr($('qr'), link);
-    $('share-link').hidden = typeof navigator.share !== 'function';
-    setStatus('receiver-status', 'Conectando…', 'wait');
+    await startSession('receiver', P.generateCode());
+    renderRole();
 }
 
-async function onReceiverFrame(frame) {
+/** Volta para a sessão desta aba depois de recarregar, no papel em que estava. */
+async function resumeSession(saved) {
+    await startSession(saved.seat, saved.code, saved);
+    renderRole({ replace: true });
+}
+
+async function onFrame(frame) {
     let message;
     try {
-        message = P.decodeMessage(await P.unseal(app.session, 'sender', frame));
+        message = P.decodeMessage(await P.unseal(app.session, P.otherSeat(app.seat), frame));
     } catch {
-        setStatus('receiver-status', 'Chegou um pacote que não confere com o código. Ele foi descartado.', 'error');
+        if (app.role === 'receiver') {
+            setStatus('receiver-status', 'Chegou um pacote que não confere com o código. Ele foi descartado.', 'error');
+        }
         return;
     }
+    if (message.kind === P.Kind.SWAP) await onSwap(message);
+    else if (app.role === 'receiver') await onReceiverMessage(message);
+    else if (message.kind === P.Kind.ACK) app.pendingAcks.get(message.id)?.resolve(message);
+    // Um recebimento que terminou libera o "Inverter".
+    if (app.role === 'receiver') renderSwap();
+}
+
+async function onReceiverMessage(message) {
     switch (message.kind) {
         case P.Kind.TEXT:
             addTextItem(message.text);
@@ -483,27 +544,10 @@ function showConnectStep(error = '') {
     $('code-input').value = '';
 }
 
-async function connectSender(code, saved = null) {
+async function connectSender(code) {
     stopScanner();
-    showView('sender');
-    $('connect-step').hidden = true;
-    $('compose-step').hidden = false;
-    $('sender-title').textContent = 'O que enviar';
-    $('outbox').replaceChildren();
-    setStatus('sender-status', 'Conectando ao receptor…', 'wait');
-    await startSession('sender', code, saved?.expiresAt);
-    updateTextMeter();
-    renderFileList();
-}
-
-async function onSenderFrame(frame) {
-    let message;
-    try {
-        message = P.decodeMessage(await P.unseal(app.session, 'receiver', frame));
-    } catch {
-        return;
-    }
-    if (message.kind === P.Kind.ACK) app.pendingAcks.get(message.id)?.resolve(message);
+    await startSession('sender', code);
+    renderRole();
 }
 
 function waitForAck(id) {
@@ -530,7 +574,7 @@ function updateSendButton() {
     const hasContent = tab === 'text'
         ? textSize > 0 && textSize <= P.MAX_TEXT_BYTES
         : app.files.length > 0 && totalFileBytes() <= P.MAX_TRANSFER_BYTES;
-    button.disabled = !(hasContent && app.peer && app.channel?.ready && !app.sending);
+    button.disabled = !(hasContent && app.peer && app.channel?.ready && !app.sending && !swapActive());
 }
 
 function updateTextMeter() {
@@ -589,15 +633,17 @@ function addOutItem(kind, name) {
 }
 
 async function sendNow() {
-    if (app.sending) return;
+    if (app.sending || swapActive()) return;
     app.sending = true;
     updateSendButton();
+    renderSwap();
     try {
         if (activeTab() === 'text') await sendText();
         else await sendFiles();
     } finally {
         app.sending = false;
         updateSendButton();
+        renderSwap();
     }
 }
 
@@ -658,6 +704,215 @@ async function sendFiles() {
     }
 }
 
+// ── Inverter ─────────────────────────────────────────────────────────
+//
+// Quem toca em "Inverter" já concordou; o outro precisa aceitar. Depois do
+// aceite, quem pediu manda a confirmação e só então os dois trocam: quem pediu
+// ao mandar, o outro ao receber. Como os frames chegam em ordem, nada do papel
+// antigo chega depois da troca, e os dois nunca ficam enviando ao mesmo tempo.
+
+function swapActive() {
+    return Boolean(app.swap.out || app.swap.in);
+}
+
+/** Envio, recebimento ou confirmação em andamento: a inversão espera. */
+function transferBusy() {
+    return app.sending || app.pendingAcks.size > 0 || [...app.inbox.values()].some(item => item.assembler);
+}
+
+function canSwap() {
+    return Boolean(app.peer && app.channel?.ready && !transferBusy() && !swapActive());
+}
+
+async function sendSwap(id, step, options) {
+    if (!app.channel) throw new Error('sem sessão');
+    await app.channel.send(P.encodeSwap(id, step, options));
+}
+
+function sendSwapSync() {
+    // Depois de reconectar: se uma confirmação se perdeu, o contador maior vale.
+    sendSwap(P.newId(), 'sync', { swaps: app.swaps }).catch(() => {});
+}
+
+function resetSwap() {
+    clearTimeout(app.swap.out?.timer);
+    clearTimeout(app.swap.in?.timer);
+    app.swap.out = null;
+    app.swap.in = null;
+}
+
+function swapNote(text) {
+    clearTimeout(app.swap.noteTimer);
+    app.swap.note = text;
+    app.swap.noteTimer = setTimeout(() => {
+        app.swap.note = '';
+        renderSwap();
+    }, SWAP_NOTE_MS);
+}
+
+function finishSwap(note) {
+    resetSwap();
+    if (note) swapNote(note);
+    renderSwap();
+    updateSendButton();
+}
+
+function requestSwap() {
+    if (!canSwap()) return;
+    const id = P.newId();
+    app.swap.out = { id, timer: setTimeout(() => withdrawSwap('O outro dispositivo não respondeu.'), SWAP_TIMEOUT_MS) };
+    renderSwap();
+    updateSendButton();
+    sendSwap(id, 'request', { swaps: app.swaps }).catch(() => finishSwap('Sem conexão. Nada foi invertido.'));
+}
+
+/** Quem pediu desiste (botão ou tempo esgotado) e avisa o outro lado. */
+function withdrawSwap(note) {
+    const out = app.swap.out;
+    if (!out) return;
+    sendSwap(out.id, 'decline', { reason: 'cancelado' }).catch(() => {});
+    finishSwap(note);
+}
+
+function acceptSwap() {
+    const incoming = app.swap.in;
+    if (!incoming || incoming.state !== 'asked') return;
+    if (transferBusy()) {
+        declineSwap('ocupado');
+        return;
+    }
+    clearTimeout(incoming.timer);
+    incoming.state = 'accepted';
+    incoming.timer = setTimeout(() => finishSwap('A inversão não foi concluída.'), SWAP_COMMIT_MS);
+    renderSwap();
+    sendSwap(incoming.id, 'accept', { swaps: app.swaps }).catch(() => finishSwap('Sem conexão. Nada foi invertido.'));
+}
+
+function declineSwap(reason = 'recusado') {
+    const incoming = app.swap.in;
+    if (!incoming) return;
+    sendSwap(incoming.id, 'decline', { reason }).catch(() => {});
+    finishSwap(reason === 'ocupado' ? 'Termine o envio antes de inverter.' : '');
+}
+
+async function commitSwap(id) {
+    const next = app.swaps + 1;
+    try {
+        await sendSwap(id, 'commit', { swaps: next });
+    } catch {
+        finishSwap('Sem conexão. Nada foi invertido.');
+        return;
+    }
+    applySwap(next);
+}
+
+async function onSwap(message) {
+    const { out } = app.swap;
+    switch (message.step) {
+        case 'request':
+            if (out) {
+                // Os dois pediram ao mesmo tempo: os dois já concordaram. Quem
+                // criou a sala confirma; o outro espera essa confirmação.
+                if (app.seat === 'receiver') await commitSwap(message.id);
+                return;
+            }
+            if (app.swap.in || transferBusy() || !app.peer) {
+                await sendSwap(message.id, 'decline', { reason: 'ocupado' }).catch(() => {});
+                return;
+            }
+            app.swap.in = {
+                id: message.id,
+                state: 'asked',
+                timer: setTimeout(() => declineSwap('tempo esgotado'), SWAP_TIMEOUT_MS),
+            };
+            renderSwap();
+            updateSendButton();
+            vibrate();
+            break;
+        case 'accept':
+            if (out?.id !== message.id) return;
+            if (transferBusy()) {
+                withdrawSwap('Não deu para inverter: há um envio em andamento.');
+                return;
+            }
+            await commitSwap(message.id);
+            break;
+        case 'commit':
+            // Só chega depois de um aceite (ou de dois pedidos). Mesmo que o
+            // aceite tenha expirado aqui, o outro lado já trocou: acompanha.
+            if (message.swaps > app.swaps) applySwap(message.swaps);
+            break;
+        case 'decline':
+            if (out?.id === message.id) {
+                finishSwap(message.reason === 'ocupado'
+                    ? 'O outro dispositivo está no meio de um envio. Tente de novo depois.'
+                    : 'O outro dispositivo recusou a inversão.');
+            } else if (app.swap.in?.id === message.id) {
+                finishSwap('O outro dispositivo desistiu de inverter.');
+            }
+            break;
+        case 'sync':
+            if (message.swaps > app.swaps) applySwap(message.swaps);
+            break;
+        default:
+            break;
+    }
+}
+
+/** Troca o papel desta tela. O que estava nela some: itens recebidos e o que ia ser enviado. */
+function applySwap(swaps) {
+    resetSwap();
+    const was = app.role;
+    app.swaps = swaps;
+    app.role = P.roleFor(app.seat, swaps);
+    saveSession();
+    if (app.role !== was) {
+        clearInbox();
+        app.files = [];
+        $('text-input').value = '';
+        $('outbox').replaceChildren();
+        renderRole({ replace: true });
+        setStatus(`${app.role}-status`, app.role === 'sender'
+            ? 'Papéis invertidos. Agora você envia.'
+            : 'Papéis invertidos. Agora você recebe.', 'ok');
+        vibrate();
+    }
+    renderSwap();
+    updateSendButton();
+}
+
+function renderSwap() {
+    const panel = $('swap');
+    panel.hidden = !(app.channel && app.peer);
+    if (panel.hidden) return;
+    const incoming = app.swap.in;
+    let text;
+    let state = 'idle';
+    if (incoming?.state === 'asked') {
+        state = 'asked';
+        text = app.role === 'receiver'
+            ? 'O outro dispositivo quer inverter: você passa a enviar, e ele a receber. Os itens recebidos somem desta tela.'
+            : 'O outro dispositivo quer inverter: você passa a receber, e ele a enviar.';
+    } else if (incoming?.state === 'accepted') {
+        state = 'wait';
+        text = 'Invertendo…';
+    } else if (app.swap.out) {
+        state = 'wait';
+        text = 'Esperando o outro dispositivo aceitar…';
+    } else {
+        text = app.swap.note || (app.role === 'receiver'
+            ? 'Para mandar algo de volta. O outro dispositivo precisa aceitar, e os itens recebidos somem desta tela.'
+            : 'Para receber algo do outro dispositivo. Ele precisa aceitar.');
+    }
+    panel.dataset.state = state;
+    $('swap-text').textContent = text;
+    $('swap-request').hidden = state !== 'idle';
+    $('swap-request').disabled = !canSwap();
+    $('swap-accept').hidden = state !== 'asked';
+    $('swap-decline').hidden = state !== 'asked';
+    $('swap-cancel').hidden = !app.swap.out;
+}
+
 // ── Câmera ───────────────────────────────────────────────────────────
 
 async function startScanner() {
@@ -703,9 +958,11 @@ function stopScanner() {
 
 // ── Tela ─────────────────────────────────────────────────────────────
 
-function showView(name) {
+function showView(name, { replace = false } = {}) {
     for (const view of ['home', 'receiver', 'sender']) $(`view-${view}`).hidden = view !== name;
-    if (name !== 'home' && history.state?.view !== name) history.pushState({ view: name }, '', location.pathname);
+    if (name !== 'home' && history.state?.view !== name) {
+        history[replace ? 'replaceState' : 'pushState']({ view: name }, '', location.pathname);
+    }
     window.scrollTo({ top: 0 });
 }
 
@@ -836,6 +1093,10 @@ const actions = {
     },
     tab: button => selectTab(button.dataset.tab),
     'send-now': () => sendNow(),
+    'swap-request': () => requestSwap(),
+    'swap-accept': () => acceptSwap(),
+    'swap-decline': () => declineSwap(),
+    'swap-cancel': () => withdrawSwap('Pedido cancelado.'),
 };
 
 const itemActions = {
@@ -945,8 +1206,7 @@ async function init() {
         return;
     }
     const saved = loadSession();
-    if (saved?.role === 'receiver') await startReceiver(saved);
-    else if (saved?.role === 'sender') await connectSender(saved.code, saved);
+    if (saved) await resumeSession(saved);
 }
 
 init().catch(showFatal);

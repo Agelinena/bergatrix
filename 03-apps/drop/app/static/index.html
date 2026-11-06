@@ -67,6 +67,7 @@
                     <li><b>Receber</b> no dispositivo que vai ficar com o conteúdo.</li>
                     <li><b>Enviar</b> no outro, lendo o QR ou digitando o código.</li>
                     <li>Mande o texto ou os arquivos (até 25 MiB). O recebimento é confirmado.</li>
+                    <li>Para mandar de volta, toque em <b>Inverter</b>. O outro dispositivo precisa aceitar.</li>
                 </ol>
             </section>
 
@@ -177,6 +178,18 @@
                     <ul id="outbox" class="items"></ul>
                 </div>
             </section>
+
+            <!-- Inverter papéis: o app.js coloca este bloco abaixo do status da tela atual -->
+            <div id="swap" class="swap" data-state="idle" role="region" aria-label="Inverter papéis" hidden>
+                <p id="swap-text" class="swap-text" role="status" aria-live="polite"></p>
+                <div class="button-row">
+                    <button id="swap-request" class="secondary-button" data-action="swap-request" type="button">
+                        <span aria-hidden="true">⇅</span> Inverter</button>
+                    <button id="swap-accept" class="primary-button" data-action="swap-accept" type="button" hidden>Aceitar e inverter</button>
+                    <button id="swap-decline" class="secondary-button" data-action="swap-decline" type="button" hidden>Recusar</button>
+                    <button id="swap-cancel" class="text-button" data-action="swap-cancel" type="button" hidden>Cancelar pedido</button>
+                </div>
+            </div>
         </main>
 
         <footer class="footer">

@@ -621,6 +621,52 @@ h3 {
     width: 96px;
 }
 
+/* ── Inverter ─────────────────────────────────────────────────────── */
+
+.swap {
+    margin: 12px 0 0;
+    padding: 12px 14px;
+    border: 1px dashed var(--line-strong);
+    border-radius: var(--radius-small);
+    background: var(--surface-muted);
+}
+
+.swap[hidden] {
+    display: none;
+}
+
+.swap-text {
+    margin: 0;
+    color: var(--muted);
+    font-size: 14px;
+}
+
+.swap .button-row {
+    margin-top: 10px;
+}
+
+.swap .primary-button {
+    width: auto;
+    font-size: 14px;
+}
+
+/* Pedido chegando: precisa de uma resposta explícita. */
+.swap[data-state="asked"] {
+    border: 1px solid var(--coral);
+    border-left-width: 4px;
+    background: var(--coral-wash);
+}
+
+.swap[data-state="asked"] .swap-text {
+    color: var(--ink);
+    font-weight: 600;
+}
+
+.swap[data-state="wait"] .swap-text {
+    color: var(--warn-ink);
+    font-weight: 600;
+}
+
 #view-receiver[data-peer="true"] .code {
     font-size: 16px;
 }

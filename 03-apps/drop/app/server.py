@@ -3,8 +3,12 @@
 O servidor nunca vê o código, a chave nem o conteúdo. Cada sala é
 identificada por um ID derivado do código no navegador (HKDF) e tem dois
 lugares: o receptor, que cria a sala, e o emissor. Tudo o que chega como
-frame binário de um lado é repassado, igual, para o outro. Frames de texto
-são só controle (entrar na sala e ping).
+frame binário de um lado é repassado, igual, para o outro, nos dois
+sentidos. Frames de texto são só controle (entrar na sala e ping).
+
+Os lugares são fixos durante a conexão. Quando os dois invertem quem envia e
+quem recebe, isso é combinado dentro de frames cifrados: para o relay, nada
+muda.
 
 Nada vai para o disco: as salas ficam em memória e expiram em 10 minutos.
 O backpressure do uvicorn (websockets-sansio) limita a memória por conexão a
@@ -34,7 +38,7 @@ from starlette.websockets import WebSocket, WebSocketDisconnect
 
 logger = logging.getLogger("drop")
 
-PROTOCOL_VERSION = 2
+PROTOCOL_VERSION = 3
 ROOM_TTL_SECONDS = 600
 JOIN_TIMEOUT_SECONDS = 10
 MAX_ROOMS = 256

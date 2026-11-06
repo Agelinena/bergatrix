@@ -1,4 +1,4 @@
-// Protocolo do Drop (v2). Sem DOM: roda no navegador e no Node (testes).
+// Protocolo do Drop (v3). Sem DOM: roda no navegador e no Node (testes).
 //
 // O código de 20 símbolos (100 bits) passa por HKDF-SHA256 e vira duas coisas
 // independentes: o ID da sala, que vai ao servidor, e a chave AES-256-GCM, que
@@ -10,8 +10,13 @@
 // servidor não consegue devolver um frame a quem o enviou nem trocá-lo de sala.
 // A mensagem é: tipo (1) | id (16) | corpo. Os corpos têm padding por faixas,
 // para o tamanho do frame não revelar o tamanho do texto.
+//
+// Lugar e papel são coisas separadas. O lugar ("receiver" cria a sala,
+// "sender" entra nela) é fixo durante a conexão e é ele que vai nos dados
+// associados. O papel (quem envia, quem recebe) pode ser invertido com o
+// acordo dos dois, por mensagens SWAP cifradas: o servidor não fica sabendo.
 
-export const PROTOCOL_VERSION = 2;
+export const PROTOCOL_VERSION = 3;
 export const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 export const CODE_LENGTH = 20;
 export const MAX_TEXT_BYTES = 16 * 1024;
@@ -19,7 +24,12 @@ export const MAX_TRANSFER_BYTES = 25 * 1024 * 1024;
 export const MAX_FILES = 20;
 export const CHUNK_BYTES = 64 * 1024;
 
-export const Kind = Object.freeze({ TEXT: 1, FILE: 2, CHUNK: 3, ACK: 4, CANCEL: 5 });
+export const Kind = Object.freeze({ TEXT: 1, FILE: 2, CHUNK: 3, ACK: 4, CANCEL: 5, SWAP: 6 });
+
+// Inversão de papéis: pedido → aceite → confirmação de quem pediu. "decline"
+// recusa ou desiste de um pedido; "sync" troca o contador depois de reconectar.
+export const SWAP_STEPS = Object.freeze(['request', 'accept', 'decline', 'commit', 'sync']);
+const MAX_SWAPS = 10_000;
 
 const ID_BYTES = 16;
 const IV_BYTES = 12;
@@ -181,6 +191,25 @@ export function encodeCancel(id) {
     return message(Kind.CANCEL, id);
 }
 
+/** `swaps` é quantas inversões já aconteceram na sessão: o papel sai da paridade. */
+export function encodeSwap(id, step, { swaps = 0, reason = '' } = {}) {
+    if (!SWAP_STEPS.includes(step)) throw new ProtocolError('passo de inversão inválido');
+    if (!Number.isSafeInteger(swaps) || swaps < 0 || swaps > MAX_SWAPS) throw new ProtocolError('contador inválido');
+    return message(Kind.SWAP, id, json({ step, swaps, reason: String(reason).slice(0, 40) }));
+}
+
+/** Papel atual de quem ocupa `seat`, depois de `swaps` inversões. */
+export function roleFor(seat, swaps) {
+    const flipped = swaps % 2 === 1;
+    if (seat === 'receiver') return flipped ? 'sender' : 'receiver';
+    if (seat === 'sender') return flipped ? 'receiver' : 'sender';
+    throw new ProtocolError('lugar inválido');
+}
+
+export function otherSeat(seat) {
+    return seat === 'receiver' ? 'sender' : 'receiver';
+}
+
 export function safeFileName(name) {
     const clean = String(name ?? '').replace(/[\u0000-\u001f\u007f/\\]/g, '_').trim().slice(0, 200);
     return clean && clean !== '.' && clean !== '..' ? clean : 'arquivo';
@@ -232,6 +261,14 @@ export function decodeMessage(bytes) {
         }
         case Kind.CANCEL:
             return { kind, id };
+        case Kind.SWAP: {
+            const value = readJson(body);
+            if (!SWAP_STEPS.includes(value.step) || !Number.isSafeInteger(value.swaps) ||
+                value.swaps < 0 || value.swaps > MAX_SWAPS) {
+                throw new ProtocolError('inversão inválida');
+            }
+            return { kind, id, step: value.step, swaps: value.swaps, reason: typeof value.reason === 'string' ? value.reason : '' };
+        }
         default:
             throw new ProtocolError('tipo desconhecido');
     }

@@ -154,3 +154,47 @@ test('confirmação e cancelamento', async () => {
         { kind: P.Kind.ACK, id, ok: false, reason: 'hash' });
     assert.deepEqual(P.decodeMessage(P.encodeCancel(id)), { kind: P.Kind.CANCEL, id });
 });
+
+test('inversão: passos cifrados, contador e papel pela paridade', async () => {
+    const session = await P.deriveSession(CODE);
+    const id = P.newId();
+    for (const step of P.SWAP_STEPS) {
+        // O pedido pode sair de qualquer lugar; o dado associado é o lugar, não o papel.
+        for (const seat of ['receiver', 'sender']) {
+            const frame = await P.seal(session, seat, P.encodeSwap(id, step, { swaps: 3, reason: 'ocupado' }));
+            assert.deepEqual(P.decodeMessage(await P.unseal(session, seat, frame)),
+                { kind: P.Kind.SWAP, id, step, swaps: 3, reason: 'ocupado' });
+            await assert.rejects(P.unseal(session, P.otherSeat(seat), frame), P.ProtocolError);
+        }
+    }
+    assert.throws(() => P.encodeSwap(id, 'take-over'), P.ProtocolError);
+    assert.throws(() => P.encodeSwap(id, 'commit', { swaps: -1 }), P.ProtocolError);
+    assert.throws(() => P.encodeSwap(id, 'commit', { swaps: 1.5 }), P.ProtocolError);
+
+    assert.equal(P.roleFor('receiver', 0), 'receiver');
+    assert.equal(P.roleFor('sender', 0), 'sender');
+    assert.equal(P.roleFor('receiver', 1), 'sender');
+    assert.equal(P.roleFor('sender', 1), 'receiver');
+    assert.equal(P.roleFor('sender', 2), 'sender');
+    // Os dois lados nunca ficam com o mesmo papel com o mesmo contador.
+    for (let swaps = 0; swaps < 6; swaps += 1) {
+        assert.notEqual(P.roleFor('receiver', swaps), P.roleFor('sender', swaps));
+    }
+    assert.throws(() => P.roleFor('admin', 0), P.ProtocolError);
+});
+
+test('inversão com passo ou contador forjado é recusada', () => {
+    const fake = (body) => {
+        const json = new TextEncoder().encode(JSON.stringify(body));
+        const message = new Uint8Array(17 + 4 + json.length);
+        message[0] = P.Kind.SWAP;
+        new DataView(message.buffer).setUint32(17, json.length);
+        message.set(json, 21);
+        return message;
+    };
+    assert.equal(P.decodeMessage(fake({ step: 'sync', swaps: 2 })).swaps, 2);
+    for (const bad of [{ step: 'x', swaps: 1 }, { step: 'commit', swaps: -1 }, { step: 'commit', swaps: '1' },
+        { step: 'commit', swaps: 10_001 }, { step: 'commit' }]) {
+        assert.throws(() => P.decodeMessage(fake(bad)), P.ProtocolError);
+    }
+});

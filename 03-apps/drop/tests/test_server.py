@@ -113,8 +113,8 @@ class RelayTests(unittest.TestCase):
 
     def test_invalid_join_is_closed(self):
         for message in ("{}", "ping", json.dumps({"type": "join", "v": 1, "room": ROOM, "role": "receiver"}),
-                        json.dumps({"type": "join", "v": 2, "room": "A" * 64, "role": "receiver"}),
-                        json.dumps({"type": "join", "v": 2, "room": ROOM, "role": "admin"})):
+                        json.dumps({"type": "join", "v": server.PROTOCOL_VERSION, "room": "A" * 64, "role": "receiver"}),
+                        json.dumps({"type": "join", "v": server.PROTOCOL_VERSION, "room": ROOM, "role": "admin"})):
             with self.client.websocket_connect("/ws", headers=ORIGIN) as ws:
                 ws.send_text(message)
                 self.assertEqual(close_code(ws), server.CLOSE_BAD_REQUEST, message)

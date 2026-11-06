@@ -19,13 +19,23 @@ Endereço: `drop.${DOMAIN}`. Público e sem conta, por decisão ([05-acesso.md](
 
 O protocolo está em [`app/static/assets/js/protocol.js`](app/static/assets/js/protocol.js), e o relay em [`app/server.py`](app/server.py).
 
+### Inverter
+
+Com os dois conectados, qualquer um pode tocar em **Inverter** para trocar quem envia e quem recebe. O outro precisa tocar em **Aceitar e inverter**. Sem resposta em 30 segundos, o pedido cai.
+
+- **Lugar e papel são coisas separadas.** O lugar na sala (quem criou e quem entrou) não muda, e é ele que vai nos dados associados de cada frame. Só o papel na tela troca. O servidor não fica sabendo da inversão: é tudo combinado em mensagens `SWAP` cifradas.
+- **Pedido → aceite → confirmação.** Quem pediu só troca ao mandar a confirmação, e o outro só troca ao recebê-la. Como os frames chegam em ordem, os dois nunca ficam enviando ao mesmo tempo.
+- **Contador de inversões.** O papel vem da paridade dele. Ao reconectar, os dois trocam o contador, e o maior vale. Assim uma confirmação perdida não deixa os dois com o mesmo papel.
+- **Só sem nada em andamento:** com um envio ou recebimento no meio, o pedido é recusado.
+- **O que estava na tela some:** os itens recebidos, o texto e os arquivos escolhidos. Os dois lados são avisados antes de aceitar.
+
 ### Limites
 
 | O quê | Limite |
 |---|---|
 | Sessão | 10 minutos a partir da criação, sem renovação |
 | Texto | 16 KiB |
-| Arquivos | 25 MiB e 20 arquivos por envio; 40 MiB por sessão, nos dois sentidos |
+| Arquivos | 25 MiB e 20 arquivos por envio; 40 MiB por sessão, somando os dois sentidos (também depois de inverter) |
 | Salas | 256 no total, 4 por IP |
 | Frame | 66 KiB (WebSocket) |
 | Página | 60 pedidos/min por IP, com rajada de 30 (Traefik) e CrowdSec |
