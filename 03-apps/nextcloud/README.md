@@ -241,6 +241,7 @@ occ user:disable admin-local
   - Ou direto no DAVx⁵, com URL `https://storange.example.com/remote.php/dav`, o seu usuário do Nextcloud e uma senha de app.
 - **iPhone (CalDAV/CardDAV):** servidor `storange.example.com`, o seu usuário e uma senha de app.
 - **WebDAV:** `https://storange.example.com/remote.php/dav/files/<usuário>/`, com senha de app.
+- **Conversas do Claude Code:** o app [claude-sync](../../ferramentas/claude-sync/README.md) entra pelo Login Flow v2 (como o cliente de desktop) e sincroniza por esse WebDAV, com uma senha de app por PC.
 
 As senhas de app são criadas em *Configurações pessoais → Segurança → Dispositivos e sessões*, uma por dispositivo, e é ali que você revoga uma senha de um aparelho perdido. Elas não passam pelo 2FA do Authentik.
 

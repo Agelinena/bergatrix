@@ -8,3 +8,5 @@
 *.ico binary
 *.woff2 binary
 *.ttf binary
+# Executáveis do claude-sync (compilados por ferramentas/claude-sync/codigo/build.sh)
+ferramentas/claude-sync/claude-sync-* binary

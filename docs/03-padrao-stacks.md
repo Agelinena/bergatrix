@@ -21,6 +21,7 @@ Se uma stack existente foge de alguma regra, ela está listada em [Dívidas conh
 | `02-security` | Identidade, segredos e proteção (Authentik, Vaultwarden, CrowdSec) |
 | `03-apps` | Aplicações |
 | `04-monitoring` | Observabilidade e segurança (Wazuh) |
+| `ferramentas` | Não é stack. Apps que rodam nos PCs ([claude-sync](../ferramentas/claude-sync/README.md)) |
 
 **O nome da stack é o nome da pasta.** É o nome usado em `${APPDATA_PATH}/<stack>` e `${CACHE_PATH}/<stack>`. Renomear a pasta obriga a renomear essas pastas no servidor.
 

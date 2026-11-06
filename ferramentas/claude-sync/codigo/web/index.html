@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light dark">
+    <title>claude-sync</title>
+    <link rel="icon" href="icon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="app.css">
+    <script src="app.js" type="module"></script>
+</head>
+
+<body>
+    <div class="shell">
+        <header class="topbar">
+            <div class="brand">
+                <img src="icon.svg" alt="" width="28" height="28">
+                <div>
+                    <h1>claude-sync</h1>
+                    <p class="sub">Conversas do Claude Code no seu Nextcloud</p>
+                </div>
+            </div>
+            <p id="pill" class="pill" data-tone="idle">Carregando…</p>
+        </header>
+
+        <p id="offline" class="notice notice--error" hidden>O app não está respondendo. Ele foi fechado? Abra o claude-sync de novo.</p>
+        <p id="error" class="notice notice--error" role="alert" hidden></p>
+
+        <!-- 1. Nextcloud -->
+        <section class="card" aria-labelledby="t-nextcloud">
+            <div class="card-head">
+                <span class="step">1</span>
+                <h2 id="t-nextcloud">Nextcloud</h2>
+            </div>
+
+            <form id="login-form" class="stack" hidden>
+                <label class="label" for="server">Endereço do Nextcloud</label>
+                <div class="row">
+                    <input id="server" type="text" inputmode="url" autocomplete="url" spellcheck="false"
+                        placeholder="https://storange.seu-dominio">
+                    <button class="primary" type="submit">Entrar pelo Nextcloud</button>
+                </div>
+                <p class="hint">Abre o login do Nextcloud no navegador (passa pelo Authentik). O app recebe uma
+                    senha de app própria, que fica cifrada neste PC e pode ser revogada em
+                    <i>Dispositivos e sessões</i>.</p>
+            </form>
+
+            <div id="login-pending" class="stack" hidden>
+                <p class="status" data-tone="wait">Termine o login na aba do Nextcloud e clique em <b>Conceder acesso</b>.</p>
+                <div class="row">
+                    <a id="login-link" class="button" target="_blank" rel="noopener noreferrer">Abrir o login de novo</a>
+                    <button class="ghost" data-action="login-cancel" type="button">Cancelar</button>
+                </div>
+            </div>
+
+            <div id="login-done" class="stack" hidden>
+                <p class="status" data-tone="ok">Conectado a <b id="who-server"></b> como <b id="who-user"></b>.</p>
+                <div class="row">
+                    <button class="ghost" data-action="logout" type="button">Desconectar e revogar a senha de app</button>
+                </div>
+            </div>
+        </section>
+
+        <!-- 2. Pasta -->
+        <section class="card" aria-labelledby="t-folder">
+            <div class="card-head">
+                <span class="step">2</span>
+                <h2 id="t-folder">Pasta do Claude</h2>
+            </div>
+            <p class="hint">O Claude Code passa a guardar tudo nesta pasta: conversas, memória, configurações e
+                login. Os seus projetos continuam onde estão. O que já existe hoje é copiado para cá, sem
+                sobrescrever nada.</p>
+            <form id="folder-form" class="stack">
+                <label class="label" for="sync-dir">Pasta local</label>
+                <div class="row">
+                    <input id="sync-dir" type="text" spellcheck="false" autocomplete="off">
+                    <button id="activate" class="primary" type="submit">Ativar</button>
+                </div>
+            </form>
+            <div id="folder-active" class="stack" hidden>
+                <p class="status" data-tone="ok">O Claude Code usa esta pasta (<code>CLAUDE_CONFIG_DIR</code>).</p>
+                <p id="restart" class="status" data-tone="wait" hidden>Feche e abra de novo o VS Code e os terminais
+                    para o Claude Code ver a pasta nova. Sessões já abertas continuam na pasta antiga.</p>
+                <div class="row">
+                    <button class="ghost" data-action="open-folder" type="button">Abrir a pasta</button>
+                    <button class="ghost danger" data-action="deactivate" type="button">Desativar</button>
+                </div>
+            </div>
+            <p id="env-other" class="status" data-tone="warn" hidden></p>
+        </section>
+
+        <!-- 3. Sincronização -->
+        <section class="card" aria-labelledby="t-sync">
+            <div class="card-head">
+                <span class="step">3</span>
+                <h2 id="t-sync">Sincronização</h2>
+                <button class="ghost small push" data-action="sync" type="button">Sincronizar agora</button>
+            </div>
+            <dl class="stats">
+                <div><dt>Última volta</dt><dd id="last-sync">—</dd></div>
+                <div><dt>Baixados</dt><dd id="count-down">0</dd></div>
+                <div><dt>Enviados</dt><dd id="count-up">0</dd></div>
+                <div><dt>Conflitos</dt><dd id="count-conflicts">0</dd></div>
+            </dl>
+            <p id="sync-error" class="status" data-tone="error" hidden></p>
+
+            <h3>Projetos</h3>
+            <p class="hint">No Nextcloud, as conversas ficam pelo nome da pasta do projeto. Em outro PC, elas
+                aparecem quando o Claude Code abre um projeto com o mesmo nome, ou quando você diz aqui onde ele
+                está.</p>
+            <ul id="projects" class="projects"></ul>
+            <p id="projects-empty" class="hint" hidden>Nenhum projeto ainda.</p>
+        </section>
+
+        <!-- 4. Opções -->
+        <section class="card" aria-labelledby="t-options">
+            <div class="card-head">
+                <span class="step">4</span>
+                <h2 id="t-options">Opções</h2>
+            </div>
+            <form id="settings-form" class="stack">
+                <fieldset>
+                    <legend class="label">Sincronizar também</legend>
+                    <div id="global-items" class="checks"></div>
+                    <p class="hint">As conversas e a memória dos projetos sempre vão. Credenciais, caches, plugins
+                        e o histórico de arquivos ficam só neste PC.</p>
+                </fieldset>
+                <label class="label" for="interval">Olhar o Nextcloud a cada (segundos)</label>
+                <input id="interval" type="number" min="10" max="3600" step="5">
+                <label class="check">
+                    <input id="autostart" type="checkbox">
+                    <span>Abrir junto com o sistema, em segundo plano</span>
+                </label>
+                <div class="row">
+                    <button class="primary" type="submit">Salvar opções</button>
+                </div>
+            </form>
+        </section>
+
+        <!-- Atividade -->
+        <section class="card" aria-labelledby="t-activity">
+            <div class="card-head">
+                <h2 id="t-activity">Atividade</h2>
+            </div>
+            <ol id="activity" class="activity"></ol>
+            <p id="activity-empty" class="hint">Nada ainda.</p>
+        </section>
+
+        <footer class="footer">
+            <span id="version"></span>
+            <button class="ghost small danger" data-action="quit" type="button">Fechar o app</button>
+        </footer>
+    </div>
+
+    <template id="tpl-project">
+        <li class="project">
+            <div class="project-head">
+                <b class="project-key"></b>
+                <span class="tag"></span>
+            </div>
+            <p class="project-paths"></p>
+            <form class="row project-link" hidden>
+                <input type="text" spellcheck="false" placeholder="Caminho do projeto neste PC">
+                <button class="ghost" type="submit">Vincular</button>
+            </form>
+        </li>
+    </template>
+</body>
+
+</html>

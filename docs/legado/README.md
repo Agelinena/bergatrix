@@ -6,5 +6,6 @@ Ficam aqui só como consulta, principalmente:
 
 - [modelos-labels-traefik.md](modelos-labels-traefik.md): os modelos de rota do Traefik em uso hoje, até a troca por OIDC;
 - [stacks/](stacks/): descrições por stack, que vão ser reescritas aos poucos no novo padrão.
+- [migracao-armazenamento.md](migracao-armazenamento.md): o passo a passo (já executado) da migração para o novo armazenamento.
 
 A documentação atual começa em [../README.md](../README.md).

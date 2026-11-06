@@ -1,13 +1,14 @@
 # Migração para o novo armazenamento
 
-Passo a passo para levar os dados do servidor antigo (Ubuntu com tudo no HD de 1 TB) para o novo layout: configs e bancos no HD local, mídia no NAS. As regras de destino estão em [02-armazenamento.md](02-armazenamento.md).
+Passo a passo para levar os dados do servidor antigo (Ubuntu com tudo no HD de 1 TB) para o novo layout: configs e bancos no HD local, mídia no NAS. As regras de destino estão em [02-armazenamento.md](../02-armazenamento.md).
 
-> Este documento é de uso único. Depois da migração, ele fica só como histórico.
+> **Histórico.** A migração já foi feita, e este documento fica só como registro. Os scripts citados foram removidos do
+> repositório e estão no commit [`630529e`](https://github.com/Agelinena/bergatrix/tree/630529e/scripts), se precisar consultar.
 
 ## Antes de começar
 
 - [ ] VM do OMV no ar, com as pastas compartilhadas `media` e `userdata` exportadas por NFS.
-- [ ] VM Docker com o HD de 1 TB montado em `/srv` e o NFS em `/mnt/nas/media` ([montagem](02-armazenamento.md#montagem-no-servidor-docker)).
+- [ ] VM Docker com o HD de 1 TB montado em `/srv` e o NFS em `/mnt/nas/media` ([montagem](../02-armazenamento.md#montagem-no-servidor-docker)).
 - [ ] `RequiresMountsFor` no `docker.service` e a ordem de boot configurada no Proxmox.
 - [ ] Nenhum container rodando sobre os dados antigos (`docker compose down` em todas as stacks).
 
@@ -34,7 +35,7 @@ mkdir -p /mnt/nas/media/{filmes,series,downloads,musica/bergastream/deemix_dl,mu
 
 ## 2. Mover os dados de cada stack
 
-No cenário A, o script [`scripts/migrar-dados.py`](../scripts/migrar-dados.py) aplica o mapa abaixo inteiro de dentro de `/srv/docker_volumes`:
+No cenário A, o script [`scripts/migrar-dados.py`](https://github.com/Agelinena/bergatrix/blob/630529e/scripts/migrar-dados.py) aplica o mapa abaixo inteiro de dentro de `/srv/docker_volumes`:
 
 - só usa `mv`, que é instantâneo no mesmo disco, e não apaga nada;
 - copia o `acme.json` do repositório;
@@ -97,7 +98,7 @@ Para fazer à mão, ou no cenário B:
 
 ## 3. Atualizar os `.env`
 
-O script [`scripts/migrar-env.py`](../scripts/migrar-env.py) converte todos os `.env` de uma vez:
+O script [`scripts/migrar-env.py`](https://github.com/Agelinena/bergatrix/blob/630529e/scripts/migrar-env.py) converte todos os `.env` de uma vez:
 
 - renomeia as variáveis que mudaram;
 - comenta as que saíram, deixando o valor antigo no arquivo para consulta;
