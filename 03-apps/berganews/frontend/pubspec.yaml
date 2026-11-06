@@ -1,0 +1,31 @@
+name: berganews
+description: Berganews, leitor de notícias da família, sem anúncio.
+publish_to: none
+version: 0.1.0+100
+
+environment:
+  sdk: ^3.12.0
+
+# Sem geração de código (nada de build_runner): os modelos leem o JSON à mão.
+dependencies:
+  app_links: ^7.2.2
+  crypto: ^3.0.6
+  dio: ^5.11.1
+  file_picker: ^13.3.2
+  flutter:
+    sdk: flutter
+  flutter_riverpod: ^3.4.3
+  flutter_secure_storage: ^11.2.0
+  flutter_widget_from_html_core: ^0.17.4
+  path_provider: ^2.1.6
+  share_plus: ^13.3.1
+  url_launcher: ^6.3.3
+  web: ^1.1.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true

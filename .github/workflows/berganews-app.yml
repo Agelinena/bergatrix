@@ -1,0 +1,76 @@
+# Berganews — confere o app Flutter a cada push que mexe nele: análise,
+# testes e um build da web (o mesmo do Dockerfile). As falhas viram
+# anotações do GitHub (aparecem no resumo da execução, sem abrir o log).
+name: Berganews app
+
+on:
+  push:
+    branches: [main]
+    paths: ['03-apps/berganews/frontend/**', '.github/workflows/berganews-app.yml']
+  pull_request:
+    paths: ['03-apps/berganews/frontend/**']
+  workflow_dispatch:
+
+env:
+  FLUTTER_VERSION: '3.44.0'
+
+defaults:
+  run:
+    working-directory: 03-apps/berganews/frontend
+    shell: bash
+
+jobs:
+  check:
+    timeout-minutes: 25
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+
+      - name: Dependências
+        run: |
+          if ! flutter pub get > pub.log 2>&1; then
+            cat pub.log
+            echo "::error title=flutter pub get::$(tail -n 40 pub.log | sed ':a;N;$!ba;s/%/%25/g;s/\n/%0A/g')"
+            exit 1
+          fi
+          cat pub.log
+
+      - name: Análise
+        run: |
+          set +e
+          dart analyze --format=machine --fatal-infos > analyze.txt 2>&1
+          code=$?
+          cat analyze.txt
+          # SEVERIDADE|TIPO|REGRA|ARQUIVO|LINHA|COLUNA|TAMANHO|MENSAGEM
+          grep -E '^(ERROR|WARNING|INFO)\|' analyze.txt | head -n 50 | \
+            while IFS='|' read -r sev kind rule file line col len msg; do
+              rel="${file#"$GITHUB_WORKSPACE"/}"
+              echo "::error file=$rel,line=$line,col=$col,title=$rule::$sev $msg"
+            done
+          exit $code
+
+      - name: Testes
+        run: |
+          set +e
+          flutter test > test.log 2>&1
+          code=$?
+          cat test.log
+          if [ $code -ne 0 ]; then
+            echo "::error title=flutter test::$(grep -v '^\s*$' test.log | tail -n 60 | sed ':a;N;$!ba;s/%/%25/g;s/\n/%0A/g')"
+          fi
+          exit $code
+
+      - name: Build da web
+        run: |
+          set +e
+          flutter build web --release --no-web-resources-cdn > build.log 2>&1
+          code=$?
+          cat build.log
+          if [ $code -ne 0 ]; then
+            echo "::error title=flutter build web::$(grep -v '^\s*$' build.log | tail -n 60 | sed ':a;N;$!ba;s/%/%25/g;s/\n/%0A/g')"
+          fi
+          exit $code

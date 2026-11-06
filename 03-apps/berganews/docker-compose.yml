@@ -1,8 +1,10 @@
 # Berganews: leitor de notícias (RSS) da família, com IA local.
 # Guia: README.md desta pasta. Arquitetura e fases: docs/ARQUITETURA.md.
 #
-#   api      API do app (Flutter: web, Android, computador). Login pelo
-#            Authentik (OIDC, como o Bergastream). Uma rota só, sem forward-auth.
+#   web      App web (Flutter) no nginx, que repassa /api/ à API. É quem tem a
+#            rota no Traefik: uma rota só, sem forward-auth.
+#   api      API do app (web, Android, computador). Login pelo Authentik
+#            (OIDC, como o Bergastream).
 #   fetcher  Coleta os feeds e o texto completo das matérias. Sem rota e sem
 #            internet direta: sai só pelo proxy `egress`.
 #   ai       Ollama local (stack ollama), um trabalho por vez: tradução sob
@@ -130,7 +132,8 @@ services:
     networks:
       # Banco, Redis e o proxy de saída (achar o feed de um site, baixar imagens).
       - berganews-internal
-      # Rota no Traefik e o Authentik (authentik-server:9000).
+      # Fala com o Authentik direto (authentik-server:9000). Sem labels: o
+      # Traefik não publica a API; o caminho é pelo `web`.
       - bergatrix-proxy
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health').status == 200 else 1)"]
@@ -138,6 +141,18 @@ services:
       timeout: 10s
       retries: 5
       start_period: 20s
+
+  web:
+    build: ./frontend
+    container_name: berganews-web
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - berganews-internal
+      - bergatrix-proxy
+    depends_on:
+      - api
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=bergatrix-proxy"
@@ -148,7 +163,7 @@ services:
       - "traefik.http.routers.berganews.tls=true"
       - "traefik.http.routers.berganews.service=berganews"
       - "traefik.http.routers.berganews.middlewares=crowdsec-bouncer@file"
-      - "traefik.http.services.berganews.loadbalancer.server.port=8000"
+      - "traefik.http.services.berganews.loadbalancer.server.port=80"
 
   fetcher:
     <<: *backend

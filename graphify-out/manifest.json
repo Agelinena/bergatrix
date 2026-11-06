@@ -3918,15 +3918,15 @@
     "semantic_hash": ""
   },
   "03-apps/berganews/docker-compose.yml": {
-    "mtime": 1793995800.1136372,
-    "seen": 1793995893.090424,
-    "ast_hash": "82af45de9e6dce701980d3fba354eef4",
+    "mtime": 1794000923.416721,
+    "seen": 1794001139.5745187,
+    "ast_hash": "d1bfd9e76aff786f39b3632c77f392ff",
     "semantic_hash": ""
   },
   "03-apps/berganews/README.md": {
-    "mtime": 1793995850.651783,
-    "seen": 1793995893.334687,
-    "ast_hash": "fe764b232aa9f890043deb1bb891c571",
+    "mtime": 1794001074.619099,
+    "seen": 1794001140.0930264,
+    "ast_hash": "2aa5edf3157ca548c506f3c2c8383964",
     "semantic_hash": ""
   },
   "03-apps/berganews/backend/requirements.txt": {
@@ -3975,6 +3975,516 @@
     "mtime": 1793995850.5161328,
     "seen": 1793995893.088709,
     "ast_hash": "732b9b01ab4fdc5214dc5cbe364f32d4",
+    "semantic_hash": ""
+  },
+  ".github/workflows/berganews-app.yml": {
+    "mtime": 1794000969.1876407,
+    "seen": 1794001139.4742522,
+    "ast_hash": "bfe9629b48904f6a077d8092b767a11b",
+    "semantic_hash": ""
+  },
+  ".github/workflows/berganews-release.yml": {
+    "mtime": 1794000982.5789855,
+    "seen": 1794001139.4742522,
+    "ast_hash": "ce0bd3761368a5172f918582b6391c7c",
+    "semantic_hash": ""
+  },
+  "03-apps/berganews/frontend/analysis_options.yaml": {
+    "mtime": 1793996740.558916,
+    "seen": 1794001139.5745187,
+    "ast_hash": "45e79a95ee70b150743ff66f87615b9c",
+    "semantic_hash": ""
+  },
+  "03-apps/berganews/frontend/android/app/build.gradle.kts": {
+    "mtime": 1793996722.6523867,
+    "seen": 1794001139.5745187,
+    "ast_hash": "7ab983eb9501f1c6949c944d226f44d7",
+    "semantic_hash": ""
+  },
+  "03-apps/berganews/frontend/android/app/src/main/kotlin/com/bergatrix/berganews/MainActivity.kt": {
+    "mtime": 1793996722.7211242,
+    "seen": 1794001139.5745187,
+    "ast_hash": "8dcd934149a4f9ee70ef4513e97f8e41",
+    "semantic_hash": ""
+  },
+  "03-apps/berganews/frontend/android/build.gradle.kts": {
+    "mtime": 1793996722.6660995,
+    "seen": 1794001139.5745187,
+    "ast_hash": "f11f360aed44d4f6871b398346af14f0",
+    "semantic_hash": ""
+  },
+  "03-apps/berganews/frontend/android/settings.gradle.kts": {
+    "mtime": 1793996722.6759627,
+    "seen": 1794001139.5745187,
+    "ast_hash": "4440672748462857e9bdbbf5fd06fe1a",
+    "semantic_hash": ""
+  },
+  "03-apps/berganews/frontend/lib/app.dart": {
+    "mtime": 1794000867.559054,
+    "seen": 1794001139.5745187,
+    "ast_hash": "56ab2a2e900237f05add89efed2c240e",
+    "semantic_hash": ""
+  },
+  "03-apps/berganews/frontend/lib/articles/article_list.dart": {
+    "mtime": 1793996947.9375298,
+    "seen": 1794001139.5745187,
+    "ast_hash": "dc8046f559feb6eb1e654f5a53a24a5b",
+    "semantic_hash": ""
+  },
+  "03-apps/berganews/frontend/lib/auth/login_screen.dart": {
+    "mtime": 1794000854.7795107,
+    "seen": 1794001139.5745187,
+    "ast_hash": "ecd0b23b67a235f85558952e977d9f26",
+    "semantic_hash": ""
+  },
+  "03-apps/berganews/frontend/lib/auth/oidc_launcher.dart": {
+    "mtime": 1793996812.8348505,
+    "seen": 1794001139.5745187,
+    "ast_hash": "efb6fd692b78800ca1d356b106234036",
+    "semantic_hash": ""
+  },
+  "03-apps/berganews/frontend/lib/auth/oidc_launcher_io.dart": {
+    "mtime": 1793996812.6885898,
+    "seen": 1794001139.5745187,
+    "ast_hash": "253a0e8a792ae10c519179cccce96f40",
+    "semantic_hash": ""
+  },
+  "03-apps/berganews/frontend/lib/auth/oidc_launcher_web.dart": {
+    "mtime": 1793996812.7515388,
+    "seen": 1794001139.5745187,
+    "ast_hash": "205148e3e3ed5a4df34640b9f76d0cdf",
+    "semantic_hash": ""
+  },
+  "03-apps/berganews/frontend/lib/auth/session.dart": {
+    "mtime": 1793996843.1624997,
+    "seen": 1794001139.5745187,
+    "ast_hash": "677d249d6022b7d685a1510da6143312",
+    "semantic_hash": ""
+  },
+  "03-apps/berganews/frontend/lib/core/files.dart": {
+    "mtime": 1794000732.5952656,
+    "seen": 1794001139.5745187,
+    "ast_hash": "1c7a15e4f62597002633d33b35a0f99f",
+    "semantic_hash": ""
+  },
+  "03-apps/berganews/frontend/lib/core/files_io.dart": {
+    "mtime": 1794000734.3325157,
+    "seen": 1794001139.5745187,
+    "ast_hash": "67bc49bfde096b788f1f9c6a88a5d4ec",
+    "semantic_hash": ""
+  },
+  "03-apps/berganews/frontend/lib/core/files_web.dart": {
+    "mtime": 1794000733.481038,
+    "seen": 1794001139.5745187,
+    "ast_hash": "2526f68b4b463e48ebc48af6e88cd464",
+    "semantic_hash": ""
+  },
+  "03-apps/berganews/frontend/lib/core/format.dart": {
+    "mtime": 1793996890.3463745,
+    "seen": 1794001139.5745187,
+    "ast_hash": "97bf8729945ac32b742dd3939851c7a8",
+    "semantic_hash": ""
+  },
+  "03-apps/berganews/frontend/lib/core/http.dart": {
+    "mtime": 1793996810.624228,
+    "seen": 1794001139.5745187,
+    "ast_hash": "1b2bc4f5f1c68d482c7d5dc7eb1bc542",
+    "semantic_hash": ""
+  },
+  "03-apps/berganews/frontend/lib/core/prefs.dart": {
+    "mtime": 1794000798.3840775,
+    "seen": 1794001139.5745187,
+    "ast_hash": "90cc0c2799a9271f0aa2b64f5c51a25c",
+    "semantic_hash": ""
+  },
+  "03-apps/berganews/frontend/lib/core/storage.dart": {
+    "mtime": 1793996741.377053,
+    "seen": 1794001139.5745187,
+    "ast_hash": "e93ae19073093bb021efdbdd34c88325",
+    "semantic_hash": ""
+  },
+  "03-apps/berganews/frontend/lib/core/theme.dart": {
+    "mtime": 1793996889.5458195,
+    "seen": 1794001139.5745187,
+    "ast_hash": "e833246b87c4acb194c3b8b11107898c",
+    "semantic_hash": ""
+  },
+  "03-apps/berganews/frontend/lib/core/widgets.dart": {
+    "mtime": 1793996914.6779792,
+    "seen": 1794001139.5745187,
+    "ast_hash": "9d071e3e1deeddf0aaba839d4f792385",
+    "semantic_hash": ""
+  },
+  "03-apps/berganews/frontend/lib/feeds/add_feed.dart": {
+    "mtime": 1794000697.15719,
+    "seen": 1794001139.5745187,
+    "ast_hash": "71da93d3d823aff9ebe3afad50bee5a7",
+    "semantic_hash": ""
+  },
+  "03-apps/berganews/frontend/lib/feeds/feeds_tabs.dart": {
+    "mtime": 1794000662.5022614,
+    "seen": 1794001139.5745187,
+    "ast_hash": "b8884a4622e5c69ce9e55ed8254b785c",
+    "semantic_hash": ""
+  },
+  "03-apps/berganews/frontend/lib/home/home_screen.dart": {
+    "mtime": 1794000698.0327075,
+    "seen": 1794001139.5745187,
+    "ast_hash": "ac1b23bc59345d22a5d677a67017ce75",
+    "semantic_hash": ""
+  },
+  "03-apps/berganews/frontend/lib/main.dart": {
+    "mtime": 1794000868.4303396,
+    "seen": 1794001139.5745187,
+    "ast_hash": "cde29e5c450b5679c83cd0ca4d095d0b",
+    "semantic_hash": ""
+  },
+  "03-apps/berganews/frontend/lib/reader/reader_screen.dart": {
+    "mtime": 1793997012.047286,
+    "seen": 1794001139.5745187,
+    "ast_hash": "9092d07a26af897a242de78dcc6c1bb9",
+    "semantic_hash": ""
+  },
+  "03-apps/berganews/frontend/lib/search/search_screen.dart": {
+    "mtime": 1794000710.1890593,
+    "seen": 1794001139.5745187,
+    "ast_hash": "64fe838fb75e526a66d5d12b43254f39",
+    "semantic_hash": ""
+  },
+  "03-apps/berganews/frontend/lib/settings/appearance_screen.dart": {
+    "mtime": 1794000797.5181336,
+    "seen": 1794001139.5745187,
+    "ast_hash": "8453c5b1a52d9d86ac21f334edb69d01",
+    "semantic_hash": ""
+  },
+  "03-apps/berganews/frontend/lib/settings/manage_screens.dart": {
+    "mtime": 1794000833.1678648,
+    "seen": 1794001139.5745187,
+    "ast_hash": "f628576efc795c7323d75c8d5b0b2ef3",
+    "semantic_hash": ""
+  },
+  "03-apps/berganews/frontend/lib/settings/settings_screen.dart": {
+    "mtime": 1794001041.005819,
+    "seen": 1794001139.5745187,
+    "ast_hash": "8f12adf5bb1131a76c4797655032072c",
+    "semantic_hash": ""
+  },
+  "03-apps/berganews/frontend/lib/stories/story_screen.dart": {
+    "mtime": 1793997059.241851,
+    "seen": 1794001139.5745187,
+    "ast_hash": "4b7a1710ce9b48f354ff0071b9f64c8c",
+    "semantic_hash": ""
+  },
+  "03-apps/berganews/frontend/linux/flutter/generated_plugin_registrant.cc": {
+    "mtime": 1793996722.6819367,
+    "seen": 1794001139.5745187,
+    "ast_hash": "d36431ac2fdc9f3e2ba60024e71497ce",
+    "semantic_hash": ""
+  },
+  "03-apps/berganews/frontend/linux/flutter/generated_plugin_registrant.h": {
+    "mtime": 1793996722.6819367,
+    "seen": 1794001139.5745187,
+    "ast_hash": "d295462c9da9f7fef22dc86c34492318",
+    "semantic_hash": ""
+  },
+  "03-apps/berganews/frontend/linux/runner/main.cc": {
+    "mtime": 1793996722.6900814,
+    "seen": 1794001139.5745187,
+    "ast_hash": "0643b8609698e96b3abd63c210361a87",
+    "semantic_hash": ""
+  },
+  "03-apps/berganews/frontend/linux/runner/my_application.cc": {
+    "mtime": 1793996722.6900814,
+    "seen": 1794001139.5745187,
+    "ast_hash": "ed381bf796f6f755df97b232dd653fbd",
+    "semantic_hash": ""
+  },
+  "03-apps/berganews/frontend/linux/runner/my_application.h": {
+    "mtime": 1793996722.6900814,
+    "seen": 1794001139.5745187,
+    "ast_hash": "326a85d68857137fdfe8698a0c071baf",
+    "semantic_hash": ""
+  },
+  "03-apps/berganews/frontend/pubspec.yaml": {
+    "mtime": 1794000735.256032,
+    "seen": 1794001139.5745187,
+    "ast_hash": "f01376c2941ff982705a4aa8f340b1ec",
+    "semantic_hash": ""
+  },
+  "03-apps/berganews/frontend/test/app_test.dart": {
+    "mtime": 1794000892.680297,
+    "seen": 1794001139.5745187,
+    "ast_hash": "1acdbddc579c5293d3bcabc666ae7a99",
+    "semantic_hash": ""
+  },
+  "03-apps/berganews/frontend/web/manifest.json": {
+    "mtime": 1793996722.6900814,
+    "seen": 1794001139.5745187,
+    "ast_hash": "bde469c439deaeb04c006f83c8c488e7",
+    "semantic_hash": ""
+  },
+  "03-apps/berganews/frontend/windows/flutter/generated_plugin_registrant.cc": {
+    "mtime": 1793996722.702004,
+    "seen": 1794001139.5745187,
+    "ast_hash": "e49acc3ec7612452429f191f1422c34a",
+    "semantic_hash": ""
+  },
+  "03-apps/berganews/frontend/windows/flutter/generated_plugin_registrant.h": {
+    "mtime": 1793996722.7043636,
+    "seen": 1794001139.5745187,
+    "ast_hash": "0ea33875f9f8e118f9c2ded03e2e2835",
+    "semantic_hash": ""
+  },
+  "03-apps/berganews/frontend/windows/runner/flutter_window.cpp": {
+    "mtime": 1793996722.7096317,
+    "seen": 1794001139.5745187,
+    "ast_hash": "8c2b1b7e063b4010574aad5f3689751d",
+    "semantic_hash": ""
+  },
+  "03-apps/berganews/frontend/windows/runner/flutter_window.h": {
+    "mtime": 1793996722.7096317,
+    "seen": 1794001139.5745187,
+    "ast_hash": "79bea736711adda00c49419a39a4a0b4",
+    "semantic_hash": ""
+  },
+  "03-apps/berganews/frontend/windows/runner/main.cpp": {
+    "mtime": 1793996722.7096317,
+    "seen": 1794001139.5745187,
+    "ast_hash": "4c71ba88d249fef8e25d6749b180b671",
+    "semantic_hash": ""
+  },
+  "03-apps/berganews/frontend/windows/runner/resource.h": {
+    "mtime": 1793996722.7096317,
+    "seen": 1794001139.5745187,
+    "ast_hash": "c8f809a4f8d3f2f625e358fd90f72fee",
+    "semantic_hash": ""
+  },
+  "03-apps/berganews/frontend/windows/runner/utils.cpp": {
+    "mtime": 1793996722.7096317,
+    "seen": 1794001139.5745187,
+    "ast_hash": "e56aa0d1b2e1b995000d67e8e069b83f",
+    "semantic_hash": ""
+  },
+  "03-apps/berganews/frontend/windows/runner/utils.h": {
+    "mtime": 1793996722.7191136,
+    "seen": 1794001139.5745187,
+    "ast_hash": "c741fb9cddbf3a62f4688b6cca39ddcc",
+    "semantic_hash": ""
+  },
+  "03-apps/berganews/frontend/windows/runner/win32_window.cpp": {
+    "mtime": 1793996722.7211242,
+    "seen": 1794001139.5745187,
+    "ast_hash": "928e86a2be27eca688669dce6c9177d9",
+    "semantic_hash": ""
+  },
+  "03-apps/berganews/frontend/windows/runner/win32_window.h": {
+    "mtime": 1793996722.7211242,
+    "seen": 1794001139.5745187,
+    "ast_hash": "5a4cf051798d7e6931ee0405a4523c8f",
+    "semantic_hash": ""
+  },
+  "03-apps/berganews/frontend/linux/CMakeLists.txt": {
+    "mtime": 1793996722.6784832,
+    "seen": 1794001140.0950446,
+    "ast_hash": "606c6947cc00e40a00b690595258b47d",
+    "semantic_hash": ""
+  },
+  "03-apps/berganews/frontend/linux/flutter/CMakeLists.txt": {
+    "mtime": 1793996722.6819367,
+    "seen": 1794001140.0950446,
+    "ast_hash": "46690fb8ffaf7d227d8bc4713f31140d",
+    "semantic_hash": ""
+  },
+  "03-apps/berganews/frontend/linux/runner/CMakeLists.txt": {
+    "mtime": 1793996722.6871223,
+    "seen": 1794001140.0950446,
+    "ast_hash": "6d75431dc21756981b53a7494c836311",
+    "semantic_hash": ""
+  },
+  "03-apps/berganews/frontend/web/index.html": {
+    "mtime": 1793996722.6900814,
+    "seen": 1794001140.0950446,
+    "ast_hash": "e9e13dd574b5501ab33355df7ac5c9e4",
+    "semantic_hash": ""
+  },
+  "03-apps/berganews/frontend/windows/CMakeLists.txt": {
+    "mtime": 1793996722.6900814,
+    "seen": 1794001140.0950446,
+    "ast_hash": "08e00fa71f643cd28fb936176fd46a44",
+    "semantic_hash": ""
+  },
+  "03-apps/berganews/frontend/windows/flutter/CMakeLists.txt": {
+    "mtime": 1793996722.6900814,
+    "seen": 1794001140.0950446,
+    "ast_hash": "0c500410e3259a9a053797dc1c28070e",
+    "semantic_hash": ""
+  },
+  "03-apps/berganews/frontend/windows/runner/CMakeLists.txt": {
+    "mtime": 1793996722.7043636,
+    "seen": 1794001140.0950446,
+    "ast_hash": "e99a99b5cc82a168fc557eb23b8d5a96",
+    "semantic_hash": ""
+  },
+  "03-apps/berganews/docs/icone.png": {
+    "mtime": 1793996722.86917,
+    "seen": 1794001140.1655278,
+    "ast_hash": "ac22b43324cf38bafc540b737a6be79a",
+    "semantic_hash": ""
+  },
+  "03-apps/berganews/frontend/android/app/src/main/res/mipmap-hdpi/ic_launcher.png": {
+    "mtime": 1793996722.752418,
+    "seen": 1794001140.1655278,
+    "ast_hash": "1300b1f04f565087912eabf48cb8c9aa",
+    "semantic_hash": ""
+  },
+  "03-apps/berganews/frontend/android/app/src/main/res/mipmap-hdpi/ic_launcher_background.png": {
+    "mtime": 1793996722.752418,
+    "seen": 1794001140.1655278,
+    "ast_hash": "4b93003815ea5ca3c0cede58d96705b9",
+    "semantic_hash": ""
+  },
+  "03-apps/berganews/frontend/android/app/src/main/res/mipmap-hdpi/ic_launcher_foreground.png": {
+    "mtime": 1793996722.752418,
+    "seen": 1794001140.1655278,
+    "ast_hash": "fe16ab90486a75b8ba505ea9052e5241",
+    "semantic_hash": ""
+  },
+  "03-apps/berganews/frontend/android/app/src/main/res/mipmap-hdpi/ic_launcher_monochrome.png": {
+    "mtime": 1793996722.752418,
+    "seen": 1794001140.1655278,
+    "ast_hash": "0542ad62a138c1a75898504a472e7438",
+    "semantic_hash": ""
+  },
+  "03-apps/berganews/frontend/android/app/src/main/res/mipmap-mdpi/ic_launcher.png": {
+    "mtime": 1793996722.752418,
+    "seen": 1794001140.1655278,
+    "ast_hash": "6bdcbbcea1bfcad03b0996abe465c02e",
+    "semantic_hash": ""
+  },
+  "03-apps/berganews/frontend/android/app/src/main/res/mipmap-mdpi/ic_launcher_background.png": {
+    "mtime": 1793996722.752418,
+    "seen": 1794001140.1655278,
+    "ast_hash": "4a2b20edb82e12fe0223033ad3eba4bf",
+    "semantic_hash": ""
+  },
+  "03-apps/berganews/frontend/android/app/src/main/res/mipmap-mdpi/ic_launcher_foreground.png": {
+    "mtime": 1793996722.752418,
+    "seen": 1794001140.1655278,
+    "ast_hash": "d7c64f6415f017681974d9fcc16b4c4b",
+    "semantic_hash": ""
+  },
+  "03-apps/berganews/frontend/android/app/src/main/res/mipmap-mdpi/ic_launcher_monochrome.png": {
+    "mtime": 1793996722.752418,
+    "seen": 1794001140.1655278,
+    "ast_hash": "7c40bb61089f946086ba03c21cccf6b7",
+    "semantic_hash": ""
+  },
+  "03-apps/berganews/frontend/android/app/src/main/res/mipmap-xhdpi/ic_launcher.png": {
+    "mtime": 1793996722.7690432,
+    "seen": 1794001140.1655278,
+    "ast_hash": "34266b2380e1e207028be04eff4a0e34",
+    "semantic_hash": ""
+  },
+  "03-apps/berganews/frontend/android/app/src/main/res/mipmap-xhdpi/ic_launcher_background.png": {
+    "mtime": 1793996722.7710547,
+    "seen": 1794001140.1655278,
+    "ast_hash": "7307045641688f92e9d231f5a11109a1",
+    "semantic_hash": ""
+  },
+  "03-apps/berganews/frontend/android/app/src/main/res/mipmap-xhdpi/ic_launcher_foreground.png": {
+    "mtime": 1793996722.773067,
+    "seen": 1794001140.1655278,
+    "ast_hash": "a57d3688d488ab2e4ca660251c22b443",
+    "semantic_hash": ""
+  },
+  "03-apps/berganews/frontend/android/app/src/main/res/mipmap-xhdpi/ic_launcher_monochrome.png": {
+    "mtime": 1793996722.7757318,
+    "seen": 1794001140.1655278,
+    "ast_hash": "a53a747d0a0e3d019290e63ef3c40f1f",
+    "semantic_hash": ""
+  },
+  "03-apps/berganews/frontend/android/app/src/main/res/mipmap-xxhdpi/ic_launcher.png": {
+    "mtime": 1793996722.7757318,
+    "seen": 1794001140.1655278,
+    "ast_hash": "94192a155933aa74a1a721bdc0c5ec88",
+    "semantic_hash": ""
+  },
+  "03-apps/berganews/frontend/android/app/src/main/res/mipmap-xxhdpi/ic_launcher_background.png": {
+    "mtime": 1793996722.7757318,
+    "seen": 1794001140.1655278,
+    "ast_hash": "c3a9b1157cb88d910070d209285fb5cc",
+    "semantic_hash": ""
+  },
+  "03-apps/berganews/frontend/android/app/src/main/res/mipmap-xxhdpi/ic_launcher_foreground.png": {
+    "mtime": 1793996722.785366,
+    "seen": 1794001140.1655278,
+    "ast_hash": "456fd97049f5155ea445b7d56837c0a0",
+    "semantic_hash": ""
+  },
+  "03-apps/berganews/frontend/android/app/src/main/res/mipmap-xxhdpi/ic_launcher_monochrome.png": {
+    "mtime": 1793996722.789885,
+    "seen": 1794001140.1655278,
+    "ast_hash": "98767d218ecae5340ef745b15fdb40c5",
+    "semantic_hash": ""
+  },
+  "03-apps/berganews/frontend/android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png": {
+    "mtime": 1793996722.7941184,
+    "seen": 1794001140.1655278,
+    "ast_hash": "3d457d482cfde369a3ee4fb2ed2075ff",
+    "semantic_hash": ""
+  },
+  "03-apps/berganews/frontend/android/app/src/main/res/mipmap-xxxhdpi/ic_launcher_background.png": {
+    "mtime": 1793996722.7961404,
+    "seen": 1794001140.1655278,
+    "ast_hash": "1a78e7784533f24fed5441be8523b492",
+    "semantic_hash": ""
+  },
+  "03-apps/berganews/frontend/android/app/src/main/res/mipmap-xxxhdpi/ic_launcher_foreground.png": {
+    "mtime": 1793996722.8001797,
+    "seen": 1794001140.1655278,
+    "ast_hash": "ba2de3710815b35e410428a72a2a1d20",
+    "semantic_hash": ""
+  },
+  "03-apps/berganews/frontend/android/app/src/main/res/mipmap-xxxhdpi/ic_launcher_monochrome.png": {
+    "mtime": 1793996722.8064208,
+    "seen": 1794001140.1655278,
+    "ast_hash": "22b70fb8325dc151184dae24f6ba72cb",
+    "semantic_hash": ""
+  },
+  "03-apps/berganews/frontend/linux/runner/resources/app_icon.png": {
+    "mtime": 1793996722.8326502,
+    "seen": 1794001140.1655278,
+    "ast_hash": "cce3efd9390a9bb25895ec57954dde0e",
+    "semantic_hash": ""
+  },
+  "03-apps/berganews/frontend/web/favicon.png": {
+    "mtime": 1793996722.8277519,
+    "seen": 1794001140.1655278,
+    "ast_hash": "ae968006472af81edf4a9a385461d249",
+    "semantic_hash": ""
+  },
+  "03-apps/berganews/frontend/web/icons/Icon-192.png": {
+    "mtime": 1793996722.813937,
+    "seen": 1794001140.1655278,
+    "ast_hash": "3d457d482cfde369a3ee4fb2ed2075ff",
+    "semantic_hash": ""
+  },
+  "03-apps/berganews/frontend/web/icons/Icon-512.png": {
+    "mtime": 1793996722.8217244,
+    "seen": 1794001140.1655278,
+    "ast_hash": "5b69fc9a2956ecd7a9b211dd69612a16",
+    "semantic_hash": ""
+  },
+  "03-apps/berganews/frontend/web/icons/Icon-maskable-192.png": {
+    "mtime": 1793996722.823735,
+    "seen": 1794001140.1655278,
+    "ast_hash": "a007d7d5511a83babea70824e17d7345",
+    "semantic_hash": ""
+  },
+  "03-apps/berganews/frontend/web/icons/Icon-maskable-512.png": {
+    "mtime": 1793996722.8277519,
+    "seen": 1794001140.1655278,
+    "ast_hash": "ad2a377faacdad1d0c53a0e5f8beda83",
     "semantic_hash": ""
   }
 }

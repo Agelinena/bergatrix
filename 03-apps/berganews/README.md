@@ -8,14 +8,15 @@ Arquitetura, modelo de dados e fases: [docs/ARQUITETURA.md](docs/ARQUITETURA.md)
 
 | Serviço | O que faz | Redes |
 |---|---|---|
-| `api` | API do app (Flutter), login pelo Authentik, imagens pelo servidor | `berganews-internal`, `bergatrix-proxy` |
+| `web` | App web (Flutter) no nginx, que repassa `/api/` à API; tem a rota no Traefik | `berganews-internal`, `bergatrix-proxy` |
+| `api` | API do app, login pelo Authentik, imagens pelo servidor | `berganews-internal`, `bergatrix-proxy` (Authentik) |
 | `fetcher` | Coleta os feeds e o texto completo, limpeza diária | só `berganews-internal` (sai pelo `egress`) |
 | `ai` | No Ollama: tradução sob demanda, embeddings e histórias (depois: resumos, newsletter) | `berganews-internal`, `bergatrix-ai` |
 | `egress` | Proxy de saída (smokescreen): recusa redes privadas | `berganews-internal`, `berganews-egress` |
 | `db` | Postgres 16 com pgvector | `berganews-internal` |
 | `redis` | Filas e estado do login | `berganews-internal` |
 
-Endereço: `news.${DOMAIN}` (por enquanto só a API; o app web entra na fase do Flutter).
+Endereço: `news.${DOMAIN}` (app web e API).
 
 ## Subir
 
@@ -30,6 +31,23 @@ Endereço: `news.${DOMAIN}` (por enquanto só a API; o app web entra na fase do 
    ```
 
 4. `cp .env.example .env`, preencha, e `docker compose up -d --build`.
+
+## App
+
+O app fica em [frontend/](frontend/) (Flutter, sem geração de código), igual para web, Android, Windows e Linux:
+abas configuráveis (Todas, Veículos, Pastas, Histórias, Salvos), leitor sem anúncio com tradução, linha do tempo da
+história com juntar e separar, busca, painel Aparência, veículos, pastas, OPML e a página Usuários do admin.
+
+- **Web:** `news.<domínio>`, montado pelo serviço `web` no `docker compose up -d --build`.
+- **Android, Windows e Linux:** `git tag berganews-v0.1.0 && git push origin berganews-v0.1.0` publica a release
+  ([.github/workflows/berganews-release.yml](../../.github/workflows/berganews-release.yml)). O APK usa os mesmos
+  secrets de assinatura do Bergastream. No primeiro login, o app pede o endereço do servidor.
+- **Conferência:** cada push que mexe no app roda análise, testes e o build da web
+  ([berganews-app.yml](../../.github/workflows/berganews-app.yml)).
+
+Fora da web, o Authentik volta ao app por `com.bergatrix.berganews://auth` (Android) ou por um endereço local
+`http://127.0.0.1:<porta>/callback` (computador). Esses endereços não vão no provider: quem fala com o Authentik
+é o servidor, e o callback cadastrado é só o `https://news.<domínio>/api/auth/oidc/callback`.
 
 ## Authentik
 
