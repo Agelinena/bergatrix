@@ -20,12 +20,13 @@ Exceções:
 | **Drop** (público) | Sem contas, por natureza. Cifra de ponta a ponta. Fica só na rede `bergatrix-drop`, com o Traefik ([06-redes.md](06-redes.md)). | `crowdsec-bouncer@file` + rate limit |
 | **Collabora** (`office`, editor do Nextcloud) | Abre em iframe no navegador e é chamado pelo Nextcloud por WOPI. O login OIDC acontece no Nextcloud, que emite um token WOPI por arquivo e usuário; o Collabora nunca fala com o Authentik. Forward-auth quebraria o iframe, os WebSockets e as chamadas entre servidores. Só aceita o Nextcloud listado em `aliasgroup1`, e o console de admin fica desligado. Fica só na rede `bergatrix-office`, com o Traefik ([06-redes.md](06-redes.md)). | `crowdsec-bouncer@file` |
 | **Caminho técnico** dentro de um app forward-auth (ex.: webhooks) | Chamado por máquinas que não fazem login no Authentik. Precisa ter autenticação própria (token, chave, assinatura). | `crowdsec-bouncer@file` |
+| **Bergakup** (`bergakup`, backup) | Controla todos os backups e restaurações. Login OIDC no app **e** só rede local/VPN, sem registro no DNS público. As rotas do agente (`/agent`) ficam fora do Traefik. | `lan-only@file` + `crowdsec-bouncer@file` |
 | **Infraestrutura** (Proxmox, OMV, SSH do Ubuntu) | Fica fora do Traefik | Só pela rede local e pelo Tailscale do firewall |
 
 Não se usa mais:
 - rotas `-direct` com `ClientIP`, nem IPs fixos nas labels;
 - a rota `-bypass` e o middleware `api-access-bypass`;
-- o `internal-only` (removido) e o `lan-only` em serviços de app. O `lan-only` (a sub-rede local, que inclui a VPN) fica só para o painel admin do Authentik;
+- o `internal-only` (removido) e o `lan-only` em serviços de app. O `lan-only` (a sub-rede local, que inclui a VPN) fica só para o painel admin do Authentik e para o Bergakup (junto com o OIDC);
 - o `public-auth` (use `authentik@file`).
 
 ## Labels por padrão

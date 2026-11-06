@@ -13,6 +13,8 @@
 
 # Ferramentas de base
 00-infrastructure/cloudbeaver
+# Backup: depois do Authentik (login OIDC). O agente roda no host, fora do Docker.
+00-infrastructure/bergakup
 
 # Apps: o Ollama antes do Jellyfin (Legendarr) e o Jellyfin antes do
 # bergastream (o Lidarr usa o SABnzbd e o Prowlarr)

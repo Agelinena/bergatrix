@@ -1,0 +1,34 @@
+[Unit]
+Description=Bergakup agent (backup da Bergatrix)
+Documentation=file:///opt/bergakup/README.md
+# Precisa do Docker (dumps, parar e subir stacks) e das montagens (origens).
+# Sem RequiresMountsFor de propósito: com o NAS fora, o agente continua no ar
+# (sinal de vida, outros conjuntos) e o backup do userdata falha com aviso,
+# em vez de gerar um snapshot vazio (checkSource em jobs.go).
+After=network-online.target docker.service remote-fs.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/bergakup-agent run
+Restart=always
+RestartSec=10
+# Um backup em andamento pode precisar subir as stacks de volta antes de sair.
+TimeoutStopSec=15min
+KillMode=mixed
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+# Roda como root: lê todos os dados e controla o Docker. Limita o resto.
+NoNewPrivileges=true
+PrivateTmp=true
+# Sem ProtectHome: o repositório bergatrix costuma ficar em /home e precisa
+# poder ser restaurado no lugar.
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RuntimeDirectory=bergakup
+RuntimeDirectoryMode=0700
+
+[Install]
+WantedBy=multi-user.target

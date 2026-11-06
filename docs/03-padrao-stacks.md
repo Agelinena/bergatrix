@@ -113,6 +113,9 @@ Regras completas e como criar uma rede em [06-redes.md](06-redes.md). Em resumo:
 - **Imagem com versão fixa** (`postgres:16-alpine`, `traefik:v3.6.2`), nunca `latest` ou sem tag.
 - **Ao fixar a versão de uma imagem que hoje roda em `latest`**, confira antes a versão em execução (`docker exec <container> ... --version` ou `docker image inspect`) e as releases do projeto. Fixar uma versão mais antiga do que a que está rodando é um **downgrade**: o banco já pode ter sido migrado, e os clientes mais novos podem parar de funcionar.
 - **Banco com `healthcheck`**, e quem depende dele usa `depends_on: condition: service_healthy`.
+- **Banco com label de backup:** `bergatrix.backup.dump: postgres` no serviço do Postgres, ou `sqlite` com
+  `bergatrix.backup.sqlite: /caminho/no/container.db`. O [Bergakup](../00-infrastructure/bergakup/README.md) faz o dump antes de
+  cada backup. Sem a label, o banco fica sem cópia, porque as pastas `postgres/` são excluídas do backup.
 - **Migrações** num serviço `migrate` (`dbmate`) que roda antes da API (`service_completed_successfully`).
 
 ## Acesso (Traefik e autenticação)
@@ -135,6 +138,7 @@ Regra e labels em [05-acesso.md](05-acesso.md). Em resumo:
 7. Redes conforme [06-redes.md](06-redes.md): rede compartilhada nova só no `01-network/redes`.
 8. **Acrescentar a stack ao [`00-infrastructure/stacks.txt`](../00-infrastructure/stacks.txt)**, depois das stacks de que ela depende ([07-ligar-e-desligar.md](07-ligar-e-desligar.md)).
 9. Criar as pastas no servidor com o dono certo antes do primeiro `up`.
+9b. Banco com a label `bergatrix.backup.dump` e, se a stack usa SQLite em uso constante, a política dela em Bergakup → Stacks e bancos.
 10. Atualizar o [mapa por stack](02-armazenamento.md#mapa-atual-por-stack) e a tabela de stacks em [01-infraestrutura.md](01-infraestrutura.md).
 
 ## Dívidas conhecidas

@@ -74,6 +74,7 @@ Como em `APPDATA_PATH`, cada stack tem a sua pasta, com o nome da stack. Só ent
 | Stack | `APPDATA_PATH/<stack>/` | `CACHE_PATH/<stack>/` | `MEDIA_PATH/` | `USERDATA_PATH/` |
 |---|---|---|---|---|
 | cloudbeaver | `workspace` | – | – | – |
+| bergakup | `postgres`, `dumps` (dumps de todos os bancos, feitos pelo agente) | – | – | – |
 | traefik | `acme` (acme.json), `logs` | `plugins` | – | – |
 | authentik | `postgres`, `redis`, `media`, `templates`, `certs` | – | – | – |
 | bitwarden | `vaultwarden` | – | – | – |
@@ -166,4 +167,7 @@ Se o Docker iniciar antes do NAS, os containers gravam dentro da pasta de montag
 | `MEDIA_PATH` | Nunca. Perder o disco do NAS significa baixar de novo. |
 | `USERDATA_PATH` | Obrigatório quando houver dados: outro disco (ou RAID) e uma cópia fora de casa. |
 
-> **Estado atual:** a política acima ainda não está implementada. Ela é a próxima etapa depois da migração.
+> **Implementação:** o [Bergakup](../00-infrastructure/bergakup/README.md) (restic + Backblaze B2 com Object Lock). Três
+> conjuntos: `userdata` (NAS), `docker` (repositório, composes e `.env`) e `servidor` (`APPDATA_PATH`, com os bancos por
+> dump). Todo banco precisa da label `bergatrix.backup.dump` no compose: sem ela, a pasta dele fica de fora (ela é excluída
+> da cópia porque não pode ser copiada com o banco rodando).

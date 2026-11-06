@@ -25,7 +25,8 @@ Servidor físico ─ Proxmox VE
 | HD 1 TB | VM Docker (inteiro) | `APPDATA_PATH` e `CACHE_PATH`: tudo que precisa de disco local |
 | HD 4 TB | VM OMV (inteiro) | NAS: `MEDIA_PATH`, `USERDATA_PATH` e compartilhamentos da rede |
 
-Detalhes de pastas, montagem e backup: [02-armazenamento.md](02-armazenamento.md).
+Detalhes de pastas, montagem e backup: [02-armazenamento.md](02-armazenamento.md). O backup é feito pelo
+[Bergakup](../00-infrastructure/bergakup/README.md).
 
 ## Caminho do tráfego
 
@@ -43,6 +44,7 @@ Rede local ───────────────────────
 | Camada | Stack | O que roda | Endereços (`*.${DOMAIN}`) | Raízes |
 |---|---|---|---|---|
 | 00 | cloudbeaver | CloudBeaver | `db` | appdata |
+| 00 | bergakup | Backup (restic + Backblaze B2): interface e API, Postgres. Quem executa é o `bergakup-agent`, no host (systemd) | `bergakup` (só rede local/VPN) | appdata |
 | 01 | traefik | Traefik + plugin CrowdSec | `traefik` (painel) | appdata |
 | 02 | authentik | Authentik (server, worker, outpost LDAP), Postgres, Redis | `authentik`, `auth` | appdata |
 | 02 | bitwarden | Vaultwarden | `bitwarden` | appdata |

@@ -17,6 +17,11 @@ secrets/
 **/acme.json
 **/acme.json.*
 
+# Bergakup: binário do agente e build da interface (gerados)
+00-infrastructure/bergakup/agent/bergakup-agent
+00-infrastructure/bergakup/web/node_modules/
+00-infrastructure/bergakup/web/dist/
+
 # Backups locais nunca vão pro git (ex.: acme.json.bak, *.bak.<timestamp>)
 *.bak
 *.bak.*

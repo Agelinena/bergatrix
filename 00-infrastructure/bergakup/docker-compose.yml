@@ -1,0 +1,110 @@
+# Bergakup: configuração e acompanhamento do backup (restic + Backblaze B2).
+# Guia: README.md desta pasta.
+#
+#   app      interface (React) e API (FastAPI); login pelo Authentik (OIDC).
+#            Só guarda a configuração: quem faz backup é o bergakup-agent, no
+#            host (agent/), que segue funcionando com esta stack desligada.
+#   db       Postgres: configuração, histórico e snapshots.
+#
+# Acesso: só rede local/VPN (lan-only) + OIDC. Sem registro no DNS público.
+# O agente fala com a API por 127.0.0.1:${BERGAKUP_AGENT_PORT}; as rotas
+# /agent não passam pelo Traefik.
+#
+# Dados: banco em ${APPDATA_PATH}/bergakup/postgres (entra pelo dump, label
+# abaixo) e dumps de todos os bancos em ${APPDATA_PATH}/bergakup/dumps.
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: bergakup-db
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      TZ: ${TZ}
+    volumes:
+      - ${APPDATA_PATH:?}/bergakup/postgres:/var/lib/postgresql/data
+    networks:
+      - bergakup-internal
+    labels:
+      # O próprio Bergakup entra no backup do servidor.
+      - "bergatrix.backup.dump=postgres"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
+  migrate:
+    image: ghcr.io/amacneil/dbmate:2
+    container_name: bergakup-migrate
+    restart: "no"
+    volumes:
+      - ./db/migrations:/db/migrations:ro
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}?sslmode=disable
+    command: --migrations-dir /db/migrations --no-dump-schema up
+    networks:
+      - bergakup-internal
+    depends_on:
+      db:
+        condition: service_healthy
+
+  app:
+    build:
+      context: .
+      dockerfile: app/Dockerfile
+    container_name: bergakup-app
+    restart: unless-stopped
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=32m
+    mem_limit: 384m
+    environment:
+      TZ: ${TZ}
+      HOME: /tmp
+      BERGAKUP_DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      BERGAKUP_PUBLIC_URL: https://bergakup.${DOMAIN}
+      BERGAKUP_OIDC_ISSUER: ${BERGAKUP_OIDC_ISSUER}
+      BERGAKUP_SSO_CLIENT_ID: ${BERGAKUP_SSO_CLIENT_ID}
+      BERGAKUP_SSO_CLIENT_SECRET: ${BERGAKUP_SSO_CLIENT_SECRET}
+      # O servidor fala com o Authentik direto, sem passar pelo Traefik.
+      BERGAKUP_OIDC_INTERNAL_URL: http://authentik-server:9000
+      BERGAKUP_USERS_GROUP: ${BERGAKUP_USERS_GROUP:-bergakup_admins}
+    ports:
+      # Só para o agente no host. Nunca em 0.0.0.0.
+      - "127.0.0.1:${BERGAKUP_AGENT_PORT:-8087}:8000"
+    networks:
+      - bergakup-internal
+      # Rota no Traefik e acesso ao Authentik (authentik-server:9000).
+      - bergatrix-proxy
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=bergatrix-proxy"
+      # Modelo A (OIDC no app) + lan-only: o Bergakup controla todos os
+      # backups, então fica fora da internet mesmo com login (docs/05-acesso.md).
+      - "traefik.http.routers.bergakup.rule=Host(`bergakup.${DOMAIN}`) && !PathPrefix(`/agent`)"
+      - "traefik.http.routers.bergakup.entrypoints=websecure"
+      - "traefik.http.routers.bergakup.tls=true"
+      - "traefik.http.routers.bergakup.service=bergakup"
+      - "traefik.http.routers.bergakup.middlewares=lan-only@file,crowdsec-bouncer@file"
+      - "traefik.http.services.bergakup.loadbalancer.server.port=8000"
+
+networks:
+  # Banco sem saída para a internet.
+  bergakup-internal:
+    name: bergakup-internal
+    internal: true
+  bergatrix-proxy:
+    external: true

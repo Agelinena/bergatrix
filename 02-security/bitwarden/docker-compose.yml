@@ -30,6 +30,9 @@ services:
       # Contas existentes são ligadas pelo e-mail no primeiro login SSO
       - SSO_SIGNUPS_MATCH_EMAIL=true
     labels:
+      # Backup pelo Bergakup: cópia consistente do SQLite com o app rodando.
+      - "bergatrix.backup.dump=sqlite"
+      - "bergatrix.backup.sqlite=/data/db.sqlite3"
       - "traefik.enable=true"
       - "traefik.docker.network=bergatrix-proxy"
       - "traefik.http.routers.vaultwarden.rule=Host(`bitwarden.${DOMAIN}`)"

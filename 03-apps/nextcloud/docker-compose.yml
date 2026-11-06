@@ -145,6 +145,9 @@ services:
     image: postgres:16-alpine
     container_name: nextcloud-db
     restart: unless-stopped
+    labels:
+      # Backup pelo Bergakup (pg_dump antes da cópia do servidor).
+      - "bergatrix.backup.dump=postgres"
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
