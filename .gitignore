@@ -39,6 +39,8 @@ graphify-out/.graphify_*
 # === Infraestrutura e Volumes ===
 # Não versão dados persistentes (bancos de dados, uploads)
 **/data/
+# Código de app que se chama "data" (camada de dados do Flutter), não volume.
+!03-apps/berganews/frontend/lib/data/
 **/db_data/
 **/volumes/
 **/backups/
