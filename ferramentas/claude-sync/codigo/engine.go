@@ -14,6 +14,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -84,6 +85,54 @@ type Engine struct {
 	trigger chan struct{}
 	dirty   bool
 	now     func() time.Time
+
+	// Ajustes no conteúdo ao subir e ao baixar (o hook da etiqueta no settings.json).
+	transformUp   func(remotePath string, data []byte) []byte
+	transformDown func(remotePath string, data []byte) []byte
+	// Outro PC moveu a pasta no Nextcloud: o app grava a pasta nova na configuração.
+	onRemoteMoved func(newDir string)
+}
+
+// movedMarker fica na pasta antiga depois de "mover", apontando a nova.
+const movedMarker = ".claude-sync-movido.json"
+
+func (e *Engine) up(remotePath string, data []byte) []byte {
+	if e.transformUp != nil {
+		return e.transformUp(remotePath, data)
+	}
+	return data
+}
+
+func (e *Engine) down(remotePath string, data []byte) []byte {
+	if e.transformDown != nil {
+		return e.transformDown(remotePath, data)
+	}
+	return data
+}
+
+// MoveRemote passa a usar outra pasta no Nextcloud e leva junto o estado
+// (o que já foi sincronizado), para não baixar tudo de novo.
+func (e *Engine) MoveRemote(oldDir, newDir string) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.renameRemote(oldDir, newDir)
+}
+
+func (e *Engine) renameRemote(oldDir, newDir string) {
+	oldPrefix, newPrefix := strings.Trim(oldDir, "/")+"/", strings.Trim(newDir, "/")+"/"
+	for key, st := range e.state.Files {
+		if rest, ok := strings.CutPrefix(key, oldPrefix); ok {
+			delete(e.state.Files, key)
+			e.state.Files[newPrefix+rest] = st
+		}
+	}
+	e.dirty = true
+	if e.cfg != nil {
+		cfg := *e.cfg
+		cfg.RemoteDir = strings.Trim(newDir, "/")
+		e.cfg = &cfg
+	}
+	e.tree = remoteTree{}
 }
 
 func newEngine(store *Store, cfg *Config) *Engine {
@@ -213,7 +262,9 @@ func (e *Engine) cycle(ctx context.Context, remote bool) error {
 
 // ── Lado do Nextcloud ───────────────────────────────────────────────
 
-func (e *Engine) refresh(ctx context.Context) error {
+func (e *Engine) refresh(ctx context.Context) error { return e.refreshOnce(ctx, false) }
+
+func (e *Engine) refreshOnce(ctx context.Context, followed bool) error {
 	root := e.remoteRoot()
 	top, err := e.dav.Propfind(ctx, root, "0")
 	if err != nil {
@@ -256,7 +307,34 @@ func (e *Engine) refresh(ctx context.Context) error {
 		return err
 	}
 	e.tree = remoteTree{rootETag: top[0].ETag, dirs: dirs, files: files}
+	if _, moved := files[root+"/"+movedMarker]; moved && !followed {
+		return e.followMove(ctx, root)
+	}
 	return nil
+}
+
+// followMove: outro PC moveu a pasta. Lê para onde e passa a usar a nova.
+func (e *Engine) followMove(ctx context.Context, root string) error {
+	data, err := e.dav.Get(ctx, root+"/"+movedMarker)
+	if err != nil {
+		return err
+	}
+	var marker struct {
+		MovedTo string `json:"movedTo"`
+	}
+	if json.Unmarshal(data, &marker) != nil {
+		return nil
+	}
+	target, err := normalizeRemoteDir(marker.MovedTo)
+	if err != nil || target == root {
+		return nil
+	}
+	e.renameRemote(root, target)
+	e.note("warn", "A pasta no Nextcloud foi movida para %s em outro PC. Este PC passou a usar a nova.", target)
+	if e.onRemoteMoved != nil {
+		go e.onRemoteMoved(target)
+	}
+	return e.refreshOnce(ctx, true)
 }
 
 func (e *Engine) copySubtree(dir string, dirs map[string]string, files map[string]DavEntry) {
@@ -460,7 +538,7 @@ func (e *Engine) download(ctx context.Context, remotePath, local, etag, key stri
 	if err != nil {
 		return err
 	}
-	if err := writeAtomic(local, data, 0o600); err != nil {
+	if err := writeAtomic(local, e.down(remotePath, data), 0o600); err != nil {
 		return err
 	}
 	e.record(key, etag, local)
@@ -473,6 +551,7 @@ func (e *Engine) resolve(ctx context.Context, remotePath, local, etag, key strin
 	if err != nil {
 		return err
 	}
+	theirs = e.down(remotePath, theirs)
 	mine, err := os.ReadFile(local)
 	if err != nil {
 		return err
@@ -542,6 +621,7 @@ func (e *Engine) upload(ctx context.Context, remotePath string, f localFile, key
 		}
 		return err
 	}
+	data = e.up(remotePath, data)
 	if err := e.mkdirs(ctx, path.Dir(remotePath)); err != nil {
 		return err
 	}

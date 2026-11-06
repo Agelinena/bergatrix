@@ -22,6 +22,9 @@ secrets/
 00-infrastructure/bergakup/web/node_modules/
 00-infrastructure/bergakup/web/dist/
 
+# claude-sync: o build renomeia o executável em uso para .exe~ (Windows)
+ferramentas/claude-sync/*~
+
 # graphify: só o grafo (graph.json, GRAPH_REPORT.md, manifest.json) vai para o git.
 # Cache, visualização e estado local (tem o caminho desta máquina) ficam fora.
 graphify-out/cache/

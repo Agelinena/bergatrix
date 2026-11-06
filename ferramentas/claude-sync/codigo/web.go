@@ -58,6 +58,17 @@ func newWebServer(app *App, port string) http.Handler {
 		}
 		return app.Link(body.Key, strings.TrimSpace(body.Path))
 	}))
+	mux.HandleFunc("GET /api/remote-folders", s.remoteFolders)
+	mux.HandleFunc("POST /api/remote-dir", s.action(func(r *http.Request) error {
+		var body struct {
+			Path string `json:"path"`
+			Move bool   `json:"move"`
+		}
+		if err := decode(r, &body); err != nil {
+			return err
+		}
+		return app.SetRemoteDir(r.Context(), body.Path, body.Move)
+	}))
 	mux.HandleFunc("POST /api/sync", s.action(func(r *http.Request) error { app.SyncNow(); return nil }))
 	mux.HandleFunc("POST /api/open-folder", s.action(func(r *http.Request) error { return app.OpenFolder() }))
 	mux.HandleFunc("POST /api/quit", s.action(func(r *http.Request) error {
@@ -113,6 +124,16 @@ func (s *webServer) action(fn func(*http.Request) error) http.HandlerFunc {
 
 func (s *webServer) status(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, s.app.Status())
+}
+
+func (s *webServer) remoteFolders(w http.ResponseWriter, r *http.Request) {
+	path := r.URL.Query().Get("path")
+	folders, err := s.app.RemoteFolders(r.Context(), path)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"path": strings.Trim(path, "/"), "folders": folders})
 }
 
 func (s *webServer) loginStart(w http.ResponseWriter, r *http.Request) {

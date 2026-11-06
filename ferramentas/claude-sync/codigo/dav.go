@@ -172,6 +172,21 @@ func (d *Dav) Mkcol(ctx context.Context, path string) error {
 	return nil
 }
 
+// Move renomeia uma pasta ou arquivo no servidor (sem sobrescrever o destino).
+func (d *Dav) Move(ctx context.Context, from, to string) error {
+	resp, _, err := d.do(ctx, "MOVE", from, nil, map[string]string{
+		"Destination": d.root + "/" + escapePath(to),
+		"Overwrite":   "F",
+	})
+	if err != nil {
+		return err
+	}
+	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusNoContent {
+		return fmt.Errorf("MOVE %s → %s: HTTP %d", from, to, resp.StatusCode)
+	}
+	return nil
+}
+
 // Put envia o arquivo e devolve o etag novo (vazio se o servidor não mandar).
 func (d *Dav) Put(ctx context.Context, path string, data []byte, mtime time.Time) (string, error) {
 	resp, _, err := d.do(ctx, http.MethodPut, path, data, map[string]string{

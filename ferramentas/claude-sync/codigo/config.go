@@ -9,6 +9,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 )
 
@@ -25,6 +26,8 @@ type Config struct {
 	IntervalSeconds int               `json:"intervalSeconds"`
 	Links           map[string]string `json:"links"`   // projeto → caminho dele neste PC
 	Aliases         map[string]string `json:"aliases"` // caminho ou nome de pasta → projeto
+	PCName          string            `json:"pcName"`  // nome deste PC na etiqueta (vazio: o hostname)
+	NoTag           bool              `json:"noTag"`   // true: não manda a etiqueta do PC ao Claude
 }
 
 type FileState struct {
@@ -135,3 +138,19 @@ func writeAtomic(path string, data []byte, perm os.FileMode) error {
 }
 
 const tmpSuffix = ".claude-sync.tmp"
+
+// normalizeRemoteDir valida a pasta no Nextcloud ("Claude", "Backups/Claude").
+func normalizeRemoteDir(raw string) (string, error) {
+	clean := strings.Trim(strings.TrimSpace(strings.ReplaceAll(raw, "\\", "/")), "/")
+	if clean == "" {
+		return "", errors.New("escolha uma pasta no Nextcloud")
+	}
+	parts := strings.Split(clean, "/")
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" || part == "." || part == ".." || strings.ContainsAny(part, "\x00:*?\"<>|") {
+			return "", errors.New("nome de pasta inválido: " + clean)
+		}
+	}
+	return strings.Join(parts, "/"), nil
+}

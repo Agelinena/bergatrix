@@ -56,6 +56,28 @@
 
             <div id="login-done" class="stack" hidden>
                 <p class="status" data-tone="ok">Conectado a <b id="who-server"></b> como <b id="who-user"></b>.</p>
+                <div class="remote-line">
+                    <span>Pasta no Nextcloud: <code id="remote-dir"></code></span>
+                    <button class="ghost small" data-action="remote-edit" type="button">Trocar</button>
+                </div>
+                <form id="remote-form" class="stack remote-form" hidden>
+                    <label class="label" for="remote-input">Pasta no Nextcloud</label>
+                    <input id="remote-input" type="text" spellcheck="false" autocomplete="off" placeholder="Claude">
+                    <div class="browser">
+                        <p class="browser-path"><span>Pastas em </span><code id="browse-path">/</code></p>
+                        <ul id="browse-list" class="browse-list"></ul>
+                        <p id="browse-empty" class="hint" hidden>Nenhuma subpasta. Digite um nome acima para criar.</p>
+                    </div>
+                    <label class="check">
+                        <input id="remote-move" type="checkbox" checked>
+                        <span>Mover o que já está na pasta atual para a nova. Os outros PCs passam a usar a nova
+                            sozinhos; sem mover, a pasta atual fica onde está e cada PC precisa ser trocado aqui.</span>
+                    </label>
+                    <div class="row">
+                        <button class="primary" type="submit">Usar esta pasta</button>
+                        <button class="ghost" data-action="remote-cancel" type="button">Cancelar</button>
+                    </div>
+                </form>
                 <div class="row">
                     <button class="ghost" data-action="logout" type="button">Desconectar e revogar a senha de app</button>
                 </div>
@@ -120,6 +142,14 @@
                 <h2 id="t-options">Opções</h2>
             </div>
             <form id="settings-form" class="stack">
+                <label class="label" for="pc-name">Nome deste PC</label>
+                <input id="pc-name" type="text" maxlength="40" spellcheck="false" autocomplete="off">
+                <label class="check">
+                    <input id="tag" type="checkbox">
+                    <span>Mandar a etiqueta do PC em cada mensagem ao Claude</span>
+                </label>
+                <p class="hint">Assim o Claude sabe em qual ambiente você está. Ele recebe:
+                    <code id="tag-preview"></code></p>
                 <fieldset>
                     <legend class="label">Sincronizar também</legend>
                     <div id="global-items" class="checks"></div>

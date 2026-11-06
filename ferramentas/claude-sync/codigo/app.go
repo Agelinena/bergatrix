@@ -11,12 +11,16 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io/fs"
 	"log"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -35,6 +39,8 @@ type App struct {
 	connected   bool
 	login       loginState
 	activatedAt time.Time
+	// Hook da etiqueta deste PC (nil: sem etiqueta). O motor lê sem pegar a.mu.
+	tagHookNow atomic.Pointer[map[string]any]
 }
 
 type loginState struct {
@@ -51,6 +57,38 @@ func newApp(store *Store, quit func()) (*App, error) {
 	}
 	exe, _ := os.Executable()
 	a := &App{store: store, cfg: cfg, exe: exe, quit: quit, engine: newEngine(store, cfg)}
+	a.engine.transformUp = func(remotePath string, data []byte) []byte {
+		if !isSyncedSettings(remotePath) {
+			return data
+		}
+		out, err := withTagHook(data, nil) // o hook é de cada PC: não sobe
+		if err != nil {
+			return data
+		}
+		return out
+	}
+	a.engine.transformDown = func(remotePath string, data []byte) []byte {
+		if !isSyncedSettings(remotePath) {
+			return data
+		}
+		var hook map[string]any
+		if h := a.tagHookNow.Load(); h != nil {
+			hook = *h
+		}
+		out, err := withTagHook(data, hook)
+		if err != nil {
+			return data
+		}
+		return out
+	}
+	a.engine.onRemoteMoved = func(newDir string) {
+		a.mu.Lock()
+		defer a.mu.Unlock()
+		a.cfg.RemoteDir = newDir
+		if err := a.store.SaveConfig(a.cfg); err != nil {
+			log.Printf("não consegui gravar a pasta nova: %v", err)
+		}
+	}
 	a.mu.Lock()
 	a.connectLocked()
 	a.mu.Unlock()
@@ -65,8 +103,30 @@ func (a *App) activeLocked() bool {
 	return value != "" && samePath(value, a.cfg.SyncDir)
 }
 
+func isSyncedSettings(remotePath string) bool {
+	return strings.HasSuffix(remotePath, "/global/"+settingsFile)
+}
+
+// applyTagLocked põe ou tira o hook da etiqueta no settings.json da pasta ativa.
+func (a *App) applyTagLocked() {
+	active := a.activeLocked()
+	if active && !a.cfg.NoTag && a.exe != "" {
+		hook := tagHook(a.exe)
+		a.tagHookNow.Store(&hook)
+	} else {
+		a.tagHookNow.Store(nil)
+	}
+	if !active {
+		return
+	}
+	if err := applyTagHook(a.cfg.SyncDir, a.cfg, a.exe, true); err != nil {
+		log.Printf("etiqueta do PC: %v", err)
+	}
+}
+
 // connectLocked liga ou pausa o motor conforme as credenciais e a ativação.
 func (a *App) connectLocked() {
+	a.applyTagLocked()
 	cfg := *a.cfg
 	password, err := loadSecret(a.store, cfg.User)
 	a.connected = cfg.Server != "" && cfg.User != "" && err == nil
@@ -99,6 +159,11 @@ type AppStatus struct {
 	AllGlobalItems  []string          `json:"allGlobalItems"`
 	IntervalSeconds int               `json:"intervalSeconds"`
 	Links           map[string]string `json:"links"`
+	RemoteDir       string            `json:"remoteDir"`
+	PCName          string            `json:"pcName"`
+	Hostname        string            `json:"hostname"`
+	Tag             bool              `json:"tag"`
+	TagLine         string            `json:"tagLine"`
 	Engine          EngineStatus      `json:"engine"`
 }
 
@@ -121,6 +186,11 @@ func (a *App) Status() AppStatus {
 		AllGlobalItems:  allGlobalItems,
 		IntervalSeconds: a.cfg.IntervalSeconds,
 		Links:           a.cfg.Links,
+		RemoteDir:       a.cfg.RemoteDir,
+		PCName:          a.cfg.PCName,
+		Hostname:        hostname(),
+		Tag:             !a.cfg.NoTag,
+		TagLine:         tagLine(a.cfg),
 		Engine:          engine,
 	}
 }
@@ -249,6 +319,10 @@ func (a *App) Deactivate() error {
 	if !a.activeLocked() {
 		return nil
 	}
+	// A pasta deixa de ser a do Claude: o hook da etiqueta sai dela.
+	if err := applyTagHook(a.cfg.SyncDir, a.cfg, a.exe, false); err != nil {
+		log.Printf("etiqueta do PC: %v", err)
+	}
 	if err := clearUserEnv(envName); err != nil {
 		return err
 	}
@@ -333,6 +407,8 @@ type Settings struct {
 	GlobalItems     []string `json:"globalItems"`
 	IntervalSeconds int      `json:"intervalSeconds"`
 	Autostart       bool     `json:"autostart"`
+	PCName          string   `json:"pcName"`
+	Tag             bool     `json:"tag"`
 }
 
 func (a *App) UpdateSettings(s Settings) error {
@@ -349,12 +425,17 @@ func (a *App) UpdateSettings(s Settings) error {
 	if s.IntervalSeconds < 10 || s.IntervalSeconds > 3600 {
 		return errors.New("o intervalo vai de 10 a 3600 segundos")
 	}
+	name := strings.TrimSpace(s.PCName)
+	if len([]rune(name)) > 40 || strings.ContainsAny(name, "\r\n[]") {
+		return errors.New("o nome do PC tem até 40 caracteres, sem colchetes nem quebra de linha")
+	}
 	if err := setAutostart(s.Autostart, a.exe); err != nil {
 		return errors.New("não consegui mudar o início automático: " + err.Error())
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.cfg.GlobalItems, a.cfg.IntervalSeconds = items, s.IntervalSeconds
+	a.cfg.PCName, a.cfg.NoTag = name, !s.Tag
 	if err := a.store.SaveConfig(a.cfg); err != nil {
 		return err
 	}
@@ -385,6 +466,115 @@ func (a *App) Link(key, path string) error {
 }
 
 func (a *App) SyncNow() { a.engine.Kick() }
+
+// ── Pasta no Nextcloud ──────────────────────────────────────────────
+
+func (a *App) davNow() (*Dav, error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if !a.connected {
+		return nil, errors.New("entre no Nextcloud primeiro")
+	}
+	password, err := loadSecret(a.store, a.cfg.User)
+	if err != nil {
+		return nil, err
+	}
+	return newDav(a.cfg.Server, a.cfg.User, password), nil
+}
+
+// RemoteFolders lista as subpastas de `dir` no Nextcloud (vazio: a raiz da conta).
+func (a *App) RemoteFolders(ctx context.Context, dir string) ([]string, error) {
+	if strings.TrimSpace(strings.Trim(dir, "/")) != "" {
+		clean, err := normalizeRemoteDir(dir)
+		if err != nil {
+			return nil, err
+		}
+		dir = clean
+	} else {
+		dir = ""
+	}
+	dav, err := a.davNow()
+	if err != nil {
+		return nil, err
+	}
+	entries, err := dav.Propfind(ctx, dir, "1")
+	if err != nil {
+		return nil, err
+	}
+	folders := []string{}
+	for _, e := range entries {
+		if e.Dir && e.Path != dir {
+			folders = append(folders, e.Path[strings.LastIndex(e.Path, "/")+1:])
+		}
+	}
+	sort.Strings(folders)
+	return folders, nil
+}
+
+// SetRemoteDir troca a pasta no Nextcloud. Com move, leva o que já está na
+// atual para a nova e deixa um aviso na antiga: os outros PCs seguem sozinhos.
+func (a *App) SetRemoteDir(ctx context.Context, raw string, move bool) error {
+	target, err := normalizeRemoteDir(raw)
+	if err != nil {
+		return err
+	}
+	a.mu.Lock()
+	current := a.cfg.RemoteDir
+	a.mu.Unlock()
+	if target == current {
+		return nil
+	}
+	if strings.HasPrefix(target+"/", current+"/") || strings.HasPrefix(current+"/", target+"/") {
+		return errors.New("uma pasta não pode ficar dentro da outra")
+	}
+	dav, err := a.davNow()
+	if err != nil {
+		return err
+	}
+	if move {
+		old, err := dav.Propfind(ctx, current, "0")
+		if err != nil {
+			return err
+		}
+		if len(old) > 0 {
+			existing, err := dav.Propfind(ctx, target, "0")
+			if err != nil {
+				return err
+			}
+			if len(existing) > 0 {
+				return errors.New("a pasta " + target + " já existe no Nextcloud: escolha outra, ou troque sem mover")
+			}
+			if i := strings.LastIndex(target, "/"); i > 0 {
+				parts := strings.Split(target[:i], "/")
+				for j := range parts {
+					if err := dav.Mkcol(ctx, strings.Join(parts[:j+1], "/")); err != nil {
+						return err
+					}
+				}
+			}
+			if err := dav.Move(ctx, current, target); err != nil {
+				return err
+			}
+			marker, _ := json.Marshal(map[string]string{"movedTo": target, "movedAt": time.Now().Format(time.RFC3339), "by": hostname()})
+			if err := dav.Mkcol(ctx, current); err != nil {
+				return err
+			}
+			if _, err := dav.Put(ctx, current+"/"+movedMarker, marker, time.Now()); err != nil {
+				return err
+			}
+			a.engine.MoveRemote(current, target)
+			log.Printf("pasta no Nextcloud movida: %s → %s", current, target)
+		}
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.cfg.RemoteDir = target
+	if err := a.store.SaveConfig(a.cfg); err != nil {
+		return err
+	}
+	a.connectLocked()
+	return nil
+}
 
 func (a *App) OpenFolder() error {
 	a.mu.Lock()

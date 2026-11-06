@@ -12,6 +12,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
@@ -147,6 +148,40 @@ func (f *fakeNextcloud) handle(w http.ResponseWriter, r *http.Request) {
 		}
 		f.files[path] = body
 		w.Header().Set("OC-ETag", `"`+md5hex(body)+`"`)
+		w.WriteHeader(http.StatusCreated)
+	case "MOVE":
+		dest, err := url.Parse(r.Header.Get("Destination"))
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		target, _ := url.PathUnescape(dest.Path)
+		target = strings.Trim(strings.TrimPrefix(target, root), "/")
+		_, targetFile := f.files[target]
+		if f.dirs[target] || targetFile {
+			w.WriteHeader(http.StatusPreconditionFailed)
+			return
+		}
+		targetParent := ""
+		if i := strings.LastIndex(target, "/"); i >= 0 {
+			targetParent = target[:i]
+		}
+		if !f.dirs[targetParent] {
+			w.WriteHeader(http.StatusConflict)
+			return
+		}
+		for d := range f.dirs {
+			if d == path || strings.HasPrefix(d, path+"/") {
+				delete(f.dirs, d)
+				f.dirs[target+strings.TrimPrefix(d, path)] = true
+			}
+		}
+		for p, data := range f.files {
+			if p == path || strings.HasPrefix(p, path+"/") {
+				delete(f.files, p)
+				f.files[target+strings.TrimPrefix(p, path)] = data
+			}
+		}
 		w.WriteHeader(http.StatusCreated)
 	case http.MethodGet:
 		data, ok := f.files[path]

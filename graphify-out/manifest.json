@@ -3534,15 +3534,15 @@
     "semantic_hash": ""
   },
   "ferramentas/claude-sync/README.md": {
-    "mtime": 1793990860.5991654,
-    "seen": 1793990943.1424017,
-    "ast_hash": "81be48d795d6fea92ef01dbb76d58606",
+    "mtime": 1793992450.9505124,
+    "seen": 1793992497.6420732,
+    "ast_hash": "6e527855554d5af532f342e27989c966",
     "semantic_hash": ""
   },
   "ferramentas/claude-sync/codigo/app.go": {
-    "mtime": 1793989652.804095,
-    "seen": 1793990943.1163142,
-    "ast_hash": "e577d3ffdcd51c770060de6ab2484d6b",
+    "mtime": 1793992141.8111768,
+    "seen": 1793992497.6180127,
+    "ast_hash": "a4879f77e6c95b1fac051bfc685b6174",
     "semantic_hash": ""
   },
   "ferramentas/claude-sync/codigo/build.sh": {
@@ -3552,27 +3552,27 @@
     "semantic_hash": ""
   },
   "ferramentas/claude-sync/codigo/config.go": {
-    "mtime": 1793989440.9693234,
-    "seen": 1793990943.1163142,
-    "ast_hash": "5a41019f5de630dc67f4c60666ad0db5",
+    "mtime": 1793992069.5709553,
+    "seen": 1793992497.6180127,
+    "ast_hash": "2e4b8baa11bdde0b8a06107fbb2efe9c",
     "semantic_hash": ""
   },
   "ferramentas/claude-sync/codigo/dav.go": {
-    "mtime": 1793989441.7991722,
-    "seen": 1793990943.1163142,
-    "ast_hash": "7d807b7464877a92c6f04f8312da6d33",
+    "mtime": 1793991998.5737922,
+    "seen": 1793992497.6180127,
+    "ast_hash": "5791cc5b3614226a99f5b918d2383a08",
     "semantic_hash": ""
   },
   "ferramentas/claude-sync/codigo/engine.go": {
-    "mtime": 1793990131.3385224,
-    "seen": 1793990943.1163142,
-    "ast_hash": "3c9a00005352006d7e4858b69d139391",
+    "mtime": 1793992044.9491842,
+    "seen": 1793992497.6180127,
+    "ast_hash": "58c6b0f4c67d7753d3c5e43eebb26fad",
     "semantic_hash": ""
   },
   "ferramentas/claude-sync/codigo/go.mod": {
-    "mtime": 1793989440.097851,
-    "seen": 1793990943.1163142,
-    "ast_hash": "57b5bd10cc7b84bf4dd58f2ae1aa9668",
+    "mtime": 1793992198.6838684,
+    "seen": 1793992497.6180127,
+    "ast_hash": "8b5b47b160a4d2ef95f1d846d994c4db",
     "semantic_hash": ""
   },
   "ferramentas/claude-sync/codigo/login.go": {
@@ -3582,9 +3582,9 @@
     "semantic_hash": ""
   },
   "ferramentas/claude-sync/codigo/main.go": {
-    "mtime": 1793989936.9676006,
-    "seen": 1793990943.1163142,
-    "ast_hash": "a1a5805215cef76e17c0db7421e58aa9",
+    "mtime": 1793992367.7293913,
+    "seen": 1793992497.6180127,
+    "ast_hash": "0a8a1bb681078a3af060ad7c10a90bdc",
     "semantic_hash": ""
   },
   "ferramentas/claude-sync/codigo/projects.go": {
@@ -3612,9 +3612,9 @@
     "semantic_hash": ""
   },
   "ferramentas/claude-sync/codigo/sync_test.go": {
-    "mtime": 1793989906.6978312,
-    "seen": 1793990943.1163142,
-    "ast_hash": "a15a9d7d29a97a848112df72cec57346",
+    "mtime": 1793992325.9465218,
+    "seen": 1793992497.619013,
+    "ast_hash": "c658bad73497e8b635530d93be7851e3",
     "semantic_hash": ""
   },
   "ferramentas/claude-sync/codigo/system_unix.go": {
@@ -3630,15 +3630,15 @@
     "semantic_hash": ""
   },
   "ferramentas/claude-sync/codigo/web.go": {
-    "mtime": 1793989653.7392623,
-    "seen": 1793990943.1163142,
-    "ast_hash": "78b137c6eea12e3e16733838ffba4d2e",
+    "mtime": 1793992157.0896907,
+    "seen": 1793992497.6200128,
+    "ast_hash": "b29419c9bb3ef16ed7a06f0c6f9ebec2",
     "semantic_hash": ""
   },
   "ferramentas/claude-sync/codigo/web/app.js": {
-    "mtime": 1793989747.4904451,
-    "seen": 1793990943.1163142,
-    "ast_hash": "8abf0a47427bd049081b9b102233fb78",
+    "mtime": 1793992258.4085186,
+    "seen": 1793992497.6200128,
+    "ast_hash": "eb79c4f7d7d5c5799cc6bdd867560cb1",
     "semantic_hash": ""
   },
   "docs/legado/migracao-armazenamento.md": {
@@ -3648,15 +3648,45 @@
     "semantic_hash": ""
   },
   "ferramentas/claude-sync/codigo/web/index.html": {
-    "mtime": 1793989733.1609898,
-    "seen": 1793990943.1424017,
-    "ast_hash": "8d7df68d0081e97fb8d18457213cdb08",
+    "mtime": 1793992238.6806898,
+    "seen": 1793992497.6420732,
+    "ast_hash": "46ab3511e173a5cd31f813000a3a0f27",
     "semantic_hash": ""
   },
   "ferramentas/claude-sync/codigo/web/icon.svg": {
     "mtime": 1793989735.7872963,
     "seen": 1793990943.1541355,
     "ast_hash": "90a37cdf9be8f111b404e19d7772bbbd",
+    "semantic_hash": ""
+  },
+  "ferramentas/claude-sync/codigo/features_test.go": {
+    "mtime": 1793992301.6688645,
+    "seen": 1793992497.6180127,
+    "ast_hash": "32b88a54fb403837aedbbb52230051c5",
+    "semantic_hash": ""
+  },
+  "ferramentas/claude-sync/codigo/icon.go": {
+    "mtime": 1793992191.5369601,
+    "seen": 1793992497.6180127,
+    "ast_hash": "c72305ba06cb391c245370ba49aaab26",
+    "semantic_hash": ""
+  },
+  "ferramentas/claude-sync/codigo/tag.go": {
+    "mtime": 1793992019.3488834,
+    "seen": 1793992497.6200128,
+    "ast_hash": "cd4e2b0c995d059491b9dd653df61353",
+    "semantic_hash": ""
+  },
+  "ferramentas/claude-sync/codigo/tray.go": {
+    "mtime": 1793992192.36949,
+    "seen": 1793992497.6200128,
+    "ast_hash": "cdabc9bee6801a492028942afc23ad22",
+    "semantic_hash": ""
+  },
+  "ferramentas/claude-sync/codigo/tray_darwin.go": {
+    "mtime": 1793992193.2312975,
+    "seen": 1793992497.6200128,
+    "ast_hash": "8513314e7a91803d3bec0a0ff5608021",
     "semantic_hash": ""
   }
 }

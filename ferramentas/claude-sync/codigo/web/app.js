@@ -63,6 +63,7 @@ function render(s) {
     if (!editing && !$('server').value) $('server').value = s.server || '';
     $('who-server').textContent = s.server;
     $('who-user').textContent = s.user;
+    $('remote-dir').textContent = s.remoteDir;
 
     // 2. Pasta
     if (!editing) $('sync-dir').value = s.syncDir;
@@ -90,7 +91,11 @@ function render(s) {
         renderGlobalItems(s);
         $('interval').value = s.intervalSeconds;
         $('autostart').checked = s.autostart;
+        $('pc-name').value = s.pcName;
+        $('pc-name').placeholder = s.hostname;
+        $('tag').checked = s.tag;
     }
+    $('tag-preview').textContent = s.tagLine;
 
     // Atividade
     const items = (e.activity || []).map(a => {
@@ -187,14 +192,75 @@ $('settings-form').addEventListener('submit', event => {
     event.preventDefault();
     editing = false;
     const globalItems = [...$('global-items').querySelectorAll('input:checked')].map(input => input.value);
-    run('settings', { globalItems, intervalSeconds: Number($('interval').value), autostart: $('autostart').checked });
+    run('settings', {
+        globalItems,
+        intervalSeconds: Number($('interval').value),
+        autostart: $('autostart').checked,
+        pcName: $('pc-name').value,
+        tag: $('tag').checked,
+    });
 });
 
-for (const form of ['folder-form', 'settings-form', 'login-form']) {
+for (const form of ['folder-form', 'settings-form', 'login-form', 'remote-form']) {
     $(form).addEventListener('input', () => { editing = true; });
 }
 
+// ── Pasta no Nextcloud ───────────────────────────────────────────────
+
+async function browse(path) {
+    const clean = path.replace(/^\/+|\/+$/g, '');
+    $('browse-path').textContent = `/${clean}`;
+    try {
+        const data = await api(`remote-folders?path=${encodeURIComponent(clean)}`);
+        const items = [];
+        if (clean) {
+            const up = clean.includes('/') ? clean.slice(0, clean.lastIndexOf('/')) : '';
+            items.push(folderButton('↑ voltar', up, false));
+        }
+        for (const name of data.folders) {
+            const full = clean ? `${clean}/${name}` : name;
+            items.push(folderButton(`📁 ${name}`, full, true));
+        }
+        $('browse-list').replaceChildren(...items);
+        $('browse-empty').hidden = data.folders.length > 0;
+    } catch (error) {
+        showError(error.message);
+    }
+}
+
+function folderButton(label, path, choose) {
+    const li = document.createElement('li');
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = label;
+    button.addEventListener('click', () => {
+        if (choose) $('remote-input').value = path;
+        browse(path);
+    });
+    li.append(button);
+    return li;
+}
+
+$('remote-form').addEventListener('submit', async event => {
+    event.preventDefault();
+    const path = $('remote-input').value.trim();
+    const move = $('remote-move').checked;
+    const question = move
+        ? `Mover tudo de "${status.remoteDir}" para "${path}" no Nextcloud?`
+        : `Passar a usar "${path}"? A pasta "${status.remoteDir}" fica como está, e os outros PCs continuam nela até você trocar lá também.`;
+    if (!confirm(question)) return;
+    editing = false;
+    if (await run('remote-dir', { path, move })) $('remote-form').hidden = true;
+});
+
 const actions = {
+    'remote-edit': () => {
+        $('remote-form').hidden = false;
+        $('remote-input').value = status.remoteDir;
+        const parent = status.remoteDir.includes('/') ? status.remoteDir.slice(0, status.remoteDir.lastIndexOf('/')) : '';
+        browse(parent);
+    },
+    'remote-cancel': () => { $('remote-form').hidden = true; editing = false; },
     'login-cancel': () => run('login/cancel'),
     logout: () => confirm('Desconectar? A senha de app é revogada no Nextcloud e apagada deste PC. A pasta local fica.') && run('logout'),
     deactivate: () => confirm('Desativar? O Claude Code volta a usar a pasta padrão (~/.claude) depois de reabrir. A pasta sincronizada fica onde está.') && run('deactivate'),

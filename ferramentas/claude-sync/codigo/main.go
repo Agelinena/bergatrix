@@ -3,6 +3,7 @@
 //	claude-sync                abre a interface (e sobe o app, se não estiver rodando)
 //	claude-sync --background   sobe sem abrir o navegador (início automático)
 //	claude-sync version
+//	claude-sync tag            etiqueta deste PC (o hook UserPromptSubmit chama a cada mensagem)
 //
 // Só uma cópia roda por vez: abrir de novo só abre a interface da que já está rodando.
 package main
@@ -28,13 +29,21 @@ var version = "dev"
 const defaultPort = "47823"
 
 func main() {
-	if len(os.Args) > 1 && (os.Args[1] == "version" || os.Args[1] == "--version") {
-		fmt.Println("claude-sync", version)
-		return
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "version", "--version":
+			fmt.Println("claude-sync", version)
+			return
+		case "tag":
+			// Chamado pelo hook UserPromptSubmit a cada mensagem: só a etiqueta, rápido.
+			cmdTag()
+			return
+		}
 	}
 	background := flag.Bool("background", false, "não abre o navegador")
 	port := flag.String("port", defaultPort, "porta da interface local")
 	noBrowser := flag.Bool("no-browser", false, "nunca abre o navegador (testes)")
+	noTray := flag.Bool("no-tray", false, "sem ícone na bandeja (testes)")
 	flag.Parse()
 	if *noBrowser {
 		*background = true
@@ -76,6 +85,9 @@ func main() {
 		_ = openBrowser(url)
 	}
 
+	// Ícone na bandeja (Windows e Linux). Fica no main: o Windows exige a
+	// thread principal para a janela do ícone. Volta quando o app fecha.
+	runTray(ctx, app, url, stop, *noTray)
 	<-ctx.Done()
 	shutdown, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
