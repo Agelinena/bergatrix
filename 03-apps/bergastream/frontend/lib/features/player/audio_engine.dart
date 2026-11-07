@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 
 import 'package:audio_session/audio_session.dart';
 import 'package:flutter/foundation.dart';
@@ -30,8 +31,17 @@ abstract interface class AudioEngine {
   void play();
   Future<void> pause();
 
-  /// 0 (mudo) a 1 (volume cheio do aparelho).
+  /// 0 (mudo) a 1 (volume cheio do aparelho), em amplitude (linear).
   Future<void> setVolume(double volume);
+
+  /// Ganho acima do volume cheio, em dB (normalização das músicas baixas).
+  /// Até [maxBoostDb]; 0 desliga.
+  Future<void> setBoost(double db);
+
+  /// Quanto o motor consegue subir: Android (LoudnessEnhancer) 12 dB,
+  /// computador (mpv) 6 dB, navegador 0 (o áudio da página não passa de
+  /// 100%).
+  double get maxBoostDb;
   Future<void> seek(Duration position);
   Future<void> stop();
   Future<void> dispose();
@@ -47,7 +57,26 @@ class JustAudioEngine implements AudioEngine {
     );
   }
 
-  final _player = ja.AudioPlayer();
+  /// Android: ganho acima de 100% pelo LoudnessEnhancer do sistema.
+  static final bool _android =
+      !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
+
+  /// Windows/Linux: o mpv (media_kit) aplica o volume numa curva cúbica
+  /// (volume 50 = 0,125 de amplitude) e aceita até 130.
+  static final bool _mpv =
+      !kIsWeb &&
+      (defaultTargetPlatform == TargetPlatform.linux ||
+          defaultTargetPlatform == TargetPlatform.windows);
+
+  final _enhancer = ja.AndroidLoudnessEnhancer();
+  late final _player = _android
+      ? ja.AudioPlayer(
+          audioPipeline: ja.AudioPipeline(androidAudioEffects: [_enhancer]),
+        )
+      : ja.AudioPlayer();
+
+  double _volume = 1;
+  double _boostDb = 0;
 
   @override
   Stream<Duration> get positionStream => _player.positionStream;
@@ -91,7 +120,41 @@ class JustAudioEngine implements AudioEngine {
   Future<void> pause() => _player.pause();
 
   @override
-  Future<void> setVolume(double volume) => _player.setVolume(volume);
+  double get maxBoostDb => _android
+      ? 12
+      : _mpv
+      ? 6
+      : 0;
+
+  @override
+  Future<void> setVolume(double volume) {
+    _volume = volume.clamp(0.0, 1.0);
+    return _push();
+  }
+
+  @override
+  Future<void> setBoost(double db) async {
+    final next = db.clamp(0.0, maxBoostDb);
+    if ((next - _boostDb).abs() < 0.01) return;
+    _boostDb = next;
+    if (_android) {
+      await _enhancer.setTargetGain(next);
+      await _enhancer.setEnabled(next > 0);
+    }
+    await _push();
+  }
+
+  Future<void> _push() {
+    if (_mpv) {
+      // Amplitude pedida → volume do mpv (inverso da curva cúbica); o ganho
+      // entra aqui (até 130 = +6,8 dB).
+      final amplitude = _volume * pow(10, _boostDb / 20);
+      return _player.setVolume(
+        (pow(amplitude, 1 / 3).toDouble()).clamp(0.0, 1.3),
+      );
+    }
+    return _player.setVolume(_volume);
+  }
 
   @override
   Future<void> seek(Duration position) => _player.seek(position);

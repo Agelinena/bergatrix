@@ -12,6 +12,9 @@ abstract final class AppRoutes {
   /// Gestão das pessoas (só admin).
   static const adminUsers = '$settings/usuarios';
 
+  /// Músicas que não deu para baixar (só admin).
+  static const adminFailures = '$settings/erros';
+
   /// Detalhe da playlist do servidor, "Pessoas" e playlist local.
   static String playlist(String id) => '$library/playlist/$id';
   static String playlistPeople(String id) => '$library/playlist/$id/pessoas';

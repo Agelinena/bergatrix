@@ -73,12 +73,18 @@ class AccountCard extends ConsumerWidget {
                   label: 'Trocar senha',
                   onTap: () => _password(context, ref, account),
                 ),
-              if (account.isAdmin)
+              if (account.isAdmin) ...[
                 AppChip(
                   label: 'Usuários',
                   icon: Icons.manage_accounts_outlined,
                   onTap: () => context.push(AppRoutes.adminUsers),
                 ),
+                AppChip(
+                  label: 'Músicas com erro',
+                  icon: Icons.error_outline,
+                  onTap: () => context.push(AppRoutes.adminFailures),
+                ),
+              ],
             ],
           ),
         ],

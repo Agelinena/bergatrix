@@ -141,6 +141,47 @@ async def lyrics(body: PlayRequest, pool=Depends(_get_pool), user: CurrentUser =
     return await lyrics_for(pool, result.track_id)
 
 
+class LyricsEdit(BaseModel):
+    # Atraso (+) ou adiantamento (-) em ms; texto LRC ("[mm:ss.xx] linha") e
+    # texto simples. Só os campos enviados mudam.
+    offset_ms: int | None = None
+    lrc: str | None = Field(None, max_length=60_000)
+    plain: str | None = Field(None, max_length=60_000)
+
+
+async def _track_or_404(pool, track_id: str) -> None:
+    import uuid as _uuid
+    try:
+        _uuid.UUID(track_id)
+    except ValueError:
+        raise HTTPException(404, detail="Faixa não encontrada")
+    if not await pool.fetchval("SELECT 1 FROM tracks WHERE id = $1", track_id):
+        raise HTTPException(404, detail="Faixa não encontrada")
+
+
+@router.put("/lyrics/{track_id}")
+async def edit_lyrics(track_id: str, body: LyricsEdit, pool=Depends(_get_pool),
+                      user: CurrentUser = Depends(current_user)):
+    """Corrige a letra da faixa para todos (sincronia e texto)."""
+    from app.lyrics import service as lyrics_service
+    await _track_or_404(pool, track_id)
+    try:
+        result = await lyrics_service.edit(pool, track_id, user.id, offset_ms=body.offset_ms,
+                                           lrc=body.lrc, plain=body.plain)
+    except lyrics_service.LyricsError as exc:
+        raise HTTPException(422, detail=str(exc))
+    logger.info("[lyrics] %s corrigiu a letra de %s", user.id, track_id)
+    return result
+
+
+@router.post("/lyrics/{track_id}/reset")
+async def reset_lyrics(track_id: str, pool=Depends(_get_pool), user: CurrentUser = Depends(current_user)):
+    """Desfaz a correção e busca a letra de novo no LRCLIB."""
+    from app.lyrics import service as lyrics_service
+    await _track_or_404(pool, track_id)
+    return await lyrics_service.reset(pool, track_id)
+
+
 @router.post("/play", response_model=PlayResponse)
 async def play(body: PlayRequest, pool=Depends(_get_pool), user: CurrentUser = Depends(current_user)):
     result = await tracks_service.resolve_and_register(pool, body)

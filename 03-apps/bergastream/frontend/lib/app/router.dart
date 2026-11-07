@@ -23,6 +23,7 @@ import 'dev/gallery_screen.dart';
 import 'not_found_screen.dart';
 import 'routes.dart';
 import '../features/account/admin_users_screen.dart';
+import '../features/admin/failures_screen.dart';
 
 /// Tela em que o app abre (os testes podem trocar).
 final initialLocationProvider = Provider<String>((ref) => AppRoutes.home);
@@ -70,6 +71,7 @@ final routerProvider = Provider<GoRouter>((ref) {
               path: 'usuarios',
               builder: (_, _) => const AdminUsersScreen(),
             ),
+            GoRoute(path: 'erros', builder: (_, _) => const FailuresScreen()),
           ]
         : catalog(),
   );

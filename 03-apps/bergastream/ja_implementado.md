@@ -406,6 +406,28 @@ Rodado na imagem `ghcr.io/cirruslabs/flutter:stable` (Flutter 3.44.0 / Dart 3.12
 - Testes: `test_quality` 61, `test_upgrade_flow` 10 (novo; banco real e Lidarr falso). Validado
   contra o MusicBrainz e um Lidarr local (ISRC → álbum de estúdio → `album/lookup` por MBID).
 
+### Versão 0.5.0 — normalização de volume, letra editável e músicas com erro
+- **Normalização de volume refeita** (pesquisa: o Spotify normaliza para −14 LUFS, sobe as
+  músicas baixas só até o pico real permitir e tem o modo "alto" em −11). Agora:
+  - níveis em Ajustes → Reprodução: **Alto, −10 LUFS (padrão)**, Normal −14 LUFS (o do Spotify)
+    e Desligado;
+  - as mais altas descem pelo volume (sem perder nada); as mais baixas **sobem** até o pico
+    real chegar a −1,5 dBTP, sem limitador e sem distorcer. Android pelo LoudnessEnhancer do
+    sistema (até +12 dB), Windows/Linux pelo mpv (até +6 dB), navegador não sobe;
+  - **corrigido no computador:** o mpv aplica o volume numa curva cúbica, então "abaixar 6 dB"
+    virava 18 dB. Era o principal motivo de tudo soar baixo no Windows/Linux. A barra de
+    volume passa a usar a mesma curva cúbica em todas as plataformas.
+- **Letra editável** (tela da letra → "Ajustar letra"): atrasar ou adiantar (−1 s, −0,25 s,
+  +0,25 s, +1 s, com a letra andando na tela enquanto ajusta), editar o texto (LRC com tempos ou
+  texto simples), escrever a letra de música sem letra e "buscar de novo". Vale para todos que
+  ouvem a música (`PUT /api/lyrics/{id}`). A letra agora vem sempre do servidor quando há
+  conexão (a cópia do aparelho fica para o modo offline), então as correções chegam a todos.
+- **Músicas com erro** (Ajustes → Conta → Músicas com erro, só admin): o que nenhuma fonte
+  conseguiu baixar, com o erro, as tentativas e em quantas playlists está. Tentar de novo,
+  **procurar manualmente** (busca no YouTube Music e no Deezer, a de duração mais parecida
+  primeiro, com o texto editável) e ignorar. Migração `0018_lyrics_edit_failures.sql`.
+- Testes: backend `test_admin_tools` 22 (novo); app 435.
+
 ### Versão 0.4.1 — tela de login com as duas formas de entrar
 - A tela mostra sempre "Entrar com o Authentik" e usuário e senha. **Conferir servidor** (no
   app; na web e com servidor salvo, sozinho ao abrir) pergunta ao servidor quais ele aceita e
@@ -756,7 +778,7 @@ conferidas com ffprobe (título diferente → descarta e baixa do YouTube).
 | Suíte | Resultado |
 |---|---|
 | Flutter `flutter analyze` | ✅ sem problemas |
-| Flutter `flutter test` | ✅ 427 |
+| Flutter `flutter test` | ✅ 435 |
 | Flutter `integration_test` (flutter-tester) | ✅ 2 |
 | Backend auth / OIDC / contas / playlists / ops / history / resolve / catalog / downloads / images | ✅ 38 / 15 / 51 / 32 / 37 / 27 / 17 / 18 / 13 / 12 |
 | Backend qualidade / versões por nível / permanência (pastas) / busca de playlists | ✅ 42 / 18 / 13 / 13 |

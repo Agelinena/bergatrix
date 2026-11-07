@@ -269,7 +269,8 @@ class PlayerController extends Notifier<PlayerState> {
 
   double _userVolume = 1;
 
-  /// Ganho da normalização da faixa atual (só abaixa: 0..1).
+  /// Normalização da faixa atual: abaixa pelo volume (0..1); o que sobe vai
+  /// para o motor ([AudioEngine.setBoost]).
   double _trackGain = 1;
   double _fade = 1;
   int _fadeGen = 0;
@@ -278,13 +279,32 @@ class PlayerController extends Notifier<PlayerState> {
   bool _fadingOut = false;
   Timer? _idleTimer;
 
-  /// Alvo da normalização (o mesmo do Spotify no modo normal).
-  static const loudnessTarget = -14.0;
+  /// Pico real máximo depois de subir uma música baixa (dBTP). Um pouco
+  /// abaixo do −1 do Spotify: as versões MP3/AAC têm picos um pouco maiores
+  /// que os do arquivo medido.
+  static const peakCeiling = -1.5;
+
+  /// Ganho da normalização para uma faixa medida: acima do alvo, abaixa
+  /// (sem perder nada); abaixo, sobe só até o pico real chegar em
+  /// [peakCeiling] e até onde o motor consegue ([maxBoostDb]), sem
+  /// limitador e sem distorcer — como o Spotify no modo normal.
+  static ({double gain, double boostDb}) normalization(
+    double target,
+    TrackLoudness loud,
+    double maxBoostDb,
+  ) {
+    final db = target - loud.lufs;
+    if (db <= 0) return (gain: pow(10, db / 20).toDouble(), boostDb: 0);
+    final headroom = peakCeiling - loud.peak;
+    final boost = [db, headroom, maxBoostDb].reduce(min);
+    return (gain: 1, boostDb: boost > 0 ? boost : 0);
+  }
 
   void _applyVolume() {
-    unawaited(
-      _engine.setVolume((_userVolume * _trackGain * _fade).clamp(0.0, 1.0)),
-    );
+    // Barra de volume em curva cúbica (como no mpv e no VLC): o meio da
+    // barra soa como metade do volume, não quase igual ao cheio.
+    final user = pow(_userVolume, 3).toDouble();
+    unawaited(_engine.setVolume((user * _trackGain * _fade).clamp(0.0, 1.0)));
   }
 
   /// Leva o fade a [target] em [ms] (passos de 25 ms). Um fade novo cancela
@@ -318,15 +338,21 @@ class PlayerController extends Notifier<PlayerState> {
     );
   }
 
-  /// Ganho da normalização para [track]: abaixa até [loudnessTarget] (o
-  /// player não aumenta acima de 1). A medida fica guardada no aparelho
-  /// (vale offline); sem medida, sem ajuste.
-  Future<double> _gainFor(SearchResult track) async {
-    if (!_prefs.normalizeVolume) return 1;
+  /// Normalização de [track] no nível escolhido. A medida fica guardada no
+  /// aparelho (vale offline); sem medida, sem ajuste.
+  Future<({double gain, double boostDb})> _gainFor(SearchResult track) async {
+    final target = _prefs.loudness.lufs;
+    if (target == null) return (gain: 1.0, boostDb: 0.0);
     final loud = await _loudnessOf(track);
-    if (loud == null) return 1;
-    final db = loudnessTarget - loud.lufs;
-    return db >= 0 ? 1 : pow(10, db / 20).toDouble();
+    if (loud == null) return (gain: 1.0, boostDb: 0.0);
+    return normalization(target, loud, _engine.maxBoostDb);
+  }
+
+  /// Aplica a normalização de [track] (volume e ganho do motor).
+  Future<void> _normalize(SearchResult track) async {
+    final n = await _gainFor(track);
+    _trackGain = n.gain;
+    await _engine.setBoost(n.boostDb);
   }
 
   Future<TrackLoudness?> _loudnessOf(SearchResult track) async {
@@ -699,18 +725,14 @@ class PlayerController extends Notifier<PlayerState> {
         _userVolume = now.volume;
         _applyVolume();
       }
-      if (before?.normalizeVolume != now.normalizeVolume) {
+      if (before?.loudness != now.loudness) {
         final track = _queue.current?.track;
-        if (!now.normalizeVolume) {
+        if (track == null) {
           _trackGain = 1;
+          unawaited(engine.setBoost(0));
           _applyVolume();
-        } else if (track != null) {
-          unawaited(
-            _gainFor(track).then((g) {
-              _trackGain = g;
-              _applyVolume();
-            }),
-          );
+        } else {
+          unawaited(_normalize(track).then((_) => _applyVolume()));
         }
       }
     });
@@ -1378,7 +1400,7 @@ class PlayerController extends Notifier<PlayerState> {
       _quality = local?.qualityLabel;
       await _own(() => _engine.setFile(path));
       if (generation != _generation) return;
-      _trackGain = await _gainFor(item.track);
+      await _normalize(item.track);
       if (generation != _generation) return;
       await _start(startAt);
       return;
@@ -1430,7 +1452,7 @@ class PlayerController extends Notifier<PlayerState> {
       await _own(() => _engine.setUrl(url));
       if (generation != _generation) return;
       _streamTrackId = prepared.trackId;
-      _trackGain = await _gainFor(item.track);
+      await _normalize(item.track);
       if (generation != _generation) return;
       await _start(startAt);
       _autoSkips = 0;

@@ -27,9 +27,33 @@ class CountingLyrics implements LyricsRepository {
     if (offline) throw const ApiException(ApiErrorKind.semConexao);
     return FakeLyricsRepository.sample;
   }
+
+  @override
+  Future<Lyrics> edit(
+    String trackId, {
+    int? offsetMs,
+    String? lrc,
+    String? plain,
+  }) async => FakeLyricsRepository.sample;
+
+  @override
+  Future<Lyrics> reset(String trackId) async => FakeLyricsRepository.sample;
 }
 
 void main() {
+  test('prévia do ajuste: as linhas andam juntas, sem tempo negativo', () {
+    const lines = FakeLyricsRepository.sample;
+    final later = lines.shifted(1250);
+    expect(later.synced.map((l) => l.time.inMilliseconds), [
+      6250,
+      16250,
+      26250,
+    ]);
+    expect(later.offsetMs, 1250);
+    expect(lines.shifted(-6000).synced.first.time, Duration.zero);
+    expect(identical(lines.shifted(0), lines), isTrue);
+  });
+
   test('linha atual: a última que já começou', () {
     const lines = FakeLyricsRepository.sample;
     expect(currentLineIndex(lines.synced, Duration.zero), -1);
@@ -45,9 +69,15 @@ void main() {
   Future<FakeAudioEngine> playAndOpen(
     WidgetTester tester, {
     String title = 'Bohemian Rhapsody',
+    FakeLyricsRepository? lyrics,
   }) async {
     final engine = FakeAudioEngine();
-    await pumpBergastream(tester, engine: engine, size: const Size(400, 1800));
+    await pumpBergastream(
+      tester,
+      engine: engine,
+      size: const Size(400, 1800),
+      lyrics: lyrics,
+    );
     await tester.tap(find.text('Buscar').last);
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField), 'queen');
@@ -92,6 +122,50 @@ void main() {
     await tester.tap(find.text('Terceira linha da letra'));
     await tester.pumpAndSettle();
     expect(engine.log.last, 'seek 25');
+    await tester.pump(const Duration(seconds: 3));
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('ajustar letra: a prévia anda na hora e salva para todos', (
+    tester,
+  ) async {
+    final lyrics = FakeLyricsRepository();
+    await playAndOpen(tester, lyrics: lyrics);
+    await tester.tap(find.text(LyricsCard.title));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Ajustar letra'));
+    await tester.pumpAndSettle();
+    expect(find.text('Sincronia: sem ajuste'), findsOneWidget);
+    await tester.tap(find.text('+1 s'));
+    await tester.tap(find.text('+0,25 s'));
+    await tester.pumpAndSettle();
+    expect(find.text('Sincronia: +1,25 s'), findsOneWidget);
+
+    await tester.tap(find.text('Salvar para todos'));
+    await tester.pumpAndSettle();
+    expect(lyrics.edits.single.offsetMs, 1250);
+    expect(find.text('Sincronia salva'), findsOneWidget);
+    await tester.pump(const Duration(seconds: 3));
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('editar o texto da letra', (tester) async {
+    final lyrics = FakeLyricsRepository();
+    await playAndOpen(tester, lyrics: lyrics);
+    await tester.tap(find.text(LyricsCard.title));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Ajustar letra'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Editar o texto'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byType(TextField).last,
+      '[00:02.00] Linha corrigida',
+    );
+    await tester.tap(find.text('Salvar para todos'));
+    await tester.pumpAndSettle();
+    expect(lyrics.edits.single.lrc, '[00:02.00] Linha corrigida');
+    expect(find.text('Letra salva'), findsOneWidget);
     await tester.pump(const Duration(seconds: 3));
     await tester.pumpAndSettle();
   });

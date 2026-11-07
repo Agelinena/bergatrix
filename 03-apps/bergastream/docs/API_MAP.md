@@ -53,15 +53,21 @@ O `<audio>` do navegador não envia `Authorization`: a web pede o token e toca `
 
 | Endpoint | Observação |
 |---|---|
-| `POST /api/tracks/loudness` | `{"refs": ["provider:external_id", …]}` → `{ref: {"lufs", "peak"}}` (só as já medidas). `GET /api/tracks/{id}/status` também traz `loudness`. |
+| `POST /api/tracks/loudness` | `{"refs": ["provider:external_id", …]}` → `{ref: {"lufs", "peak"}}` (só as já medidas). `GET /api/tracks/{id}/status` também traz `loudness`. O app normaliza com isso: alvo −10 LUFS (Alto, padrão) ou −14 (Normal, o do Spotify); as altas descem pelo volume e as baixas sobem até o pico real chegar a −1,5 dBTP (Android pelo LoudnessEnhancer, até +12 dB; Windows/Linux pelo mpv, até +6 dB; o navegador não sobe). |
 | `POST /api/tracks/redownload` | Corpo `SearchResult`: apaga o arquivo no servidor e baixa de novo com prioridade alta (409 se já está baixando). |
 
 ---
 
 ### `POST /api/lyrics`
 
-Corpo `SearchResult` (como o `/api/play`) → `{"found", "synced": [{"time_ms", "text"}], "plain", "source": "lrclib"}`.
-Busca no LRCLIB uma vez por faixa e guarda no servidor (tabela `lyrics`).
+Corpo `SearchResult` (como o `/api/play`) → `{"found", "synced": [{"time_ms", "text"}], "plain", "source", "track_id", "offset_ms", "lrc", "edited"}`.
+Busca no LRCLIB uma vez por faixa e guarda no servidor (tabela `lyrics`). Os tempos de `synced`
+já vêm com o ajuste `offset_ms`; `lrc` é o texto guardado, sem o ajuste (para o editor).
+
+| Endpoint | Observação |
+|---|---|
+| `PUT /api/lyrics/{track_id}` | Qualquer pessoa logada corrige para todos: `{"offset_ms"?, "lrc"?, "plain"?}` (só os enviados mudam). `offset_ms` positivo atrasa a letra, até ±30 s. 422 se o LRC não tem tempos ou a letra fica vazia. Letra corrigida não é trocada pela do LRCLIB. |
+| `POST /api/lyrics/{track_id}/reset` | Desfaz a correção e busca de novo no LRCLIB. |
 
 ---
 
@@ -259,6 +265,11 @@ Estado em memória na API (some ao reiniciar; os apps reconectam).
 | Endpoint | Quem |
 |---|---|
 | `POST /api/admin/cleanup` | admin — limpa arquivos sem referência e cache vencido |
+| `GET /api/admin/failures?ignored=` | admin — músicas que nenhuma fonte baixou (tabela `download_failures`, gravada pelo worker e apagada quando baixa): música, erro, tentativas, em quantas playlists, se já está na fila. As que estão em playlists vêm primeiro. |
+| `POST /api/admin/failures/{track_id}/retry` | admin — de novo na fila (prioridade alta) |
+| `GET /api/admin/failures/{track_id}/candidates?q=` | admin — versões no YouTube Music e no Deezer, a de duração mais parecida primeiro (`q` troca a busca) |
+| `POST /api/admin/failures/{track_id}/source` | admin — `{provider: ytmusic\|youtube\|deezer, external_id}`: baixa desta fonte |
+| `POST /api/admin/failures/{track_id}/ignore` | admin — `{ignored}`: some da lista (falhar de novo não desfaz) |
 | `GET /api/admin/users` | admin — `{users: [Account], mail_enabled, oidc_enabled, password_login_enabled, authentik_admin_url}` |
 | `POST /api/admin/users` | admin — `{username, name?, email?, is_admin?, invite?}` → `Account` (201) · 409 usuário/nome/e-mail já usado · 422 inválido |
 | `PATCH /api/admin/users/{id}` | admin — `{username?, name?, email? ("" apaga), is_admin?, disabled?, notify?}` · 409 se vem do Authentik, último admin, a si mesmo |

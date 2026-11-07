@@ -543,33 +543,57 @@ void main() {
       expect(engine.playing, isTrue);
     });
 
-    test('normalização: música alta é abaixada até -14 LUFS', () async {
-      repo.serverLoudness = {
-        song('A').id: const TrackLoudness(-8, -0.5), // 6 dB acima do alvo
-        song('B').id: const TrackLoudness(-18, -3), // abaixo: não sobe
-      };
+    test(
+      'normalização (alto, −10): a alta desce, a baixa sobe pelo motor',
+      () async {
+        repo.serverLoudness = {
+          song('A').id: const TrackLoudness(-4, -0.5), // 6 dB acima do alvo
+          song('B').id: const TrackLoudness(-16, -9), // 6 dB abaixo, pico baixo
+          song('C').id: const TrackLoudness(-16, -3), // abaixo, pico alto
+        };
+        await controller().playList(abc, 0, context: 'Busca');
+        expect(engine.volume, closeTo(0.501, 0.01));
+        expect(engine.boost, 0);
+        await controller().next();
+        expect(engine.volume, 1.0);
+        expect(engine.boost, closeTo(6, 0.01), reason: 'sobe tudo o que falta');
+        await controller().next();
+        expect(
+          engine.boost,
+          closeTo(1.5, 0.01),
+          reason: 'só até o pico chegar a −1,5 dBTP',
+        );
+      },
+    );
+
+    test('normalização: o motor sem ganho (navegador) não sobe', () async {
+      engine.maxBoostDb = 0;
+      repo.serverLoudness = {song('A').id: const TrackLoudness(-16, -9)};
+      await controller().playList(abc, 0, context: 'Busca');
+      expect((engine.volume, engine.boost), (1.0, 0.0));
+    });
+
+    test('normalização normal (−14) e desligada', () async {
+      repo.serverLoudness = {song('A').id: const TrackLoudness(-8, -0.5)};
+      final prefs = container.read(preferencesProvider.notifier);
+      await prefs.setLoudness(LoudnessLevel.normal);
       await controller().playList(abc, 0, context: 'Busca');
       expect(engine.volume, closeTo(0.501, 0.01));
-      await controller().next();
-      expect(engine.volume, 1.0);
+      await prefs.setLoudness(LoudnessLevel.desligado);
+      await pumpEventQueue();
+      expect((engine.volume, engine.boost), (1.0, 0.0));
     });
 
-    test('normalização desligada: volume cheio', () async {
-      repo.serverLoudness = {song('A').id: const TrackLoudness(-8, -0.5)};
-      await container
-          .read(preferencesProvider.notifier)
-          .setNormalizeVolume(false);
-      await controller().playList(abc, 0, context: 'Busca');
-      expect(engine.volume, 1.0);
-    });
-
-    test('volume da barra multiplica o da normalização', () async {
-      repo.serverLoudness = {song('A').id: const TrackLoudness(-8, -0.5)};
-      await controller().playList(abc, 0, context: 'Busca');
-      controller().setVolume(0.5);
-      expect(engine.volume, closeTo(0.25, 0.01));
-      expect(container.read(preferencesProvider).volume, 0.5);
-    });
+    test(
+      'volume da barra (curva cúbica) multiplica o da normalização',
+      () async {
+        repo.serverLoudness = {song('A').id: const TrackLoudness(-4, -0.5)};
+        await controller().playList(abc, 0, context: 'Busca');
+        controller().setVolume(0.5);
+        expect(engine.volume, closeTo(0.125 * 0.501, 0.005));
+        expect(container.read(preferencesProvider).volume, 0.5);
+      },
+    );
 
     test('fade ao pausar: o som desce até 0 e só então o motor para', () async {
       final c = fading();

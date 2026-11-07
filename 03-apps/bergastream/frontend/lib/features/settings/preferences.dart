@@ -23,6 +23,24 @@ enum AudioQuality {
   final String api;
 }
 
+/// Normalização de volume, como a do Spotify: cada música vai para o mesmo
+/// volume percebido ([lufs], EBU R128). As mais altas descem (sem perder
+/// nada); as mais baixas sobem só até o pico real chegar perto de 0 dB (sem
+/// distorcer). O Spotify usa −14 no modo normal e −11 no alto.
+enum LoudnessLevel {
+  desligado('Desligado', 'Cada música no volume original', null),
+  normal('Normal', '−14 LUFS, o padrão do Spotify', -14),
+  alto('Alto', '−10 LUFS, mais forte', -10);
+
+  const LoudnessLevel(this.label, this.detail, this.lufs);
+
+  final String label;
+  final String detail;
+
+  /// Alvo; nulo = sem normalização.
+  final double? lufs;
+}
+
 /// Aparência: seguir o sistema, sempre claro ou sempre escuro.
 enum AppTheme {
   sistema('Sistema', ThemeMode.system),
@@ -45,7 +63,7 @@ class Preferences {
     this.pauseFadeMs = 300,
     this.trackFadeMs = 0,
     this.volume = 1,
-    this.normalizeVolume = true,
+    this.loudness = LoudnessLevel.alto,
   });
 
   /// Fade ao pausar e ao voltar a tocar (0 = sem fade).
@@ -58,8 +76,10 @@ class Preferences {
   /// Volume do player (barra de volume no computador e na web).
   final double volume;
 
-  /// Abaixa as músicas mais altas para todas soarem parecidas.
-  final bool normalizeVolume;
+  /// Normalização de volume (todas as músicas soando parecidas).
+  final LoudnessLevel loudness;
+
+  bool get normalizeVolume => loudness != LoudnessLevel.desligado;
 
   /// Streaming no Wi-Fi (ou cabo) e na web.
   final AudioQuality wifiQuality;
@@ -83,7 +103,7 @@ class Preferences {
     int? pauseFadeMs,
     int? trackFadeMs,
     double? volume,
-    bool? normalizeVolume,
+    LoudnessLevel? loudness,
   }) => Preferences(
     wifiQuality: wifiQuality ?? this.wifiQuality,
     mobileQuality: mobileQuality ?? this.mobileQuality,
@@ -93,7 +113,7 @@ class Preferences {
     pauseFadeMs: pauseFadeMs ?? this.pauseFadeMs,
     trackFadeMs: trackFadeMs ?? this.trackFadeMs,
     volume: volume ?? this.volume,
-    normalizeVolume: normalizeVolume ?? this.normalizeVolume,
+    loudness: loudness ?? this.loudness,
   );
 }
 
@@ -131,12 +151,18 @@ class PreferencesNotifier extends Notifier<Preferences> {
     final trackFade = int.tryParse(await read('track_fade_ms') ?? '');
     final volume = double.tryParse(await read('volume') ?? '');
     final normalize = await read('normalize_volume');
+    final loudness = await read('loudness_level');
     if (!ref.mounted) return;
     state = Preferences(
       pauseFadeMs: pauseFade ?? 300,
       trackFadeMs: trackFade ?? 0,
       volume: (volume ?? 1).clamp(0.0, 1.0),
-      normalizeVolume: normalize != 'false',
+      // Antes era liga/desliga: desligado continua desligado.
+      loudness: LoudnessLevel.values.firstWhere(
+        (l) => l.name == loudness,
+        orElse: () =>
+            normalize == 'false' ? LoudnessLevel.desligado : LoudnessLevel.alto,
+      ),
       wifiQuality: _quality(wifi, AudioQuality.original),
       mobileQuality: _quality(
         mobile ?? (legacy == 'baixa' ? 'economica' : legacy),
@@ -197,9 +223,9 @@ class PreferencesNotifier extends Notifier<Preferences> {
     }
   }
 
-  Future<void> setNormalizeVolume(bool value) async {
-    state = state.copyWith(normalizeVolume: value);
-    await _store.write(_key('normalize_volume'), '$value');
+  Future<void> setLoudness(LoudnessLevel level) async {
+    state = state.copyWith(loudness: level);
+    await _store.write(_key('loudness_level'), level.name);
   }
 
   Future<void> setTheme(AppTheme theme) async {

@@ -77,4 +77,18 @@ void main() {
     );
     expect(find.text('Aparência'), findsOneWidget);
   });
+
+  testWidgets('Normalizar volume: escolher o nível', (tester) async {
+    final container = await pumpBergastream(
+      tester,
+      size: const Size(400, 2600),
+    );
+    await openSettings(tester);
+    expect(find.text('Normalizar volume · Alto'), findsOneWidget);
+    // "Normal" também é uma qualidade de áudio: o da normalização é o último.
+    await tester.tap(find.text('Normal').last);
+    await tester.pumpAndSettle();
+    expect(container.read(preferencesProvider).loudness, LoudnessLevel.normal);
+    expect(find.text('Normalizar volume · Normal'), findsOneWidget);
+  });
 }

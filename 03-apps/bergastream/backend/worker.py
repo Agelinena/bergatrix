@@ -13,6 +13,7 @@ from app.downloads import queue as q
 from app.downloads import deemix, youtube as yt_downloader
 from app.core.db import create_pool, close_pool
 from app.tracks import repository as track_repo
+from app.downloads import failures
 
 logging.basicConfig(level=getattr(logging, settings.log_level.upper(), logging.INFO), format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger("bergastream.worker")
@@ -37,6 +38,14 @@ async def spotify_watch(redis) -> None:
             _restart.set()
             return
         await asyncio.sleep(3600 * (SPOTIFY_CHECK_HOURS if result.get("ok") else SPOTIFY_RETRY_HOURS))
+
+
+# Texto da falha na aba de admin (o detalhe fica no log do worker).
+_FAIL_REASON = {
+    "youtube": "O vídeo do YouTube não baixou",
+    "ytmusic": "O vídeo do YouTube não baixou",
+    "deezer": "Não baixou do Deezer nem do YouTube",
+}
 
 
 async def process_job(redis, pool, job_id: str) -> None:
@@ -73,11 +82,15 @@ async def process_job(redis, pool, job_id: str) -> None:
             success, prov = await _do_download_spotify(req, track_id)
         if success:
             await q.set_job_status(redis, job_id, "done", provider_used=prov or "")
+            await failures.resolve(pool, track_id)
         else:
             await q.set_job_status(redis, job_id, "error", error="Falhou")
+            await failures.record(pool, track_id, provider, job.get("external_id", ""),
+                                  _FAIL_REASON.get(provider, "Nenhuma fonte encontrou a música"))
     except Exception as exc:
         logger.exception("[worker] erro em %s: %s", track_id[:8], exc)
         await q.set_job_status(redis, job_id, "error", error=str(exc))
+        await failures.record(pool, track_id, provider, job.get("external_id", ""), str(exc))
     finally:
         await q.mark_done(redis, track_id)
 

@@ -299,29 +299,27 @@ class _PlaybackCard extends ConsumerWidget {
             step: 250,
             onChanged: notifier.setTrackFade,
           ),
-          Row(
+          const SizedBox(height: 14),
+          Text(
+            'Normalizar volume · ${prefs.loudness.label}',
+            style: BergaText.body.copyWith(color: c.tx),
+          ),
+          Text(
+            '${prefs.loudness.detail}. As músicas altas descem; as baixas '
+            'sobem até o limite em que não distorcem.',
+            style: mu,
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: BergaSizes.chipGap,
+            runSpacing: 8,
             children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Normalizar volume',
-                      style: BergaText.body.copyWith(color: c.tx),
-                    ),
-                    Text(
-                      'Abaixa as músicas mais altas para todas soarem '
-                      'parecidas.',
-                      style: mu,
-                    ),
-                  ],
+              for (final level in LoudnessLevel.values)
+                AppChip(
+                  label: level.label,
+                  active: level == prefs.loudness,
+                  onTap: () => notifier.setLoudness(level),
                 ),
-              ),
-              Switch(
-                value: prefs.normalizeVolume,
-                onChanged: notifier.setNormalizeVolume,
-                activeThumbColor: c.gr,
-              ),
             ],
           ),
         ],

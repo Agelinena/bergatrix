@@ -73,6 +73,14 @@ class FakeAudioEngine implements AudioEngine {
     volumes.add(v);
   }
 
+  /// Ganho acima de 100% pedido (dB) e quanto o motor falso aceita.
+  double boost = 0;
+  @override
+  double maxBoostDb = 12;
+
+  @override
+  Future<void> setBoost(double db) async => boost = db.clamp(0, maxBoostDb);
+
   @override
   void play() {
     playing = true;

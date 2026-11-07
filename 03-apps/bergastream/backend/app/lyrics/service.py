@@ -4,6 +4,11 @@ sem chave. Cada faixa é buscada uma vez e guardada na tabela `lyrics`
 
 Formato LRC: "[mm:ss.xx] texto" — o app destaca a linha atual e rola
 sozinho conforme a música toca.
+
+Qualquer pessoa logada pode corrigir a letra de uma faixa (vale para todos):
+o atraso/adiantamento (`offset_ms`, já aplicado nos tempos devolvidos) e o
+texto. Letra corrigida não é trocada pela do LRCLIB; "buscar de novo"
+desfaz a correção.
 """
 from __future__ import annotations
 
@@ -43,6 +48,14 @@ class Lyrics(BaseModel):
     synced: list[LyricLine] = []
     plain: str | None = None
     source: str = "lrclib"
+    track_id: str | None = None
+    # Já somado aos tempos de [synced]; o app mostra no ajuste.
+    offset_ms: int = 0
+    # Texto LRC como está guardado (sem o ajuste), para o editor.
+    lrc: str | None = None
+    edited: bool = False
+
+MAX_OFFSET_MS = 30_000
 
 
 def parse_lrc(text: str | None) -> list[LyricLine]:
@@ -101,10 +114,23 @@ async def fetch_lrclib(title: str, artist: str, album: str, duration: int) -> di
     return None
 
 
+def format_lrc(lines: list[LyricLine]) -> str:
+    def stamp(ms: int) -> str:
+        ms = max(ms, 0)
+        return f"[{ms // 60000:02d}:{ms // 1000 % 60:02d}.{ms % 1000 // 10:02d}]"
+    return "\n".join(f"{stamp(line.time_ms)} {line.text}".rstrip() for line in lines)
+
+
 def _to_lyrics(row) -> Lyrics:
+    track_id = str(row["track_id"])
     if not row["found"]:
-        return Lyrics(found=False)
-    return Lyrics(found=True, synced=parse_lrc(row["synced"]), plain=row["plain"], source=row["source"])
+        return Lyrics(found=False, track_id=track_id)
+    offset = row["offset_ms"] or 0
+    lines = [LyricLine(time_ms=max(line.time_ms + offset, 0), text=line.text)
+             for line in parse_lrc(row["synced"])]
+    return Lyrics(found=True, synced=lines, plain=row["plain"], source=row["source"],
+                  track_id=track_id, offset_ms=offset, lrc=row["synced"],
+                  edited=row["edited_at"] is not None)
 
 
 async def lyrics_for(pool: "asyncpg.Pool", track_id: str) -> Lyrics:
@@ -115,14 +141,14 @@ async def lyrics_for(pool: "asyncpg.Pool", track_id: str) -> Lyrics:
         "SELECT title, artist, coalesce(album, '') AS album, duration_seconds FROM tracks WHERE id = $1",
         track_id)
     if track is None:
-        return Lyrics(found=False)
+        return Lyrics(found=False, track_id=track_id)
     try:
         item = await fetch_lrclib(track["title"], track["artist"], track["album"],
                                   int(track["duration_seconds"] or 0))
     except httpx.HTTPError as exc:
         # LRCLIB fora do ar: não guarda nada (tenta de novo na próxima vez).
         logger.info("[lyrics] LRCLIB falhou para %s: %s", track["title"], exc)
-        return _to_lyrics(row) if row else Lyrics(found=False)
+        return _to_lyrics(row) if row else Lyrics(found=False, track_id=track_id)
     found = item is not None
     await pool.execute(
         """INSERT INTO lyrics (track_id, found, synced, plain, fetched_at)
@@ -130,4 +156,44 @@ async def lyrics_for(pool: "asyncpg.Pool", track_id: str) -> Lyrics:
            ON CONFLICT (track_id) DO UPDATE
            SET found = $2, synced = $3, plain = $4, fetched_at = now()""",
         track_id, found, (item or {}).get("syncedLyrics"), (item or {}).get("plainLyrics"))
-    return await lyrics_for(pool, track_id) if found else Lyrics(found=False)
+    return await lyrics_for(pool, track_id) if found else Lyrics(found=False, track_id=track_id)
+
+
+class LyricsError(Exception):
+    pass
+
+
+async def edit(pool, track_id: str, user_id: str, *, offset_ms: int | None = None,
+               lrc: str | None = None, plain: str | None = None) -> Lyrics:
+    """Corrige a letra. [lrc] vazio apaga a sincronizada; [plain] idem."""
+    if offset_ms is not None and abs(offset_ms) > MAX_OFFSET_MS:
+        raise LyricsError("Ajuste de no máximo 30 s para cada lado.")
+    if lrc is not None and lrc.strip() and not parse_lrc(lrc):
+        raise LyricsError('Nenhuma linha com tempo. Use o formato "[mm:ss.xx] texto".')
+    row = await pool.fetchrow("SELECT * FROM lyrics WHERE track_id = $1", track_id)
+    synced = row["synced"] if row else None
+    text = row["plain"] if row else None
+    offset = row["offset_ms"] if row else 0
+    if lrc is not None:
+        synced = lrc.strip() or None
+    if plain is not None:
+        text = plain.strip() or None
+    if offset_ms is not None:
+        offset = offset_ms
+    if not synced and not text:
+        raise LyricsError("A letra ficou vazia.")
+    source = "manual" if (lrc is not None or plain is not None) else (row["source"] if row else "manual")
+    await pool.execute(
+        """INSERT INTO lyrics (track_id, found, synced, plain, source, offset_ms, edited_by, edited_at)
+           VALUES ($1, true, $2, $3, $4, $5, $6, now())
+           ON CONFLICT (track_id) DO UPDATE
+           SET found = true, synced = $2, plain = $3, source = $4, offset_ms = $5,
+               edited_by = $6, edited_at = now()""",
+        track_id, synced, text, source, offset, user_id)
+    return _to_lyrics(await pool.fetchrow("SELECT * FROM lyrics WHERE track_id = $1", track_id))
+
+
+async def reset(pool, track_id: str) -> Lyrics:
+    """Desfaz a correção: busca de novo no LRCLIB."""
+    await pool.execute("DELETE FROM lyrics WHERE track_id = $1", track_id)
+    return await lyrics_for(pool, track_id)
