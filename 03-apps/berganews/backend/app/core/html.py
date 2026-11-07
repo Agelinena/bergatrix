@@ -150,21 +150,33 @@ def _key(text: str) -> str:
 
 def drop_leading_title(html: str, title: str) -> str:
     """Tira a manchete repetida no começo do texto (o trafilatura e alguns
-    feeds põem o título como primeiro bloco; o leitor já mostra o título)."""
+    feeds põem o título como primeiro bloco, às vezes duas vezes, como a BBC:
+    <h1> e depois <p><strong>; o leitor já mostra o título)."""
     if not html or not title:
         return html
     root = fragment(html)
     if (root.text or "").strip():
         return html
-    first = next(iter(root), None)
-    if first is None or first.tag not in ("h1", "h2", "h3", "p"):
-        return html
-    text, want = _key(first.text_content()), _key(title)
-    same = text == want or (first.tag != "p" and len(text) >= 20 and (text in want or want in text))
-    if not same or first.find(".//img") is not None:
-        return html
-    tail = first.tail
-    root.remove(first)
-    if tail and tail.strip():
-        root.text = (root.text or "") + tail
-    return serialize_children(root).strip()
+    want = _key(title)
+    changed = False
+    for _ in range(2):
+        first = next(iter(root), None)
+        if first is None or first.tag not in ("h1", "h2", "h3", "p"):
+            break
+        text = _key(first.text_content())
+        loose = first.tag != "p" or len(first) == 1 and first[0].tag in ("strong", "b")
+        same = text == want or (loose and len(text) >= 20 and (text in want or want in text))
+        if not same or first.find(".//img") is not None:
+            break
+        tail = first.tail
+        root.remove(first)
+        if tail and tail.strip():
+            root.text = (root.text or "") + tail
+        changed = True
+    return serialize_children(root).strip() if changed else html
+
+
+def trafilatura_images(html: str) -> str:
+    """O HTML do trafilatura traz as fotos como <graphic src=…>, que a limpeza
+    não conhece (e jogaria fora): vira <img>."""
+    return re.sub(r"<graphic\b", "<img", html)

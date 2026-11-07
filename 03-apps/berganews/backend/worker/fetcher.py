@@ -129,13 +129,16 @@ async def feeds_loop(pool) -> None:
 
 def _extract(page: bytes, url: str) -> tuple[str, str]:
     """Página → (HTML limpo, texto). Vazio se o trafilatura não achar o artigo."""
+    # Páginas AMP (o G1) usam <amp-img>, que o trafilatura não vê como foto:
+    # sobrava só a legenda. Troca nos bytes (vale para qualquer codificação).
+    page = page.replace(b"<amp-img", b"<img").replace(b"</amp-img>", b"")
     extracted = trafilatura.extract(
         page, url=url, output_format="html", include_images=True, include_links=True,
         include_formatting=True, include_tables=True, include_comments=False,
         favor_precision=True, deduplicate=True)
     if not extracted:
         return "", ""
-    clean = h.sanitize(extracted, url)
+    clean = h.sanitize(h.trafilatura_images(extracted), url)
     return clean, h.to_text(clean)
 
 
@@ -160,13 +163,18 @@ async def extract_article(pool, client, row) -> None:
         found_html, found_text = await asyncio.to_thread(_extract, page, str(r.url))
         if not row["image_url"]:
             image = await asyncio.to_thread(_og_image, page, str(r.url))
+        found_html = h.drop_leading_title(found_html, row["title"])
+        found_text = h.to_text(found_html)
         if len(found_text) >= settings.extract_min_chars:
-            found_html = h.drop_leading_title(found_html, row["title"])
-            status, content, text = "ok", found_html, h.to_text(found_html)
+            status, content, text = "ok", found_html, found_text
     except http.FetchError as exc:
         status, error = "error", str(exc)[:300]
     if text is None and content:
+        # Sem a página (paywall, fora do ar): o texto que veio no feed, se
+        # for a matéria inteira, ainda vale como texto completo.
         text = h.to_text(content)
+        if len(text) >= settings.extract_min_chars:
+            status = "ok"
     detected = lang.detect(text or f"{row['title']}. {row['summary'] or ''}", row["feed_language"])
     await pool.execute(
         """UPDATE articles SET content_status = $2, content_error = $3, content_html = $4,
@@ -230,11 +238,13 @@ async def cleanup(pool) -> None:
              AND NOT EXISTS (SELECT 1 FROM article_states st
                              WHERE st.article_id = a.id AND st.saved_at IS NOT NULL)""",
         timedelta(days=settings.article_retention_days))
-    # Velhos demais para buscar o texto: ficam com o trecho do RSS.
+    # Velhos demais para buscar a página: ficam com o que veio no feed.
     await pool.execute(
-        """UPDATE articles SET content_status = 'short', extracted_at = now()
+        """UPDATE articles SET extracted_at = now(),
+                  content_status = CASE WHEN length(coalesce(content_text, '')) >= $2
+                                        THEN 'ok' ELSE 'short' END
            WHERE content_status IS NULL AND fetched_at <= now() - $1::interval""",
-        timedelta(hours=settings.extract_max_age_hours))
+        timedelta(hours=settings.extract_max_age_hours), settings.extract_min_chars)
     # Feeds sem assinatura e sem artigo salvo.
     feeds = await pool.execute(
         """DELETE FROM feeds f WHERE NOT EXISTS (SELECT 1 FROM subscriptions s WHERE s.feed_id = f.id)

@@ -67,6 +67,9 @@ async def save_entries(conn, feed_id: int, parsed: ParsedFeed, first_fetch: bool
             continue
         content = h.drop_leading_title(e.content_html, e.title) if e.content_html else None
         text = h.to_text(content) if content else ""
+        # O texto que vem no feed fica de reserva: muitos (o G1, por exemplo)
+        # mandam a matéria num bloco só, sem parágrafo, foto nem negrito. O
+        # worker lê a página e só fica com o do feed se a página falhar.
         full = len(text) >= settings.extract_min_chars
         rows.append((
             feed_id, e.guid, e.url, e.title, e.author, e.summary, e.image_url,
@@ -74,8 +77,8 @@ async def save_entries(conn, feed_id: int, parsed: ParsedFeed, first_fetch: bool
             published,
             content if full else None,
             text if full else None,
-            "ok" if full else None,
-            now if full else None,
+            None,
+            None,
         ))
     if not rows:
         return 0

@@ -6,6 +6,7 @@ import '../core/http.dart';
 import '../core/widgets.dart';
 import '../data/api.dart';
 import '../data/models.dart';
+import 'manage.dart';
 
 final subscriptionsProvider = FutureProvider.autoDispose<List<Subscription>>(
   (ref) => ref.watch(apiProvider).subscriptions(),
@@ -28,53 +29,15 @@ Future<void> openFeed(
   ),
 );
 
-/// Aba "Veículos": cada assinatura, com o número de não lidas.
-class SourcesTab extends ConsumerWidget {
+/// Aba "Veículos": os veículos por pasta, com o número de não lidas; o menu
+/// de cada um renomeia e muda de pasta, o de cada pasta renomeia e apaga.
+class SourcesTab extends StatelessWidget {
   const SourcesTab({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final subs = ref.watch(subscriptionsProvider);
-    return subs.when(
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) =>
-          ErrorView(e, onRetry: () => ref.invalidate(subscriptionsProvider)),
-      data: (list) {
-        if (list.isEmpty) {
-          return const MessageView(
-            icon: Icons.rss_feed,
-            title: 'Você ainda não assina nenhum veículo',
-            message: 'Toque em + para adicionar pelo endereço do site ou do feed.',
-          );
-        }
-        return RefreshIndicator(
-          onRefresh: () => ref.refresh(subscriptionsProvider.future),
-          child: ListView.builder(
-            itemCount: list.length,
-            itemBuilder: (context, i) {
-              final s = list[i];
-              return ListTile(
-                leading: CircleAvatar(
-                  child: Text(s.title.isEmpty ? '?' : s.title[0].toUpperCase()),
-                ),
-                title: Text(s.title, maxLines: 1, overflow: TextOverflow.ellipsis),
-                subtitle: s.error != null
-                    ? Text(
-                        'Com problema: ${s.error}',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(color: Theme.of(context).colorScheme.error),
-                      )
-                    : null,
-                trailing: s.unread > 0 ? Badge.count(count: s.unread) : null,
-                onTap: () => openFeed(context, title: s.title, feedId: s.feedId),
-              );
-            },
-          ),
-        );
-      },
-    );
-  }
+  Widget build(BuildContext context) => SubscriptionsList(
+    onOpen: (s) => openFeed(context, title: s.title, feedId: s.feedId),
+  );
 }
 
 /// Aba "Pastas".

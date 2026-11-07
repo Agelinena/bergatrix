@@ -125,8 +125,9 @@ async def subscribe(body: SubscribeRequest, user: CurrentUser = Depends(current_
         feed_id = existing
     await pool.execute(
         """INSERT INTO subscriptions (user_id, feed_id, folder_id, title) VALUES ($1, $2, $3, $4)
-           ON CONFLICT (user_id, feed_id) DO UPDATE SET folder_id = coalesce(EXCLUDED.folder_id,
-               subscriptions.folder_id)""",
+           ON CONFLICT (user_id, feed_id) DO UPDATE SET
+               folder_id = coalesce(EXCLUDED.folder_id, subscriptions.folder_id),
+               title = coalesce(EXCLUDED.title, subscriptions.title)""",
         user.id, feed_id, body.folder_id, (body.title or "").strip() or None)
     # Coleta já, para buscar o texto completo dos artigos que acabaram de chegar.
     await (await get_redis()).rpush(store.FETCH_NOW_KEY, feed_id)

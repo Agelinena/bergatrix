@@ -303,3 +303,38 @@ def test_drops_player_menus():
     clean = h.sanitize(html)
     assert "0.5" not in clean and "<ol>" not in clean
     assert "<li>Ana</li>" in clean
+
+
+def test_trafilatura_images_and_double_title():
+    raw = ('<html><body><h1>O que está por trás</h1><p><strong>O que está por trás</strong></p>'
+           '<graphic src="https://img.example.com/a.jpg" alt="Foto"/><p>Texto <b>forte</b>.</p></body></html>')
+    clean = h.drop_leading_title(h.sanitize(h.trafilatura_images(raw), "https://x.example.com/"),
+                                 "O que está por trás")
+    assert clean.startswith('<img src="https://img.example.com/a.jpg"')
+    assert "<b>forte</b>" in clean and "<h1>" not in clean and "<strong>O que" not in clean
+
+
+def test_extract_keeps_images_and_paragraphs():
+    from worker.fetcher import _extract
+    para = ("O Congresso Nacional aprovou nesta quarta-feira a proposta que muda as regras do "
+            "orçamento, depois de uma longa negociação entre governo e oposição. ")
+    page = f"""<html><body><article><h1>Congresso aprova</h1><p>{para * 3}</p>
+      <figure><img src="/fotos/plenario.jpg" alt="Plenário"><figcaption>Plenário</figcaption></figure>
+      <p><strong>Destaque:</strong> {para * 2}</p><h2>Próximos passos</h2><p>{para * 2}</p>
+      </article></body></html>""".encode()
+    html, text = _extract(page, "https://jornal.example.com/politica/1")
+    assert 'src="https://jornal.example.com/fotos/plenario.jpg"' in html
+    assert html.count("<p>") >= 3 and "<h2>" in html
+
+
+def test_extract_amp_images():
+    from worker.fetcher import _extract
+    para = ("Chuvas intensas voltaram a causar estragos no Oeste de Santa Catarina na manhã deste "
+            "sábado, segundo a Defesa Civil, que confirmou tornados na região durante a semana. ")
+    page = f"""<html><body><article><h1>Cidades alagadas</h1>
+      <figure><amp-img src="https://img.example.com/foto.jpeg" alt="Temporais causam estragos"
+        width="1600" height="900" layout="responsive"></amp-img>
+        <figcaption>Temporais causam estragos</figcaption></figure>
+      <p>{para * 3}</p><p>{para * 3}</p></article></body></html>""".encode()
+    html, _ = _extract(page, "https://g1.example.com/sc/noticia.ghtml")
+    assert 'src="https://img.example.com/foto.jpeg"' in html

@@ -145,10 +145,10 @@ class Api {
       Subscription.fromJson(s as Json),
   ];
 
-  Future<Subscription> subscribe(String url, {int? folderId}) async {
+  Future<Subscription> subscribe(String url, {int? folderId, String? title}) async {
     final r = await _dio.post<Json>(
       '/api/subscriptions',
-      data: {'url': url, 'folder_id': ?folderId},
+      data: {'url': url, 'folder_id': ?folderId, 'title': ?title},
       options: Options(receiveTimeout: const Duration(seconds: 90)),
     );
     return Subscription.fromJson(r.data!);
@@ -178,8 +178,10 @@ class Api {
     for (final f in await _list('/api/folders')) Folder.fromJson(f as Json),
   ];
 
-  Future<void> createFolder(String name) =>
-      _dio.post<void>('/api/folders', data: {'name': name});
+  Future<Folder> createFolder(String name) async {
+    final r = await _dio.post<Json>('/api/folders', data: {'name': name});
+    return Folder.fromJson(r.data!);
+  }
 
   Future<void> renameFolder(int id, String name) =>
       _dio.patch<void>('/api/folders/$id', data: {'name': name});

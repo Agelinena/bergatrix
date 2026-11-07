@@ -3780,9 +3780,9 @@
     "semantic_hash": ""
   },
   "03-apps/berganews/backend/app/core/html.py": {
-    "mtime": 1794060128.4394867,
-    "seen": 1794060843.7540395,
-    "ast_hash": "e6dcc61c3058aa7baf6da233f408af91",
+    "mtime": 1794062403.3202744,
+    "seen": 1794062893.256787,
+    "ast_hash": "484ad0c49a1b5957ea9f175114bb2b51",
     "semantic_hash": ""
   },
   "03-apps/berganews/backend/app/core/http.py": {
@@ -3840,15 +3840,15 @@
     "semantic_hash": ""
   },
   "03-apps/berganews/backend/app/feeds/routes.py": {
-    "mtime": 1794059334.5674665,
-    "seen": 1794060843.754121,
-    "ast_hash": "a7ba2dcb43c856f1b95fe90d64612354",
+    "mtime": 1794062573.5946467,
+    "seen": 1794062893.2570674,
+    "ast_hash": "eaf894c3d32acd6b845f7166703e1153",
     "semantic_hash": ""
   },
   "03-apps/berganews/backend/app/feeds/store.py": {
-    "mtime": 1794059622.6038797,
-    "seen": 1794060843.7541215,
-    "ast_hash": "77e35a0de4ca0009e6c6eced9af46cbf",
+    "mtime": 1794062385.8408906,
+    "seen": 1794062893.2570693,
+    "ast_hash": "2ccf8821bf53492b3cfe62513bc43d29",
     "semantic_hash": ""
   },
   "03-apps/berganews/backend/app/images/__init__.py": {
@@ -3894,9 +3894,9 @@
     "semantic_hash": ""
   },
   "03-apps/berganews/backend/tests/test_units.py": {
-    "mtime": 1794060128.4494722,
-    "seen": 1794060843.7542741,
-    "ast_hash": "30309e1590a3e685ac5ab74aebe0e7ba",
+    "mtime": 1794062786.9545612,
+    "seen": 1794062893.2574449,
+    "ast_hash": "4367dd7f7176709084f50e375c89d48c",
     "semantic_hash": ""
   },
   "03-apps/berganews/backend/worker/__init__.py": {
@@ -3912,9 +3912,9 @@
     "semantic_hash": ""
   },
   "03-apps/berganews/backend/worker/fetcher.py": {
-    "mtime": 1794059334.567371,
-    "seen": 1794060843.7543077,
-    "ast_hash": "86e03c9a645d9414ad1d48f90cd1e6dd",
+    "mtime": 1794062786.9506426,
+    "seen": 1794062893.2575002,
+    "ast_hash": "71ed7a5f38e29433abc43acec275a716",
     "semantic_hash": ""
   },
   "03-apps/berganews/docker-compose.yml": {
@@ -4116,15 +4116,15 @@
     "semantic_hash": ""
   },
   "03-apps/berganews/frontend/lib/feeds/add_feed.dart": {
-    "mtime": 1794054975.106096,
-    "seen": 1794056463.8186932,
-    "ast_hash": "71da93d3d823aff9ebe3afad50bee5a7",
+    "mtime": 1794062562.1608145,
+    "seen": 1794062893.258152,
+    "ast_hash": "b9023b78367c3bc308e60084b7c1f426",
     "semantic_hash": ""
   },
   "03-apps/berganews/frontend/lib/feeds/feeds_tabs.dart": {
-    "mtime": 1794054975.1062975,
-    "seen": 1794056463.8186953,
-    "ast_hash": "b8884a4622e5c69ce9e55ed8254b785c",
+    "mtime": 1794062543.9536507,
+    "seen": 1794062893.2581532,
+    "ast_hash": "4dd126d2ace193a7bd1f142f5f708e76",
     "semantic_hash": ""
   },
   "03-apps/berganews/frontend/lib/home/home_screen.dart": {
@@ -4158,9 +4158,9 @@
     "semantic_hash": ""
   },
   "03-apps/berganews/frontend/lib/settings/manage_screens.dart": {
-    "mtime": 1794054975.1068184,
-    "seen": 1794056463.8187087,
-    "ast_hash": "f628576efc795c7323d75c8d5b0b2ef3",
+    "mtime": 1794062543.953741,
+    "seen": 1794062893.2583082,
+    "ast_hash": "93e40117c9c1a627600db7bfc839e6b7",
     "semantic_hash": ""
   },
   "03-apps/berganews/frontend/lib/settings/settings_screen.dart": {
@@ -4650,9 +4650,9 @@
     "semantic_hash": ""
   },
   "03-apps/berganews/frontend/lib/data/api.dart": {
-    "mtime": 1794054975.105708,
-    "seen": 1794056463.818688,
-    "ast_hash": "78148e8b5a27ebdede8aca8a9c77777f",
+    "mtime": 1794062562.9563994,
+    "seen": 1794062893.2581215,
+    "ast_hash": "4e5426ecbecd9d84cea90b32ae77e706",
     "semantic_hash": ""
   },
   "03-apps/berganews/frontend/lib/data/models.dart": {
@@ -4761,6 +4761,12 @@
     "mtime": 1794058823.2004259,
     "seen": 1794060843.7540855,
     "ast_hash": "861f7fa9daa45d59da616a8bd232c7df",
+    "semantic_hash": ""
+  },
+  "03-apps/berganews/frontend/lib/feeds/manage.dart": {
+    "mtime": 1794062532.3778481,
+    "seen": 1794062893.2581553,
+    "ast_hash": "2b3d5e50cc9e35ff5a5d373519c157e4",
     "semantic_hash": ""
   }
 }
