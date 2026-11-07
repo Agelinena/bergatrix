@@ -478,6 +478,7 @@ class TimelineArticle {
     this.image,
     this.language,
     this.similarity,
+    this.duplicate = false,
   });
 
   final int id;
@@ -492,6 +493,9 @@ class TimelineArticle {
   final bool manual;
   final double? similarity;
 
+  /// A mesma matéria já apareceu antes na história (outro feed republicou).
+  final bool duplicate;
+
   factory TimelineArticle.fromJson(Json j) => TimelineArticle(
     id: j['id'] as int,
     feedTitle: j['feed_title'] as String? ?? '',
@@ -504,6 +508,7 @@ class TimelineArticle {
     read: j['read'] as bool? ?? false,
     manual: j['manual'] as bool? ?? false,
     similarity: (j['similarity'] as num?)?.toDouble(),
+    duplicate: j['duplicate'] as bool? ?? false,
   );
 }
 

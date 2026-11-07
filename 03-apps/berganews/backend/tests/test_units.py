@@ -232,3 +232,74 @@ def test_embed_text_and_vector():
     text = text_for(row)
     assert text.startswith("Manchete\nxxx") and len(text) == len("Manchete\n") + 900
     assert vector_literal([0.1, -0.25]) == "[0.100000,-0.250000]"
+
+
+def test_feed_guesses():
+    g1 = discovery.guesses("https://g1.globo.com/")
+    assert "https://g1.globo.com/rss/g1/" in g1
+    bbc = discovery.guesses("https://www.bbc.com/portuguese")
+    assert bbc[0] == "https://www.bbc.com/portuguese/index.xml"
+    folha = discovery.guesses("https://www.folha.uol.com.br/")
+    assert folha[0] == "https://feeds.folha.uol.com.br/emcimadahora/rss091.xml"
+    assert len(folha) == len(set(folha))
+
+
+def test_drop_leading_title():
+    html = "<h1>Congresso aprova o orçamento</h1><p>Texto da matéria.</p>"
+    assert h.drop_leading_title(html, "Congresso aprova o orçamento") == "<p>Texto da matéria.</p>"
+    # Outro título no começo fica; parágrafo só sai se for igual.
+    assert h.drop_leading_title("<h2>Entenda</h2><p>x</p>", "Congresso aprova") .startswith("<h2>")
+    assert h.drop_leading_title("<p>Ministros do STF articulam</p><p>y</p>",
+                                "Ministros do STF articulam") == "<p>y</p>"
+
+
+def test_item_without_title_uses_description():
+    rss = b"""<?xml version="1.0"?><rss version="2.0"><channel><title>UOL</title>
+      <item><description><![CDATA[ Ministros do STF articulam reeleicao. Mais detalhes aqui. ]]></description>
+      <link>https://noticias.uol.com.br/x.htm</link><guid>https://noticias.uol.com.br/x.htm</guid></item>
+      </channel></rss>"""
+    feed = parse.parse(rss, "https://www.uol.com.br/feed")
+    assert feed.entries[0].title == "Ministros do STF articulam reeleicao."
+
+
+def test_canonical_url():
+    from app.core.urls import canonical
+    folha = ("https://redir.folha.com.br/redir/online/emcimadahora/rss091/*"
+             "https://www1.folha.uol.com.br/colunas/x/2026/11/eleicao.shtml")
+    assert canonical(folha) == "https://www1.folha.uol.com.br/colunas/x/2026/11/eleicao.shtml"
+    assert canonical("https://Site.example.com/a?utm_source=rss&id=3#topo") == "https://site.example.com/a?id=3"
+
+
+def test_publish_dates():
+    from datetime import datetime, timedelta, timezone
+    from types import SimpleNamespace
+    from app.feeds.store import publish_dates
+    now = datetime(2026, 11, 7, 12, tzinfo=timezone.utc)
+    e = lambda d: SimpleNamespace(published_at=d)  # noqa: E731
+    dated = now - timedelta(hours=3)
+    first = publish_dates([e(None), e(dated), e(None)], True, now)
+    # Primeira coleta: sem data vai para depois do mais antigo datado.
+    assert first[1] == dated and first[0] < dated and first[2] < first[0]
+    later = publish_dates([e(None)], False, now)
+    assert later[0] == now
+    # Mais velho que a retenção: não entra.
+    assert publish_dates([e(now - timedelta(days=4000))], False, now) == [None]
+
+
+def test_fix_future_timezone():
+    from datetime import datetime, timedelta, timezone
+    from app.feeds.store import fix_future
+    now = datetime(2026, 11, 7, 13, 50, tzinfo=timezone.utc)  # 10:50 em Brasília
+    # UOL: 13:35 "-0300" (= 16:35 UTC) para uma matéria das 10:35 de Brasília.
+    wrong = datetime(2026, 11, 7, 16, 35, tzinfo=timezone.utc)
+    assert fix_future(wrong, now) == datetime(2026, 11, 7, 13, 35, tzinfo=timezone.utc)
+    assert fix_future(now + timedelta(minutes=2), now) == now + timedelta(minutes=2)
+    assert fix_future(now + timedelta(days=3), now) == now
+
+
+def test_drops_player_menus():
+    html = ("<p>Texto.</p><ul><li>0.5×</li><li>1×</li><li>2×</li></ul>"
+            "<ul><li>Ana</li><li>Bia</li></ul><ol><li>1</li><li>2</li></ol>")
+    clean = h.sanitize(html)
+    assert "0.5" not in clean and "<ol>" not in clean
+    assert "<li>Ana</li>" in clean

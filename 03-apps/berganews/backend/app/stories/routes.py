@@ -69,6 +69,8 @@ class TimelineArticle(BaseModel):
     full_text: bool
     similarity: float | None
     manual: bool
+    # O mesmo endereço já apareceu antes nesta história (outro feed republicou).
+    duplicate: bool = False
 
 
 class Story(BaseModel):
@@ -172,7 +174,9 @@ async def get_story(story_id: int, user: CurrentUser = Depends(current_user)):
                   sub.user_id IS NOT NULL AS followed, a.title, a.summary, a.image_url, a.url,
                   a.language, a.published_at, st.read_at IS NOT NULL AS read,
                   st.saved_at IS NOT NULL AS saved, a.content_status = 'ok' AS full_text,
-                  sa.similarity, sa.added_by = 'manual' AS manual
+                  sa.similarity, sa.added_by = 'manual' AS manual,
+                  row_number() OVER (PARTITION BY a.url ORDER BY a.published_at, a.id) > 1
+                    AS duplicate
            FROM story_articles sa JOIN articles a ON a.id = sa.article_id
            JOIN feeds f ON f.id = a.feed_id
            LEFT JOIN subscriptions sub ON sub.feed_id = a.feed_id AND sub.user_id = $1
@@ -189,7 +193,7 @@ async def get_story(story_id: int, user: CurrentUser = Depends(current_user)):
             url=r["url"], language=r["language"], published_at=r["published_at"].isoformat(),
             read=r["read"], saved=r["saved"], full_text=bool(r["full_text"]),
             similarity=round(r["similarity"], 3) if r["similarity"] is not None else None,
-            manual=r["manual"]) for r in rows])
+            manual=r["manual"], duplicate=r["duplicate"]) for r in rows])
 
 
 @router.post("/{story_id}/merge", status_code=status.HTTP_204_NO_CONTENT)

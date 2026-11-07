@@ -414,6 +414,7 @@ class _TimelineEntry extends StatelessWidget {
                         shortDateTime(article.publishedAt),
                         article.feedTitle,
                         if (!article.followed) 'não assinado',
+                        if (article.duplicate) 'republicação',
                         if (article.language != null && article.language != 'pt')
                           languageName(article.language),
                       ].join(' · '),

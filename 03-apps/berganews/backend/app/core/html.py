@@ -35,6 +35,7 @@ _LAZY = ("data-src", "data-lazy-src", "data-original", "data-url")
 BLOCKS = {"p", "h1", "h2", "h3", "h4", "h5", "h6", "li", "blockquote", "figcaption",
           "td", "th", "dt", "dd", "caption", "pre"}
 _WS = re.compile(r"[ \t\r\f\v]+")
+_WORD3 = re.compile(r"[^\W\d_]{3}")
 
 
 def fragment(html: str):
@@ -91,6 +92,12 @@ def _drop_empty(html: str) -> str:
     for img in list(root.iter("img")):
         if not (img.get("src") or "").startswith(("http://", "https://")):
             img.drop_tree()
+    # Lista sem nenhuma palavra (só "0.5× 1× 2×", "1 2 3 …"): é o menu de um
+    # player ou a paginação que o extrator pegou junto com a matéria.
+    for lst in list(root.iter("ul", "ol")):
+        texts = [(li.text_content() or "").strip() for li in lst.findall("li")]
+        if texts and all(len(t) <= 8 and not _WORD3.search(t) for t in texts):
+            lst.drop_tree()
     for el in list(root.iter("p", "figure", "li")):
         if not (el.text_content() or "").strip() and el.find(".//img") is None:
             el.drop_tree()
@@ -135,3 +142,29 @@ def proxy_images(html: str) -> str:
             img.set("src", image_link(src))
             img.set("loading", "lazy")
     return serialize_children(root)
+
+
+def _key(text: str) -> str:
+    return "".join(ch for ch in (text or "").lower() if ch.isalnum())
+
+
+def drop_leading_title(html: str, title: str) -> str:
+    """Tira a manchete repetida no começo do texto (o trafilatura e alguns
+    feeds põem o título como primeiro bloco; o leitor já mostra o título)."""
+    if not html or not title:
+        return html
+    root = fragment(html)
+    if (root.text or "").strip():
+        return html
+    first = next(iter(root), None)
+    if first is None or first.tag not in ("h1", "h2", "h3", "p"):
+        return html
+    text, want = _key(first.text_content()), _key(title)
+    same = text == want or (first.tag != "p" and len(text) >= 20 and (text in want or want in text))
+    if not same or first.find(".//img") is not None:
+        return html
+    tail = first.tail
+    root.remove(first)
+    if tail and tail.strip():
+        root.text = (root.text or "") + tail
+    return serialize_children(root).strip()

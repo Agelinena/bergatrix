@@ -1,6 +1,7 @@
 """Gravar o que veio do feed (API, ao assinar, e worker, na coleta)."""
 from __future__ import annotations
 
+import math
 from datetime import datetime, timedelta, timezone
 
 from app.config import settings
@@ -24,22 +25,54 @@ async def upsert_feed(conn, url: str, parsed: ParsedFeed) -> int:
         url, parsed.title, parsed.site_url, parsed.description, parsed.language)
 
 
-async def save_entries(conn, feed_id: int, parsed: ParsedFeed) -> int:
+def fix_future(published: datetime, now: datetime) -> datetime:
+    """Data no futuro é quase sempre fuso errado no feed (o UOL manda a hora
+    UTC com "-0300"): volta as horas inteiras que sobram. Mais de 15 h no
+    futuro não é fuso; vira "agora"."""
+    ahead = published - now
+    if ahead <= timedelta(minutes=5):
+        return published
+    if ahead < timedelta(hours=15):
+        return published - timedelta(hours=math.ceil(ahead.total_seconds() / 3600))
+    return now
+
+
+def publish_dates(entries, first_fetch: bool, now: datetime) -> list[datetime | None]:
+    """Data de cada item; None = não guardar (mais velho que a retenção).
+
+    Item sem data vira "visto agora", menos na primeira coleta do feed: aí
+    ele é o acervo do site (o UOL manda dezenas de matérias de sempre sem
+    data), e vai para depois do item datado mais antigo, em vez de encher o
+    topo da aba Todas."""
+    oldest_allowed = now - timedelta(days=settings.article_retention_days)
+    dated = [e.published_at for e in entries if e.published_at]
+    floor = min(dated) if dated else now - timedelta(days=1)
+    out: list[datetime | None] = []
+    for i, e in enumerate(entries):
+        published = e.published_at
+        if published is None:
+            published = floor - timedelta(minutes=i + 1) if first_fetch else now - timedelta(seconds=i)
+        published = fix_future(published, now)
+        out.append(published if published >= oldest_allowed else None)
+    return out
+
+
+async def save_entries(conn, feed_id: int, parsed: ParsedFeed, first_fetch: bool = False) -> int:
     """Insere os artigos novos e devolve quantos. Os que já existem ficam como
     estão (a manchete pode mudar no site, mas o que a pessoa leu fica)."""
     now = datetime.now(timezone.utc)
     rows = []
-    for e in parsed.entries:
-        published = e.published_at or now
-        if published > now + timedelta(minutes=5):  # fuso errado no feed
-            published = now
-        text = h.to_text(e.content_html) if e.content_html else ""
+    for e, published in zip(parsed.entries, publish_dates(parsed.entries, first_fetch, now)):
+        if published is None:
+            continue
+        content = h.drop_leading_title(e.content_html, e.title) if e.content_html else None
+        text = h.to_text(content) if content else ""
         full = len(text) >= settings.extract_min_chars
         rows.append((
             feed_id, e.guid, e.url, e.title, e.author, e.summary, e.image_url,
             lang.detect(text or f"{e.title}. {e.summary or ''}", parsed.language),
             published,
-            e.content_html if full else None,
+            content if full else None,
             text if full else None,
             "ok" if full else None,
             now if full else None,

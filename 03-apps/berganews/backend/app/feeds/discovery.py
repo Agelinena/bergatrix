@@ -20,6 +20,34 @@ _TYPES = ("application/rss+xml", "application/atom+xml", "application/feed+json"
 _GUESSES = ("/feed", "/rss", "/feed.xml", "/rss.xml", "/atom.xml", "/index.xml")
 
 
+# Portais que não anunciam o feed na página e cujo endereço não dá para
+# adivinhar. Chave: o domínio sem "www.".
+KNOWN = {
+    "folha.uol.com.br": ["https://feeds.folha.uol.com.br/emcimadahora/rss091.xml"],
+    "estadao.com.br": ["https://www.estadao.com.br/arc/outboundfeeds/feeds/rss/sections/ultimas/"],
+    "agenciabrasil.ebc.com.br": ["https://agenciabrasil.ebc.com.br/rss/ultimasnoticias/feed.xml"],
+    "senado.leg.br": ["https://www12.senado.leg.br/noticias/feed/todasnoticias/RSS"],
+    "www12.senado.leg.br": ["https://www12.senado.leg.br/noticias/feed/todasnoticias/RSS"],
+}
+
+
+def guesses(url: str) -> list[str]:
+    """Endereços de costume, do mais provável ao menos: os conhecidos do
+    portal, os da seção aberta (bbc.com/portuguese → /portuguese/index.xml),
+    os da raiz e o padrão da Globo (g1.globo.com → /rss/g1/)."""
+    parts = urlsplit(url)
+    host = parts.netloc.lower()
+    root = f"{parts.scheme}://{parts.netloc}"
+    found = list(KNOWN.get(host.removeprefix("www."), []))
+    section = parts.path.rstrip("/")
+    if section:
+        found += [root + section + suffix for suffix in ("/index.xml", "/rss.xml", "/feed", "/rss")]
+    found += [root + path for path in _GUESSES]
+    label = host.removeprefix("www.").split(".")[0]
+    found += [f"{root}/rss/{label}/"]
+    return list(dict.fromkeys(found))
+
+
 def feed_links(page: bytes, base_url: str) -> list[str]:
     try:
         doc = lxml.html.fromstring(page)
@@ -63,9 +91,10 @@ async def discover(url: str) -> tuple[str, ParsedFeed]:
             return final, parse(body, final)
         except NotAFeed:
             pass
-        candidates = feed_links(body, final)
-        root = f"{urlsplit(final).scheme}://{urlsplit(final).netloc}"
-        candidates += [root + path for path in _GUESSES if root + path not in candidates]
+        # Os conhecidos primeiro: o feed que a página anuncia pode estar
+        # parado (o do Estadão traz matérias de 2015).
+        known = KNOWN.get(urlsplit(final).netloc.lower().removeprefix("www."), [])
+        candidates = list(dict.fromkeys(known + feed_links(body, final) + guesses(final)))
         for candidate in candidates:
             found = await _try(client, candidate)
             if found:

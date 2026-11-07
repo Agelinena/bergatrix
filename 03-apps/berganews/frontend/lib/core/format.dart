@@ -1,4 +1,4 @@
-/// Datas e nomes em português, sem pacote de internacionalização.
+// Datas e nomes em português, sem pacote de internacionalização.
 
 const _months = [
   'jan', 'fev', 'mar', 'abr', 'mai', 'jun',

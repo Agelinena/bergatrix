@@ -13,6 +13,9 @@ import httpx
 from app.config import settings
 
 
+REFUSED = "Endereço recusado: aponta para uma rede privada ou interna"
+
+
 class FetchError(Exception):
     """Endereço inválido, recusado, grande demais ou fora do ar."""
 
@@ -47,6 +50,9 @@ async def get(http: httpx.AsyncClient, url: str, max_bytes: int,
     check_url(url)
     try:
         async with http.stream("GET", url, headers=headers or {}) as r:
+            # O smokescreen responde 407 quando recusa o destino (http://).
+            if r.status_code == 407:
+                raise FetchError(REFUSED)
             if r.status_code == 304:
                 return r, b""
             declared = r.headers.get("content-length")
@@ -60,6 +66,6 @@ async def get(http: httpx.AsyncClient, url: str, max_bytes: int,
                 chunks.append(chunk)
             return r, b"".join(chunks)
     except httpx.ProxyError as exc:
-        raise FetchError("Endereço recusado (rede privada ou proxy fora do ar)") from exc
+        raise FetchError(REFUSED + " (ou o proxy de saída está fora do ar)") from exc
     except httpx.HTTPError as exc:
         raise FetchError(f"Falha ao baixar: {exc.__class__.__name__}") from exc

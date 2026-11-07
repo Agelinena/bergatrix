@@ -119,7 +119,7 @@ async def subscribe(body: SubscribeRequest, user: CurrentUser = Depends(current_
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
         async with pool.acquire() as conn, conn.transaction():
             feed_id = await store.upsert_feed(conn, url, parsed)
-            new = await store.save_entries(conn, feed_id, parsed)
+            new = await store.save_entries(conn, feed_id, parsed, first_fetch=True)
         logger.info("[feeds] %s assinou %s (%d artigos novos)", user.id, url, new)
     else:
         feed_id = existing

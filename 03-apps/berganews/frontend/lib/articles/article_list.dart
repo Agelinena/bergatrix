@@ -64,9 +64,9 @@ class ArticleListState extends ConsumerState<ArticleList> {
   }
 
   @override
-  void didUpdateWidget(ArticleList old) {
-    super.didUpdateWidget(old);
-    if (old.query != widget.query) reload();
+  void didUpdateWidget(ArticleList oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.query != widget.query) reload();
   }
 
   @override

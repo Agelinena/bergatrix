@@ -37,7 +37,7 @@ def _next_fetch(error_count: int) -> datetime:
 
 
 async def fetch_feed(pool, client, feed_id: int) -> None:
-    feed = await pool.fetchrow("SELECT id, url, etag, last_modified, error_count FROM feeds WHERE id = $1",
+    feed = await pool.fetchrow("SELECT id, url, etag, last_modified, error_count, last_fetched_at FROM feeds WHERE id = $1",
                                feed_id)
     if feed is None:
         return
@@ -67,7 +67,8 @@ async def fetch_feed(pool, client, feed_id: int) -> None:
         logger.info("[feed %d] falhou (%d seguidas): %s", feed_id, errors, message)
         return
     async with pool.acquire() as conn, conn.transaction():
-        new = await store.save_entries(conn, feed_id, parsed)
+        new = await store.save_entries(conn, feed_id, parsed,
+                                       first_fetch=feed["last_fetched_at"] is None)
         await conn.execute(
             """UPDATE feeds SET title = CASE WHEN title = '' THEN $2 ELSE title END,
                       site_url = coalesce(site_url, $3), description = coalesce(description, $4),
@@ -160,7 +161,8 @@ async def extract_article(pool, client, row) -> None:
         if not row["image_url"]:
             image = await asyncio.to_thread(_og_image, page, str(r.url))
         if len(found_text) >= settings.extract_min_chars:
-            status, content, text = "ok", found_html, found_text
+            found_html = h.drop_leading_title(found_html, row["title"])
+            status, content, text = "ok", found_html, h.to_text(found_html)
     except http.FetchError as exc:
         status, error = "error", str(exc)[:300]
     if text is None and content:

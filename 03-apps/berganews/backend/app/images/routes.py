@@ -14,7 +14,7 @@ import logging
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Query, status
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 
 from app.config import settings
 from app.core import http, keys
@@ -22,9 +22,13 @@ from app.core import http, keys
 logger = logging.getLogger("berganews.images")
 router = APIRouter(prefix="/api", tags=["images"])
 
+# Formatos que o Flutter decodifica em todo lugar (Android, web, computador).
+# Sem "avif" no Accept: o CDN da Globo responde AVIF a quem aceita, e o app
+# mostraria um quadrado cinza.
+ACCEPT = "image/webp,image/jpeg,image/png,image/gif;q=0.9,image/*;q=0.5"
+
 # SVG pode ter script e seria servido do nosso domínio: fica de fora.
-_TYPES = {"image/jpeg": ".jpg", "image/png": ".png", "image/gif": ".gif", "image/webp": ".webp",
-          "image/avif": ".avif"}
+_TYPES = {"image/jpeg": ".jpg", "image/png": ".png", "image/gif": ".gif", "image/webp": ".webp"}
 _HEADERS = {
     "Cache-Control": "public, max-age=604800, immutable",
     "X-Content-Type-Options": "nosniff",
@@ -52,31 +56,56 @@ async def image(u: str = Query(..., max_length=2000), s: str = Query(..., max_le
         raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Link de imagem inválido")
     base = _path(u)
     found = _cached(base)
-    if found is None:
-        lock = _locks.setdefault(base.name, asyncio.Lock())
-        async with lock:
-            found = _cached(base) or await _download(u, base)
-        _locks.pop(base.name, None)
-    if found is None:
+    if found is not None:
+        return _file(found)
+    lock = _locks.setdefault(base.name, asyncio.Lock())
+    async with lock:
+        found = _cached(base)
+        downloaded = None if found else await _download(u)
+    _locks.pop(base.name, None)
+    if found is not None:
+        return _file(found)
+    if downloaded is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Imagem indisponível")
-    media = next(t for t, ext in _TYPES.items() if ext == found.suffix)
-    return FileResponse(found, media_type=media, headers=_HEADERS)
+    media, body = downloaded
+    _store(base, media, body)
+    return Response(body, media_type=media, headers=_HEADERS)
 
 
-async def _download(url: str, base: Path) -> Path | None:
+def _file(path: Path) -> FileResponse:
+    media = next(t for t, ext in _TYPES.items() if ext == path.suffix)
+    return FileResponse(path, media_type=media, headers=_HEADERS)
+
+
+async def _download(url: str) -> tuple[str, bytes] | None:
     try:
         async with http.client(timeout=15.0) as client:
             r, body = await http.get(client, url, settings.image_max_mb * 1024 * 1024,
-                                     headers={"Accept": "image/avif,image/webp,image/*;q=0.8"})
+                                     headers={"Accept": ACCEPT})
     except http.FetchError as exc:
         logger.info("[img] %s: %s", url[:120], exc)
         return None
     kind = (r.headers.get("content-type") or "").split(";")[0].strip().lower()
     if r.status_code != 200 or kind not in _TYPES or not body:
         return None
-    target = base.with_suffix(_TYPES[kind])
-    target.parent.mkdir(parents=True, exist_ok=True)
-    tmp = target.with_suffix(".tmp")
-    tmp.write_bytes(body)
-    tmp.replace(target)
-    return target
+    return kind, body
+
+
+_warned = False
+
+
+def _store(base: Path, media: str, body: bytes) -> None:
+    """Guarda no cache. Se não der (pasta sem permissão, disco cheio), a
+    imagem sai do mesmo jeito e o log avisa uma vez."""
+    global _warned
+    target = base.with_suffix(_TYPES[media])
+    try:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        tmp = target.with_suffix(".tmp")
+        tmp.write_bytes(body)
+        tmp.replace(target)
+    except OSError as exc:
+        if not _warned:
+            _warned = True
+            logger.warning("[img] cache de imagens sem gravação (%s): confira o dono de %s "
+                           "(precisa ser %s)", exc, settings.image_cache_dir, "1000:1000")

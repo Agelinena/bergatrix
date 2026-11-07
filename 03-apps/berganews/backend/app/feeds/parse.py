@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import calendar
+import re
 import html as htmllib
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -10,6 +11,7 @@ from urllib.parse import urljoin
 import feedparser
 
 from app.core import html as h
+from app.core.urls import canonical
 
 
 @dataclass
@@ -67,6 +69,16 @@ def _text(value: str | None, limit: int) -> str | None:
     return text[:limit] or None
 
 
+def _headline(text: str | None, limit: int = 160) -> str:
+    """Primeira frase do texto, cortada numa palavra inteira."""
+    if not text:
+        return ""
+    sentence = re.split(r"(?<=[.!?])\s", text, maxsplit=1)[0].strip()
+    if len(sentence) <= limit:
+        return sentence
+    return sentence[:limit].rsplit(" ", 1)[0].rstrip(",;:") + "…"
+
+
 def parse(body: bytes, url: str) -> ParsedFeed:
     data = feedparser.parse(body)
     feed = data.get("feed", {})
@@ -81,7 +93,7 @@ def parse(body: bytes, url: str) -> ParsedFeed:
     )
     for e in data.get("entries", []):
         link = e.get("link") or ""
-        link = urljoin(url, link) if link else ""
+        link = canonical(urljoin(url, link)) if link else ""
         title = _text(e.get("title"), 500) or ""
         guid = (e.get("id") or link or title).strip()[:1000]
         if not guid or not (link or title):
@@ -94,6 +106,10 @@ def parse(body: bytes, url: str) -> ParsedFeed:
         if not content and len(summary_raw) > 1500:
             content = summary_raw
         content_html = h.sanitize(content, link or url) if content else None
+        if not title:
+            # O RSS permite item sem <title> (o UOL manda a manchete só no
+            # <description>): a manchete vira o começo do trecho.
+            title = _headline(_text(summary_raw or content, 1000))
         parsed.entries.append(Entry(
             guid=guid,
             url=link or url,
