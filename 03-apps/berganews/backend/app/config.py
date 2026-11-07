@@ -62,15 +62,19 @@ class Settings(BaseSettings):
     # Texto completo: só artigos recentes (os antigos ficam com o trecho do RSS).
     extract_max_age_hours: int = 72
     extract_batch: int = 40
-    # Abaixo disso, o texto extraído é tratado como paywall ou extração ruim.
-    extract_min_chars: int = 600
-    # Artigos que ninguém salvou somem depois de N dias.
-    article_retention_days: int = 120
+    # Abaixo disso, o texto pode ser só o começo (paywall): fica guardado, e o
+    # app avisa e oferece o site. Notas curtas do G1 têm ~500 caracteres.
+    extract_min_chars: int = 400
+    # Refazer a extração das matérias antigas (versão anterior do extrator):
+    # quantas por vez, nos intervalos da coleta.
+    reextract_batch: int = 20
+    # Matérias que ninguém salvou somem depois de N dias (5 meses), com as
+    # imagens. As salvas ficam, com as imagens guardadas no servidor.
+    article_retention_days: int = 150
 
     # ── Imagens ───────────────────────────────────────────────
     image_cache_dir: str = "/cache/images"
     image_max_mb: int = 8
-    image_cache_days: int = 30
 
     # ── IA local (Ollama) ─────────────────────────────────────
     ollama_url: str = "http://ollama:11434"

@@ -2,11 +2,13 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel, Field
 
 from app.auth.dependencies import CurrentUser, current_user
+from app.config import settings
 from app.core import http
 from app.core.db import get_pool
 from app.core.redis import get_redis
@@ -95,6 +97,17 @@ async def _own_folder(conn, user_id: str, folder_id: int | None) -> None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Pasta não encontrada")
 
 
+def stale_since(parsed):
+    """Data da matéria mais recente, se todas forem mais velhas que a
+    retenção (feed abandonado: nada entraria). None se o feed está vivo."""
+    dates = [e.published_at for e in parsed.entries if e.published_at]
+    if not dates or len(dates) < len(parsed.entries) // 2:
+        return None
+    latest = max(dates)
+    limit = datetime.now(timezone.utc) - timedelta(days=settings.article_retention_days)
+    return latest if latest < limit else None
+
+
 # ── Assinaturas ─────────────────────────────────────────────────────
 
 @router.get("/subscriptions", response_model=list[Subscription])
@@ -117,6 +130,12 @@ async def subscribe(body: SubscribeRequest, user: CurrentUser = Depends(current_
             url, parsed = await discovery.discover(body.url)
         except http.FetchError as exc:
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
+        stale = stale_since(parsed)
+        if stale:
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Esse feed está parado: a matéria mais recente é de {stale:%d/%m/%Y}. "
+                       "Procure outro endereço de feed no site do veículo.")
         async with pool.acquire() as conn, conn.transaction():
             feed_id = await store.upsert_feed(conn, url, parsed)
             new = await store.save_entries(conn, feed_id, parsed, first_fetch=True)

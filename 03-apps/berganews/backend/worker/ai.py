@@ -20,7 +20,7 @@ from lxml import etree
 
 from app.articles import translation
 from app.config import settings
-from app.core import db, html as h
+from app.core import db, html as h, videos
 from app.core.redis import get_redis
 from app.stories import cluster, embed
 
@@ -93,6 +93,8 @@ def leaf_blocks(root) -> list:
     for el in root.iter(*h.BLOCKS):
         if any(True for _ in el.iterdescendants(*h.BLOCKS)):
             continue
+        if el.find(f'.//a[@title="{videos.MARK}"]') is not None:
+            continue  # cartão de vídeo: fica como está
         if any(ch.isalpha() for ch in el.text_content()):
             blocks.append(el)
     return blocks

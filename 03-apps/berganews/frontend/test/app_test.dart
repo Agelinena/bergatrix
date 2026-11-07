@@ -5,9 +5,11 @@ import 'package:berganews/core/http.dart';
 import 'package:berganews/core/storage.dart';
 import 'package:berganews/data/api.dart';
 import 'package:berganews/data/models.dart';
+import 'package:berganews/reader/video_card.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:html/parser.dart' as html_parser;
 
 void main() {
   group('formatação', () {
@@ -158,5 +160,20 @@ void main() {
     );
     expect(find.text('Entrar com o Authentik'), findsOneWidget);
     expect(find.text('Servidor'), findsOneWidget);
+  });
+
+  test('cartão de vídeo sai do link marcado', () {
+    final doc = html_parser.parseFragment(
+      '<a href="https://globoplay.globo.com/v/1/" title="berganews:video">'
+      '<img src="/api/img?u=x" alt="Conheça o navio"></a><a href="https://x">link</a>',
+    );
+    final links = doc.querySelectorAll('a');
+    String? opened;
+    final card = videoCardFor(links[0], (url) => opened = url) as VideoCard;
+    expect(card.label, 'Conheça o navio');
+    expect(card.thumbnail, '/api/img?u=x');
+    card.onTap!();
+    expect(opened, 'https://globoplay.globo.com/v/1/');
+    expect(videoCardFor(links[1], (_) {}), isNull);
   });
 }

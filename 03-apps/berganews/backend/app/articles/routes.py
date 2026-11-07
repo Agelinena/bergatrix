@@ -13,6 +13,7 @@ from app.core import html as h
 from app.core.db import get_pool
 from app.core.redis import get_redis
 from app.articles import translation
+from app.articles.keep import KEEP_IMAGES_KEY
 from app.prefs.routes import load as load_prefs
 
 router = APIRouter(prefix="/api/articles", tags=["articles"])
@@ -242,6 +243,8 @@ async def set_state(article_id: int, body: StateIn, user: CurrentUser = Depends(
     pool = get_pool()
     await _get_visible(pool, user.id, article_id)
     await _set_state(pool, user.id, article_id, body.read, body.saved)
+    if body.saved:
+        await (await get_redis()).rpush(KEEP_IMAGES_KEY, article_id)
 
 
 @router.post("/read", status_code=status.HTTP_200_OK)

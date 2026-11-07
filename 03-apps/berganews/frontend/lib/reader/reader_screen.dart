@@ -16,6 +16,7 @@ import '../core/widgets.dart';
 import '../data/api.dart';
 import '../data/models.dart';
 import '../stories/story_screen.dart';
+import 'video_card.dart';
 
 /// Abre o artigo no leitor (ou no site, se a pessoa preferir).
 Future<void> openArticle(
@@ -309,6 +310,7 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
                       HtmlWidget(
                         _absoluteImages(html, server),
                         textStyle: bodyStyle,
+                        customWidgetBuilder: (element) => videoCardFor(element, openExternal),
                         onTapUrl: (url) async {
                           await openExternal(url);
                           return true;

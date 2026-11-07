@@ -72,9 +72,17 @@ vizinhos. Os limites são um ponto de partida: calibre com exemplos reais (READM
 1. A cada `FETCH_INTERVAL_MINUTES` (20), os feeds com assinatura, até 6 em paralelo, com `If-None-Match` e
    `If-Modified-Since`. Falhas seguidas dobram a espera, até 6 h.
 2. Assinatura nova ou botão "atualizar": a API põe o feed na fila `berganews:fetch:now` e o worker coleta na hora.
-3. Texto completo: se o feed já traz a matéria inteira, usa; senão baixa a página e extrai com o trafilatura
-   (sem menu, anúncio, rodapé). Só artigos das últimas 72 h.
-4. Limpeza às 4 h: artigos com mais de 120 dias que ninguém salvou, feeds sem ninguém, imagens sem uso há 30 dias.
+3. Texto completo: sempre pela página, com o trafilatura (sem menu, anúncio, rodapé), mantendo parágrafos,
+   subtítulos, negrito, links, citações e as fotos do corpo (`<graphic>` do trafilatura e `<amp-img>` do G1 viram
+   `<img>`). O texto que vem no feed fica só de reserva, para quando a página falha: o G1, por exemplo, manda a
+   matéria num bloco só. Texto curto (paywall) fica guardado como `short`, e o app oferece o site.
+   Vídeos viram cartões com a miniatura, que abrem no player do veículo (Globoplay, YouTube, Vimeo, a página da
+   BBC); o arquivo de vídeo não vem para o servidor (`app/core/videos.py`).
+   Quando o extrator melhora, `EXTRACT_VERSION` sobe (`worker/fetcher.py`) e o worker refaz em segundo plano as
+   matérias guardadas, sem trocar uma boa por uma pior.
+4. Limpeza às 4 h: matérias com mais de 150 dias (5 meses) que ninguém salvou, com as imagens; feeds sem
+   ninguém; imagens que nenhuma matéria guardada usa. Ao salvar uma matéria, as imagens dela vão para o
+   servidor na hora, e ficam enquanto ela estiver salva.
 
 ## API
 

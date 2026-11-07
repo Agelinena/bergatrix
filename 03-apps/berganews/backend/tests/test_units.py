@@ -338,3 +338,77 @@ def test_extract_amp_images():
       <p>{para * 3}</p><p>{para * 3}</p></article></body></html>""".encode()
     html, _ = _extract(page, "https://g1.example.com/sc/noticia.ghtml")
     assert 'src="https://img.example.com/foto.jpeg"' in html
+
+
+# ── Vídeos, reextração, retenção ────────────────────────────────────
+
+def test_globo_video_thumb_becomes_card():
+    from app.core import videos
+    html = '<p><img src="https://s03.video.glbimg.com/x240/15141862.jpg" alt="Conheça o navio"></p>'
+    out = videos.globo_thumbs_to_cards(html)
+    assert 'href="https://globoplay.globo.com/v/15141862/"' in out and 'title="berganews:video"' in out
+    # O cartão sobrevive à limpeza do HTML.
+    assert 'title="berganews:video"' in h.sanitize(out)
+
+
+def test_video_embeds_and_page_video():
+    from app.core import videos
+    page = (b'<html><head><meta property="og:type" content="video.other">'
+            b'<meta property="og:image" content="/thumb.jpg"><meta property="og:title" content="Boletim">'
+            b'</head><body><iframe src="https://www.youtube.com/embed/dQw4w9WgXcQ?rel=0"></iframe>'
+            b'<a href="https://youtube.com/embed/AAAAAAAAAAA">rodape</a></body></html>')
+    assert videos.embeds(page) == [("https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+                                    "https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg")]
+    url, thumb, title = videos.page_video(page, "https://g1.example.com/videos/x.ghtml")
+    assert thumb == "https://g1.example.com/thumb.jpg" and title == "Boletim"
+    assert videos.page_video(b"<html></html>", "https://g1.example.com/noticia/x.ghtml") is None
+    out = videos.add_embeds("<p>texto</p>", page)
+    assert out.count("berganews:video") == 1 and "Vídeos da matéria" in out
+
+
+def test_choose_keeps_partial_and_video():
+    from worker.fetcher import _choose
+    row = {"summary": "Trecho curto do RSS.", "title": "Manchete"}
+    long_text = "x" * 500
+    assert _choose(row, "<p>" + long_text + "</p>", long_text, None, None)[0] == "ok"
+    # Começo da matéria (paywall): fica guardado como 'short'.
+    partial = "Começo da matéria com mais texto que o trecho do RSS, por causa do paywall do site."
+    st, html = _choose(row, f"<p>{partial}</p>", partial, None, None)
+    assert st == "short" and partial in html
+    # Página de vídeo sem texto: cartão + trecho.
+    st, html = _choose(row, "", "", ("https://v.example.com/1", None, "Boletim"), None)
+    assert st == "ok" and "berganews:video" in html and "Trecho curto" in html
+    # Sem nada da página: o texto do feed.
+    st, html = _choose(row, "", "", None, "<p>" + "y" * 500 + "</p>")
+    assert st == "ok"
+
+
+def test_stale_feed():
+    from datetime import datetime, timezone
+    from types import SimpleNamespace
+    from app.feeds.routes import stale_since
+    old = SimpleNamespace(entries=[SimpleNamespace(published_at=datetime(2023, 5, 5, tzinfo=timezone.utc))] * 3)
+    assert stale_since(old).year == 2023
+    alive = SimpleNamespace(entries=[SimpleNamespace(published_at=datetime.now(timezone.utc))])
+    assert stale_since(alive) is None
+
+
+def test_image_cache_prune(tmp_path, monkeypatch):
+    from app.config import settings
+    from app.images import cache
+    monkeypatch.setattr(settings, "image_cache_dir", str(tmp_path))
+    keep, drop = "https://img.example.com/salva.jpg", "https://img.example.com/velha.jpg"
+    cache.store(keep, "image/jpeg", b"a")
+    cache.store(drop, "image/jpeg", b"b")
+    html = f'<p><img src="{keep}"></p>'
+    in_use = {cache.digest(u) for u in cache.urls_in(html)}
+    assert cache.prune(in_use) == 1
+    assert cache.cached(keep) and not cache.cached(drop)
+
+
+def test_globo_generic_video_removed():
+    from app.core import videos
+    html = ('<p><img src="https://s01.video.glbimg.com/x240/1.jpg" alt="Agora no g1"></p>'
+            '<p>Agora no g1</p><p>Texto</p>')
+    out = videos.globo_thumbs_to_cards(html)
+    assert "glbimg" not in out and "Agora no g1" not in out and "<p>Texto</p>" in out

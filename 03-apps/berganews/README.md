@@ -74,6 +74,16 @@ Na página **Usuários** (admin): desativar ou reativar a conta e desconectar os
 (assinaturas, salvos e pastas ficam). Para tirar o acesso: tire a pessoa do grupo no Authentik **e** desative aqui
 (as sessões abertas não dependem do Authentik).
 
+## Matérias, vídeos e retenção
+
+- O texto vem da página do veículo, com parágrafos, negrito, links, citações e fotos. Com paywall, fica o começo
+  da matéria e o app mostra "Só o trecho", com o botão para o site.
+- Vídeos aparecem como cartões com a miniatura e abrem no player do veículo. O arquivo de vídeo não é copiado
+  (vem em pedaços, muitas vezes protegido, e pesa centenas de MB).
+- Matérias com mais de **5 meses** somem, com as imagens, **menos as salvas**: ao salvar, as imagens da matéria
+  são guardadas no servidor e ficam enquanto ela estiver salva. O prazo é `BERGANEWS_ARTICLE_RETENTION_DAYS`.
+- Feed parado (a matéria mais recente é mais velha que o prazo) é recusado ao assinar, com a data da última.
+
 ## Tradução
 
 O leitor mostra o botão **Traduzir** quando a matéria está num idioma diferente do de leitura (padrão: português),

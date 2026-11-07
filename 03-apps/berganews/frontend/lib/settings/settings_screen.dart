@@ -12,7 +12,7 @@ import '../feeds/feeds_tabs.dart';
 import 'appearance_screen.dart';
 import 'manage_screens.dart';
 
-const appVersion = '0.1.0';
+const appVersion = '0.2.0';
 
 Future<void> openSettings(BuildContext context) => Navigator.of(
   context,
