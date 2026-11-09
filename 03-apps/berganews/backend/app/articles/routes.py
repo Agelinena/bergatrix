@@ -39,6 +39,9 @@ class ArticleItem(BaseModel):
     # História (mesma notícia em outros veículos): o app mostra "em N veículos".
     story_id: int | None = None
     story_sources: int = 0
+    # Outros feeds da pessoa que publicaram exatamente esta matéria (mesmo
+    # endereço): ela aparece uma vez só, creditada a todos.
+    also_in: list[str] = []
 
 
 class ArticlePage(BaseModel):
@@ -104,7 +107,11 @@ _SELECT = """
 SELECT a.id, a.feed_id, coalesce(nullif(s.title, ''), nullif(f.title, ''), f.url) AS feed_title,
        a.title, a.summary, a.image_url, a.url, a.author, a.language, a.published_at,
        st.read_at IS NOT NULL AS read, st.saved_at IS NOT NULL AS saved,
-       a.content_status = 'ok' AS full_text, sx.story_id, coalesce(sy.source_count, 0) AS story_sources
+       a.content_status = 'ok' AS full_text, sx.story_id, coalesce(sy.source_count, 0) AS story_sources,
+       ARRAY(SELECT coalesce(nullif(s2.title, ''), nullif(f2.title, ''), f2.url)
+             FROM articles d JOIN feeds f2 ON f2.id = d.feed_id
+             JOIN subscriptions s2 ON s2.feed_id = d.feed_id AND s2.user_id = $1
+             WHERE d.url = a.url AND d.id <> a.id ORDER BY d.id) AS also_in
        {extra_cols}
 FROM articles a
 JOIN feeds f ON f.id = a.feed_id
@@ -131,7 +138,7 @@ def _item(row) -> dict:
         url=row["url"], author=row["author"], language=row["language"],
         published_at=row["published_at"].isoformat(), read=row["read"], saved=row["saved"],
         full_text=bool(row["full_text"]), story_id=row["story_id"],
-        story_sources=row["story_sources"])
+        story_sources=row["story_sources"], also_in=list(row["also_in"] or []))
 
 
 @router.get("", response_model=ArticlePage)
@@ -159,6 +166,15 @@ async def list_articles(
     if folder_id is not None:
         args.append(folder_id)
         where.append(f"s.folder_id = ${len(args)}")
+    if feed_id is None and view != "saved":
+        # A mesma matéria (mesmo endereço) em vários feeds aparece uma vez só:
+        # fica a cópia mais antiga entre os feeds da pessoa (na pasta, entre os
+        # da pasta); os outros feeds vão em also_in. No feed de um veículo ela
+        # aparece sempre, e nos Salvos vale o que a pessoa salvou.
+        folder_scope = f" AND ds.folder_id = ${len(args)}" if folder_id is not None else ""
+        where.append(
+            "NOT EXISTS (SELECT 1 FROM articles d JOIN subscriptions ds ON ds.feed_id = d.feed_id "
+            f"AND ds.user_id = $1 WHERE d.url = a.url AND d.id < a.id{folder_scope})")
     if q and q.strip():
         args.append(q.strip())
         n = len(args)
@@ -227,6 +243,17 @@ async def get_article(article_id: int, user: CurrentUser = Depends(current_user)
 
 async def _set_state(pool, user_id: str, article_id: int, read: bool | None = None,
                      saved: bool | None = None) -> None:
+    if read is not None:
+        # Lido/não lido vale para todas as cópias da mesma matéria (o mesmo
+        # endereço em outros feeds), senão a outra cópia volta a aparecer.
+        await pool.execute(
+            """INSERT INTO article_states (user_id, article_id, read_at)
+               SELECT $1, b.id, CASE WHEN $3 THEN now() END
+               FROM articles a JOIN articles b ON b.url = a.url AND b.id <> a.id
+               WHERE a.id = $2
+               ON CONFLICT (user_id, article_id) DO UPDATE SET
+                 read_at = CASE WHEN $3 THEN coalesce(article_states.read_at, now()) END""",
+            user_id, article_id, read)
     await pool.execute(
         """INSERT INTO article_states (user_id, article_id, read_at, saved_at)
            VALUES ($1, $2, CASE WHEN $3 THEN now() END, CASE WHEN $4 THEN now() END)
@@ -263,10 +290,12 @@ async def mark_read(body: MarkReadIn, user: CurrentUser = Depends(current_user))
     if body.before is not None:
         args.append(body.before)
         where.append(f"a.published_at <= ${len(args)}")
+    # Inclui as cópias da mesma matéria em outros feeds (mesmo endereço).
     result = await get_pool().execute(
         f"""INSERT INTO article_states (user_id, article_id, read_at)
-            SELECT $1, a.id, now() FROM articles a
+            SELECT DISTINCT $1::uuid, b.id, now() FROM articles a
             JOIN subscriptions s ON s.feed_id = a.feed_id
+            JOIN articles b ON b.url = a.url
             WHERE {' AND '.join(where)}
             ON CONFLICT (user_id, article_id) DO UPDATE
               SET read_at = coalesce(article_states.read_at, now())""", *args)

@@ -177,7 +177,7 @@ async def main():
             return [vec(base_for[t.split("\n")[0]], 0.25) for t in texts]
 
     await embed.embed_batch(pool, FakeOllama(), rows)
-    stories = await sr.list_stories(3, 2, None, 30, me)
+    stories = await sr.list_stories(14, 2, None, 30, me)
     assert len(stories.items) == 1, [(s.title, s.source_count) for s in stories.items]
     story = stories.items[0]
     assert story.source_count == 3 and {s.title for s in story.sources} == {"Folha", "Globo", "Bbc"}
@@ -205,8 +205,48 @@ async def main():
 
     async with pool.acquire() as conn, conn.transaction():
         moved = await cluster.recluster(conn, 3)
-    after = await sr.list_stories(3, 2, None, 30, me)
+    after = await sr.list_stories(14, 2, None, 30, me)
     print("recluster ok:", moved, "artigos;", [(s.title, s.source_count) for s in after.items])
+
+    # ── A mesma matéria em dois feeds (g1 Tecnologia e g1 Economia) ──
+    def same_links(name):
+        items = "".join(
+            f"<item><title>{t}</title><link>https://g1.example.com/nvidia/{i}</link><guid>{name}-{i}</guid>"
+            f"<pubDate>Fri, 06 Nov 2026 1{i}:30:00 -0300</pubDate><description>Jensen Huang e a Nvidia.</description></item>"
+            for i, t in enumerate(["Nvidia investiga espionagem do CEO", "Ações da Nvidia caem após investigação"]))
+        return (f'<?xml version="1.0"?><rss version="2.0"><channel><title>{name}</title>'
+                f"<link>https://g1.example.com/</link><language>pt-br</language>{items}</channel></rss>").encode()
+
+    nvidia = [random.gauss(0, 1) for _ in range(1024)]
+    base_for["Nvidia investiga espionagem do CEO"] = nvidia
+    base_for["Ações da Nvidia caem após investigação"] = nvidia
+    g1 = {}
+    async with pool.acquire() as conn:
+        for name in ("G1 Tecnologia", "G1 Economia"):
+            parsed = parse.parse(same_links(name), f"https://g1.example.com/{name}")
+            g1[name] = await store.upsert_feed(conn, f"https://g1.example.com/rss/{name.split()[1]}", parsed)
+            await store.save_entries(conn, g1[name], parsed)
+            await conn.execute("INSERT INTO subscriptions (user_id, feed_id) VALUES ($1, $2)", user["id"], g1[name])
+    await pool.execute("UPDATE articles SET content_status = 'short' WHERE content_status IS NULL")
+    await embed.embed_batch(pool, FakeOllama(), await embed.pending(pool, 50))
+
+    listed = [i for i in (await ar.list_articles("all", None, None, None, None, 40, me)).items
+              if "Nvidia" in i.title]
+    assert len(listed) == 2, [(i.title, i.feed_title) for i in listed]   # uma vez cada, não quatro
+    assert all(i.feed_title == "G1 Tecnologia" and i.also_in == ["G1 Economia"] for i in listed), listed
+    eco = (await ar.list_articles("all", g1["G1 Economia"], None, None, None, 40, me)).items
+    assert len(eco) == 2   # no feed do veículo, as dele aparecem sempre
+    nv = [s for s in (await sr.list_stories(14, 2, None, 30, me)).items if "Nvidia" in s.title]
+    assert len(nv) == 1 and nv[0].source_count == 2 and nv[0].article_count == 2, nv
+    timeline = (await sr.get_story(nv[0].id, me)).articles
+    assert len(timeline) == 2 and all(a.also_in == ["G1 Economia"] for a in timeline), timeline
+    await ar.set_state(listed[0].id, ar.StateIn(read=True), me)
+    copies = await pool.fetch(
+        """SELECT st.read_at IS NOT NULL AS read FROM articles a
+           LEFT JOIN article_states st ON st.article_id = a.id AND st.user_id = $1
+           WHERE a.url = $2""", user["id"], listed[0].url)
+    assert len(copies) == 2 and all(c["read"] for c in copies), copies   # lida uma, lidas as duas
+    print("matéria repetida ok: aparece uma vez, creditada aos dois feeds; história com 2 veículos")
 
     from worker.fetcher import cleanup
     await cleanup(pool)

@@ -69,8 +69,11 @@ class TimelineArticle(BaseModel):
     full_text: bool
     similarity: float | None
     manual: bool
-    # O mesmo endereço já apareceu antes nesta história (outro feed republicou).
+    # Sempre falso: a mesma matéria em outro feed não vira outro item da
+    # linha do tempo, vai em also_in. (Mantido para apps antigos.)
     duplicate: bool = False
+    # Os outros feeds que publicaram exatamente esta matéria (mesmo endereço).
+    also_in: list[str] = []
 
 
 class Story(BaseModel):
@@ -139,10 +142,12 @@ async def list_stories(
     pool = get_pool()
     rows = await pool.fetch(
         f"""SELECT s.*,
-                   (SELECT count(*) FROM story_articles u
+                   (SELECT count(DISTINCT ua.url) FROM story_articles u
+                     JOIN articles ua ON ua.id = u.article_id
                      WHERE u.story_id = s.id AND NOT EXISTS (
-                       SELECT 1 FROM article_states st WHERE st.user_id = $1
-                         AND st.article_id = u.article_id AND st.read_at IS NOT NULL)) AS unread
+                       SELECT 1 FROM article_states st JOIN articles sa2 ON sa2.id = st.article_id
+                       WHERE st.user_id = $1 AND sa2.url = ua.url
+                         AND st.read_at IS NOT NULL)) AS unread
             FROM stories s WHERE {' AND '.join(where)}
             ORDER BY s.last_published_at DESC, s.id DESC LIMIT ${len(args)}""", *args)
     more = len(rows) > limit
@@ -174,14 +179,27 @@ async def get_story(story_id: int, user: CurrentUser = Depends(current_user)):
                   sub.user_id IS NOT NULL AS followed, a.title, a.summary, a.image_url, a.url,
                   a.language, a.published_at, st.read_at IS NOT NULL AS read,
                   st.saved_at IS NOT NULL AS saved, a.content_status = 'ok' AS full_text,
-                  sa.similarity, sa.added_by = 'manual' AS manual,
-                  row_number() OVER (PARTITION BY a.url ORDER BY a.published_at, a.id) > 1
-                    AS duplicate
+                  sa.similarity, sa.added_by = 'manual' AS manual
            FROM story_articles sa JOIN articles a ON a.id = sa.article_id
            JOIN feeds f ON f.id = a.feed_id
            LEFT JOIN subscriptions sub ON sub.feed_id = a.feed_id AND sub.user_id = $1
            LEFT JOIN article_states st ON st.article_id = a.id AND st.user_id = $1
-           WHERE sa.story_id = $2 ORDER BY a.published_at, a.id""", user.id, story_id)
+           WHERE sa.story_id = $2
+           ORDER BY a.published_at, sub.user_id IS NULL, a.id""", user.id, story_id)
+    # A mesma matéria (mesmo endereço) em vários feeds vira um item só,
+    # creditado a todos: fica a primeira (de preferência de um feed que a
+    # pessoa assina) e os outros feeds vão em also_in.
+    kept: dict[str, dict] = {}
+    for r in rows:
+        if r["url"] in kept:
+            entry = kept[r["url"]]
+            if r["feed_title"] not in entry["also_in"] and r["feed_title"] != entry["feed_title"]:
+                entry["also_in"].append(r["feed_title"])
+            entry["followed"] = entry["followed"] or r["followed"]
+            entry["read"] = entry["read"] or r["read"]
+            continue
+        kept[r["url"]] = {**dict(r), "also_in": []}
+    rows = list(kept.values())
     return Story(
         id=story["id"], title=story["title"],
         first_published_at=story["first_published_at"].isoformat(),
@@ -193,7 +211,7 @@ async def get_story(story_id: int, user: CurrentUser = Depends(current_user)):
             url=r["url"], language=r["language"], published_at=r["published_at"].isoformat(),
             read=r["read"], saved=r["saved"], full_text=bool(r["full_text"]),
             similarity=round(r["similarity"], 3) if r["similarity"] is not None else None,
-            manual=r["manual"], duplicate=r["duplicate"]) for r in rows])
+            manual=r["manual"], also_in=r["also_in"]) for r in rows])
 
 
 @router.post("/{story_id}/merge", status_code=status.HTTP_204_NO_CONTENT)

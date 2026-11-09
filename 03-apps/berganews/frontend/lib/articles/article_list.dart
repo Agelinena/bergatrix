@@ -206,7 +206,7 @@ class ArticleTile extends ConsumerWidget {
                       Flexible(
                         child: Text(
                           [
-                            if (showSource) item.feedTitle,
+                            if (showSource) item.feeds,
                             relativeTime(item.publishedAt),
                           ].join(' · '),
                           maxLines: 1,

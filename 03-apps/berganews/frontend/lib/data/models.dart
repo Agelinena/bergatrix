@@ -270,11 +270,19 @@ class ArticleItem {
     this.language,
     this.storyId,
     this.storySources = 0,
+    this.alsoIn = const [],
   });
 
   final int id;
   final int feedId;
   final String feedTitle;
+
+  /// Outros feeds que publicaram exatamente esta matéria: ela aparece uma
+  /// vez só, creditada a todos.
+  final List<String> alsoIn;
+
+  /// "G1 Tecnologia · G1 Economia".
+  String get feeds => [feedTitle, ...alsoIn].join(' · ');
   final String title;
   final String? summary;
   final String? image;
@@ -304,6 +312,7 @@ class ArticleItem {
     fullText: j['full_text'] as bool? ?? false,
     storyId: j['story_id'] as int?,
     storySources: j['story_sources'] as int? ?? 0,
+    alsoIn: [for (final f in (j['also_in'] as List? ?? const [])) f as String],
   );
 
   ArticleItem copyWith({bool? read, bool? saved}) => ArticleItem(
@@ -322,6 +331,7 @@ class ArticleItem {
     fullText: fullText,
     storyId: storyId,
     storySources: storySources,
+    alsoIn: alsoIn,
   );
 }
 
@@ -478,7 +488,7 @@ class TimelineArticle {
     this.image,
     this.language,
     this.similarity,
-    this.duplicate = false,
+    this.alsoIn = const [],
   });
 
   final int id;
@@ -493,8 +503,12 @@ class TimelineArticle {
   final bool manual;
   final double? similarity;
 
-  /// A mesma matéria já apareceu antes na história (outro feed republicou).
-  final bool duplicate;
+  /// Outros feeds que publicaram exatamente esta matéria (ela aparece uma
+  /// vez só na linha do tempo, creditada a todos).
+  final List<String> alsoIn;
+
+  /// "G1 Tecnologia · G1 Economia".
+  String get feeds => [feedTitle, ...alsoIn].join(' · ');
 
   factory TimelineArticle.fromJson(Json j) => TimelineArticle(
     id: j['id'] as int,
@@ -508,7 +522,7 @@ class TimelineArticle {
     read: j['read'] as bool? ?? false,
     manual: j['manual'] as bool? ?? false,
     similarity: (j['similarity'] as num?)?.toDouble(),
-    duplicate: j['duplicate'] as bool? ?? false,
+    alsoIn: [for (final f in (j['also_in'] as List? ?? const [])) f as String],
   );
 }
 

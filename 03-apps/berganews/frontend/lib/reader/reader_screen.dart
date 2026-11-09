@@ -254,7 +254,7 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
                   children: [
                     Text(
                       [
-                        item.feedTitle,
+                        item.feeds,
                         relativeTime(item.publishedAt),
                         if (item.author != null) item.author!,
                       ].join(' · '),

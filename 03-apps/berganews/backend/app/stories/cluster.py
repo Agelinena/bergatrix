@@ -53,17 +53,15 @@ async def refresh_story(conn, story_id: int) -> None:
     """Contagens, datas e a manchete (a do primeiro artigo-base). Sem artigo,
     a história some."""
     row = await conn.fetchrow(
-        # Republicação (o mesmo endereço em outro feed, ex.: a Folha no UOL)
-        # não conta como mais um veículo: vale o veículo da primeira vez.
-        """WITH arts AS (
-             SELECT a.feed_id, a.published_at,
-                    row_number() OVER (PARTITION BY a.url ORDER BY a.published_at, a.id) AS nth
-             FROM story_articles sa JOIN articles a ON a.id = sa.article_id
-             WHERE sa.story_id = $1)
-           SELECT count(*) AS n, count(DISTINCT feed_id) FILTER (WHERE nth = 1) AS sources,
-                  min(published_at) AS first, max(published_at) AS last
-           FROM arts""", story_id)
-    if not row["n"]:
+        # Matérias = endereços distintos (a mesma matéria em dois feeds conta
+        # uma vez); veículos = todos os feeds que publicaram, inclusive os que
+        # publicaram a mesma matéria (g1 Economia e g1 Política são dois).
+        """SELECT count(*) AS rows, count(DISTINCT a.url) AS n,
+                  count(DISTINCT a.feed_id) AS sources,
+                  min(a.published_at) AS first, max(a.published_at) AS last
+           FROM story_articles sa JOIN articles a ON a.id = sa.article_id
+           WHERE sa.story_id = $1""", story_id)
+    if not row["rows"]:
         await conn.execute("DELETE FROM stories WHERE id = $1", story_id)
         return
     if not await conn.fetchval("SELECT 1 FROM story_articles WHERE story_id = $1 AND is_seed",
