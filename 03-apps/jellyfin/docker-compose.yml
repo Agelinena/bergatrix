@@ -337,7 +337,7 @@ services:
       # Auditoria de legendas: cobertura mínima (último timestamp ÷ duração) p/ não ser incompleta
       - SUBTITLE_MIN_COVERAGE=${SUBTITLE_MIN_COVERAGE:-0.85}
       # Remove downloads travados (stalled) no Radarr/Sonarr após N minutos e rebaixa
-      - STALLED_TIMEOUT_MINUTES=${STALLED_TIMEOUT_MINUTES:-5}
+      - STALLED_TIMEOUT_MINUTES=${STALLED_TIMEOUT_MINUTES:-20}
       - STALLED_CHECK_INTERVAL=${STALLED_CHECK_INTERVAL:-60}
       - PUID=${PUID}
       - PGID=${PGID}

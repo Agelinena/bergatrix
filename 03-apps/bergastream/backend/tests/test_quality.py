@@ -185,6 +185,17 @@ ok(lidarr.stuck_reason({"trackedDownloadState": "importPending", "trackedDownloa
    "importação pendente com aviso: travou")
 ok(lidarr.stuck_reason({"trackedDownloadState": "downloadFailedPending"}), "downloadFailedPending",
    "download falhou")
+stalled = {"trackedDownloadState": "downloading", "trackedDownloadStatus": "warning",
+           "statusMessages": [{"title": "Album.2020.FLAC", "messages": ["The download is stalled with no connections"]}]}
+ok(lidarr.stalled_reason(stalled), "The download is stalled with no connections", "torrent sem conexões")
+ok(lidarr.stalled_reason({"trackedDownloadState": "downloading",
+                          "errorMessage": "qBittorrent is downloading metadata"}),
+   "qBittorrent is downloading metadata", "preso nos metadados")
+ok(lidarr.stalled_reason({"trackedDownloadState": "downloading", "trackedDownloadStatus": "warning"}), None,
+   "aviso sem ser stalled: deixa andar")
+ok(lidarr.stalled_reason({**stalled, "trackedDownloadState": "importPending"}), None,
+   "já baixou: não é stalled")
+ok(lidarr.stuck_reason(stalled), None, "stalled não entra na carência de 1 h")
 
 print("=== Deemix: do melhor formato para o pior ===")
 tried = []

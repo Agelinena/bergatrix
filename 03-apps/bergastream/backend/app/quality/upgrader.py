@@ -362,9 +362,11 @@ async def _release_albums(pool, redis, lidarr: Lidarr | None) -> None:
 
 async def clear_stuck(pool, redis, lidarr: Lidarr) -> int:
     """Downloads de álbuns que o Bergastream espera, travados na fila do
-    Lidarr (importação bloqueada ou falha) há mais de STUCK_GRACE: tira da
-    fila e do SABnzbd, põe o release na blocklist e agenda nova busca.
-    Devolve quantos removeu."""
+    Lidarr: importação bloqueada ou falha há mais de STUCK_GRACE, ou torrent
+    parado (sem conexões, sem metadados) há mais de LIDARR_STALLED_MINUTES.
+    Tira da fila e do cliente (SABnzbd/qBittorrent), põe o release na
+    blocklist e agenda nova busca. Devolve quantos removeu."""
+    stalled_grace = timedelta(minutes=settings.lidarr_stalled_minutes)
     waiting = {r["lidarr_album_id"] for r in await pool.fetch(
         """SELECT DISTINCT lidarr_album_id FROM quality_upgrades
            WHERE status = 'waiting' AND lidarr_album_id IS NOT NULL""")}
@@ -372,7 +374,9 @@ async def clear_stuck(pool, redis, lidarr: Lidarr) -> int:
     stuck_now: set[str] = set()
     removed = 0
     for item in await lidarr.queue():
-        reason = lidarr_api.stuck_reason(item)
+        reason, grace = lidarr_api.stuck_reason(item), STUCK_GRACE
+        if reason is None:
+            reason, grace = lidarr_api.stalled_reason(item), stalled_grace
         album_id = item.get("albumId")
         if reason is None or album_id not in waiting or item.get("id") is None:
             continue
@@ -384,7 +388,7 @@ async def clear_stuck(pool, redis, lidarr: Lidarr) -> int:
             continue
         if isinstance(first, bytes):
             first = first.decode()
-        if now() - datetime.fromisoformat(first) < STUCK_GRACE:
+        if now() - datetime.fromisoformat(first) < grace:
             continue
         await lidarr.remove_queued(item["id"])
         await redis.hdel(STUCK_KEY, key)

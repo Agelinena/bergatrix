@@ -134,6 +134,11 @@ def pick_parts(tracks: list[dict], title: str, duration_seconds: int) -> list[di
 STUCK_STATES = {"importBlocked", "importFailed", "downloadFailed", "downloadFailedPending"}
 
 
+def _messages(item: dict) -> list[str]:
+    return [m for s in item.get("statusMessages") or []
+            for m in (s.get("messages") or [s.get("title")]) if m]
+
+
 def stuck_reason(item: dict) -> str | None:
     """Motivo, se o item da fila travou; None se está andando. Importação
     "pendente" só conta se o Lidarr marcou aviso ou erro."""
@@ -141,9 +146,23 @@ def stuck_reason(item: dict) -> str | None:
     health = (item.get("trackedDownloadStatus") or "").lower()
     if state not in STUCK_STATES and not (state == "importPending" and health in ("warning", "error")):
         return None
-    messages = [m for s in item.get("statusMessages") or []
-                for m in (s.get("messages") or [s.get("title")]) if m]
-    return ("; ".join(messages) or item.get("errorMessage") or state)[:200]
+    return ("; ".join(_messages(item)) or item.get("errorMessage") or state)[:200]
+
+
+# Torrent parado no qBittorrent: sem conexões ("The download is stalled with
+# no connections") ou preso buscando os metadados. O Lidarr repete a mensagem
+# do cliente no item da fila. Pode voltar a andar, por isso tem carência.
+STALLED_HINTS = ("stalled", "no connections", "no peers", "downloading metadata")
+
+
+def stalled_reason(item: dict) -> str | None:
+    """Motivo, se o download (ainda baixando) está parado; None se anda."""
+    if item.get("trackedDownloadState") != "downloading":
+        return None
+    text = "; ".join([*_messages(item), item.get("errorMessage") or ""]).strip("; ")
+    if not any(h in text.lower() for h in STALLED_HINTS):
+        return None
+    return text[:200]
 
 
 def local_path(remote: str) -> str:
@@ -249,7 +268,7 @@ class Lidarr:
             page += 1
 
     async def remove_queued(self, queue_id: int) -> None:
-        """Tira da fila e do SABnzbd e põe o release na blocklist (não vem de
+        """Tira da fila e do cliente (SABnzbd/qBittorrent) e põe o release na blocklist (não vem de
         novo). A nova busca é feita pelo Bergastream, dentro do orçamento."""
         await self._req("DELETE", f"/queue/{queue_id}", params={
             "removeFromClient": "true", "blocklist": "true", "skipRedownload": "true"})

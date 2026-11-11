@@ -200,7 +200,9 @@ o limite do indexador, no máximo 30 álbuns ficam na fase diária (`LIDARR_MAX_
 máximo 100 buscas por dia (`LIDARR_DAILY_SEARCHES`), das quais 30 ficam para pedidos novos
 (`LIDARR_REQUEST_RESERVE`: as buscas repetidas não gastam tudo); as outras faixas esperam a vez.
 Download travado na fila do Lidarr (importação bloqueada — ex.: release com `.exe` — ou falha) há
-mais de 1 h é removido do SABnzbd, o release vai para a blocklist e o álbum é buscado de novo; a
+mais de 1 h, ou torrent parado no qBittorrent (sem conexões ou sem metadados) há mais de 20 min
+(`LIDARR_STALLED_MINUTES`), é removido do cliente, o release vai para a blocklist e o álbum é
+buscado de novo. Só os álbuns que o Bergastream espera são tocados; a
 cada 6 h o worker confere se os artistas e álbuns ainda esperados continuam monitorados. Ajuste ao
 limite de API do seu indexador (Prowlarr → Indexers → o indexador → *Query Limit*). O worker
 confere a cada 30 min se o Lidarr já baixou (isso não gasta o indexador). Quando o

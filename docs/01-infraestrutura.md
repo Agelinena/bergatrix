@@ -79,6 +79,7 @@ Elas se falam pelo nome do container, numa rede compartilhada ([06-redes.md](06-
 | Lidarr (bergastream) | SABnzbd e Prowlarr (stack jellyfin) | `sabnzbd:8080`, `prowlarr:9696` | `bergatrix-media` |
 | Lidarr (bergastream) | Downloads do SABnzbd | `${MEDIA_PATH}/downloads` | (mesma pasta) |
 
+| Lidarr (bergastream) | qBittorrent (stack jellyfin) | `qbittorrent:8080` | `bergatrix-media` |
 ## Redes Docker
 
 Redes compartilhadas, redes de cada stack e as regras: [06-redes.md](06-redes.md).

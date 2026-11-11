@@ -64,6 +64,9 @@ class Settings(BaseSettings):
     # Parte do orçamento diário guardada para pedidos novos: as buscas
     # repetidas dos álbuns já pedidos não podem gastar tudo.
     lidarr_request_reserve: int = 30
+    # Torrent parado (sem conexões/metadados) por mais que isto: sai da fila
+    # do Lidarr, o release vai para a blocklist e o álbum é buscado de novo.
+    lidarr_stalled_minutes: int = 20
     # Depois de copiar a música, apaga o resto do álbum do Lidarr (o Lidarr só
     # baixa álbuns inteiros). true = mantém o álbum na biblioteca do Lidarr.
     lidarr_keep_albums: bool = False

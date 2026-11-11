@@ -289,6 +289,26 @@ async def main():
         await upgrader.check_lidarr(pool, await row(flood[0]), fake, b)
         ok(fake.searched, [901], "busca de novo mesmo com a reserva (não é repetição)")
 
+        print("=== torrent parado (stalled) na fila do Lidarr ===")
+        fake, redis = FakeLidarr(), FakeRedis()
+        fake.removed, fake.queued = [], [
+            {"id": 8, "albumId": 901, "trackedDownloadState": "downloading", "trackedDownloadStatus": "warning",
+             "statusMessages": [{"title": "x", "messages": ["The download is stalled with no connections"]}]},
+            {"id": 9, "albumId": 901, "trackedDownloadState": "downloading"},  # baixando normal
+        ]
+        await pool.execute("UPDATE quality_upgrades SET status = 'waiting', lidarr_searched_at = now() "
+                           "WHERE track_id = $1", flood[0])
+        old_stalled = upgrader.settings.lidarr_stalled_minutes
+        try:
+            ok(await upgrader.clear_stuck(pool, redis, fake), 0, "1ª vez parado: só anota")
+            ok(await upgrader.clear_stuck(pool, redis, fake), 0, "dentro dos 20 min: espera")
+            upgrader.settings.lidarr_stalled_minutes = 0
+            ok(await upgrader.clear_stuck(pool, redis, fake), 1, "passou do prazo: remove")
+        finally:
+            upgrader.settings.lidarr_stalled_minutes = old_stalled
+        r = await row(flood[0])
+        ok((fake.removed, r["lidarr_searched_at"]), ([8], None), "só o parado sai; nova busca agendada")
+
         print("=== artista e álbum esperados voltam a ser monitorados ===")
         fake.album_state = {901: {"id": 901, "artistId": 77, "monitored": False}}
         fake.artist_state = [{"id": 77, "monitored": False}, {"id": 78, "monitored": False}]

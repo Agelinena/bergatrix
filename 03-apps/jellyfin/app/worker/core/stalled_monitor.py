@@ -21,7 +21,7 @@ from . import arr
 
 logger = logging.getLogger(__name__)
 
-STALLED_TIMEOUT = int(os.environ.get("STALLED_TIMEOUT_MINUTES", "5")) * 60
+STALLED_TIMEOUT = int(os.environ.get("STALLED_TIMEOUT_MINUTES", "20")) * 60
 CHECK_INTERVAL = int(os.environ.get("STALLED_CHECK_INTERVAL", "60"))
 
 
