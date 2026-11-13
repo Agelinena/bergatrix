@@ -483,11 +483,11 @@ type Regra = {
   resumo: string; descricao?: string; gravidade?: "critico" | "aviso"; fonte?: "prometheus" | "loki";
 };
 
-// Nos textos, $$ vira $ (o Grafana troca $VAR por variáveis de ambiente nos
-// arquivos de provisionamento).
-const V = "{{ printf \"%.0f\" $$values.A.Value }}";
-const V1 = "{{ printf \"%.1f\" $$values.A.Value }}";
-const L = (x: string) => `{{ $$labels.${x} }}`;
+// Templates do Grafana: $labels e $values com um $ só (o Grafana 13 não
+// troca $$ por $ nas regras de alerta provisionadas).
+const V = "{{ printf \"%.0f\" $values.A.Value }}";
+const V1 = "{{ printf \"%.1f\" $values.A.Value }}";
+const L = (x: string) => `{{ $labels.${x} }}`;
 
 const grupos: Record<string, Regra[]> = {
   "Máquinas": [
