@@ -20,6 +20,8 @@ services:
     user: "${PUID}:${PGID}"
     environment:
       DOMAIN: ${DOMAIN}
+      PUID: ${PUID}
+      PGID: ${PGID}
       PVE_USER: ${PVE_USER:-monitor@pve}
       PVE_TOKEN_NAME: ${PVE_TOKEN_NAME:-prometheus}
       PVE_TOKEN_VALUE: ${PVE_TOKEN_VALUE}
