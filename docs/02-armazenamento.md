@@ -82,6 +82,7 @@ Como em `APPDATA_PATH`, cada stack tem a sua pasta, com o nome da stack. Só ent
 | bergalink | `postgres`, `avatars`, `secrets` | – | – | – |
 | berganews | `postgres`, `redis` | `images` | – | – |
 | bergastream | `postgres`, `redis`, `deemix`, `lidarr`, `youtube` | `pydeps` | `musica/bergastream`, `musica/lidarr`, `downloads` | – |
+| doberga | `postgres`, `redis` | – | – | – |
 | drop | – | – | – | – |
 | homeassistant | `config` | – | – | – |
 | immich | `postgres` | `thumbs`, `encoded-video`, `model-cache`, `redis` | – | `immich` (`library`, `upload`, `profile`, `backups`) |

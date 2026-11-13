@@ -1,0 +1,152 @@
+# Doberga: utilidades do dia a dia da família (compras, recorrentes,
+# calendário, notas). Guia: README.md desta pasta. Arquitetura: docs/ARQUITETURA.md.
+#
+#   web      App web (Flutter) no nginx, que repassa /api/ à API. É quem tem a
+#            rota no Traefik: uma rota só, sem forward-auth.
+#   api      API do app (web, Android, computador): login pelo Authentik
+#            (OIDC, como o Berganews), espaços, convites e o sync offline.
+#   migrate  Migrações do banco (dbmate), antes da API.
+#   db       Postgres.
+#   redis    Estado do login OIDC e os avisos do sync (pub/sub).
+#
+# Dados: banco e Redis em ${APPDATA_PATH}/doberga (backup). Nada em cache,
+# mídia ou userdata. O servidor não busca endereços vindos das pessoas, então
+# não há proxy de saída.
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: doberga-db
+    restart: unless-stopped
+    labels:
+      # Backup pelo Bergakup (pg_dump antes da cópia do servidor).
+      - "bergatrix.backup.dump=postgres"
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      TZ: ${TZ}
+    volumes:
+      - ${APPDATA_PATH:?}/doberga/postgres:/var/lib/postgresql/data
+    networks:
+      - doberga-internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
+  migrate:
+    image: ghcr.io/amacneil/dbmate:2
+    container_name: doberga-migrate
+    restart: "no"
+    volumes:
+      - ./backend/db/migrations:/db/migrations:ro
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}?sslmode=disable
+    command: --migrations-dir /db/migrations --no-dump-schema up
+    networks:
+      - doberga-internal
+    depends_on:
+      db:
+        condition: service_healthy
+
+  redis:
+    image: redis:7-alpine
+    container_name: doberga-redis
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    command: redis-server --appendonly yes
+    volumes:
+      - ${APPDATA_PATH:?}/doberga/redis:/data
+    networks:
+      - doberga-internal
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build: ./backend
+    container_name: doberga-api
+    restart: unless-stopped
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+    mem_limit: 384m
+    environment:
+      TZ: ${TZ}
+      HOME: /tmp
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      REDIS_URL: redis://redis:6379/0
+      JWT_SECRET: ${DOBERGA_JWT_SECRET}
+      OIDC_ISSUER: ${DOBERGA_OIDC_ISSUER}
+      DOBERGA_SSO_CLIENT_ID: ${DOBERGA_SSO_CLIENT_ID}
+      DOBERGA_SSO_CLIENT_SECRET: ${DOBERGA_SSO_CLIENT_SECRET}
+      OIDC_REDIRECT_URI: https://doberga.${DOMAIN}/api/auth/oidc/callback
+      # O servidor fala com o Authentik direto, sem passar pelo Traefik.
+      OIDC_INTERNAL_URL: http://authentik-server:9000
+      OIDC_REQUIRED_GROUP: ${DOBERGA_USERS_GROUP:-doberga_users}
+      OIDC_ADMIN_GROUP: ${DOBERGA_ADMINS_GROUP:-doberga_admins}
+      APP_MIN_VERSION: ${DOBERGA_APP_MIN_VERSION:-0.1.0}
+      APP_LATEST_VERSION: ${DOBERGA_APP_LATEST_VERSION:-}
+      APP_DOWNLOAD_URL: ${DOBERGA_APP_DOWNLOAD_URL:-}
+      SYNC_RETENTION_DAYS: ${DOBERGA_SYNC_RETENTION_DAYS:-90}
+      LOG_LEVEL: ${DOBERGA_LOG_LEVEL:-INFO}
+    networks:
+      # Banco e Redis.
+      - doberga-internal
+      # Fala com o Authentik direto (authentik-server:9000). Sem labels: o
+      # Traefik não publica a API; o caminho é pelo `web`.
+      - bergatrix-proxy
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health').status == 200 else 1)"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+
+  web:
+    build: ./frontend
+    container_name: doberga-web
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - doberga-internal
+      - bergatrix-proxy
+    depends_on:
+      - api
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=bergatrix-proxy"
+      # OIDC no app: uma rota, sem forward-auth. A API exige o token dela em
+      # toda chamada (os convites também: abrir o link pede login).
+      - "traefik.http.routers.doberga.rule=Host(`doberga.${DOMAIN}`)"
+      - "traefik.http.routers.doberga.entrypoints=websecure"
+      - "traefik.http.routers.doberga.tls=true"
+      - "traefik.http.routers.doberga.service=doberga"
+      - "traefik.http.routers.doberga.middlewares=crowdsec-bouncer@file"
+      - "traefik.http.services.doberga.loadbalancer.server.port=80"
+
+networks:
+  # Banco, Redis e API. Sem saída para a internet.
+  doberga-internal:
+    name: doberga-internal
+    internal: true
+  bergatrix-proxy:
+    external: true

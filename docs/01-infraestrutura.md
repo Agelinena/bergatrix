@@ -52,6 +52,7 @@ Rede local ───────────────────────
 | 03 | bergalink | API própria (localização em família), Postgres | `bergalink` | appdata |
 | 03 | berganews | Notícias (RSS) com IA local: API, coleta, IA (Ollama), proxy de saída, Postgres (pgvector), Redis | `news` | appdata, cache |
 | 03 | bergastream | Streaming de música próprio: API, worker, web, Postgres, Redis, Deemix, Lidarr, PO Token | `bergastream`, `lidarr` | appdata, cache, media |
+| 03 | doberga | Utilidades do dia a dia (compras, recorrentes, calendário, notas), offline nos apps: API, web, Postgres, Redis | `doberga` | appdata |
 | 03 | drop | Texto e arquivos (até 25 MiB) cifrados no navegador, sem disco; rede isolada `bergatrix-drop` | `drop` | – |
 | 03 | homeassistant | Home Assistant | `ha` | appdata |
 | 03 | immich | Fotos e vídeos: server, machine learning (GPU), Postgres (VectorChord), Valkey | `fotos` | appdata, cache, userdata |
@@ -71,15 +72,15 @@ Elas se falam pelo nome do container, numa rede compartilhada ([06-redes.md](06-
 
 | Quem usa | Usa o quê | Endereço | Rede |
 |---|---|---|---|
-| Traefik (forward-auth), Bergalink, Bergastream, Berganews e Transcriptor (OIDC) | Authentik | `authentik-server:9000` | `bergatrix-proxy` |
+| Traefik (forward-auth), Bergalink, Bergastream, Berganews, Doberga e Transcriptor (OIDC) | Authentik | `authentik-server:9000` | `bergatrix-proxy` |
 | Jellyfin (plugin Bergafin Auth) | Authentik (OIDC) | `https://auth.${DOMAIN}`, pelo Traefik | `bergatrix-proxy` |
 | Traefik (bouncer) | CrowdSec | `crowdsec:8080` | `bergatrix-proxy` |
 | CrowdSec | Log do Traefik | `${APPDATA_PATH}/traefik/logs` | (arquivo) |
 | Legendarr worker, Berganews (`ai`) | Ollama | `ollama:11434` | `bergatrix-ai` |
 | Lidarr (bergastream) | SABnzbd e Prowlarr (stack jellyfin) | `sabnzbd:8080`, `prowlarr:9696` | `bergatrix-media` |
 | Lidarr (bergastream) | Downloads do SABnzbd | `${MEDIA_PATH}/downloads` | (mesma pasta) |
-
 | Lidarr (bergastream) | qBittorrent (stack jellyfin) | `qbittorrent:8080` | `bergatrix-media` |
+
 ## Redes Docker
 
 Redes compartilhadas, redes de cada stack e as regras: [06-redes.md](06-redes.md).

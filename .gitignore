@@ -41,6 +41,7 @@ graphify-out/.graphify_*
 **/data/
 # Código de app que se chama "data" (camada de dados do Flutter), não volume.
 !03-apps/berganews/frontend/lib/data/
+!03-apps/doberga/frontend/lib/data/
 **/db_data/
 **/volumes/
 **/backups/

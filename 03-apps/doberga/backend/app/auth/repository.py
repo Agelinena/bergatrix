@@ -1,0 +1,76 @@
+"""SQL de usuários e refresh tokens."""
+from __future__ import annotations
+
+from datetime import datetime
+from typing import TYPE_CHECKING
+from uuid import UUID
+
+if TYPE_CHECKING:
+    import asyncpg
+
+USER_COLUMNS = "id, username, name, email, is_admin, disabled_at, oidc_subject, last_login_at, created_at"
+
+
+async def get_user_by_id(pool: "asyncpg.Pool", user_id):
+    return await pool.fetchrow(f"SELECT {USER_COLUMNS} FROM users WHERE id = $1", user_id)
+
+
+async def insert_refresh_token(
+    pool: "asyncpg.Pool",
+    user_id: UUID,
+    family_id: UUID,
+    token_hash: str,
+    expires_at: datetime,
+    user_agent: str | None,
+):
+    await pool.execute(
+        """INSERT INTO refresh_tokens (user_id, family_id, token_hash, expires_at, user_agent)
+           VALUES ($1, $2, $3, $4, $5)""",
+        user_id,
+        family_id,
+        token_hash,
+        expires_at,
+        user_agent,
+    )
+
+
+async def get_refresh_token(conn, token_hash: str, for_update: bool = False):
+    lock = " FOR UPDATE" if for_update else ""
+    return await conn.fetchrow(
+        f"""SELECT id, user_id, family_id, expires_at, revoked_at, revoke_reason
+            FROM refresh_tokens WHERE token_hash = $1{lock}""",
+        token_hash,
+    )
+
+
+async def revoke_refresh_token(conn, token_id: UUID):
+    """Trocado por um novo (rotação): ainda vale na tolerância."""
+    await conn.execute(
+        """UPDATE refresh_tokens SET revoked_at = now(), revoke_reason = 'rotated'
+           WHERE id = $1 AND revoked_at IS NULL""",
+        token_id,
+    )
+
+
+async def revoke_family(conn, family_id: UUID, reason: str = "logout"):
+    """Encerra a sessão inteira, inclusive os tokens na tolerância."""
+    await conn.execute(
+        """UPDATE refresh_tokens SET revoked_at = coalesce(revoked_at, now()), revoke_reason = $2
+           WHERE family_id = $1 AND (revoked_at IS NULL OR revoke_reason = 'rotated')""",
+        family_id, reason,
+    )
+
+
+async def revoke_all_for_user(pool: "asyncpg.Pool", user_id: UUID):
+    await pool.execute(
+        """UPDATE refresh_tokens SET revoked_at = coalesce(revoked_at, now()), revoke_reason = 'admin'
+           WHERE user_id = $1 AND (revoked_at IS NULL OR revoke_reason = 'rotated')""",
+        user_id,
+    )
+
+
+async def delete_expired_refresh_tokens(pool: "asyncpg.Pool") -> int:
+    result = await pool.execute(
+        "DELETE FROM refresh_tokens WHERE expires_at < now() - interval '7 days'"
+    )
+    return int(result.split()[-1])

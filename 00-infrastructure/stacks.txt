@@ -27,6 +27,7 @@
 03-apps/transcriptor
 # Depois do Authentik (OIDC) e do Ollama (IA local)
 03-apps/berganews
+03-apps/doberga
 03-apps/drop
 03-apps/homeassistant
 

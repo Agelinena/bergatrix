@@ -12,6 +12,13 @@ services:
     environment:
       - NVIDIA_VISIBLE_DEVICES=all
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      # GTX 1060 (6 GB) dividida com NVENC/Jellyfin/Immich: um modelo e uma
+      # requisição por vez. Sem isto, dois modelos ficavam carregados, o que
+      # não cabia na VRAM caía para a RAM e o OOM do host matava processos.
+      - OLLAMA_MAX_LOADED_MODELS=1
+      - OLLAMA_NUM_PARALLEL=1
+    # Teto de RAM: se o modelo transbordar da VRAM, o OOM fica no container.
+    mem_limit: ${OLLAMA_MEM_LIMIT:-6g}
     networks:
       - bergatrix-ai
     deploy:
