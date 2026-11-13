@@ -86,7 +86,16 @@ O login com senha do Jellyfin no Seerr só funciona para as contas locais, na re
 | Conectar uma TV ou app oficial | Quick Connect no aparelho e aprovar em `/Bergafin/QuickConnect` |
 | Ver por que alguém não entrou | `docker logs jellyfin 2>&1 \| grep Authentik` |
 
+## Imagem do servidor (Bergafin-web)
+
+O container `jellyfin` usa a imagem `ghcr.io/agelinena/bergafin:latest`: o Jellyfin oficial com o [Bergafin-web](https://github.com/Agelinena/Bergafin-web).
+
+- **Tela de login:** botão **Entrar com Authentik**, e a senha fica em *Login manual*.
+- **Atualização:** todo dia o repositório confere se saiu uma versão estável nova do `jellyfin-web`. Quando sai, ele reaplica as nossas mudanças e monta a imagem. A `latest` só muda se o Jellyfin subir com o nosso web. Se houver conflito, abre uma issue e a `latest` continua na versão anterior.
+- **Atualizar o servidor:** `cd ~/bergatrix/03-apps/jellyfin && docker compose pull jellyfin && docker compose up -d jellyfin`.
+- **Voltar atrás:** use a tag exata (`12.4-<commit>`) ou `jellyfin/jellyfin:<versão>` no compose. Faça backup de `${APPDATA_PATH}/jellyfin/jellyfin` antes de pular versão: a série 12 muda o banco e não deixa voltar sem restaurar.
+
 ## Próximas fases
 
-- **Bergafin-web:** fork do `jellyfin-web` com o botão "Entrar com Authentik" e o cast pelo celular. O servidor passa a usar a imagem `ghcr.io/agelinena/bergafin`, que é o Jellyfin oficial com o nosso web.
+- **Cast no web:** transmitir do Chrome para o Chromecast pelo Default Media Receiver.
 - **Bergafin-android:** fork do app, com login pelo Authentik no navegador do sistema (`bergafin://login`) e cast melhor para o Chromecast do quarto (Default Media Receiver, sem pagar nada ao Google).

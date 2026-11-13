@@ -2,7 +2,10 @@ services:
   # Login só pelo Authentik: plugin Bergafin Auth (docs/guias/jellyfin-authentik.md).
   # Contas locais (sala e admin de emergência) só na rede de casa.
   jellyfin:
-    image: jellyfin/jellyfin
+    # Jellyfin oficial + Bergafin-web (botão do Authentik). A imagem é montada a
+    # cada versão oficial e só sai se compilar e subir (repos/Bergafin-web).
+    # Para voltar ao oficial: jellyfin/jellyfin
+    image: ghcr.io/agelinena/bergafin:latest
     container_name: jellyfin
     restart: unless-stopped
     security_opt:
