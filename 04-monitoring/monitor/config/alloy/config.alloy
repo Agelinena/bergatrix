@@ -1,0 +1,130 @@
+// Coleta de logs do Monitor → Loki.
+//
+// Labels usadas pelas dashboards (poucas e com poucos valores):
+//   job     docker | journal | traefik | syslog
+//   host    bergaserver | opnsense | vps
+//   container, stack (docker) · unit (journal) · program, level (syslog)
+//   action, interface, direction (só no filterlog do OPNsense)
+
+logging {
+  level = "warn"
+}
+
+loki.write "local" {
+  endpoint {
+    url = "http://monitor-loki:3100/loki/api/v1/push"
+  }
+}
+
+// ── Containers do bergaserver ────────────────────────────────
+discovery.docker "containers" {
+  host = "unix:///var/run/docker.sock"
+}
+
+discovery.relabel "containers" {
+  targets = []
+
+  rule {
+    source_labels = ["__meta_docker_container_name"]
+    regex         = "/(.*)"
+    target_label  = "container"
+  }
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_project"]
+    target_label  = "stack"
+  }
+}
+
+loki.source.docker "containers" {
+  host          = "unix:///var/run/docker.sock"
+  targets       = discovery.docker.containers.targets
+  relabel_rules = discovery.relabel.containers.rules
+  labels        = { job = "docker", host = "bergaserver" }
+  forward_to    = [loki.write.local.receiver]
+}
+
+// ── Journal do Ubuntu (systemd, kernel, ssh, docker) ─────────
+loki.relabel "journal" {
+  forward_to = []
+
+  rule {
+    source_labels = ["__journal__systemd_unit"]
+    target_label  = "unit"
+  }
+  rule {
+    source_labels = ["__journal_priority_keyword"]
+    target_label  = "level"
+  }
+}
+
+loki.source.journal "host" {
+  max_age       = "12h"
+  relabel_rules = loki.relabel.journal.rules
+  labels        = { job = "journal", host = "bergaserver" }
+  forward_to    = [loki.write.local.receiver]
+}
+
+// ── access.log do Traefik (JSON; os campos são lidos na consulta) ──
+local.file_match "traefik" {
+  path_targets = [{
+    "__path__" = "/var/log/traefik/access.log",
+    "job"      = "traefik",
+    "host"     = "bergaserver",
+  }]
+}
+
+loki.source.file "traefik" {
+  targets    = local.file_match.traefik.targets
+  forward_to = [loki.write.local.receiver]
+}
+
+// ── Syslog: OPNsense (5140) e VPS (5141), RFC 5424 por TCP ────
+// Uma porta por origem: a label host fica fixa, sem depender do hostname
+// que cada máquina manda.
+loki.relabel "syslog" {
+  forward_to = []
+
+  rule {
+    source_labels = ["__syslog_message_app_name"]
+    target_label  = "program"
+  }
+  rule {
+    source_labels = ["__syslog_message_severity"]
+    target_label  = "level"
+  }
+}
+
+loki.source.syslog "rede" {
+  listener {
+    address  = "0.0.0.0:5140"
+    protocol = "tcp"
+    labels   = { job = "syslog", host = "opnsense" }
+  }
+  listener {
+    address  = "0.0.0.0:5141"
+    protocol = "tcp"
+    labels   = { job = "syslog", host = "vps" }
+  }
+  relabel_rules = loki.relabel.syslog.rules
+  forward_to    = [loki.process.filterlog.receiver]
+}
+
+// Log do firewall do OPNsense (filterlog, CSV). Ação, interface e direção
+// viram labels para os painéis de bloqueio; IPs e portas ficam na linha e
+// são extraídos na consulta (muitos valores, não podem ser label).
+//   0 regra, 1 sub-regra, 2 âncora, 3 rastreador, 4 interface, 5 motivo,
+//   6 ação, 7 direção, 8 versão IP, …
+loki.process "filterlog" {
+  stage.match {
+    selector = "{host=\"opnsense\", program=\"filterlog\"}"
+
+    stage.regex {
+      expression = "^(?:[^,]*,){4}(?P<interface>[^,]*),[^,]*,(?P<action>[^,]*),(?P<direction>[^,]*),"
+    }
+    stage.labels {
+      values = { interface = "", action = "", direction = "" }
+    }
+  }
+
+  forward_to = [loki.write.local.receiver]
+}

@@ -1,0 +1,338 @@
+# Monitor — métricas (Prometheus), logs (Loki) e painéis e alertas por e-mail
+# (Grafana) do servidor, do Proxmox, do OMV, do OPNsense e da VPS.
+# Padrão: docs/03-padrao-stacks.md · Passo a passo: README.md desta pasta
+#
+# O que roda fora deste compose (instalado nas outras máquinas, ver hosts/):
+#   Proxmox e OMV  → node_exporter (apt) na porta 9100
+#   OPNsense       → plugin os-node_exporter (9100), API para o opnsense-exporter
+#                    e syslog remoto para o Alloy (porta 5140)
+#   VPS            → node_exporter + métricas do túnel/nftables/CAKE (9100, só
+#                    no IP do túnel), HAProxy (8405) e syslog para o Alloy (5141)
+services:
+  # Gera os arquivos que dependem do .env (domínio e token do Proxmox), porque
+  # o Prometheus e o pve-exporter não leem variáveis de ambiente na config.
+  # Grava em ${CACHE_PATH}/monitor/gerado e termina.
+  config:
+    image: busybox:1.36
+    container_name: monitor-config
+    restart: "no"
+    network_mode: none
+    user: "${PUID}:${PGID}"
+    environment:
+      DOMAIN: ${DOMAIN}
+      PVE_USER: ${PVE_USER:-monitor@pve}
+      PVE_TOKEN_NAME: ${PVE_TOKEN_NAME:-prometheus}
+      PVE_TOKEN_VALUE: ${PVE_TOKEN_VALUE}
+    volumes:
+      - ./config/gerar-config.sh:/gerar-config.sh:ro
+      - ./config/prometheus/sites.yml:/modelos/sites.yml:ro
+      - ${CACHE_PATH:?}/monitor/gerado:/gerado
+    command: ["sh", "/gerar-config.sh"]
+
+  grafana:
+    image: grafana/grafana:13.2.6
+    container_name: monitor-grafana
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    user: "${PUID}:${PGID}"
+    environment:
+      TZ: ${TZ}
+      GF_SERVER_ROOT_URL: https://grafana.${DOMAIN}
+      GF_SERVER_DOMAIN: grafana.${DOMAIN}
+      GF_SECURITY_ADMIN_USER: admin
+      # Só para emergência: o formulário de login fica desligado (OIDC abaixo).
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
+      GF_SECURITY_COOKIE_SECURE: "true"
+      GF_SECURITY_DISABLE_GRAVATAR: "true"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: "false"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_USERS_DEFAULT_THEME: system
+      GF_DATE_FORMATS_DEFAULT_TIMEZONE: browser
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /etc/grafana/dashboards/00-visao-geral.json
+      # ── Login pelo Authentik (OIDC) ──────────────────────────
+      # O navegador vai a auth.${DOMAIN}; o Grafana troca o código direto com
+      # o authentik-server pela bergatrix-proxy.
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+      GF_AUTH_OAUTH_AUTO_LOGIN: "true"
+      GF_AUTH_SIGNOUT_REDIRECT_URL: https://auth.${DOMAIN}/application/o/grafana/end-session/
+      GF_AUTH_GENERIC_OAUTH_ENABLED: "true"
+      GF_AUTH_GENERIC_OAUTH_NAME: Authentik
+      GF_AUTH_GENERIC_OAUTH_CLIENT_ID: ${GRAFANA_SSO_CLIENT_ID}
+      GF_AUTH_GENERIC_OAUTH_CLIENT_SECRET: ${GRAFANA_SSO_CLIENT_SECRET}
+      GF_AUTH_GENERIC_OAUTH_SCOPES: openid profile email
+      GF_AUTH_GENERIC_OAUTH_USE_PKCE: "true"
+      GF_AUTH_GENERIC_OAUTH_AUTH_URL: https://auth.${DOMAIN}/application/o/authorize/
+      GF_AUTH_GENERIC_OAUTH_TOKEN_URL: http://authentik-server:9000/application/o/token/
+      GF_AUTH_GENERIC_OAUTH_API_URL: http://authentik-server:9000/application/o/userinfo/
+      GF_AUTH_GENERIC_OAUTH_LOGIN_ATTRIBUTE_PATH: preferred_username
+      GF_AUTH_GENERIC_OAUTH_NAME_ATTRIBUTE_PATH: name
+      GF_AUTH_GENERIC_OAUTH_EMAIL_ATTRIBUTE_PATH: email
+      # Grupo admins do Authentik vira Admin no Grafana; o resto, Viewer.
+      # Quem entra é decidido no Authentik (binding ao grupo grafana_users).
+      GF_AUTH_GENERIC_OAUTH_ROLE_ATTRIBUTE_PATH: contains(groups[*], 'admins') && 'Admin' || 'Viewer'
+      GF_AUTH_GENERIC_OAUTH_ALLOW_ASSIGN_GRAFANA_ADMIN: "false"
+      GF_AUTH_GENERIC_OAUTH_SKIP_ORG_ROLE_SYNC: "false"
+      # ── E-mail dos alertas ───────────────────────────────────
+      GF_SMTP_ENABLED: "true"
+      GF_SMTP_HOST: ${SMTP_HOST}:${SMTP_PORT:-587}
+      GF_SMTP_USER: ${SMTP_USERNAME}
+      GF_SMTP_PASSWORD: ${SMTP_PASSWORD}
+      GF_SMTP_FROM_ADDRESS: ${SMTP_FROM_ADDRESS}
+      GF_SMTP_FROM_NAME: Bergatrix Monitor
+      # MandatoryStartTLS na 587; na 465 (TLS direto) use NoStartTLS.
+      GF_SMTP_STARTTLS_POLICY: ${SMTP_STARTTLS_POLICY:-MandatoryStartTLS}
+      # Lido pelo ponto de contato em provisioning/alerting/contato.yml
+      ALERTAS_EMAIL: ${ALERTAS_EMAIL}
+    volumes:
+      # grafana.db (usuários, preferências, estado dos alertas): backup
+      - ${APPDATA_PATH:?}/monitor/grafana:/var/lib/grafana
+      # Fontes de dados, painéis e alertas versionados no repositório
+      - ./config/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./config/grafana/dashboards:/etc/grafana/dashboards:ro
+    networks:
+      - monitor-internal
+      - bergatrix-proxy
+    depends_on:
+      - prometheus
+      - loki
+    labels:
+      - "bergatrix.backup.dump=sqlite"
+      - "bergatrix.backup.sqlite=/var/lib/grafana/grafana.db"
+      # OIDC: uma rota, o Grafana faz o login no Authentik
+      - "traefik.enable=true"
+      - "traefik.docker.network=bergatrix-proxy"
+      - "traefik.http.routers.grafana.rule=Host(`grafana.${DOMAIN}`)"
+      - "traefik.http.routers.grafana.entrypoints=websecure"
+      - "traefik.http.routers.grafana.tls=true"
+      - "traefik.http.routers.grafana.service=grafana"
+      - "traefik.http.routers.grafana.middlewares=crowdsec-bouncer@file"
+      - "traefik.http.services.grafana.loadbalancer.server.port=3000"
+
+  prometheus:
+    image: prom/prometheus:v3.15.1
+    container_name: monitor-prometheus
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    user: "${PUID}:${PGID}"
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=${PROMETHEUS_RETENTION:-90d}
+      - --storage.tsdb.retention.size=${PROMETHEUS_RETENTION_SIZE:-20GB}
+      - --web.enable-lifecycle
+    volumes:
+      - ./config/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      # sites.yml gerado pelo serviço config (com o domínio real)
+      - ${CACHE_PATH:?}/monitor/gerado:/etc/prometheus/gerado:ro
+      # Histórico de métricas: recriável, sem backup
+      - ${CACHE_PATH:?}/monitor/prometheus:/prometheus
+    # Os alvos fora do Docker têm nome fixo no prometheus.yml; o IP vem do .env.
+    extra_hosts:
+      - "bergaserver:host-gateway"
+      - "proxmox:${PROXMOX_IP:?}"
+      - "omv:${OMV_IP:?}"
+      - "opnsense:${OPNSENSE_IP:?}"
+      - "vps:${VPS_TUNNEL_IP:?}"
+    networks:
+      - monitor-internal
+      # Saída para a rede local e o túnel (Proxmox, OMV, OPNsense, VPS)
+      - monitor-egress
+      # Traefik e CrowdSec
+      - bergatrix-monitor
+    depends_on:
+      config:
+        condition: service_completed_successfully
+
+  loki:
+    image: grafana/loki:3.7.9
+    container_name: monitor-loki
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    user: "${PUID}:${PGID}"
+    command: ["-config.file=/etc/loki/loki.yml"]
+    volumes:
+      - ./config/loki/loki.yml:/etc/loki/loki.yml:ro
+      # Logs: recriável, sem backup
+      - ${CACHE_PATH:?}/monitor/loki:/loki
+    networks:
+      - monitor-internal
+
+  # Coleta os logs: containers, journal do servidor, access.log do Traefik e o
+  # syslog do OPNsense (5140) e da VPS (5141), e manda para o Loki.
+  alloy:
+    image: grafana/alloy:v1.21.3
+    container_name: monitor-alloy
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    command:
+      - run
+      - --server.http.listen-addr=0.0.0.0:12345
+      - --storage.path=/var/lib/alloy/data
+      - /etc/alloy/config.alloy
+    volumes:
+      - ./config/alloy/config.alloy:/etc/alloy/config.alloy:ro
+      - ${CACHE_PATH:?}/monitor/alloy:/var/lib/alloy/data
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/log/journal:/var/log/journal:ro
+      - /run/log/journal:/run/log/journal:ro
+      - /etc/machine-id:/etc/machine-id:ro
+      - ${APPDATA_PATH:?}/traefik/logs:/var/log/traefik:ro
+    ports:
+      # Syslog (TCP). Só o OPNsense e a VPS mandam; ver README.
+      - "5140:5140/tcp"
+      - "5141:5141/tcp"
+    networks:
+      - monitor-internal
+      # Rede interna não publica porta; o syslog entra por esta
+      - monitor-egress
+    depends_on:
+      - loki
+
+  # Métricas do Ubuntu (bergaserver). Rede do host para ver as interfaces de
+  # verdade; escuta só no IP do host na docker0 (172.17.0.1), que é onde o
+  # Prometheus chega por "host-gateway". Não fica exposto na rede local.
+  node-exporter:
+    image: prom/node-exporter:v1.12.1
+    container_name: monitor-node-exporter
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    network_mode: host
+    pid: host
+    command:
+      - --path.rootfs=/host
+      - --web.listen-address=172.17.0.1:9100
+      - --collector.filesystem.mount-points-exclude=^/(dev|proc|sys|run|var/lib/docker/.+|var/lib/containerd/.+)($$|/)
+      - --collector.netdev.device-exclude=^(veth.*|br-.*|docker0)$$
+      - --collector.systemd
+    volumes:
+      - /:/host:ro,rslave
+      - /run/dbus/system_bus_socket:/var/run/dbus/system_bus_socket:ro
+
+  # Métricas por container (CPU, memória, rede, disco)
+  cadvisor:
+    image: ghcr.io/google/cadvisor:v0.60.6
+    container_name: monitor-cadvisor
+    restart: unless-stopped
+    privileged: true
+    devices:
+      - /dev/kmsg
+    command:
+      - --docker_only=true
+      - --housekeeping_interval=30s
+      - --store_container_labels=false
+      - --whitelisted_container_labels=com.docker.compose.project,com.docker.compose.service
+      - --disable_metrics=advtcp,cpu_topology,cpuset,hugetlb,memory_numa,percpu,process,referenced_memory,resctrl,sched,tcp,udp,disk
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    networks:
+      - monitor-internal
+
+  # GTX 1060: uso, memória, temperatura e consumo (nvidia-smi)
+  gpu-exporter:
+    image: utkuozdemir/nvidia_gpu_exporter:1.17.0
+    container_name: monitor-gpu-exporter
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu, utility]
+    networks:
+      - monitor-internal
+
+  # Testes de fora para dentro: ping (VPS, OPNsense, Proxmox, OMV) e HTTPS dos
+  # sites pelo caminho público (validade do certificado incluída).
+  blackbox:
+    image: prom/blackbox-exporter:v0.29.1
+    container_name: monitor-blackbox
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    command: ["--config.file=/etc/blackbox/blackbox.yml"]
+    # Ping sem root: libera o ICMP "unprivileged" dentro do container
+    sysctls:
+      net.ipv4.ping_group_range: "0 2147483647"
+    volumes:
+      - ./config/blackbox/blackbox.yml:/etc/blackbox/blackbox.yml:ro
+    extra_hosts:
+      - "proxmox:${PROXMOX_IP:?}"
+      - "omv:${OMV_IP:?}"
+      - "opnsense:${OPNSENSE_IP:?}"
+      - "vps:${VPS_TUNNEL_IP:?}"
+    networks:
+      - monitor-internal
+      - monitor-egress
+
+  # API do Proxmox: estado e consumo de cada VM, storages
+  pve-exporter:
+    image: prompve/prometheus-pve-exporter:3.10.2
+    container_name: monitor-pve-exporter
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    command: ["--config.file=/etc/prometheus/gerado/pve.yml"]
+    volumes:
+      - ${CACHE_PATH:?}/monitor/gerado:/etc/prometheus/gerado:ro
+    extra_hosts:
+      - "proxmox:${PROXMOX_IP:?}"
+    networks:
+      - monitor-internal
+      - monitor-egress
+    depends_on:
+      config:
+        condition: service_completed_successfully
+
+  # API do OPNsense: gateways, interfaces, pf, serviços, WireGuard, firmware
+  opnsense-exporter:
+    image: ghcr.io/athennamind/opnsense-exporter:0.0.19
+    container_name: monitor-opnsense-exporter
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    command:
+      - --opnsense.protocol=https
+      - --opnsense.address=opnsense
+      # Certificado autoassinado do OPNsense, conexão só na rede local
+      - --opnsense.insecure
+      - --exporter.instance-label=opnsense
+      - --exporter.disable-arp-table
+      - --exporter.disable-kea-dhcpv6
+      - --exporter.disable-ipsec
+      - --exporter.disable-carp
+      - --web.listen-address=:8080
+    environment:
+      OPNSENSE_EXPORTER_OPS_API_KEY: ${OPNSENSE_API_KEY}
+      OPNSENSE_EXPORTER_OPS_API_SECRET: ${OPNSENSE_API_SECRET}
+    extra_hosts:
+      - "opnsense:${OPNSENSE_IP:?}"
+    networks:
+      - monitor-internal
+      - monitor-egress
+
+networks:
+  # Grafana ↔ Prometheus/Loki ↔ exporters, sem internet
+  monitor-internal:
+    name: monitor-internal
+    internal: true
+  # Saída para a rede local e o túnel; entrada do syslog
+  monitor-egress:
+    name: monitor-egress
+  bergatrix-proxy:
+    external: true
+  bergatrix-monitor:
+    external: true

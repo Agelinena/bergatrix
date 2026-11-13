@@ -42,7 +42,7 @@ Se um container ficar fora da lista, o `subir-tudo.sh` mostra no fim: "Container
 3. **Authentik e Vaultwarden:** login de todo o resto.
 4. **Ferramentas de base** (CloudBeaver).
 5. **Apps**, com quem fornece serviço antes de quem usa: o Ollama antes do Jellyfin (Legendarr), e o Jellyfin antes do bergastream (o Lidarr usa o SABnzbd e o Prowlarr).
-6. **Monitoramento** (Wazuh).
+6. **Monitoramento** (Grafana, Prometheus, Loki), por último: ele lê o Traefik e o CrowdSec, e o Grafana faz login pelo Authentik.
 
 A ordem garante que as dependências estejam no ar primeiro, mas um app não espera o outro ficar pronto. Se algo depende de um serviço lento para iniciar (como o Authentik), o próprio app precisa tentar de novo. É o que os apps daqui já fazem.
 

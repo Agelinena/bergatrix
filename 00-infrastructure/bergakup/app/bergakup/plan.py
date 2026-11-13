@@ -41,15 +41,13 @@ DEFAULT_DATASETS = (
             # Pastas vivas dos bancos: entram pelos dumps (dumps_dir), nunca copiadas rodando.
             "/srv/appdata/*/postgres",
             "/srv/appdata/*/redis",
-            # Wazuh: logs de segurança, fora do backup.
-            "/srv/appdata/wazuh",
         ],
         "consistency": "policies",
     },
 )
 
 # Stacks com SQLite em uso constante: param durante a cópia.
-DEFAULT_POLICIES = {"jellyfin": "stop", "homeassistant": "stop", "wazuh": "skip"}
+DEFAULT_POLICIES = {"jellyfin": "stop", "homeassistant": "stop"}
 
 
 def repository_url(storage: dict, subpath: str) -> str:

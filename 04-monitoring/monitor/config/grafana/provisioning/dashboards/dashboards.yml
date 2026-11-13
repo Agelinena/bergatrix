@@ -1,0 +1,15 @@
+apiVersion: 1
+
+# As dashboards vêm de config/grafana/dashboards, geradas por
+# dashboards/gerar.ts. Mudanças feitas pela tela não são salvas: edite o
+# gerador, rode de novo e faça o commit (README desta stack).
+providers:
+  - name: bergatrix
+    folder: Bergatrix
+    folderUid: bergatrix
+    type: file
+    disableDeletion: true
+    allowUiUpdates: false
+    updateIntervalSeconds: 60
+    options:
+      path: /etc/grafana/dashboards

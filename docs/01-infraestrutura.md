@@ -60,7 +60,7 @@ Rede local ───────────────────────
 | 03 | nextcloud | Arquivos, agenda e contatos: Nextcloud (Apache), cron, Postgres, Redis | `storange` | appdata, userdata |
 | 03 | ollama | Ollama (GPU), sem rota | – | cache |
 | 03 | transcriptor | Transcrição com faster-whisper (GPU): API, worker, Postgres, proxy de saída | `transcriptor` | appdata, cache |
-| 04 | wazuh | Wazuh manager, indexer, dashboard | `wazuh` (+ portas 1514, 1515, 514/udp, 55000 para agentes) | appdata |
+| 04 | monitor | Grafana (painéis e alertas por e-mail), Prometheus, Loki, Alloy e exporters (servidor, containers, GPU, Proxmox, OPNsense, sites) | `grafana` (+ portas 5140 e 5141/tcp para o syslog do OPNsense e da VPS) | appdata, cache |
 
 ### Ordem de subida
 
@@ -72,7 +72,7 @@ Elas se falam pelo nome do container, numa rede compartilhada ([06-redes.md](06-
 
 | Quem usa | Usa o quê | Endereço | Rede |
 |---|---|---|---|
-| Traefik (forward-auth), Bergalink, Bergastream, Berganews, Doberga e Transcriptor (OIDC) | Authentik | `authentik-server:9000` | `bergatrix-proxy` |
+| Traefik (forward-auth), Bergalink, Bergastream, Berganews, Doberga, Grafana e Transcriptor (OIDC) | Authentik | `authentik-server:9000` | `bergatrix-proxy` |
 | Jellyfin (plugin Bergafin Auth) | Authentik (OIDC) | `https://auth.${DOMAIN}`, pelo Traefik | `bergatrix-proxy` |
 | Traefik (bouncer) | CrowdSec | `crowdsec:8080` | `bergatrix-proxy` |
 | CrowdSec | Log do Traefik | `${APPDATA_PATH}/traefik/logs` | (arquivo) |
@@ -80,6 +80,8 @@ Elas se falam pelo nome do container, numa rede compartilhada ([06-redes.md](06-
 | Lidarr (bergastream) | SABnzbd e Prowlarr (stack jellyfin) | `sabnzbd:8080`, `prowlarr:9696` | `bergatrix-media` |
 | Lidarr (bergastream) | Downloads do SABnzbd | `${MEDIA_PATH}/downloads` | (mesma pasta) |
 | Lidarr (bergastream) | qBittorrent (stack jellyfin) | `qbittorrent:8080` | `bergatrix-media` |
+| Prometheus (monitor) | Métricas do Traefik e do CrowdSec | `traefik:8082`, `crowdsec:6060` | `bergatrix-monitor` |
+| Alloy (monitor) | Log do Traefik | `${APPDATA_PATH}/traefik/logs` | (arquivo) |
 
 ## Redes Docker
 

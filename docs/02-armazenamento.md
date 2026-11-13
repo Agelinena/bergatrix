@@ -90,7 +90,7 @@ Como em `APPDATA_PATH`, cada stack tem a sua pasta, com o nome da stack. Só ent
 | nextcloud | `html` (código, `config`, `custom_apps`), `postgres` | – | – | `nextcloud` (`data`: arquivos, versões, lixeira e miniaturas) |
 | ollama | – | `models` | – | – |
 | transcriptor | `postgres` | `models`, `work` (uploads e áudio para ouvir) | – | – |
-| wazuh | `wazuh_manager`, `wazuh_indexer`, `wazuh_dashboard`, `filebeat`, `config` | – | – | – |
+| monitor | `grafana` | `prometheus`, `loki`, `alloy`, `gerado` (sites e token do Proxmox) | – | – |
 
 ## Montagem no servidor Docker
 

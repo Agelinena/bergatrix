@@ -25,7 +25,7 @@ Criados quando o agente se registra. Dá para editar e acrescentar outros na int
 |---|---|---|---|
 | `userdata` | NAS: fotos (Immich) e arquivos (Nextcloud) | `/mnt/nas/userdata` (sem miniaturas e vídeos convertidos) | só copia |
 | `docker` | Repositório, composes, `.env`, identidade do agente | `~/bergatrix`, `/etc/bergakup`, `/var/lib/bergakup` | só copia |
-| `servidor` | HD do servidor: configs e bancos | `/srv/appdata` (sem `*/postgres`, `*/redis`, `wazuh`) + dumps | dumps + política de cada stack |
+| `servidor` | HD do servidor: configs e bancos | `/srv/appdata` (sem `*/postgres`, `*/redis`) + dumps | dumps + política de cada stack |
 
 Cada conjunto vira um repositório restic em cada destino. Sugestão:
 
@@ -54,7 +54,7 @@ Os dumps vão para `${APPDATA_PATH}/bergakup/dumps/<stack>/`, com um `manifest.j
 da cópia. A tela *Stacks e bancos* avisa sobre um container que parece banco e não tem a label.
 
 **Stacks durante o backup.** Cada stack tem uma política: copiar rodando (padrão), parar, pausar ou ficar fora. O padrão é parar
-o `jellyfin` e o `homeassistant` (SQLite em uso constante) e deixar o `wazuh` fora. A ordem de parar e subir segue o `stacks.txt`.
+o `jellyfin` e o `homeassistant` (SQLite em uso constante). A ordem de parar e subir segue o `stacks.txt`.
 O modo *backup frio* para tudo. Com LVM no `/srv`, a parada vai cair para segundos (planejado).
 
 **Proteções.**

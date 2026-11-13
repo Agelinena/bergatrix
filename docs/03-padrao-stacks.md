@@ -20,7 +20,7 @@ Se uma stack existente foge de alguma regra, ela está listada em [Dívidas conh
 | `01-network` | Entrada de tráfego (Traefik) e redes compartilhadas |
 | `02-security` | Identidade, segredos e proteção (Authentik, Vaultwarden, CrowdSec) |
 | `03-apps` | Aplicações |
-| `04-monitoring` | Observabilidade e segurança (Wazuh) |
+| `04-monitoring` | Observabilidade: métricas, logs, painéis e alertas ([monitor](../04-monitoring/monitor/README.md)) |
 | `ferramentas` | Não é stack. Apps que rodam nos PCs ([claude-sync](../ferramentas/claude-sync/README.md)) |
 
 **O nome da stack é o nome da pasta.** É o nome usado em `${APPDATA_PATH}/<stack>` e `${CACHE_PATH}/<stack>`. Renomear a pasta obriga a renomear essas pastas no servidor.
@@ -155,4 +155,4 @@ Stacks existentes que ainda não seguem o padrão. Nenhuma delas impede a migra�
 | bitwarden | O nome da pasta é `bitwarden`, mas o app é o Vaultwarden. |
 | nextcloud | As miniaturas (`appdata_*/preview`) ficam no NAS, dentro da pasta de dados: o Nextcloud não tem opção para separá-las. O backup pode excluir essa pasta. |
 | cloudbeaver | Ficou sem banco para acessar desde que o Postgres global saiu: cada stack tem o seu, em rede interna. |
-| quase todas | Sem `README.md` próprio (só bergastream, bergalink e wazuh têm). |
+| quase todas | Sem `README.md` próprio (só bergastream, bergalink, bergakup e monitor têm). |

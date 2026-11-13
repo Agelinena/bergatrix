@@ -32,4 +32,4 @@
 03-apps/homeassistant
 
 # Monitoramento
-04-monitoring/wazuh
+04-monitoring/monitor

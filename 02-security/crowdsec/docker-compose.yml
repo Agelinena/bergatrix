@@ -21,8 +21,12 @@ services:
       - ./whitelists/bergatrix.yaml:/etc/crowdsec/parsers/s02-enrich/bergatrix-whitelist.yaml:ro
     networks:
       - bergatrix-proxy
+      # Métricas lidas pelo Prometheus (stack monitor), porta 6060
+      - bergatrix-monitor
 
 networks:
   bergatrix-proxy:
     name: bergatrix-proxy
+    external: true
+  bergatrix-monitor:
     external: true

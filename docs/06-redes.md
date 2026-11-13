@@ -15,6 +15,7 @@ Ficam em [`01-network/redes/docker-compose.yml`](../01-network/redes/docker-comp
 | `bergatrix-ai` | O Ollama e quem usa ele (worker do Legendarr, worker `ai` do Berganews) | Sim |
 | `bergatrix-drop` | Só o Traefik e o Drop. O Drop é público, então fica fora da `bergatrix-proxy`: não alcança nenhum outro container | Não |
 | `bergatrix-office` | Só o Traefik e o Collabora (editor de documentos do Nextcloud). O Traefik tem nela o alias `storange.${DOMAIN}`, que é como o Collabora chega ao Nextcloud | Não |
+| `bergatrix-monitor` | O Prometheus (stack monitor) e quem ele lê em outras stacks: Traefik (métricas na 8082) e CrowdSec (6060) | Não |
 
 ### Da própria stack
 
@@ -25,7 +26,7 @@ Declaradas no compose da stack e usadas só por ela.
 | `<stack>-internal` | Banco, Redis e serviços internos | `name: <stack>-internal` e `internal: true` |
 | `<stack>-egress` | Serviço interno que precisa de internet, mas não do Traefik | `name: <stack>-egress` |
 
-Hoje existem: `authentik-internal`, `berganews-internal`, `berganews-egress`, `bergastream-internal`, `bergastream-egress`, `bergalink-internal`, `doberga-internal`, `transcriptor-internal`, `transcriptor-egress`, `immich-internal`, `immich-egress`, `nextcloud-internal`, `nextcloud-egress` e a rede padrão do Wazuh.
+Hoje existem: `authentik-internal`, `berganews-internal`, `berganews-egress`, `bergastream-internal`, `bergastream-egress`, `bergalink-internal`, `doberga-internal`, `transcriptor-internal`, `transcriptor-egress`, `immich-internal`, `immich-egress`, `nextcloud-internal`, `nextcloud-egress`, `monitor-internal` e `monitor-egress`.
 
 No Transcriptor, o worker (que baixa links enviados pelas pessoas) fica só na `transcriptor-internal` e sai para a internet por um proxy (smokescreen) que recusa destinos em redes privadas. É o modelo para qualquer serviço que busque URLs vindas de usuários, e o Berganews o segue (feeds, páginas e imagens cadastrados pelas pessoas).
 

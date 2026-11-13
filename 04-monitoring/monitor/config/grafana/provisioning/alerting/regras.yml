@@ -1,0 +1,945 @@
+# GERADO por dashboards/gerar.ts — não edite à mão.
+# Alertas do Grafana; destino em contato.yml.
+apiVersion: 1
+groups:
+  - orgId: 1
+    name: Máquinas
+    folder: Bergatrix
+    interval: 1m
+    rules:
+      - uid: alvo-fora
+        title: Coleta parou
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: up
+              instant: true
+              range: false
+              intervalMs: 1000
+              maxDataPoints: 43200
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: lt
+                    params:
+                      - 1
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        labels:
+          gravidade: critico
+        annotations:
+          summary: '{{ $$labels.job }} em {{ $$labels.host }} ({{ $$labels.instance }}) não responde há 5 min'
+          description: 'A máquina caiu, o exporter parou ou a rede até ela caiu.'
+        isPaused: false
+      - uid: cpu-alta
+        title: CPU alta
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: '100 * (1 - avg by (host) (rate(node_cpu_seconds_total{mode="idle"}[5m])))'
+              instant: true
+              range: false
+              intervalMs: 1000
+              maxDataPoints: 43200
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params:
+                      - 90
+        noDataState: OK
+        execErrState: Error
+        for: 15m
+        labels:
+          gravidade: aviso
+        annotations:
+          summary: 'CPU de {{ $$labels.host }} em {{ printf "%.0f" $$values.A.Value }}% há 15 min'
+        isPaused: false
+      - uid: memoria-alta
+        title: Memória alta
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: max by (host) (100 * (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) or 100 * (1 - (node_memory_free_bytes + node_memory_inactive_bytes) / node_memory_size_bytes))
+              instant: true
+              range: false
+              intervalMs: 1000
+              maxDataPoints: 43200
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params:
+                      - 90
+        noDataState: OK
+        execErrState: Error
+        for: 10m
+        labels:
+          gravidade: aviso
+        annotations:
+          summary: 'Memória de {{ $$labels.host }} em {{ printf "%.0f" $$values.A.Value }}%'
+        isPaused: false
+      - uid: disco-cheio
+        title: Disco quase cheio
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: '100 * (1 - node_filesystem_avail_bytes{fstype!~"tmpfs|devtmpfs|devfs|fdescfs|procfs|linprocfs|overlay|squashfs|ramfs|nfs.*|fuse.*|autofs|nsfs|efivarfs|vfat",mountpoint!~"/boot.*"} / node_filesystem_size_bytes{fstype!~"tmpfs|devtmpfs|devfs|fdescfs|procfs|linprocfs|overlay|squashfs|ramfs|nfs.*|fuse.*|autofs|nsfs|efivarfs|vfat",mountpoint!~"/boot.*"})'
+              instant: true
+              range: false
+              intervalMs: 1000
+              maxDataPoints: 43200
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params:
+                      - 85
+        noDataState: OK
+        execErrState: Error
+        for: 10m
+        labels:
+          gravidade: aviso
+        annotations:
+          summary: '{{ $$labels.mountpoint }} em {{ $$labels.host }} com {{ printf "%.0f" $$values.A.Value }}% de uso'
+        isPaused: false
+      - uid: disco-critico
+        title: Disco cheio
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: '100 * (1 - node_filesystem_avail_bytes{fstype!~"tmpfs|devtmpfs|devfs|fdescfs|procfs|linprocfs|overlay|squashfs|ramfs|nfs.*|fuse.*|autofs|nsfs|efivarfs|vfat",mountpoint!~"/boot.*"} / node_filesystem_size_bytes{fstype!~"tmpfs|devtmpfs|devfs|fdescfs|procfs|linprocfs|overlay|squashfs|ramfs|nfs.*|fuse.*|autofs|nsfs|efivarfs|vfat",mountpoint!~"/boot.*"})'
+              instant: true
+              range: false
+              intervalMs: 1000
+              maxDataPoints: 43200
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params:
+                      - 95
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        labels:
+          gravidade: critico
+        annotations:
+          summary: '{{ $$labels.mountpoint }} em {{ $$labels.host }} com {{ printf "%.0f" $$values.A.Value }}% de uso'
+        isPaused: false
+      - uid: disco-enche-24h
+        title: Disco vai encher em 24 h
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: 'predict_linear(node_filesystem_avail_bytes{fstype!~"tmpfs|devtmpfs|devfs|fdescfs|procfs|linprocfs|overlay|squashfs|ramfs|nfs.*|fuse.*|autofs|nsfs|efivarfs|vfat",mountpoint!~"/boot.*"}[6h], 86400) / 1e9'
+              instant: true
+              range: false
+              intervalMs: 1000
+              maxDataPoints: 43200
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: lt
+                    params:
+                      - 0
+        noDataState: OK
+        execErrState: Error
+        for: 1h
+        labels:
+          gravidade: aviso
+        annotations:
+          summary: '{{ $$labels.mountpoint }} em {{ $$labels.host }} enche em menos de 24 h no ritmo atual'
+        isPaused: false
+      - uid: temperatura-cpu
+        title: Temperatura alta
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: 'max by (host, chip, sensor) (node_hwmon_temp_celsius)'
+              instant: true
+              range: false
+              intervalMs: 1000
+              maxDataPoints: 43200
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params:
+                      - 85
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        labels:
+          gravidade: critico
+        annotations:
+          summary: '{{ $$labels.host }} ({{ $$labels.chip }} {{ $$labels.sensor }}) a {{ printf "%.0f" $$values.A.Value }} °C'
+        isPaused: false
+      - uid: systemd-falhou
+        title: Serviço do systemd falhou
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: 'node_systemd_unit_state{state="failed"}'
+              instant: true
+              range: false
+              intervalMs: 1000
+              maxDataPoints: 43200
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params:
+                      - 0
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        labels:
+          gravidade: aviso
+        annotations:
+          summary: '{{ $$labels.name }} falhou em {{ $$labels.host }}'
+        isPaused: false
+  - orgId: 1
+    name: Proxmox
+    folder: Bergatrix
+    interval: 1m
+    rules:
+      - uid: vm-parada
+        title: VM parada
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: '(pve_up{id=~"(qemu|lxc)/.*"} * on (id) group_left (name) pve_guest_info) and on (id) (pve_onboot_status == 1)'
+              instant: true
+              range: false
+              intervalMs: 1000
+              maxDataPoints: 43200
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: lt
+                    params:
+                      - 1
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        labels:
+          gravidade: critico
+        annotations:
+          summary: 'A VM {{ $$labels.name }} ({{ $$labels.id }}) está parada'
+          description: Só VMs com início automático (onboot).
+        isPaused: false
+      - uid: storage-cheio
+        title: Storage do Proxmox quase cheio
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: '100 * pve_disk_usage_bytes{id=~"storage/.*"} / pve_disk_size_bytes{id=~"storage/.*"}'
+              instant: true
+              range: false
+              intervalMs: 1000
+              maxDataPoints: 43200
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params:
+                      - 85
+        noDataState: OK
+        execErrState: Error
+        for: 15m
+        labels:
+          gravidade: aviso
+        annotations:
+          summary: '{{ $$labels.id }} com {{ printf "%.0f" $$values.A.Value }}% de uso'
+        isPaused: false
+      - uid: smart-falha
+        title: Disco com falha SMART
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: smartmon_device_smart_healthy
+              instant: true
+              range: false
+              intervalMs: 1000
+              maxDataPoints: 43200
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: lt
+                    params:
+                      - 1
+        noDataState: OK
+        execErrState: Error
+        for: 0s
+        labels:
+          gravidade: critico
+        annotations:
+          summary: 'O disco {{ $$labels.disk }} reprovou no SMART'
+          description: Faça backup e planeje a troca.
+        isPaused: false
+      - uid: smart-setores
+        title: Disco com setores ruins
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: 'max by (disk) (smartmon_attr_raw_value{name=~"reallocated_sector_ct|current_pending_sector"}) or max by (disk) (smartmon_reallocated_sector_ct_raw_value) or max by (disk) (smartmon_current_pending_sector_raw_value)'
+              instant: true
+              range: false
+              intervalMs: 1000
+              maxDataPoints: 43200
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params:
+                      - 0
+        noDataState: OK
+        execErrState: Error
+        for: 0s
+        labels:
+          gravidade: aviso
+        annotations:
+          summary: 'O disco {{ $$labels.disk }} tem {{ printf "%.0f" $$values.A.Value }} setores realocados ou pendentes'
+        isPaused: false
+      - uid: disco-quente
+        title: Disco quente
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: 'max by (disk) (smartmon_attr_raw_value{name="temperature_celsius"}) or max by (disk) (smartmon_temperature_celsius_raw_value)'
+              instant: true
+              range: false
+              intervalMs: 1000
+              maxDataPoints: 43200
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params:
+                      - 55
+        noDataState: OK
+        execErrState: Error
+        for: 10m
+        labels:
+          gravidade: aviso
+        annotations:
+          summary: 'O disco {{ $$labels.disk }} está a {{ printf "%.0f" $$values.A.Value }} °C'
+        isPaused: false
+  - orgId: 1
+    name: Servidor Docker
+    folder: Bergatrix
+    interval: 1m
+    rules:
+      - uid: container-reiniciando
+        title: Container reiniciando
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: 'changes(container_start_time_seconds{name!=""}[15m])'
+              instant: true
+              range: false
+              intervalMs: 1000
+              maxDataPoints: 43200
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params:
+                      - 2
+        noDataState: OK
+        execErrState: Error
+        for: 0s
+        labels:
+          gravidade: aviso
+        annotations:
+          summary: '{{ $$labels.name }} reiniciou {{ printf "%.0f" $$values.A.Value }} vezes em 15 min'
+        isPaused: false
+      - uid: gpu-quente
+        title: GPU quente
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: nvidia_smi_temperature_gpu
+              instant: true
+              range: false
+              intervalMs: 1000
+              maxDataPoints: 43200
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params:
+                      - 85
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        labels:
+          gravidade: aviso
+        annotations:
+          summary: 'GPU a {{ printf "%.0f" $$values.A.Value }} °C'
+        isPaused: false
+      - uid: traefik-5xx
+        title: Muitos erros 5xx
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: '(100 * sum by (service) (rate(traefik_service_requests_total{code=~"5.."}[10m])) / sum by (service) (rate(traefik_service_requests_total[10m]))) and on (service) (sum by (service) (rate(traefik_service_requests_total[10m])) > 0.05)'
+              instant: true
+              range: false
+              intervalMs: 1000
+              maxDataPoints: 43200
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params:
+                      - 10
+        noDataState: OK
+        execErrState: Error
+        for: 10m
+        labels:
+          gravidade: aviso
+        annotations:
+          summary: '{{ $$labels.service }} com {{ printf "%.0f" $$values.A.Value }}% de respostas 5xx'
+        isPaused: false
+      - uid: oom
+        title: Processo morto por falta de memória
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: loki
+            model:
+              refId: A
+              expr: 'sum by (host) (count_over_time({job=~"journal|syslog"} |~ "(?i)out of memory: killed process" [10m]))'
+              queryType: instant
+              intervalMs: 1000
+              maxDataPoints: 43200
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params:
+                      - 0
+        noDataState: OK
+        execErrState: Error
+        for: 0s
+        labels:
+          gravidade: aviso
+        annotations:
+          summary: 'O kernel de {{ $$labels.host }} matou um processo por falta de memória'
+          description: 'Veja o painel Logs (busca: out of memory).'
+        isPaused: false
+  - orgId: 1
+    name: Rede
+    folder: Bergatrix
+    interval: 1m
+    rules:
+      - uid: tunel-caiu
+        title: Túnel WireGuard sem handshake
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: 'time() - wireguard_latest_handshake_seconds{host="vps"}'
+              instant: true
+              range: false
+              intervalMs: 1000
+              maxDataPoints: 43200
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params:
+                      - 300
+        noDataState: OK
+        execErrState: Error
+        for: 2m
+        labels:
+          gravidade: critico
+        annotations:
+          summary: 'Túnel SP ↔ casa sem handshake há {{ printf "%.0f" $$values.A.Value }} s ({{ $$labels.allowed_ips }})'
+          description: Os sites ficam fora do ar para quem vem pela VPS.
+        isPaused: false
+      - uid: ping-falhou
+        title: Sem resposta ao ping
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: 'probe_success{job="ping"}'
+              instant: true
+              range: false
+              intervalMs: 1000
+              maxDataPoints: 43200
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: lt
+                    params:
+                      - 1
+        noDataState: OK
+        execErrState: Error
+        for: 3m
+        labels:
+          gravidade: critico
+        annotations:
+          summary: '{{ $$labels.instance }} não responde ao ping há 3 min'
+        isPaused: false
+      - uid: tunel-lento
+        title: Túnel lento
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: 'probe_icmp_duration_seconds{job="ping", phase="rtt", instance="vps"} * 1000'
+              instant: true
+              range: false
+              intervalMs: 1000
+              maxDataPoints: 43200
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params:
+                      - 100
+        noDataState: OK
+        execErrState: Error
+        for: 10m
+        labels:
+          gravidade: aviso
+        annotations:
+          summary: 'Latência casa → VPS em {{ printf "%.0f" $$values.A.Value }} ms'
+        isPaused: false
+      - uid: gateway
+        title: Gateway com problema
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: opnsense_gateways_status
+              instant: true
+              range: false
+              intervalMs: 1000
+              maxDataPoints: 43200
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: lt
+                    params:
+                      - 1
+        noDataState: OK
+        execErrState: Error
+        for: 3m
+        labels:
+          gravidade: critico
+        annotations:
+          summary: 'Gateway {{ $$labels.name }} não está "no ar" (código {{ printf "%.0f" $$values.A.Value }})'
+          description: '0 fora, 2 desconhecido, 3 aguardando, 4 perda, 5 latência, 6 desligado.'
+        isPaused: false
+      - uid: gateway-perda
+        title: Perda de pacotes na internet
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: opnsense_gateways_loss_percentage
+              instant: true
+              range: false
+              intervalMs: 1000
+              maxDataPoints: 43200
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params:
+                      - 10
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        labels:
+          gravidade: aviso
+        annotations:
+          summary: 'Gateway {{ $$labels.name }} com {{ printf "%.0f" $$values.A.Value }}% de perda'
+        isPaused: false
+      - uid: opnsense-servico
+        title: Serviço do OPNsense parado
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: opnsense_services_status
+              instant: true
+              range: false
+              intervalMs: 1000
+              maxDataPoints: 43200
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: lt
+                    params:
+                      - 1
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        labels:
+          gravidade: aviso
+        annotations:
+          summary: '{{ $$labels.description }} ({{ $$labels.name }}) parado no OPNsense'
+        isPaused: false
+      - uid: pf-estados
+        title: Tabela de estados do pf enchendo
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: 100 * opnsense_pf_states_current / opnsense_pf_states_limit
+              instant: true
+              range: false
+              intervalMs: 1000
+              maxDataPoints: 43200
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params:
+                      - 80
+        noDataState: OK
+        execErrState: Error
+        for: 10m
+        labels:
+          gravidade: aviso
+        annotations:
+          summary: 'Tabela de estados do OPNsense em {{ printf "%.0f" $$values.A.Value }}%'
+        isPaused: false
+  - orgId: 1
+    name: Sites
+    folder: Bergatrix
+    interval: 1m
+    rules:
+      - uid: site-fora
+        title: Site fora do ar
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: 'probe_success{job="sites"}'
+              instant: true
+              range: false
+              intervalMs: 1000
+              maxDataPoints: 43200
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: lt
+                    params:
+                      - 1
+        noDataState: OK
+        execErrState: Error
+        for: 3m
+        labels:
+          gravidade: critico
+        annotations:
+          summary: '{{ $$labels.instance }} não responde pelo caminho público há 3 min'
+        isPaused: false
+      - uid: certificado
+        title: Certificado perto de vencer
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: '(probe_ssl_earliest_cert_expiry{job="sites"} - time()) / 86400'
+              instant: true
+              range: false
+              intervalMs: 1000
+              maxDataPoints: 43200
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: lt
+                    params:
+                      - 14
+        noDataState: OK
+        execErrState: Error
+        for: 1h
+        labels:
+          gravidade: aviso
+        annotations:
+          summary: 'O certificado de {{ $$labels.instance }} vence em {{ printf "%.0f" $$values.A.Value }} dias'
+          description: 'O Traefik renova sozinho com 30 dias; se chegou aqui, a renovação está falhando (deSEC).'
+        isPaused: false

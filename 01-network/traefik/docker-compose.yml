@@ -18,6 +18,8 @@ services:
       bergatrix-office:
         aliases:
           - storange.${DOMAIN}
+      # Métricas lidas pelo Prometheus (stack monitor), porta 8082
+      bergatrix-monitor: {}
     ports:
       - 80:80
       - 443:443
@@ -53,4 +55,6 @@ networks:
   bergatrix-drop:
     external: true
   bergatrix-office:
+    external: true
+  bergatrix-monitor:
     external: true

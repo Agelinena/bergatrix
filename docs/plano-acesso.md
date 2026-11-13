@@ -6,7 +6,7 @@ Plano para trocar o modelo atual de três rotas (forward-auth do Authentik, aces
 
 - **Login único pelo Authentik**, com 2FA, para todos os serviços com interface:
   - **OIDC no app:** Bergalink, Bergastream, Transcriptor, Vaultwarden, Immich, Nextcloud e Home Assistant;
-  - **forward-auth:** Wazuh, CloudBeaver, os *arr, o painel do Traefik e o Legendarr.
+  - **forward-auth:** CloudBeaver, os *arr, o painel do Traefik e o Legendarr.
 - **Sem Authentik na frente, por desenho:** o Drop e o Collabora (`office`, o editor do Nextcloud). O Collabora só responde a quem tem token WOPI emitido pelo Nextcloud, e fica em rede isolada.
 - **Só pela VPN:** Proxmox, OMV e o Ubuntu (SSH e o host Docker). A VPN é o Tailscale, gerenciado no firewall, fora da VM do Docker.
 - **Nada sem Authentik na frente, nem na rede local.** O padrão de rotas e labels está em [05-acesso.md](05-acesso.md).
@@ -41,7 +41,7 @@ Para quem usa, A, B e C dão o mesmo resultado: a tela do Authentik, o mesmo 2FA
 | transcriptor | api | `transcriptor` | Forward-auth + IP | **A** (OIDC, código próprio) | Reescrito: login OIDC no app, uma rota com `crowdsec-bouncer`, tokens pessoais no lugar da `X-API-Key`. | No repositório (falta subir) |
 | jellyfin | legendarr-web | `legendarr` | D | **C** | Forward-auth (decisão de out/2026, no lugar do OIDC). O webhook dos *arr é chamado entre containers e não passa pelo Traefik. | ✓ |
 | bitwarden | vaultwarden | `bitwarden` | 3 rotas + rotas de WebSocket | **A** (OIDC) | As extensões e os apps precisam da API sem forward-auth, então a rota é pública e o SSO fica dentro do app (`SSO_ENABLED`, `SSO_AUTHORITY`, `SSO_CLIENT_ID`, `SSO_CLIENT_SECRET`). A senha mestra **continua obrigatória**: ela cifra o cofre e nunca passa pelo Authentik. Deixe `SSO_ONLY` desligado no começo. `/admin` com o token desligado. Revisar as rotas `-ws-*` para a porta 3012, que deve estar obsoleta. | ✓ |
-| wazuh | dashboard | `wazuh` | D | **C** | O dashboard mantém o próprio login atrás do Authentik. (SSO por SAML com papéis é possível no futuro.) | ✓ |
+| monitor | grafana | `grafana` | – | **A** (OIDC) | Stack nova (nov/2026), no lugar do Wazuh. Admins do Authentik viram Admin no Grafana; o resto, Viewer. | No repositório (falta subir) |
 | traefik | painel | `traefik` | D + basic auth | **C** | Substitui o basic auth | ✓ |
 | jellyfin | sonarr, radarr, prowlarr, bazarr, sabnzbd, qbittorrent | um por serviço | D | **C** | Desligar o login próprio (`External` nos *arr) para não ter login duplo. Apps de celular para os *arr (nzb360, LunaSea) param de funcionar de fora. Corrigir as labels incompletas do radarr. | ✓ |
 | bergastream | lidarr | `lidarr` | D | **C** | Idem *arr | ✓ |
@@ -58,7 +58,7 @@ Para quem usa, A, B e C dão o mesmo resultado: a tela do Authentik, o mesmo 2FA
 | *infra* | Proxmox | IP local | Login local | **D** (VPN) | OIDC nativo é opcional; o acesso de fora é só pela VPN | – |
 | *infra* | OpenMediaVault | IP local | Login local | **D** (VPN) | Interface em PHP: manter sempre atualizado | – |
 | *infra* | Ubuntu (VM Docker) | IP local | SSH | **D** (VPN) | SSH só pela rede local e pela VPN, com chave | – |
-| wazuh | manager | portas 1514/1515/514/55000 | Publicadas | Revisar | Os agentes precisam da 1514/1515; a 55000 (API) não precisa ficar exposta | – |
+| monitor | alloy (syslog) | portas 5140 e 5141/tcp | – | Publicadas | Recebem o syslog do OPNsense e da VPS. Restringir no OPNsense quem chega a elas (README da stack). | – |
 | vários | worker do Authentik, ollama, flaresolverr, torrent-indexer, worker do Legendarr, bancos | – | Vários na `bergatrix-proxy`; flaresolverr e torrent-indexer com rota | **F** | Sem rota e fora da `bergatrix-proxy`, cada um na rede do assunto ([06-redes.md](06-redes.md)) | No repositório (falta subir) |
 
 ## O que precisa existir no Authentik
@@ -95,14 +95,14 @@ Feito: `bergatrix-proxy` só com quem tem rota, mais `bergatrix-media` e `bergat
 
 ## O que falta
 
-Feito: base no Authentik, redes, painel do Traefik, *arr, Lidarr, Legendarr, Seerr, Vaultwarden, Wazuh e CloudBeaver.
+Feito: base no Authentik, redes, painel do Traefik, *arr, Lidarr, Legendarr, Seerr, Vaultwarden e CloudBeaver. O Wazuh saiu (nov/2026); o monitoramento agora é a stack `monitor`.
 
 1. **Jellyfin:** subir com o CrowdSec e acompanhar os bans nos primeiros dias.
 2. **Drop:** subir a versão 2 (rede `bergatrix-drop`, CrowdSec e rate limit). Ver o [README](../03-apps/drop/README.md#subir).
 3. **Transcriptor:** subir a versão nova (OIDC, Postgres, worker isolado). Ver o [README](../03-apps/transcriptor/README.md#subir).
 4. **Home Assistant → OIDC** (`hass-oidc-auth`), com uma rota pública só. Tira a rota `-direct`, a `-bypass` e o `public-auth`.
 5. **`dynamic.yml`:** remover `public-auth` e `api-access-bypass` quando os itens 3 e 4 estiverem no ar.
-6. **Wazuh:** revisar a porta 55000.
+6. **Monitor:** subir a stack (Grafana com OIDC). Ver o [README](../04-monitoring/monitor/README.md).
 7. **Bergastream:** OIDC no código, seguindo o Bergalink.
 8. **Immich:** subir com o OIDC e o timeout novo do Traefik. Ver o [README](../03-apps/immich/README.md#subir). Fotos de verdade só depois do backup do `USERDATA_PATH`.
 9. **Nextcloud:** subir com o OIDC e o parser novo do CrowdSec. Ver o [README](../03-apps/nextcloud/README.md#1-authentik). Arquivos de verdade só depois do backup do `USERDATA_PATH`.

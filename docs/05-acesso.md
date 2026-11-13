@@ -89,7 +89,7 @@ Já existe uma aplicação única (aqui chamada de **"Forward Auth do domínio"*
 
 - **Quem entra:** a aplicação tem *binding* com o grupo `admins`. Só esse grupo passa em qualquer serviço de forward-auth. Sem binding, qualquer usuário logado passaria.
 - **App que precise de outro grupo:** crie uma aplicação *Proxy* em modo *Forward auth (single application)*, com o *external host* dele, no mesmo outpost, vinculada ao grupo do app. Ela vale para aquele endereço, e a de domínio continua cobrindo o resto.
-- **Login duplo:** os *arr aceitam `AuthenticationMethod=External` no `config.xml` (o login fica só com o Authentik; a API continua exigindo a chave). No Bazarr, a autenticação vai para `None`. O Wazuh, o CloudBeaver e o qBittorrent mantêm o login próprio atrás do Authentik.
+- **Login duplo:** os *arr aceitam `AuthenticationMethod=External` no `config.xml` (o login fica só com o Authentik; a API continua exigindo a chave). No Bazarr, a autenticação vai para `None`. O CloudBeaver e o qBittorrent mantêm o login próprio atrás do Authentik.
 
 Em todos os casos:
 - **2FA:** o login dos usuários precisa passar por 2FA.

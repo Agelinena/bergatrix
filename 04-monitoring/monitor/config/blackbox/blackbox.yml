@@ -1,0 +1,19 @@
+modules:
+  # Site no ar pelo caminho público: TLS válido e resposta 2xx (seguindo
+  # redirecionamentos, como o do forward-auth para o Authentik).
+  https:
+    prober: http
+    timeout: 15s
+    http:
+      method: GET
+      preferred_ip_protocol: ip4
+      follow_redirects: true
+      fail_if_not_ssl: true
+      valid_status_codes: []   # vazio = qualquer 2xx
+
+  # Ping. Sem root: usa o ICMP "unprivileged" (sysctl ping_group_range no compose)
+  icmp:
+    prober: icmp
+    timeout: 5s
+    icmp:
+      preferred_ip_protocol: ip4

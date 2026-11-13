@@ -1,0 +1,19 @@
+# Sites testados de fora para dentro (blackbox, módulo https).
+# example.com é trocado pelo DOMAIN do .env no serviço config.
+# Rotas com forward-auth respondem 302 para o Authentik: o teste segue o
+# redirecionamento e conta como no ar se a tela de login abrir.
+- targets:
+    - https://auth.example.com
+    - https://grafana.example.com
+    - https://bitwarden.example.com
+    - https://fotos.example.com
+    - https://storange.example.com
+    - https://jellyflix.example.com
+    - https://catalogo.example.com
+    - https://bergastream.example.com
+    - https://bergalink.example.com
+    - https://news.example.com
+    - https://doberga.example.com
+    - https://drop.example.com
+    - https://transcriptor.example.com
+    - https://ha.example.com

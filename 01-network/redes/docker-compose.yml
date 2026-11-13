@@ -21,6 +21,7 @@ services:
       - bergatrix-ai
       - bergatrix-drop
       - bergatrix-office
+      - bergatrix-monitor
 
 networks:
   # Traefik e os serviços com rota. Também o CrowdSec, que o bouncer do
@@ -51,4 +52,11 @@ networks:
   # do Traefik nesta rede (storange.${DOMAIN}), definido no compose do Traefik.
   bergatrix-office:
     name: bergatrix-office
+    internal: true
+
+  # Prometheus (stack monitor) e quem ele lê em outras stacks: Traefik e
+  # CrowdSec. Sem internet; os exporters da própria stack ficam na
+  # monitor-internal.
+  bergatrix-monitor:
+    name: bergatrix-monitor
     internal: true
