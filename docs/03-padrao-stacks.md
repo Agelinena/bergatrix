@@ -58,7 +58,7 @@ Depois do bloco base, uma seção por assunto (`# ── Banco ──`, `# ─�
 
 | Regra | Exemplo |
 |---|---|
-| Prefixo com o nome do app | `VAULTWARDEN_ADMIN_TOKEN`, `TRANSCRIPTOR_SSO_CLIENT_SECRET`, `OUTPOST_LDAP_TOKEN` |
+| Prefixo com o nome do app | `VAULTWARDEN_ADMIN_TOKEN`, `TRANSCRIPTOR_SSO_CLIENT_SECRET` |
 | O Postgres próprio da stack usa os nomes da imagem oficial (um banco por stack, sem colisão) | `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD` |
 | Serviços de terceiros usam o nome do serviço | `OPENROUTER_API_KEY`, `DESEC_TOKEN`, `HF_TOKEN`, `DEEMIX_ARL` |
 | Variáveis lidas diretamente pelo app via `env_file` mantêm o nome que o app espera | `AUTHENTIK_*` e as configurações do Bergastream e do Legendarr |
@@ -102,7 +102,7 @@ volumes:
 
 Regras completas e como criar uma rede em [06-redes.md](06-redes.md). Em resumo:
 
-- Redes compartilhadas (`bergatrix-proxy`, `bergatrix-media`, `bergatrix-ldap`, `bergatrix-ai`) ficam em `01-network/redes` e entram na stack com `external: true`.
+- Redes compartilhadas (`bergatrix-proxy`, `bergatrix-media`, `bergatrix-ai`) ficam em `01-network/redes` e entram na stack com `external: true`.
 - A `bergatrix-proxy` é só para serviços com rota no Traefik.
 - Banco e serviços internos ficam na `<stack>-internal` (`internal: true`). O banco nunca entra numa rede compartilhada.
 
@@ -124,7 +124,7 @@ Regras completas e como criar uma rede em [06-redes.md](06-redes.md). Em resumo:
 Regra e labels em [05-acesso.md](05-acesso.md). Em resumo:
 
 - **Nenhum serviço fica sem Authentik na frente, nem na rede local.**
-- O app entra por **OIDC**, por **LDAP** ou por **forward-auth**.
+- O app entra por **OIDC** (o Jellyfin pelo plugin Bergafin Auth) ou por **forward-auth**.
 - Cada serviço tem uma rota só.
 - Não se usam mais IPs fixos nem bypass em serviços do Docker.
 

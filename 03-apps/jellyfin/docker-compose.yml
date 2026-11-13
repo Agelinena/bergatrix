@@ -1,5 +1,6 @@
 services:
-  # Login pelo Authentik via LDAP (docs/guias/autenticacao-ldap.md)
+  # Login só pelo Authentik: plugin Bergafin Auth (docs/guias/jellyfin-authentik.md).
+  # Contas locais (sala e admin de emergência) só na rede de casa.
   jellyfin:
     image: jellyfin/jellyfin
     container_name: jellyfin
@@ -22,7 +23,6 @@ services:
     networks:
       - bergatrix-proxy
       - bergatrix-media
-      - bergatrix-ldap     # authentik-ldap:3389
     deploy:
       resources:
         reservations:
@@ -43,7 +43,7 @@ services:
 
   catalogo:
     # Seerr (pedidos de filmes e séries)
-    image: ghcr.io/seerr-team/seerr:v3.4.1
+    image: ghcr.io/seerr-team/seerr:v3.5.2
     init: true
     container_name: catalogo
     restart: unless-stopped
@@ -60,7 +60,9 @@ services:
       - bergatrix-proxy
       - bergatrix-media
     labels:
-      # Login pela conta do Jellyfin, que confere a senha no Authentik (LDAP).
+      # Login por Quick Connect: a pessoa aprova o código em
+      # https://jellyflix.${DOMAIN}/Bergafin/QuickConnect, pelo Authentik. A senha
+      # do Jellyfin só serve para as contas locais, na rede de casa.
       # Sem forward-auth para não ter login duplo; o login local do Seerr fica
       # desligado em Settings → Users (docs/05-acesso.md).
       - "traefik.enable=true"
@@ -433,8 +435,6 @@ networks:
   bergatrix-proxy:
     external: true
   bergatrix-media:
-    external: true
-  bergatrix-ldap:
     external: true
   bergatrix-ai:
     external: true

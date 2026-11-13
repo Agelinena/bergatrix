@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# Clona ou atualiza os repositórios listados em repos.txt.
+#   ./sync          clona o que falta e atualiza (só fast-forward) o que está limpo
+#   ./sync status   mostra branch, mudanças locais e commits a enviar/receber
+# Repositório com mudança local ou fora do branch padrão não é tocado.
+set -euo pipefail
+cd "$(dirname "$0")"
+
+# SSH se houver chave no agente; senão HTTPS (gh auth setup-git)
+url_for() {
+  if ssh -o BatchMode=yes -T git@github.com 2>&1 | grep -q 'successfully authenticated'; then
+    echo "git@github.com:$1.git"
+  else
+    echo "https://github.com/$1.git"
+  fi
+}
+
+mode="${1:-sync}"
+grep -vE '^\s*(#|$)' repos.txt | while read -r dir repo; do
+  if [ ! -d "$dir/.git" ]; then
+    if [ "$mode" = status ]; then echo "$dir: não clonado"; continue; fi
+    echo "== $dir: clonando $repo"
+    mkdir -p "$(dirname "$dir")"
+    git clone "$(url_for "$repo")" "$dir"
+    continue
+  fi
+  branch=$(git -C "$dir" symbolic-ref --short -q HEAD || echo "(detached)")
+  git -C "$dir" fetch -q origin || { echo "$dir: falha no fetch"; continue; }
+  dirty=$(git -C "$dir" status --porcelain | wc -l | tr -d ' ')
+  counts=$(git -C "$dir" rev-list --left-right --count "HEAD...@{u}" 2>/dev/null || echo "? ?")
+  ahead=${counts%%[[:space:]]*}; behind=${counts##*[[:space:]]}
+  if [ "$mode" = status ]; then
+    echo "$dir: $branch, $dirty alterado(s), $ahead a enviar, $behind a receber"
+    continue
+  fi
+  if [ "$dirty" != 0 ] || [ "$behind" = 0 ] || [ "$behind" = "?" ]; then
+    echo "== $dir: $branch, $dirty alterado(s), $ahead a enviar, $behind a receber (sem pull)"
+  else
+    echo "== $dir: recebendo $behind commit(s)"
+    git -C "$dir" merge --ff-only -q "@{u}" || echo "   não deu fast-forward; resolva à mão"
+  fi
+done

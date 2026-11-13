@@ -18,7 +18,6 @@ services:
     networks:
       - bergatrix-proxy
       - bergatrix-media
-      - bergatrix-ldap
       - bergatrix-ai
       - bergatrix-drop
       - bergatrix-office
@@ -34,12 +33,6 @@ networks:
   # metadados), por isso não é internal.
   bergatrix-media:
     name: bergatrix-media
-
-  # Outpost LDAP do Authentik e os apps que fazem login por LDAP (Jellyfin).
-  # Sem saída para a internet.
-  bergatrix-ldap:
-    name: bergatrix-ldap
-    internal: true
 
   # Ollama e quem usa ele (worker do Legendarr). Com internet para o
   # `ollama pull` baixar modelos.

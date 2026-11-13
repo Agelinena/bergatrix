@@ -46,7 +46,7 @@ Rede local ───────────────────────
 | 00 | cloudbeaver | CloudBeaver | `db` | appdata |
 | 00 | bergakup | Backup (restic + Backblaze B2): interface e API, Postgres. Quem executa é o `bergakup-agent`, no host (systemd) | `bergakup` (só rede local/VPN) | appdata |
 | 01 | traefik | Traefik + plugin CrowdSec | `traefik` (painel) | appdata |
-| 02 | authentik | Authentik (server, worker, outpost LDAP), Postgres, Redis | `authentik`, `auth` | appdata |
+| 02 | authentik | Authentik (server, worker), Postgres, Redis | `authentik`, `auth` | appdata |
 | 02 | bitwarden | Vaultwarden | `bitwarden` | appdata |
 | 02 | crowdsec | CrowdSec | – | appdata |
 | 03 | bergalink | API própria (localização em família), Postgres | `bergalink` | appdata |
@@ -72,7 +72,7 @@ Elas se falam pelo nome do container, numa rede compartilhada ([06-redes.md](06-
 | Quem usa | Usa o quê | Endereço | Rede |
 |---|---|---|---|
 | Traefik (forward-auth), Bergalink, Bergastream, Berganews e Transcriptor (OIDC) | Authentik | `authentik-server:9000` | `bergatrix-proxy` |
-| Jellyfin (plugin LDAP) | Outpost LDAP do Authentik | `authentik-ldap:3389` | `bergatrix-ldap` |
+| Jellyfin (plugin Bergafin Auth) | Authentik (OIDC) | `https://auth.${DOMAIN}`, pelo Traefik | `bergatrix-proxy` |
 | Traefik (bouncer) | CrowdSec | `crowdsec:8080` | `bergatrix-proxy` |
 | CrowdSec | Log do Traefik | `${APPDATA_PATH}/traefik/logs` | (arquivo) |
 | Legendarr worker, Berganews (`ai`) | Ollama | `ollama:11434` | `bergatrix-ai` |

@@ -7,11 +7,11 @@ Ponto de partida para entender o servidor e criar ou alterar qualquer stack.
 | [01-infraestrutura.md](01-infraestrutura.md) | Máquinas, discos, caminho do tráfego, stacks e dependências entre elas |
 | [02-armazenamento.md](02-armazenamento.md) | As quatro raízes de dados, o que vai em cada uma, montagem e backup |
 | [03-padrao-stacks.md](03-padrao-stacks.md) | O padrão de toda stack: pastas, variáveis, volumes, redes e checklist de stack nova |
-| [05-acesso.md](05-acesso.md) | O padrão de acesso: Authentik na frente de tudo (OIDC, LDAP ou forward-auth) e as labels do Traefik para cada caso |
+| [05-acesso.md](05-acesso.md) | O padrão de acesso: Authentik na frente de tudo (OIDC ou forward-auth) e as labels do Traefik para cada caso |
 | [06-redes.md](06-redes.md) | As redes Docker: quais existem, quem entra em cada uma e como criar uma nova |
 | [07-ligar-e-desligar.md](07-ligar-e-desligar.md) | Subir e derrubar tudo na ordem certa (`subir-tudo.sh`, `derrubar-tudo.sh`) e manter o `stacks.txt` em dia |
-| [plano-acesso.md](plano-acesso.md) | Plano da migração para o novo modelo de acesso (OIDC, LDAP, forward-auth, rede local), serviço por serviço |
-| [guias/autenticacao-ldap.md](guias/autenticacao-ldap.md) | Login pelo Authentik em apps sem OIDC, via LDAP (ex.: Jellyfin) |
+| [plano-acesso.md](plano-acesso.md) | Plano da migração para o novo modelo de acesso (OIDC, forward-auth, rede local), serviço por serviço |
+| [guias/jellyfin-authentik.md](guias/jellyfin-authentik.md) | Jellyfin só pelo Authentik (plugin Bergafin Auth), Quick Connect, contas locais e Seerr |
 | [claude-sync](../ferramentas/claude-sync/README.md) | App de desktop: conversas do Claude Code no Nextcloud, para continuar de qualquer PC |
 | [templates/](templates/) | `docker-compose.yml` e `.env.example` modelo |
 | [legado/](legado/) | Documentação anterior, desatualizada. Fica só como consulta até ser reescrita. |

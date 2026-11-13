@@ -9,8 +9,7 @@ Como cada serviço fica exposto e autenticado. Vale para toda stack nova e para 
 | Padrão | O app… | Middlewares da rota |
 |---|---|---|
 | **OIDC** | Faz o login no Authentik sozinho (OpenID Connect) | `crowdsec-bouncer@file` |
-| **LDAP** | Pede usuário e senha e confere no Authentik ([guia](guias/autenticacao-ldap.md)) | `crowdsec-bouncer@file` |
-| **Pela conta de outro app LDAP** | Entra com a conta de um app que já usa LDAP (ex.: o Seerr usa a do Jellyfin). O login local do app fica desligado. | `crowdsec-bouncer@file` |
+| **Pela conta do Jellyfin** | Entra com a conta do Jellyfin por Quick Connect, aprovado pelo Authentik (ex.: o Seerr). O login local do app fica desligado. | `crowdsec-bouncer@file` |
 | **Forward-auth** | Não sabe falar com o Authentik. O Traefik exige o login antes de deixar passar. | `crowdsec-bouncer@file,authentik@file` |
 
 Exceções:
@@ -33,7 +32,7 @@ Não se usa mais:
 
 Sempre uma rota principal, com o nome do serviço. `<app>` é o nome do serviço, e o subdomínio fica escrito na regra.
 
-### OIDC ou LDAP
+### OIDC
 
 ```yaml
 labels:

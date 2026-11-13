@@ -12,7 +12,6 @@ Ficam em [`01-network/redes/docker-compose.yml`](../01-network/redes/docker-comp
 |---|---|---|
 | `bergatrix-proxy` | O Traefik, os serviços **com rota** e o CrowdSec, que o Traefik consulta | Sim |
 | `bergatrix-media` | Jellyfin, Seerr, *arr, SABnzbd, qBittorrent, indexadores, Legendarr e o Lidarr do bergastream | Sim |
-| `bergatrix-ldap` | O outpost LDAP do Authentik e os apps que fazem login por LDAP (Jellyfin) | Não |
 | `bergatrix-ai` | O Ollama e quem usa ele (worker do Legendarr, worker `ai` do Berganews) | Sim |
 | `bergatrix-drop` | Só o Traefik e o Drop. O Drop é público, então fica fora da `bergatrix-proxy`: não alcança nenhum outro container | Não |
 | `bergatrix-office` | Só o Traefik e o Collabora (editor de documentos do Nextcloud). O Traefik tem nela o alias `storange.${DOMAIN}`, que é como o Collabora chega ao Nextcloud | Não |

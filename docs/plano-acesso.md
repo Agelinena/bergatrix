@@ -18,7 +18,7 @@ Plano para trocar o modelo atual de três rotas (forward-auth do Authentik, aces
 | Modelo | Quando usar | Rota no Traefik |
 |---|---|---|
 | **A. SSO nativo (OIDC ou SAML)** | O app sabe falar com o Authentik sozinho | `crowdsec-bouncer` |
-| **B. LDAP** | Sem OIDC, mas aceita LDAP e tem cliente de TV ou celular ([guia](guias/autenticacao-ldap.md)) | `crowdsec-bouncer` |
+| **B. LDAP** | Não se usa mais. O único caso, o Jellyfin, passou para o modelo A com o plugin Bergafin Auth ([guia](guias/jellyfin-authentik.md)). | – |
 | **C. SSO na frente (forward-auth)** | Sem OIDC: o Authentik pede o login antes de deixar passar | `crowdsec-bouncer` + `authentik@file` |
 | **D. Só rede local/VPN** | Só a infraestrutura fora do Docker (Proxmox, OMV, SSH) | Fora do Traefik |
 | **E. Público com login próprio** | O app tem autenticação forte e clientes que não passam por forward-auth, é público por natureza, ou só é chamado com token de outro app (Collabora) | `crowdsec-bouncer` |
@@ -27,7 +27,7 @@ Plano para trocar o modelo atual de três rotas (forward-auth do Authentik, aces
 Para quem usa, A, B e C dão o mesmo resultado: a tela do Authentik, o mesmo 2FA e uma sessão só. As diferenças entre eles:
 
 - **A:** o app sabe quem é a pessoa e aplica as permissões dela.
-- **B:** o app pede a senha do Authentik direto, sem tela de SSO.
+- **B:** não se usa mais (era o LDAP).
 - **C:** o Authentik só libera a passagem.
   - O app pode continuar pedindo o próprio login. Nos *arr dá para desligar isso, com `AuthenticationMethod=External`.
   - Apps de celular e clientes de API não passam pelo forward-auth. As chamadas entre containers não são afetadas, porque não passam pelo Traefik.
@@ -46,8 +46,8 @@ Para quem usa, A, B e C dão o mesmo resultado: a tela do Authentik, o mesmo 2FA
 | jellyfin | sonarr, radarr, prowlarr, bazarr, sabnzbd, qbittorrent | um por serviço | D | **C** | Desligar o login próprio (`External` nos *arr) para não ter login duplo. Apps de celular para os *arr (nzb360, LunaSea) param de funcionar de fora. Corrigir as labels incompletas do radarr. | ✓ |
 | bergastream | lidarr | `lidarr` | D | **C** | Idem *arr | ✓ |
 | cloudbeaver | cloudbeaver | `db` | 3 rotas | **C**, ou remover | A edição gratuita não tem SSO. Hoje não alcança nenhum banco. | ✓ |
-| jellyfin | jellyfin | `jellyflix` | E, sem CrowdSec | **B** (LDAP) | LDAP feito. `crowdsec-bouncer` com exceção para imagens e streaming (`02-security/crowdsec/whitelists`). | No repositório (falta subir) |
-| jellyfin | catalogo (Seerr) | `catalogo` | Forward-auth + IP | **E** | Login pela conta do Jellyfin, que já usa LDAP (a senha conferida é a do Authentik). Login local do Seerr desligado em *Settings → Users*. Observar bans do CrowdSec por pôsteres com 404. | ✓ |
+| jellyfin | jellyfin | `jellyflix` | E, sem CrowdSec | **A** (plugin Bergafin Auth) | Login só pelo Authentik; contas locais `sala` e admin só na rede de casa ([guia](guias/jellyfin-authentik.md)). `crowdsec-bouncer` com exceção para imagens e streaming (`02-security/crowdsec/whitelists`). | No repositório (falta subir) |
+| jellyfin | catalogo (Seerr) | `catalogo` | Forward-auth + IP | **E** | Login por Quick Connect, aprovado pelo Authentik em `/Bergafin/QuickConnect` (Seerr 3.5.2). Login local do Seerr desligado em *Settings → Users*. Observar bans do CrowdSec por pôsteres com 404. | ✓ |
 | immich | immich-server | `fotos` | – (stack nova) | **A** (OIDC) | Uma rota, sem forward-auth, porque o app do celular fala direto com a API. Redirect URIs `app.immich:///oauth-callback`, `/auth/login` e `/user-settings`; grupo `immich_users`. Login por senha desligado depois do teste (`immich-admin enable-password-login` em emergência). O client secret fica no banco do Immich, não no `.env`. Precisa do `readTimeout` de 600 s no Traefik. | No repositório (falta subir) |
 | nextcloud | app | `storange` | – (stack nova) | **A** (OIDC) | Uma rota, sem forward-auth: os clientes de desktop e de celular entram pelo navegador (Login Flow v2) e o WebDAV, o CalDAV e o CardDAV usam senha de app. App `user_oidc`, grupo `nextcloud_users`, grupos do Nextcloud pelos *entitlements* (`admin` é o de administradores). Admin local desativado depois do teste (`occ user:enable` em emergência). CrowdSec com o parser `crowdsecurity/nextcloud-whitelist`. | No repositório (falta subir) |
 | nextcloud | collabora | `office` | – (novo) | **E** | Editor de documentos (app `richdocuments`, Collabora CODE). O login do usuário continua sendo o OIDC no Nextcloud; o Collabora só aceita chamadas com token WOPI, vindas do host em `aliasgroup1`. Sem forward-auth: quebraria o iframe e os WebSockets. Console de admin desligado, sem `allow_local_remote_servers`, `wopi_url` público. Rede isolada `bergatrix-office` ([06-redes.md](06-redes.md)). | Funcionando; rede `bergatrix-office` no repositório (falta aplicar) |
@@ -59,7 +59,7 @@ Para quem usa, A, B e C dão o mesmo resultado: a tela do Authentik, o mesmo 2FA
 | *infra* | OpenMediaVault | IP local | Login local | **D** (VPN) | Interface em PHP: manter sempre atualizado | – |
 | *infra* | Ubuntu (VM Docker) | IP local | SSH | **D** (VPN) | SSH só pela rede local e pela VPN, com chave | – |
 | wazuh | manager | portas 1514/1515/514/55000 | Publicadas | Revisar | Os agentes precisam da 1514/1515; a 55000 (API) não precisa ficar exposta | – |
-| vários | outpost LDAP, worker do Authentik, ollama, flaresolverr, torrent-indexer, worker do Legendarr, bancos | – | Vários na `bergatrix-proxy`; flaresolverr e torrent-indexer com rota | **F** | Sem rota e fora da `bergatrix-proxy`, cada um na rede do assunto ([06-redes.md](06-redes.md)) | No repositório (falta subir) |
+| vários | worker do Authentik, ollama, flaresolverr, torrent-indexer, worker do Legendarr, bancos | – | Vários na `bergatrix-proxy`; flaresolverr e torrent-indexer com rota | **F** | Sem rota e fora da `bergatrix-proxy`, cada um na rede do assunto ([06-redes.md](06-redes.md)) | No repositório (falta subir) |
 
 ## O que precisa existir no Authentik
 
@@ -72,7 +72,7 @@ Para quem usa, A, B e C dão o mesmo resultado: a tela do Authentik, o mesmo 2FA
 
 ## Redes
 
-Feito: `bergatrix-proxy` só com quem tem rota, mais `bergatrix-media`, `bergatrix-ldap` e `bergatrix-ai`, todas em `01-network/redes`. A `bergatrix-office` (Traefik e Collabora) está no repositório e falta aplicar no servidor. Detalhes em [06-redes.md](06-redes.md).
+Feito: `bergatrix-proxy` só com quem tem rota, mais `bergatrix-media` e `bergatrix-ai`, todas em `01-network/redes`. A `bergatrix-office` (Traefik e Collabora) está no repositório e falta aplicar no servidor. Detalhes em [06-redes.md](06-redes.md).
 
 ## Traefik (`dynamic.yml`)
 

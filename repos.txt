@@ -1,0 +1,11 @@
+# Repositórios de código que o Bergatrix junta, cada um na pasta da sua stack.
+# O ./sync (Linux) ou .\sync.ps1 (Windows) clona o que falta e atualiza o resto.
+# As pastas ficam fora do git do Bergatrix (.gitignore: 03-apps/*/repos/).
+# O servidor não precisa delas: ele usa as imagens que cada repositório publica.
+#
+# Uma linha por repositório: <pasta> <dono/repositório no GitHub>
+
+# Jellyfin: plugin de login pelo Authentik, web e app Android
+03-apps/jellyfin/repos/Bergafin-auth     Agelinena/Bergafin-auth
+03-apps/jellyfin/repos/Bergafin-web      Agelinena/Bergafin-web
+03-apps/jellyfin/repos/Bergafin-android  Agelinena/Bergafin-android

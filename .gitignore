@@ -84,3 +84,6 @@ node_modules/
 dist/
 build/
 
+
+# Repositórios de código das stacks (repos.txt): cada um tem o próprio git
+03-apps/*/repos/
