@@ -312,8 +312,11 @@ services:
       # Certificado autoassinado do OPNsense, conexão só na rede local
       - --opnsense.insecure
       - --exporter.instance-label=opnsense
+      # Coletores que os painéis não usam (e que pedem privilégios a mais)
       - --exporter.disable-arp-table
+      - --exporter.disable-kea-dhcpv4
       - --exporter.disable-kea-dhcpv6
+      - --exporter.disable-openvpn
       - --exporter.disable-ipsec
       - --exporter.disable-carp
       - --web.listen-address=:8080

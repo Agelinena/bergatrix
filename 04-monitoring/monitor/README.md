@@ -97,7 +97,7 @@ ssh root@<omv> 'cd /root/bergatrix-monitor && bash instalar.sh'
 
 1. **node_exporter:** *System → Firmware → Plugins*, instale `os-node_exporter`. Em *Services → Node Exporter*, ligue o serviço e escolha a interface **LAN** (porta 9100).
 2. **Usuário da API:** em *System → Access → Users*, crie o usuário `monitor`, sem acesso ao shell, com estes privilégios:
-   `Diagnostics: Firewall statistics`, `Diagnostics: Netstat`, `Reporting: Traffic`, `Services: Unbound (MVC)`, `Status: DHCP leases`, `Status: DNS Overview`, `Status: OpenVPN`, `Status: Services`, `System: Firmware`, `System: Gateways`, `System: Settings: Cron`, `System: Status`, `VPN: WireGuard`, `Services: DHCP: Kea(v4)`, `Lobby: Dashboard`.
+   `Diagnostics: Firewall statistics`, `Diagnostics: Netstat`, `Reporting: Traffic`, `Services: Unbound (MVC)`, `Status: DNS Overview`, `Status: Services`, `System: Firmware`, `System: Gateways`, `System: Settings: Cron`, `System: Status`, `VPN: WireGuard` e **`Lobby: Dashboard`** (temperatura, tabela de estados e mbuf dependem dele).
    Ainda no usuário, em *API keys*, crie uma chave. O arquivo baixado tem `key` e `secret`: copie para `OPNSENSE_API_KEY` e `OPNSENSE_API_SECRET`.
 3. **DNS:** em *Services → Unbound DNS → Advanced*, ligue **Extended Statistics**.
 4. **Logs para o servidor:** em *System → Settings → Logging → Remote*, adicione um destino:
