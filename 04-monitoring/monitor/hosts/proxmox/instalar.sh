@@ -10,6 +10,14 @@
 #      .env da stack monitor.
 set -euo pipefail
 
+# Lê uma URL com o que houver na máquina (o OMV não vem com curl)
+baixar() {
+  if command -v curl >/dev/null; then curl -s "$1"
+  elif command -v wget >/dev/null; then wget -qO- "$1"
+  else echo "(sem curl nem wget aqui: confira do bergaserver)" >&2
+  fi
+}
+
 [ "$(id -u)" = 0 ] || { echo "Rode como root."; exit 1; }
 
 echo "== Pacotes"
@@ -45,5 +53,5 @@ fi
 echo
 echo "== Conferir"
 sleep 2
-curl -s http://localhost:9100/metrics | grep -E '^(node_hwmon_temp_celsius|smartmon_device_smart_healthy)' | head -5 || true
+baixar http://localhost:9100/metrics | grep -E '^(node_hwmon_temp_celsius|smartmon_device_smart_healthy)' | head -5 || true
 echo "(smartmon aparece depois da primeira rodada do timer, em até 15 min)"

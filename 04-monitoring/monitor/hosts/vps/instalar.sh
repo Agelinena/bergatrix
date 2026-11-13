@@ -11,6 +11,14 @@
 # O HAProxy e a regra do nftables são passos manuais (README da stack).
 set -euo pipefail
 
+# Lê uma URL com o que houver na máquina (o OMV não vem com curl)
+baixar() {
+  if command -v curl >/dev/null; then curl -s "$1"
+  elif command -v wget >/dev/null; then wget -qO- "$1"
+  else echo "(sem curl nem wget aqui: confira do bergaserver)" >&2
+  fi
+}
+
 : "${SERVIDOR:?Informe SERVIDOR=<ip-do-servidor-pelo-túnel>}"
 TUNEL_IP=${TUNEL_IP:-10.100.0.1}
 WG_IF=${WG_IF:-wg0}
@@ -82,7 +90,7 @@ systemctl restart prometheus-node-exporter rsyslog
 echo
 echo "== Conferir"
 sleep 2
-curl -s "http://${TUNEL_IP}:9100/metrics" | grep -E '^(wireguard_latest|qdisc_cake_drops|nftables_rule_packets)' | head -5 || true
+baixar "http://${TUNEL_IP}:9100/metrics" | grep -E '^(wireguard_latest|qdisc_cake_drops|nftables_rule_packets)' | head -5 || true
 echo
 echo "Feito. Falta (README): liberar 9100 e 8405 no nftables só pelo ${WG_IF},"
 echo "e o frontend de métricas do HAProxy."
