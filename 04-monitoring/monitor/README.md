@@ -118,9 +118,10 @@ ssh root@<vps> 'cd /root/bergatrix-monitor && SERVIDOR=<ip-do-servidor-pelo-tún
 
 Mais três passos manuais na VPS:
 
-1. **nftables:** libere as portas do monitor **só pelo túnel**, na chain de entrada, e salve no `/etc/nftables.conf`:
+1. **nftables:** libere as portas e o ping do monitor **só pelo túnel**, na chain de entrada, e salve no `/etc/nftables.conf`:
    ```
    iifname "wg0" tcp dport { 9100, 8405 } accept comment "monitor"
+   iifname "wg0" icmp type echo-request accept comment "ping do monitor"
    ```
    Para o painel do nftables mostrar nomes, dê um `counter` e um `comment` às regras que interessam. Por exemplo, na regra do bloqueio geográfico: `... counter drop comment "geo-bloqueio"`.
 2. **HAProxy:** acrescente o bloco de [`hosts/vps/haproxy-metricas.cfg`](hosts/vps/haproxy-metricas.cfg) ao `haproxy.cfg` e recarregue.

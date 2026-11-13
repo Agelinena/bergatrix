@@ -1152,7 +1152,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "probe_icmp_duration_seconds{job=\"ping\", phase=\"rtt\", instance=\"vps\"}",
+          "expr": "probe_icmp_duration_seconds{job=\"ping\", phase=\"rtt\", instance=\"vps\"} and on (instance) (probe_success{job=\"ping\", instance=\"vps\"} == 1)",
           "legendFormat": "Casa → VPS (túnel)",
           "range": true,
           "instant": false
@@ -1163,7 +1163,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "probe_icmp_duration_seconds{job=\"ping\", phase=\"rtt\", instance=\"1.1.1.1\"}",
+          "expr": "probe_icmp_duration_seconds{job=\"ping\", phase=\"rtt\", instance=\"1.1.1.1\"} and on (instance) (probe_success{job=\"ping\", instance=\"1.1.1.1\"} == 1)",
           "legendFormat": "Casa → internet (1.1.1.1)",
           "range": true,
           "instant": false

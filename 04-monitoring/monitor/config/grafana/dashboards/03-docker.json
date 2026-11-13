@@ -240,7 +240,7 @@
     },
     {
       "type": "stat",
-      "title": "IPs banidos (CrowdSec)",
+      "title": "Bans do CrowdSec",
       "targets": [
         {
           "refId": "A",
@@ -248,7 +248,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(cs_active_decisions) or vector(0)",
+          "expr": "sum(cs_active_decisions{origin!~\"(?i)capi|lists\"}) or vector(0)",
           "legendFormat": "__auto",
           "range": false,
           "instant": true
@@ -258,7 +258,7 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "description": "Decisões ativas: lista da comunidade + bans locais",
+      "description": "IPs banidos por ataques vistos aqui (fora a lista preventiva da comunidade)",
       "fieldConfig": {
         "defaults": {
           "unit": "short",
@@ -1545,8 +1545,8 @@
       }
     },
     {
-      "type": "timeseries",
-      "title": "Decisões ativas por motivo",
+      "type": "stat",
+      "title": "Bans por ataques vistos aqui",
       "targets": [
         {
           "refId": "A",
@@ -1554,7 +1554,137 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (reason) (cs_active_decisions)",
+          "expr": "sum(cs_active_decisions{origin!~\"(?i)capi|lists\"}) or vector(0)",
+          "legendFormat": "__auto",
+          "range": false,
+          "instant": true
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Detectados pelo CrowdSec nos logs do Traefik, ou dados à mão (cscli)",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "value": null,
+                "color": "text"
+              }
+            ]
+          },
+          "mappings": [],
+          "color": {
+            "mode": "thresholds"
+          },
+          "custom": {}
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "textMode": "auto",
+        "orientation": "auto",
+        "wideLayout": true,
+        "showPercentChange": false
+      },
+      "id": 21,
+      "gridPos": {
+        "x": 0,
+        "y": 50,
+        "w": 12,
+        "h": 4
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Lista preventiva da comunidade",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(cs_active_decisions{origin=~\"(?i)capi|lists\"}) or vector(0)",
+          "legendFormat": "__auto",
+          "range": false,
+          "instant": true
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "IPs que outros usuários do CrowdSec denunciaram. São bloqueados antes de chegar aqui; a maioria nunca tentou nada contra você.",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "value": null,
+                "color": "text"
+              }
+            ]
+          },
+          "mappings": [],
+          "color": {
+            "mode": "thresholds"
+          },
+          "custom": {}
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "textMode": "auto",
+        "orientation": "auto",
+        "wideLayout": true,
+        "showPercentChange": false
+      },
+      "id": 22,
+      "gridPos": {
+        "x": 12,
+        "y": 50,
+        "w": 12,
+        "h": 4
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Bans locais por motivo",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (reason) (cs_active_decisions{origin!~\"(?i)capi|lists\"})",
           "legendFormat": "{{reason}}",
           "range": true,
           "instant": false
@@ -1618,10 +1748,10 @@
           ]
         }
       },
-      "id": 21,
+      "id": 23,
       "gridPos": {
         "x": 0,
-        "y": 50,
+        "y": 54,
         "w": 12,
         "h": 8
       }
@@ -1636,7 +1766,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "sum by (RouterName) (count_over_time({job=\"traefik\"} | json | DownstreamStatus >= 400 [$__auto]))",
+          "expr": "sum by (RouterName) (count_over_time({job=\"traefik\"} | json RouterName=\"RouterName\", DownstreamStatus=\"DownstreamStatus\" | DownstreamStatus >= 400 [$__auto]))",
           "legendFormat": "{{RouterName}}",
           "queryType": "range"
         }
@@ -1695,10 +1825,10 @@
           "calcs": []
         }
       },
-      "id": 22,
+      "id": 24,
       "gridPos": {
         "x": 12,
-        "y": 50,
+        "y": 54,
         "w": 12,
         "h": 8
       }

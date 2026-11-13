@@ -702,7 +702,7 @@ groups:
             datasourceUid: prometheus
             model:
               refId: A
-              expr: 'probe_icmp_duration_seconds{job="ping", phase="rtt", instance="vps"} * 1000'
+              expr: '(probe_icmp_duration_seconds{job="ping", phase="rtt", instance="vps"} and on (instance) (probe_success{job="ping", instance="vps"} == 1)) * 1000'
               instant: true
               range: false
               intervalMs: 1000

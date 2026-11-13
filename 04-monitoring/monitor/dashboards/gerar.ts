@@ -27,6 +27,9 @@ const mem = (sel: string) =>
   `max by (host) (100 * (1 - node_memory_MemAvailable_bytes{${sel}} / node_memory_MemTotal_bytes{${sel}})` +
   ` or 100 * (1 - (node_memory_free_bytes{${sel}} + node_memory_inactive_bytes{${sel}}) / node_memory_size_bytes{${sel}}))`;
 const disco = (sel: string) => `100 * (1 - node_filesystem_avail_bytes{${FS}${sel}} / node_filesystem_size_bytes{${FS}${sel}})`;
+// Latência do ping só quando ele respondeu (sem resposta, o blackbox grava 0 s)
+const RTT = (alvo: string) =>
+  `probe_icmp_duration_seconds{job="ping", phase="rtt", instance="${alvo}"} and on (instance) (probe_success{job="ping", instance="${alvo}"} == 1)`;
 const GUEST = '{id=~"(qemu|lxc)/.*"}';
 const comNome = (expr: string) => `${expr} * on (id) group_left (name) pve_guest_info`;
 
@@ -38,6 +41,9 @@ const smart = (attr: string) =>
 // filterlog do OPNsense, IPv4: protocolo, origem, destino e portas
 const FILTERLOG_RE =
   '`^(?:[^,]*,){8}4,(?:[^,]*,){7}(?P<proto>[^,]*),[^,]*,(?P<src>[^,]*),(?P<dst>[^,]*),?(?P<srcport>[^,]*),?(?P<dstport>[^,]*)`';
+// CrowdSec: decisões por ataques vistos aqui x lista preventiva da comunidade
+const COMUNIDADE = 'origin=~"(?i)capi|lists"';
+const LOCAL = 'origin!~"(?i)capi|lists"';
 const BLOQUEIOS = '{host="opnsense", program="filterlog", action="block"}';
 
 const GATEWAY = mapa({
@@ -90,8 +96,8 @@ const dashboards: Record<string, unknown> = {};
     q('sum(rate(opnsense_interfaces_transmitted_bytes_total{interface=~"(?i)wan.*"}[$__rate_interval])) * 8', "Upload"),
   ], { unit: "bps", overrides: [PARA_BAIXO("Upload")], descricao: "Upload para baixo do zero" }));
   g.add(12, 8, serie("Latência (ping)", [
-    q('probe_icmp_duration_seconds{job="ping", phase="rtt", instance="vps"}', "Casa → VPS (túnel)"),
-    q('probe_icmp_duration_seconds{job="ping", phase="rtt", instance="1.1.1.1"}', "Casa → internet (1.1.1.1)"),
+    q(RTT("vps"), "Casa → VPS (túnel)"),
+    q(RTT("1.1.1.1"), "Casa → internet (1.1.1.1)"),
   ], { unit: "s" }));
   g.add(12, 8, serie("Requisições no Traefik", [
     q('sum by (code) (rate(traefik_entrypoint_requests_total{entrypoint="websecure"}[$__rate_interval]))', "{{code}}"),
@@ -242,7 +248,9 @@ const dashboards: Record<string, unknown> = {};
     thresholds: limites([null, OK], [1, ATENCAO], [5, CRITICO]), descricao: "Containers que começaram de novo na última hora",
   }));
   g.add(4, 4, stat("Requisições", [q('sum(rate(traefik_entrypoint_requests_total{entrypoint="websecure"}[$__rate_interval]))')], { unit: "reqps", grafico: true }));
-  g.add(4, 4, stat("IPs banidos (CrowdSec)", [qi("sum(cs_active_decisions) or vector(0)")], { descricao: "Decisões ativas: lista da comunidade + bans locais" }));
+  g.add(4, 4, stat("Bans do CrowdSec", [qi(`sum(cs_active_decisions{${LOCAL}}) or vector(0)`)], {
+    descricao: "IPs banidos por ataques vistos aqui (fora a lista preventiva da comunidade)",
+  }));
   g.add(4, 4, stat("GPU", [q("nvidia_smi_utilization_gpu_ratio * 100")], { unit: "percent", grafico: true, thresholds: sobe(80, 90, 98) }));
   g.add(4, 4, stat("Temperatura da GPU", [q("nvidia_smi_temperature_gpu")], { unit: "celsius", thresholds: sobe(70, 80, 87), grafico: true }));
 
@@ -306,9 +314,15 @@ const dashboards: Record<string, unknown> = {};
   }));
 
   g.secao("CrowdSec");
-  g.add(12, 8, serie("Decisões ativas por motivo", [q("sum by (reason) (cs_active_decisions)", "{{reason}}")], { legenda: "table" }));
+  g.add(12, 4, stat("Bans por ataques vistos aqui", [qi(`sum(cs_active_decisions{${LOCAL}}) or vector(0)`)], {
+    descricao: "Detectados pelo CrowdSec nos logs do Traefik, ou dados à mão (cscli)",
+  }));
+  g.add(12, 4, stat("Lista preventiva da comunidade", [qi(`sum(cs_active_decisions{${COMUNIDADE}}) or vector(0)`)], {
+    descricao: "IPs que outros usuários do CrowdSec denunciaram. São bloqueados antes de chegar aqui; a maioria nunca tentou nada contra você.",
+  }));
+  g.add(12, 8, serie("Bans locais por motivo", [q(`sum by (reason) (cs_active_decisions{${LOCAL}})`, "{{reason}}")], { legenda: "table", barras: false }));
   g.add(12, 8, serie("Respostas 4xx e 5xx por rota", [
-    l('sum by (RouterName) (count_over_time({job="traefik"} | json | DownstreamStatus >= 400 [$__auto]))', "{{RouterName}}"),
+    l('sum by (RouterName) (count_over_time({job="traefik"} | json RouterName="RouterName", DownstreamStatus="DownstreamStatus" | DownstreamStatus >= 400 [$__auto]))', "{{RouterName}}"),
   ], { barras: true, empilhar: true, preencher: 80 }));
 
   dashboards["03-docker"] = dashboard("bergatrix-docker", "Servidor Docker", g, {
@@ -398,15 +412,15 @@ const dashboards: Record<string, unknown> = {};
   const h = 'host="vps"';
   g.add(3, 4, stat("VPS", [qi('up{job="node", host="vps"}')], { mappings: NO_AR, thresholds: binario, cor: "background" }));
   g.add(4, 4, stat("Último handshake", [qi(`time() - max(wireguard_latest_handshake_seconds{${h}})`)], { unit: "s", thresholds: sobe(150, 180, 300), cor: "background" }));
-  g.add(4, 4, stat("Latência do túnel", [q('probe_icmp_duration_seconds{job="ping", phase="rtt", instance="vps"}')], { unit: "s", thresholds: sobe(0.05, 0.08, 0.15), grafico: true }));
+  g.add(4, 4, stat("Latência do túnel", [q(RTT("vps"))], { unit: "s", noValue: "sem resposta", thresholds: sobe(0.05, 0.08, 0.15), grafico: true }));
   g.add(3, 4, stat("Perda (5 min)", [q('100 * (1 - avg_over_time(probe_success{job="ping", instance="vps"}[5m]))')], { unit: "percent", thresholds: sobe(1, 5, 20) }));
   g.add(3, 4, stat("CPU", [q(cpu("," + h))], { unit: "percent", thresholds: sobe(70, 85, 95), grafico: true }));
   g.add(3, 4, stat("Memória", [q(mem(h))], { unit: "percent", thresholds: sobe(80, 90, 95), grafico: true }));
   g.add(4, 4, stat("Conexões no HAProxy", [q("sum(haproxy_frontend_current_sessions)")], { grafico: true }));
 
   g.add(12, 8, serie("Latência casa ↔ SP", [
-    q('probe_icmp_duration_seconds{job="ping", phase="rtt", instance="vps"}', "Túnel (casa → VPS)"),
-    q('probe_icmp_duration_seconds{job="ping", phase="rtt", instance="1.1.1.1"}', "Internet (casa → 1.1.1.1)"),
+    q(RTT("vps"), "Túnel (casa → VPS)"),
+    q(RTT("1.1.1.1"), "Internet (casa → 1.1.1.1)"),
   ], { unit: "s", descricao: "Se as duas sobem juntas, o problema é a internet de casa" }));
   g.add(12, 8, serie("Tráfego da VPS", [
     q(`rate(node_network_receive_bytes_total{${h}, ${NET}}[$__rate_interval]) * 8`, "{{device}} recebe"),
@@ -543,7 +557,7 @@ const grupos: Record<string, Regra[]> = {
       gravidade: "critico", resumo: `Túnel SP ↔ casa sem handshake há ${V} s (${L("allowed_ips")})`, descricao: "Os sites ficam fora do ar para quem vem pela VPS." },
     { uid: "ping-falhou", titulo: "Sem resposta ao ping", expr: 'probe_success{job="ping"}', op: "lt", limite: 1, para: "3m",
       gravidade: "critico", resumo: `${L("instance")} não responde ao ping há 3 min` },
-    { uid: "tunel-lento", titulo: "Túnel lento", expr: 'probe_icmp_duration_seconds{job="ping", phase="rtt", instance="vps"} * 1000', op: "gt", limite: 100, para: "10m",
+    { uid: "tunel-lento", titulo: "Túnel lento", expr: `(${RTT("vps")}) * 1000`, op: "gt", limite: 100, para: "10m",
       resumo: `Latência casa → VPS em ${V} ms` },
     { uid: "gateway", titulo: "Gateway com problema", expr: "opnsense_gateways_status", op: "lt", limite: 1, para: "3m",
       gravidade: "critico", resumo: `Gateway ${L("name")} não está "no ar" (código ${V})`, descricao: "0 fora, 2 desconhecido, 3 aguardando, 4 perda, 5 latência, 6 desligado." },
