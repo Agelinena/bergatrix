@@ -36,6 +36,19 @@
   "templating": {
     "list": [
       {
+        "type": "custom",
+        "name": "origem",
+        "label": "Origem",
+        "query": "Só externos : ^(10|127|192[.]168|172[.](1[6-9]|2[0-9]|3[01]))[.].*,Todos : ^$",
+        "includeAll": false,
+        "multi": false,
+        "current": {
+          "text": "Só externos",
+          "value": "^(10|127|192[.]168|172[.](1[6-9]|2[0-9]|3[01]))[.].*"
+        },
+        "options": []
+      },
+      {
         "type": "textbox",
         "name": "ip",
         "label": "IP (regex)",
@@ -68,7 +81,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "sum(count_over_time({job=\"traefik\"} | json ClientHost=\"ClientHost\", RequestHost=\"RequestHost\", RequestPath=\"RequestPath\", DownstreamStatus=\"DownstreamStatus\" | ClientHost=~\"$ip\" | RequestHost=~\"$app\" [$__range]))",
+          "expr": "sum(count_over_time({job=\"traefik\"} | json ClientHost=\"ClientHost\", RequestHost=\"RequestHost\", RequestPath=\"RequestPath\", DownstreamStatus=\"DownstreamStatus\" | ClientHost=~\"$ip\" | ClientHost!~\"$origem\" | RequestHost=~\"$app\" [$__range]))",
           "legendFormat": "",
           "queryType": "instant"
         }
@@ -131,7 +144,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "count(sum by (ClientHost) (count_over_time({job=\"traefik\"} | json ClientHost=\"ClientHost\", RequestHost=\"RequestHost\", RequestPath=\"RequestPath\", DownstreamStatus=\"DownstreamStatus\" | ClientHost=~\"$ip\" | RequestHost=~\"$app\" [$__range])))",
+          "expr": "count(sum by (ClientHost) (count_over_time({job=\"traefik\"} | json ClientHost=\"ClientHost\", RequestHost=\"RequestHost\", RequestPath=\"RequestPath\", DownstreamStatus=\"DownstreamStatus\" | ClientHost=~\"$ip\" | ClientHost!~\"$origem\" | RequestHost=~\"$app\" [$__range])))",
           "legendFormat": "",
           "queryType": "instant"
         }
@@ -194,7 +207,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "count(sum by (ClientHost) (count_over_time({job=\"traefik\"} | json ClientHost=\"ClientHost\", RequestHost=\"RequestHost\", RequestPath=\"RequestPath\", DownstreamStatus=\"DownstreamStatus\" | ClientHost=~\"$ip\" | RequestHost=~\"$app\" | pais != \"\" | pais != \"Brazil\" [$__range]))) or vector(0)",
+          "expr": "count(sum by (ClientHost) (count_over_time({job=\"traefik\"} | json ClientHost=\"ClientHost\", RequestHost=\"RequestHost\", RequestPath=\"RequestPath\", DownstreamStatus=\"DownstreamStatus\" | ClientHost=~\"$ip\" | ClientHost!~\"$origem\" | RequestHost=~\"$app\" | pais != \"\" | pais != \"Brazil\" [$__range]))) or vector(0)",
           "legendFormat": "",
           "queryType": "instant"
         }
@@ -262,7 +275,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "sum(count_over_time({job=\"traefik\"} | json ClientHost=\"ClientHost\", RequestHost=\"RequestHost\", RequestPath=\"RequestPath\", DownstreamStatus=\"DownstreamStatus\" | ClientHost=~\"$ip\" | RequestHost=~\"$app\" | DownstreamStatus =~ \"401|403\" [$__range])) or vector(0)",
+          "expr": "sum(count_over_time({job=\"traefik\"} | json ClientHost=\"ClientHost\", RequestHost=\"RequestHost\", RequestPath=\"RequestPath\", DownstreamStatus=\"DownstreamStatus\" | ClientHost=~\"$ip\" | ClientHost!~\"$origem\" | RequestHost=~\"$app\" | DownstreamStatus =~ \"401|403\" [$__range])) or vector(0)",
           "legendFormat": "",
           "queryType": "instant"
         }
@@ -326,7 +339,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "topk(100, sum by (ClientHost, pais, cidade, asn_org) (count_over_time({job=\"traefik\"} | json ClientHost=\"ClientHost\", RequestHost=\"RequestHost\", RequestPath=\"RequestPath\", DownstreamStatus=\"DownstreamStatus\" | ClientHost=~\"$ip\" | RequestHost=~\"$app\" [$__range])))",
+          "expr": "topk(100, sum by (ClientHost, pais, cidade, asn_org) (count_over_time({job=\"traefik\"} | json ClientHost=\"ClientHost\", RequestHost=\"RequestHost\", RequestPath=\"RequestPath\", DownstreamStatus=\"DownstreamStatus\" | ClientHost=~\"$ip\" | ClientHost!~\"$origem\" | RequestHost=~\"$app\" [$__range])))",
           "legendFormat": "",
           "queryType": "instant"
         }
@@ -456,7 +469,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "topk(100, sum by (ClientHost, RequestHost) (count_over_time({job=\"traefik\"} | json ClientHost=\"ClientHost\", RequestHost=\"RequestHost\", RequestPath=\"RequestPath\", DownstreamStatus=\"DownstreamStatus\" | ClientHost=~\"$ip\" | RequestHost=~\"$app\" [$__range])))",
+          "expr": "topk(100, sum by (ClientHost, RequestHost) (count_over_time({job=\"traefik\"} | json ClientHost=\"ClientHost\", RequestHost=\"RequestHost\", RequestPath=\"RequestPath\", DownstreamStatus=\"DownstreamStatus\" | ClientHost=~\"$ip\" | ClientHost!~\"$origem\" | RequestHost=~\"$app\" [$__range])))",
           "legendFormat": "",
           "queryType": "instant"
         }
@@ -586,7 +599,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "topk(100, sum by (ClientHost, pais, DownstreamStatus) (count_over_time({job=\"traefik\"} | json ClientHost=\"ClientHost\", RequestHost=\"RequestHost\", RequestPath=\"RequestPath\", DownstreamStatus=\"DownstreamStatus\" | ClientHost=~\"$ip\" | RequestHost=~\"$app\" | DownstreamStatus >= 400 [$__range])))",
+          "expr": "topk(100, sum by (ClientHost, pais, DownstreamStatus) (count_over_time({job=\"traefik\"} | json ClientHost=\"ClientHost\", RequestHost=\"RequestHost\", RequestPath=\"RequestPath\", DownstreamStatus=\"DownstreamStatus\" | ClientHost=~\"$ip\" | ClientHost!~\"$origem\" | RequestHost=~\"$app\" | DownstreamStatus >= 400 [$__range])))",
           "legendFormat": "",
           "queryType": "instant"
         }
@@ -716,7 +729,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "sum by (RequestHost) (count_over_time({job=\"traefik\"} | json ClientHost=\"ClientHost\", RequestHost=\"RequestHost\", RequestPath=\"RequestPath\", DownstreamStatus=\"DownstreamStatus\" | ClientHost=~\"$ip\" | RequestHost=~\"$app\" [$__auto]))",
+          "expr": "sum by (RequestHost) (count_over_time({job=\"traefik\"} | json ClientHost=\"ClientHost\", RequestHost=\"RequestHost\", RequestPath=\"RequestPath\", DownstreamStatus=\"DownstreamStatus\" | ClientHost=~\"$ip\" | ClientHost!~\"$origem\" | RequestHost=~\"$app\" [$__auto]))",
           "legendFormat": "{{RequestHost}}",
           "queryType": "range"
         }
@@ -797,7 +810,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "sum by (pais) (count_over_time({job=\"traefik\"} | json ClientHost=\"ClientHost\", RequestHost=\"RequestHost\", RequestPath=\"RequestPath\", DownstreamStatus=\"DownstreamStatus\" | ClientHost=~\"$ip\" | RequestHost=~\"$app\" | pais != \"\" [$__auto]))",
+          "expr": "sum by (pais) (count_over_time({job=\"traefik\"} | json ClientHost=\"ClientHost\", RequestHost=\"RequestHost\", RequestPath=\"RequestPath\", DownstreamStatus=\"DownstreamStatus\" | ClientHost=~\"$ip\" | ClientHost!~\"$origem\" | RequestHost=~\"$app\" | pais != \"\" [$__auto]))",
           "legendFormat": "{{pais}}",
           "queryType": "range"
         }
@@ -878,7 +891,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "topk(30, sum by (asn_org) (count_over_time({job=\"traefik\"} | json ClientHost=\"ClientHost\", RequestHost=\"RequestHost\", RequestPath=\"RequestPath\", DownstreamStatus=\"DownstreamStatus\" | ClientHost=~\"$ip\" | RequestHost=~\"$app\" | asn_org != \"\" [$__range])))",
+          "expr": "topk(30, sum by (asn_org) (count_over_time({job=\"traefik\"} | json ClientHost=\"ClientHost\", RequestHost=\"RequestHost\", RequestPath=\"RequestPath\", DownstreamStatus=\"DownstreamStatus\" | ClientHost=~\"$ip\" | ClientHost!~\"$origem\" | RequestHost=~\"$app\" | asn_org != \"\" [$__range])))",
           "legendFormat": "",
           "queryType": "instant"
         }
@@ -986,7 +999,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "topk(30, sum by (RequestPath) (count_over_time({job=\"traefik\"} | json ClientHost=\"ClientHost\", RequestHost=\"RequestHost\", RequestPath=\"RequestPath\", DownstreamStatus=\"DownstreamStatus\" | ClientHost=~\"$ip\" | RequestHost=~\"$app\" | DownstreamStatus = \"404\" [$__range])))",
+          "expr": "topk(30, sum by (RequestPath) (count_over_time({job=\"traefik\"} | json ClientHost=\"ClientHost\", RequestHost=\"RequestHost\", RequestPath=\"RequestPath\", DownstreamStatus=\"DownstreamStatus\" | ClientHost=~\"$ip\" | ClientHost!~\"$origem\" | RequestHost=~\"$app\" | DownstreamStatus = \"404\" [$__range])))",
           "legendFormat": "",
           "queryType": "instant"
         }
@@ -1094,7 +1107,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "topk(30, sum by (ua) (count_over_time({job=\"traefik\"} | json ClientHost=\"ClientHost\", RequestHost=\"RequestHost\", ua=\"[\\\"request_User-Agent\\\"]\" | ClientHost=~\"$ip\" | RequestHost=~\"$app\" [$__range])))",
+          "expr": "topk(30, sum by (ua) (count_over_time({job=\"traefik\"} | json ClientHost=\"ClientHost\", RequestHost=\"RequestHost\", ua=\"[\\\"request_User-Agent\\\"]\" | ClientHost=~\"$ip\" | ClientHost!~\"$origem\" | RequestHost=~\"$app\" [$__range])))",
           "legendFormat": "",
           "queryType": "instant"
         }
@@ -1201,7 +1214,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "{job=\"traefik\"} | json ClientHost=\"ClientHost\", RequestMethod=\"RequestMethod\", RequestHost=\"RequestHost\", RequestPath=\"RequestPath\", DownstreamStatus=\"DownstreamStatus\", ua=\"[\\\"request_User-Agent\\\"]\" | ClientHost=~\"$ip\" | RequestHost=~\"$app\" | line_format \"{{.ClientHost}} {{.pais}} {{.asn_org}} · {{.RequestMethod}} {{.RequestHost}}{{.RequestPath}} → {{.DownstreamStatus}} · {{.ua}}\"",
+          "expr": "{job=\"traefik\"} | json ClientHost=\"ClientHost\", RequestMethod=\"RequestMethod\", RequestHost=\"RequestHost\", RequestPath=\"RequestPath\", DownstreamStatus=\"DownstreamStatus\", ua=\"[\\\"request_User-Agent\\\"]\" | ClientHost=~\"$ip\" | ClientHost!~\"$origem\" | RequestHost=~\"$app\" | line_format \"{{.ClientHost}} {{.pais}} {{.asn_org}} · {{.RequestMethod}} {{.RequestHost}}{{.RequestPath}} → {{.DownstreamStatus}} · {{.ua}}\"",
           "legendFormat": "",
           "queryType": "range"
         }

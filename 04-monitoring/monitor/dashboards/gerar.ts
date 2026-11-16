@@ -10,7 +10,7 @@ import { stringify } from "jsr:@std/yaml@1.0.5";
 import {
   alertas, barras, binario, coluna, topLoki, CRITICO, dashboard, GRAVE, Grade, juntar, l, li, limites, logs, mapa,
   NO_AR, OK, PARA_BAIXO, q, qi, qt, SAUDE, SERVICO, serie, sobe, sobrescrever, stat, tabela, varFixa,
-  varLokiLabel, varProm, varTexto, ATENCAO,
+  varLokiLabel, varProm, varTexto, varEscolha, ATENCAO,
 } from "./lib.ts";
 
 // ── Expressões reutilizadas ────────────────────────────────────
@@ -540,7 +540,7 @@ const dashboards: Record<string, unknown> = {};
   const g = new Grade();
   // IP, app, caminho e status vêm do JSON do access.log; país, cidade e
   // operadora são metadados que o Alloy põe em cada linha (GeoLite2).
-  const AC = '{job="traefik"} | json ClientHost="ClientHost", RequestHost="RequestHost", RequestPath="RequestPath", DownstreamStatus="DownstreamStatus" | ClientHost=~"$ip" | RequestHost=~"$app"';
+  const AC = '{job="traefik"} | json ClientHost="ClientHost", RequestHost="RequestHost", RequestPath="RequestPath", DownstreamStatus="DownstreamStatus" | ClientHost=~"$ip" | ClientHost!~"$origem" | RequestHost=~"$app"';
   const linhas = (valor: string) => topLoki(valor, ROTULOS_ACESSO);
   const IP_LINKS = coluna("IP", {
     links: [
@@ -588,16 +588,22 @@ const dashboards: Record<string, unknown> = {};
     descricao: "/.env, /wp-admin, /.git… são varreduras atrás de falhas conhecidas.",
   }));
   g.add(8, 10, tabela("Navegadores e robôs (User-Agent)", [
-    li(`topk(30, sum by (ua) (count_over_time({job="traefik"} | json ClientHost="ClientHost", RequestHost="RequestHost", ua="[\\"request_User-Agent\\"]" | ClientHost=~"$ip" | RequestHost=~"$app" [$__range])))`),
+    li(`topk(30, sum by (ua) (count_over_time({job="traefik"} | json ClientHost="ClientHost", RequestHost="RequestHost", ua="[\\"request_User-Agent\\"]" | ClientHost=~"$ip" | ClientHost!~"$origem" | RequestHost=~"$app" [$__range])))`),
   ], { transformacoes: linhas("Requisições"), ordenarPor: "Requisições" }));
 
   g.add(24, 14, logs("Acessos",
-    '{job="traefik"} | json ClientHost="ClientHost", RequestMethod="RequestMethod", RequestHost="RequestHost", RequestPath="RequestPath", DownstreamStatus="DownstreamStatus", ua="[\\"request_User-Agent\\"]" | ClientHost=~"$ip" | RequestHost=~"$app" | line_format "{{.ClientHost}} {{.pais}} {{.asn_org}} · {{.RequestMethod}} {{.RequestHost}}{{.RequestPath}} → {{.DownstreamStatus}} · {{.ua}}"'));
+    '{job="traefik"} | json ClientHost="ClientHost", RequestMethod="RequestMethod", RequestHost="RequestHost", RequestPath="RequestPath", DownstreamStatus="DownstreamStatus", ua="[\\"request_User-Agent\\"]" | ClientHost=~"$ip" | ClientHost!~"$origem" | RequestHost=~"$app" | line_format "{{.ClientHost}} {{.pais}} {{.asn_org}} · {{.RequestMethod}} {{.RequestHost}}{{.RequestPath}} → {{.DownstreamStatus}} · {{.ua}}"'));
 
   dashboards["07-acessos"] = dashboard("bergatrix-acessos", "Acessos", g, {
     descricao: "Quem acessa os apps pelo Traefik: IP, país, operadora, app, erros e robôs. Países e operadoras: IP Geolocation by DB-IP (db-ip.com), CC BY 4.0",
     de: "now-24h",
     variaveis: [
+      // IPs internos: o próprio servidor (172.x, o gateway da rede do Docker quando um
+      // container acessa um site pelo endereço público), a rede local e a VPN
+      varEscolha("origem", "Origem", [
+        ["Só externos", "^(10|127|192[.]168|172[.](1[6-9]|2[0-9]|3[01]))[.].*"],
+        ["Todos", "^$"],
+      ]),
       varTexto("ip", "IP (regex)", ".*"),
       varTexto("app", "App (regex do endereço)", ".*"),
     ],

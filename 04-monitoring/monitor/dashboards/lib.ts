@@ -355,3 +355,15 @@ export function topLoki(valor: string, rotulos: Record<string, string> = {}) {
     { id: "organize", options: { excludeByName: { Time: true }, renameByName: rotulos } },
   ];
 }
+
+/** Lista de opções fixas, uma escolhida por vez: [texto, valor]. A primeira é o padrão. */
+export function varEscolha(name: string, label: string, opcoes: [string, string][]) {
+  const [texto, valor] = opcoes[0];
+  return {
+    type: "custom", name, label,
+    query: opcoes.map(([t, v]) => `${t} : ${v}`).join(","),
+    includeAll: false, multi: false,
+    current: { text: texto, value: valor },
+    options: [],
+  };
+}
