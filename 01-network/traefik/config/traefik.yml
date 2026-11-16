@@ -12,6 +12,13 @@ log:
 accessLog:
   filePath: "/var/log/traefik/access.log"
   format: json
+  # User-Agent no log: ajuda a reconhecer robôs e scanners (painel Acessos do Grafana)
+  fields:
+    headers:
+      defaultMode: drop
+      names:
+        User-Agent: keep
+        Referer: keep
 
 entryPoints:
   # Só métricas, para o Prometheus (stack monitor) pela rede bergatrix-monitor.

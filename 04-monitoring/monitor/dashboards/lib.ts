@@ -242,6 +242,8 @@ export function texto(title: string, conteudo: string): Painel {
 export function juntar(nomes: Record<string, string>, esconder: string[] = []) {
   const excludeByName: Record<string, boolean> = { Time: true, job: true, instance: true, __name__: true };
   for (const e of esconder) excludeByName[e] = true;
+  // O que foi renomeado é coluna que se quer ver (ex.: instance → Site)
+  for (const k of Object.keys(nomes)) excludeByName[k] = false;
   const indexByName: Record<string, number> = {};
   Object.values(nomes).forEach((n, i) => (indexByName[n] = i));
   return [
@@ -337,6 +339,6 @@ export function varFixa(name: string, label: string, valores: string[], c: { tod
     options: [],
   };
 }
-export function varTexto(name: string, label: string) {
-  return { type: "textbox", name, label, query: "", current: { text: "", value: "" } };
+export function varTexto(name: string, label: string, padrao = "") {
+  return { type: "textbox", name, label, query: padrao, current: { text: padrao, value: padrao } };
 }

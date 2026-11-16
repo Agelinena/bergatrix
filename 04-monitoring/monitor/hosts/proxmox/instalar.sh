@@ -22,15 +22,28 @@ baixar() {
 
 echo "== Pacotes"
 apt-get update -q
-apt-get install -y -q prometheus-node-exporter prometheus-node-exporter-collectors smartmontools
+apt-get install -y -q prometheus-node-exporter prometheus-node-exporter-collectors smartmontools nvme-cli
 
-echo "== SMART a cada 15 min"
-# O pacote de coletores traz o timer do smartmon; liga se existir
-for t in prometheus-node-exporter-smartmon.timer; do
+echo "== SMART e NVMe a cada 15 min"
+# O pacote de coletores traz os timers; liga os que existirem
+for t in prometheus-node-exporter-smartmon.timer prometheus-node-exporter-nvme.timer; do
   if systemctl list-unit-files "$t" >/dev/null 2>&1; then
     systemctl enable --now "$t"
   fi
 done
+
+echo "== Autotestes SMART (smartd)"
+# Curto toda madrugada às 02h; longo todo dia 1º às 03h (num HD de 4 TB leva
+# horas, mas roda em segundo plano). O resultado aparece na saúde SMART.
+if [ -f /etc/smartd.conf ] && ! grep -q "bergatrix" /etc/smartd.conf; then
+  cp /etc/smartd.conf /etc/smartd.conf.antes-bergatrix
+  sed -i "s/^DEVICESCAN/#DEVICESCAN/" /etc/smartd.conf
+  cat >> /etc/smartd.conf <<'EOF'
+# bergatrix: monitora todos os discos e agenda os autotestes
+DEVICESCAN -a -o on -S on -n standby,q -s (S/../.././02|L/../01/./03)
+EOF
+  systemctl restart smartd 2>/dev/null || systemctl restart smartmontools
+fi
 
 systemctl enable --now prometheus-node-exporter
 systemctl restart prometheus-node-exporter

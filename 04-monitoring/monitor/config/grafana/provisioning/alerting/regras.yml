@@ -7,8 +7,8 @@ groups:
     folder: Bergatrix
     interval: 1m
     rules:
-      - uid: alvo-fora
-        title: Coleta parou
+      - uid: maquina-fora
+        title: Máquina fora do ar
         condition: C
         data:
           - refId: A
@@ -18,7 +18,7 @@ groups:
             datasourceUid: prometheus
             model:
               refId: A
-              expr: up
+              expr: 'up{job="node"}'
               instant: true
               range: false
               intervalMs: 1000
@@ -40,8 +40,44 @@ groups:
         labels:
           gravidade: critico
         annotations:
-          summary: '{{ $labels.job }} em {{ $labels.host }} ({{ $labels.instance }}) não responde há 5 min'
-          description: 'A máquina caiu, o exporter parou ou a rede até ela caiu.'
+          summary: '{{ $labels.host }} não responde há 5 min'
+          description: 'A máquina caiu, o node_exporter parou ou a rede até ela caiu.'
+        isPaused: false
+      - uid: alvo-fora
+        title: Coleta parou
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: 'up{job!="node"}'
+              instant: true
+              range: false
+              intervalMs: 1000
+              maxDataPoints: 43200
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: lt
+                    params:
+                      - 1
+        noDataState: OK
+        execErrState: Error
+        for: 10m
+        labels:
+          gravidade: aviso
+        annotations:
+          summary: '{{ $labels.job }} ({{ $labels.instance }}) não responde há 10 min'
+          description: 'Um exporter parou: os painéis dele ficam sem dados, a máquina pode estar bem.'
         isPaused: false
       - uid: cpu-alta
         title: CPU alta
@@ -470,6 +506,78 @@ groups:
         annotations:
           summary: 'O disco {{ $labels.disk }} está a {{ printf "%.0f" $values.A.Value }} °C'
         isPaused: false
+      - uid: ssd-desgaste
+        title: SSD perto do fim da vida útil
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: 'max by (disk) (smartmon_attr_value{name=~"wear_leveling_count|media_wearout_indicator|ssd_life_left|percent_lifetime_remain"}) or label_replace(100 - 100 * nvme_percentage_used_ratio, "disk", "$1", "device", "(.*)")'
+              instant: true
+              range: false
+              intervalMs: 1000
+              maxDataPoints: 43200
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: lt
+                    params:
+                      - 20
+        noDataState: OK
+        execErrState: Error
+        for: 1h
+        labels:
+          gravidade: aviso
+        annotations:
+          summary: 'O SSD {{ $labels.disk }} tem {{ printf "%.0f" $values.A.Value }}% de vida útil restante'
+          description: Planeje a troca; abaixo de 10% o fabricante não garante mais nada.
+        isPaused: false
+      - uid: nvme-aviso
+        title: NVMe com aviso crítico
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: nvme_critical_warning
+              instant: true
+              range: false
+              intervalMs: 1000
+              maxDataPoints: 43200
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params:
+                      - 0
+        noDataState: OK
+        execErrState: Error
+        for: 0s
+        labels:
+          gravidade: critico
+        annotations:
+          summary: 'O NVMe {{ $labels.device }} acendeu o aviso crítico (código {{ printf "%.0f" $values.A.Value }})'
+          description: 'Pode ser falta de blocos reserva, temperatura, modo só leitura ou falha de backup de energia. Faça backup.'
+        isPaused: false
   - orgId: 1
     name: Servidor Docker
     folder: Bergatrix
@@ -556,7 +664,7 @@ groups:
             datasourceUid: prometheus
             model:
               refId: A
-              expr: '(100 * sum by (service) (rate(traefik_service_requests_total{code=~"5.."}[10m])) / sum by (service) (rate(traefik_service_requests_total[10m]))) and on (service) (sum by (service) (rate(traefik_service_requests_total[10m])) > 0.05)'
+              expr: 'label_replace((100 * sum by (service) (rate(traefik_service_requests_total{code=~"5.."}[10m])) / sum by (service) (rate(traefik_service_requests_total[10m]))) and on (service) (sum by (service) (rate(traefik_service_requests_total[10m])) > 0.05), "service", "$1", "service", "(.+?)(-service)?@.*")'
               instant: true
               range: false
               intervalMs: 1000
@@ -685,11 +793,83 @@ groups:
                       - 1
         noDataState: OK
         execErrState: Error
-        for: 3m
+        for: 5m
         labels:
-          gravidade: critico
+          gravidade: aviso
         annotations:
-          summary: '{{ $labels.instance }} não responde ao ping há 3 min'
+          summary: '{{ $labels.instance }} não responde ao ping há 5 min'
+        isPaused: false
+      - uid: link-mudou
+        title: Velocidade de link mudou
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: 'changes(node_network_speed_bytes{device!~"lo.*|veth.*|br-.*|docker.*|tap.*|fwbr.*|fwln.*|fwpr.*|enc.*|pflog.*|pfsync.*"}[30m])'
+              instant: true
+              range: false
+              intervalMs: 1000
+              maxDataPoints: 43200
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params:
+                      - 0
+        noDataState: OK
+        execErrState: Error
+        for: 0s
+        labels:
+          gravidade: aviso
+        annotations:
+          summary: '{{ $labels.device }} em {{ $labels.host }} renegociou a velocidade'
+          description: 'Cabo, porta ou placa com problema costuma aparecer assim (ex.: 1 Gb/s caindo para 100 Mb/s). Veja o painel Máquina.'
+        isPaused: false
+      - uid: internet-lenta
+        title: Internet lenta
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: '100 * speedtest_download_bits_per_second / quantile_over_time(0.5, speedtest_download_bits_per_second[7d])'
+              instant: true
+              range: false
+              intervalMs: 1000
+              maxDataPoints: 43200
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: lt
+                    params:
+                      - 50
+        noDataState: OK
+        execErrState: Error
+        for: 2h
+        labels:
+          gravidade: aviso
+        annotations:
+          summary: 'Download em {{ printf "%.0f" $values.A.Value }}% do normal da última semana há 2 h'
+          description: Pelo teste de velocidade de hora em hora.
         isPaused: false
       - uid: tunel-lento
         title: Túnel lento
@@ -942,4 +1122,149 @@ groups:
         annotations:
           summary: 'O certificado de {{ $labels.instance }} vence em {{ printf "%.0f" $values.A.Value }} dias'
           description: 'O Traefik renova sozinho com 30 dias; se chegou aqui, a renovação está falhando (deSEC).'
+        isPaused: false
+  - orgId: 1
+    name: Acessos
+    folder: Bergatrix
+    interval: 1m
+    rules:
+      - uid: acesso-estrangeiro
+        title: Acesso de fora do Brasil
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: loki
+            model:
+              refId: A
+              expr: 'sum by (ip, pais, asn_org) (count_over_time({job="traefik"} | pais != "" | pais != "Brazil" [15m]))'
+              queryType: instant
+              intervalMs: 1000
+              maxDataPoints: 43200
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params:
+                      - 0
+        noDataState: OK
+        execErrState: Error
+        for: 0s
+        labels:
+          gravidade: aviso
+        annotations:
+          summary: '{{ $labels.ip }} ({{ $labels.pais }}, {{ $labels.asn_org }}) fez {{ printf "%.0f" $values.A.Value }} requisições em 15 min'
+          description: 'A VPS bloqueia fora do Brasil: veio por outro caminho (VPN, rede local) ou a base de países discorda. Painel Acessos, filtre pelo IP.'
+        isPaused: false
+      - uid: forca-bruta
+        title: Muitos logins recusados
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: loki
+            model:
+              refId: A
+              expr: 'sum by (ClientHost) (count_over_time({job="traefik"} | json ClientHost="ClientHost", DownstreamStatus="DownstreamStatus" | DownstreamStatus =~ "401|403" [10m]))'
+              queryType: instant
+              intervalMs: 1000
+              maxDataPoints: 43200
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params:
+                      - 30
+        noDataState: OK
+        execErrState: Error
+        for: 0s
+        labels:
+          gravidade: aviso
+        annotations:
+          summary: '{{ $labels.ClientHost }} teve {{ printf "%.0f" $values.A.Value }} respostas 401/403 em 10 min'
+          description: 'Pode ser alguém tentando senhas, ou um app com a senha antiga salva. O CrowdSec costuma banir sozinho.'
+        isPaused: false
+      - uid: varredura
+        title: Varredura de caminhos
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: loki
+            model:
+              refId: A
+              expr: 'sum by (ClientHost) (count_over_time({job="traefik"} | json ClientHost="ClientHost", DownstreamStatus="DownstreamStatus" | DownstreamStatus = "404" [10m]))'
+              queryType: instant
+              intervalMs: 1000
+              maxDataPoints: 43200
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params:
+                      - 100
+        noDataState: OK
+        execErrState: Error
+        for: 0s
+        labels:
+          gravidade: aviso
+        annotations:
+          summary: '{{ $labels.ClientHost }} pediu {{ printf "%.0f" $values.A.Value }} caminhos inexistentes em 10 min'
+          description: 'Robô procurando falhas conhecidas (/.env, /wp-admin…). Veja no painel Acessos o que ele tentou.'
+        isPaused: false
+      - uid: volume-ip
+        title: IP com volume muito alto
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: loki
+            model:
+              refId: A
+              expr: 'sum by (ClientHost) (count_over_time({job="traefik"} | json ClientHost="ClientHost" | ClientHost !~ `^(10|127|192\.168|172\.(1[6-9]|2[0-9]|3[01]))\..*` [10m]))'
+              queryType: instant
+              intervalMs: 1000
+              maxDataPoints: 43200
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params:
+                      - 5000
+        noDataState: OK
+        execErrState: Error
+        for: 0s
+        labels:
+          gravidade: aviso
+        annotations:
+          summary: '{{ $labels.ClientHost }} fez {{ printf "%.0f" $values.A.Value }} requisições em 10 min'
+          description: 'Raspagem, abuso ou um app seu em loop. Rede local fica de fora.'
         isPaused: false

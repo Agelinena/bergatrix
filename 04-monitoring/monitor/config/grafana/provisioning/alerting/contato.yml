@@ -1,7 +1,9 @@
 apiVersion: 1
 
-# Para onde vão os alertas: e-mail (SMTP no .env, destinatário em ALERTAS_EMAIL).
-# Vários destinatários: separe por ";" no ALERTAS_EMAIL.
+# Para onde vão os alertas:
+#   gravidade=critico → e-mail na hora (e também entra no resumo)
+#   todos             → resumo diário (serviço "resumo", um e-mail de manhã)
+# SMTP no .env; destinatários em ALERTAS_EMAIL (vários: separe por ";").
 contactPoints:
   - orgId: 1
     name: E-mail
@@ -12,7 +14,7 @@ contactPoints:
           addresses: $ALERTAS_EMAIL
           singleEmail: true
           subject: |-
-            {{ if eq .Status "firing" }}🔴{{ else }}✅{{ end }} [Bergatrix] {{ len .Alerts.Firing }} alerta(s){{ if .CommonLabels.alertname }}: {{ .CommonLabels.alertname }}{{ end }}
+            {{ if eq .Status "firing" }}🔴{{ else }}✅{{ end }} [Bergatrix] {{ if .CommonLabels.alertname }}{{ .CommonLabels.alertname }}{{ else }}{{ len .Alerts.Firing }} alertas críticos{{ end }}
           message: |-
             {{ range .Alerts.Firing }}● {{ .Annotations.summary }}
             {{ if .Annotations.description }}  {{ .Annotations.description }}
@@ -22,12 +24,35 @@ contactPoints:
             {{ end }}{{ end }}
         disableResolveMessage: false
 
+  - orgId: 1
+    name: Resumo diário
+    receivers:
+      - uid: resumo-diario
+        type: webhook
+        settings:
+          url: http://monitor-resumo:8080/alerta
+          httpMethod: POST
+        disableResolveMessage: false
+
 policies:
   - orgId: 1
-    receiver: E-mail
+    receiver: Resumo diário
     group_by: ["alertname", "host"]
-    # Espera 1 min para juntar alertas do mesmo problema num e-mail só
     group_wait: 1m
     group_interval: 5m
-    # Problema que continua: lembra a cada 12 h
     repeat_interval: 12h
+    routes:
+      # Crítico: e-mail na hora. "continue" deixa seguir para a rota de baixo,
+      # para o resumo também saber dele.
+      - receiver: E-mail
+        object_matchers:
+          - ["gravidade", "=", "critico"]
+        continue: true
+        group_wait: 1m
+        group_interval: 5m
+        # Problema crítico que continua: lembra a cada 12 h
+        repeat_interval: 12h
+      # Todos (críticos e avisos) vão para o resumo diário
+      - receiver: Resumo diário
+        object_matchers:
+          - ["gravidade", "=~", ".*"]

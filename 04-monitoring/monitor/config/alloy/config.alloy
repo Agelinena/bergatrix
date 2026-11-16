@@ -75,6 +75,36 @@ local.file_match "traefik" {
 
 loki.source.file "traefik" {
   targets    = local.file_match.traefik.targets
+  forward_to = [loki.process.traefik.receiver]
+}
+
+// País, cidade e operadora de cada IP, com as bases GeoLite2 que o CrowdSec já
+// baixa (${APPDATA_PATH}/crowdsec/data). Vão como metadados (structured
+// metadata), não como label: dá para filtrar e agrupar (| pais="Brazil",
+// sum by (asn_org)) sem criar uma série por IP.
+loki.process "traefik" {
+  stage.json {
+    expressions = { ip = "ClientHost" }
+  }
+  stage.geoip {
+    source  = "ip"
+    db      = "/geoip/GeoLite2-City.mmdb"
+    db_type = "city"
+  }
+  stage.geoip {
+    source  = "ip"
+    db      = "/geoip/GeoLite2-ASN.mmdb"
+    db_type = "asn"
+  }
+  stage.structured_metadata {
+    values = {
+      ip      = "ip",
+      pais    = "geoip_country_name",
+      cidade  = "geoip_city_name",
+      asn_org = "geoip_autonomous_system_organization",
+    }
+  }
+
   forward_to = [loki.write.local.receiver]
 }
 

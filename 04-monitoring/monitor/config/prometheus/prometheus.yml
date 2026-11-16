@@ -84,6 +84,16 @@ scrape_configs:
       - targets: ["crowdsec:6060"]
         labels: { host: bergaserver }
 
+  # ── Teste de velocidade da internet ─────────────────────────
+  # Leitura a cada 5 min; o teste em si só roda de hora em hora (cache no
+  # exporter). A primeira leitura de cada hora espera o teste (~40 s).
+  - job_name: speedtest
+    scrape_interval: 5m
+    scrape_timeout: 2m
+    static_configs:
+      - targets: ["monitor-speedtest:9798"]
+        labels: { host: bergaserver }
+
   # ── Testes de fora para dentro (blackbox) ───────────────────
   # Ping: latência e perda até cada máquina. A VPS é pelo túnel (casa ↔ SP).
   - job_name: ping

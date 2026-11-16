@@ -38,12 +38,28 @@ const comNome = (expr: string) => `${expr} * on (id) group_left (name) pve_guest
 const smart = (attr: string) =>
   `max by (disk) (smartmon_attr_raw_value{name="${attr}"}) or max by (disk) (smartmon_${attr}_raw_value)`;
 
+// Vida útil restante dos SSDs, em %: SATA (valor normalizado do atributo de
+// desgaste, 100 = novo) ou NVMe (100 − percentage_used).
+const VIDA_SSD =
+  'max by (disk) (smartmon_attr_value{name=~"wear_leveling_count|media_wearout_indicator|ssd_life_left|percent_lifetime_remain"})' +
+  ' or label_replace(100 - 100 * nvme_percentage_used_ratio, "disk", "$1", "device", "(.*)")';
+
 // filterlog do OPNsense, IPv4: protocolo, origem, destino e portas
 const FILTERLOG_RE =
   '`^(?:[^,]*,){8}4,(?:[^,]*,){7}(?P<proto>[^,]*),[^,]*,(?P<src>[^,]*),(?P<dst>[^,]*),?(?P<srcport>[^,]*),?(?P<dstport>[^,]*)`';
+// Nomes das colunas do painel Acessos
+const ROTULOS_ACESSO: Record<string, string> = {
+  ClientHost: "IP", pais: "País", cidade: "Cidade", asn_org: "Operadora", RequestHost: "App",
+  RequestPath: "Caminho", DownstreamStatus: "Status", ua: "User-Agent",
+};
+// IPs da rede local e do Docker (não contam nos alertas de volume)
+const PRIVADO = 'ClientHost !~ `^(10|127|192\\.168|172\\.(1[6-9]|2[0-9]|3[01]))\\..*`';
+
 // CrowdSec: decisões por ataques vistos aqui x lista preventiva da comunidade
 const COMUNIDADE = 'origin=~"(?i)capi|lists"';
 const LOCAL = 'origin!~"(?i)capi|lists"';
+// Traefik: "immich-service@docker" vira "immich"
+const SVC = (expr: string) => `label_replace(${expr}, "service", "$1", "service", "(.+?)(-service)?@.*")`;
 const BLOQUEIOS = '{host="opnsense", program="filterlog", action="block"}';
 
 const GATEWAY = mapa({
@@ -102,6 +118,10 @@ const dashboards: Record<string, unknown> = {};
   g.add(12, 8, serie("Requisições no Traefik", [
     q('sum by (code) (rate(traefik_entrypoint_requests_total{entrypoint="websecure"}[$__rate_interval]))', "{{code}}"),
   ], { unit: "reqps", empilhar: true }));
+  g.add(24, 8, serie("Velocidade da internet (teste a cada hora)", [
+    q("speedtest_download_bits_per_second", "Download"),
+    q("speedtest_upload_bits_per_second", "Upload"),
+  ], { unit: "bps", preencher: 0, descricao: "Teste da Ookla rodado pelo bergaserver, passando pelo OPNsense" }));
 
   dashboards["00-visao-geral"] = dashboard("bergatrix-geral", "Visão geral", g, {
     descricao: "Estado de tudo: máquinas, VMs, internet, túnel, sites e alertas",
@@ -151,6 +171,24 @@ const dashboards: Record<string, unknown> = {};
     q(`rate(node_network_receive_errs_total{${h}, ${NET}}[$__rate_interval]) + rate(node_network_transmit_errs_total{${h}, ${NET}}[$__rate_interval])`, "{{device}} erros"),
     q(`rate(node_network_receive_drop_total{${h}, ${NET}}[$__rate_interval]) + rate(node_network_transmit_drop_total{${h}, ${NET}}[$__rate_interval])`, "{{device}} descartes"),
   ], { unit: "pps" }));
+
+  // Interfaces físicas: as virtuais não informam velocidade
+  const fisica = `node_network_speed_bytes{${h}, ${NET}} > 0`;
+  g.add(12, 8, tabela("Links de rede", [
+    qt(`(${fisica}) * 8`),
+    qt(`node_network_up{${h}, ${NET}} and on (device) (${fisica})`),
+    qt(`node_network_mtu_bytes{${h}, ${NET}} and on (device) (${fisica})`),
+  ], {
+    transformacoes: juntar({ device: "Interface", "Value #A": "Velocidade", "Value #B": "Estado", "Value #C": "MTU" }, ["host", "papel"]),
+    colunas: [
+      coluna("Velocidade", { unit: "bps" }),
+      coluna("Estado", { mappings: mapa({ "0": ["Desconectado", CRITICO], "1": ["Conectado", OK] }), "custom.cellOptions": { type: "color-text" } }),
+    ],
+    descricao: "Velocidade negociada com o switch ou o roteador. Um link de 1 Gb/s em 100 Mb/s costuma ser cabo ou porta ruim. VMs mostram a velocidade da placa virtual.",
+  }));
+  g.add(12, 8, serie("Velocidade dos links (histórico)", [q(`(${fisica}) * 8`, "{{device}}")], {
+    unit: "bps", preencher: 0, descricao: "Degraus aqui são renegociações do link",
+  }));
 
   dashboards["01-maquina"] = dashboard("bergatrix-maquina", "Máquina", g, {
     descricao: "CPU, memória, discos, rede e temperatura de uma máquina",
@@ -208,24 +246,26 @@ const dashboards: Record<string, unknown> = {};
     q(comNome(`rate(pve_disk_written_bytes_total${GUEST}[$__rate_interval])`), "{{name}} escrita"),
   ], { unit: "Bps", overrides: [PARA_BAIXO(".*escrita")] }));
 
-  g.add(12, 8, barras("Storages do Proxmox", [qi('100 * pve_disk_usage_bytes{id=~"storage/.*"} / pve_disk_size_bytes{id=~"storage/.*"}', "{{id}}")], {
+  g.add(24, 6, barras("Storages do Proxmox", [qi('100 * pve_disk_usage_bytes{id=~"storage/.*"} / pve_disk_size_bytes{id=~"storage/.*"}', "{{id}}")], {
     unit: "percent", min: 0, max: 100, thresholds: sobe(75, 85, 95),
   }));
-  g.add(12, 8, tabela("Discos físicos (SMART)", [
+  g.add(24, 8, tabela("Discos físicos (SMART)", [
     qt("max by (disk) (smartmon_device_smart_healthy)"),
     qt(smart("temperature_celsius")),
     qt(smart("power_on_hours")),
     qt(smart("reallocated_sector_ct")),
     qt(smart("current_pending_sector")),
+    qt(VIDA_SSD),
   ], {
-    transformacoes: juntar({ disk: "Disco", "Value #A": "Saúde", "Value #B": "Temperatura", "Value #C": "Horas ligado", "Value #D": "Setores realocados", "Value #E": "Setores pendentes" }),
+    transformacoes: juntar({ disk: "Disco", "Value #A": "Saúde", "Value #B": "Temperatura", "Value #C": "Horas ligado", "Value #D": "Setores realocados", "Value #E": "Setores pendentes", "Value #F": "Vida útil (SSD)" }),
     colunas: [
       coluna("Saúde", { mappings: SAUDE, "custom.cellOptions": { type: "color-text" } }),
       coluna("Temperatura", { unit: "celsius", thresholds: limites([null, OK], [45, ATENCAO], [55, CRITICO]), color: { mode: "thresholds" }, "custom.cellOptions": { type: "color-text" } }),
       coluna("Setores realocados", { thresholds: limites([null, OK], [1, GRAVE]), color: { mode: "thresholds" }, "custom.cellOptions": { type: "color-text" } }),
       coluna("Setores pendentes", { thresholds: limites([null, OK], [1, CRITICO]), color: { mode: "thresholds" }, "custom.cellOptions": { type: "color-text" } }),
+      coluna("Vida útil (SSD)", { unit: "percent", decimals: 0, thresholds: limites([null, CRITICO], [10, GRAVE], [20, OK]), color: { mode: "thresholds" }, "custom.cellOptions": { type: "color-text" } }),
     ],
-    descricao: "Qualquer setor realocado ou pendente é sinal de disco começando a falhar.",
+    descricao: "Qualquer setor realocado ou pendente é sinal de disco começando a falhar. Vida útil só para SSD e NVMe (100% = novo). O SMART roda a cada 15 min; os autotestes (curto toda madrugada, longo todo dia 1º) são do smartd.",
   }));
   g.add(24, 8, serie("Temperaturas do Proxmox", [
     q('node_hwmon_temp_celsius{host="proxmox"}', "{{chip}} {{sensor}}"),
@@ -294,13 +334,13 @@ const dashboards: Record<string, unknown> = {};
 
   g.secao("Traefik (entrada de tráfego)");
   g.add(12, 8, serie("Requisições por serviço", [
-    q("sum by (service) (rate(traefik_service_requests_total[$__rate_interval]))", "{{service}}"),
+    q(SVC("sum by (service) (rate(traefik_service_requests_total[$__rate_interval]))"), "{{service}}"),
   ], { unit: "reqps", legenda: "table" }));
   g.add(12, 8, serie("Erros 5xx por serviço (%)", [
-    q("100 * sum by (service) (rate(traefik_service_requests_total{code=~\"5..\"}[5m])) / sum by (service) (rate(traefik_service_requests_total[5m]))", "{{service}}"),
+    q(SVC("100 * sum by (service) (rate(traefik_service_requests_total{code=~\"5..\"}[5m])) / sum by (service) (rate(traefik_service_requests_total[5m]))"), "{{service}}"),
   ], { unit: "percent", min: 0, thresholds: limites([null, OK], [10, CRITICO]), linhaLimite: true }));
   g.add(12, 8, serie("Tempo de resposta (p95)", [
-    q("histogram_quantile(0.95, sum by (le, service) (rate(traefik_service_request_duration_seconds_bucket[5m])))", "{{service}}"),
+    q(SVC("histogram_quantile(0.95, sum by (le, service) (rate(traefik_service_request_duration_seconds_bucket[5m])))"), "{{service}}"),
   ], { unit: "s", legenda: "table" }));
   g.add(12, 8, tabela("Quem mais acessa (período)", [
     li('topk(15, sum by (ClientHost) (count_over_time({job="traefik"} | json ClientHost="ClientHost" [$__range])))', "{{ClientHost}}"),
@@ -373,6 +413,20 @@ const dashboards: Record<string, unknown> = {};
     descricao: "Só aparece se o OPNsense tiver túneis WireGuard",
   }));
 
+  g.secao("Internet (teste de velocidade a cada hora)");
+  g.add(6, 4, stat("Download", [qi("speedtest_download_bits_per_second")], { unit: "bps", decimals: 0 }));
+  g.add(6, 4, stat("Upload", [qi("speedtest_upload_bits_per_second")], { unit: "bps", decimals: 0 }));
+  g.add(6, 4, stat("Ping do teste", [qi("speedtest_ping_latency_milliseconds")], { unit: "ms", thresholds: sobe(30, 60, 100) }));
+  g.add(6, 4, stat("Jitter", [qi("speedtest_jitter_latency_milliseconds")], { unit: "ms", thresholds: sobe(10, 30, 60) }));
+  g.add(12, 8, serie("Download e upload", [
+    q("speedtest_download_bits_per_second", "Download"),
+    q("speedtest_upload_bits_per_second", "Upload"),
+  ], { unit: "bps", preencher: 0 }));
+  g.add(12, 8, serie("Ping e jitter do teste", [
+    q("speedtest_ping_latency_milliseconds", "Ping"),
+    q("speedtest_jitter_latency_milliseconds", "Jitter"),
+  ], { unit: "ms", preencher: 0 }));
+
   g.secao("Log do firewall (bloqueios)");
   g.add(24, 8, serie("Bloqueios por interface", [
     l(`sum by (interface) (count_over_time(${BLOQUEIOS} [$__auto]))`, "{{interface}}"),
@@ -425,12 +479,12 @@ const dashboards: Record<string, unknown> = {};
   g.add(12, 8, serie("Tráfego da VPS", [
     q(`rate(node_network_receive_bytes_total{${h}, ${NET}}[$__rate_interval]) * 8`, "{{device}} recebe"),
     q(`rate(node_network_transmit_bytes_total{${h}, ${NET}}[$__rate_interval]) * 8`, "{{device}} envia"),
-  ], { unit: "bps", overrides: [PARA_BAIXO(".*envia")] }));
+  ], { unit: "bps", overrides: [PARA_BAIXO(".*envia")], legenda: "table" }));
 
   g.add(12, 8, serie("Tráfego do túnel (por peer)", [
     q(`rate(wireguard_received_bytes_total{${h}}[$__rate_interval]) * 8`, "{{interface}} recebe ({{allowed_ips}})"),
     q(`rate(wireguard_sent_bytes_total{${h}}[$__rate_interval]) * 8`, "{{interface}} envia ({{allowed_ips}})"),
-  ], { unit: "bps", overrides: [PARA_BAIXO(".*envia.*")] }));
+  ], { unit: "bps", overrides: [PARA_BAIXO(".*envia.*")], legenda: "table" }));
   g.add(12, 8, serie("Pacotes descartados pelo nftables", [
     q(`sum by (rule) (rate(nftables_rule_packets_total{${h}, verdict="drop"}[5m]))`, "{{rule}}"),
   ], { unit: "pps", descricao: "Inclui o bloqueio geográfico (pacotes de fora do Brasil nas portas 80/443)", legenda: "table" }));
@@ -489,6 +543,80 @@ const dashboards: Record<string, unknown> = {};
 }
 
 // ════════════════════════════════════════════════════════════════
+// 07 · Acessos (quem acessa os apps pelo Traefik)
+// ════════════════════════════════════════════════════════════════
+{
+  const g = new Grade();
+  // IP, app, caminho e status vêm do JSON do access.log; país, cidade e
+  // operadora são metadados que o Alloy põe em cada linha (GeoLite2).
+  const AC = '{job="traefik"} | json ClientHost="ClientHost", RequestHost="RequestHost", RequestPath="RequestPath", DownstreamStatus="DownstreamStatus" | ClientHost=~"$ip" | RequestHost=~"$app"';
+  const linhas = (expr: string) => [
+    { id: "reduce", options: { reducers: ["lastNotNull"], mode: "seriesToRows", labelsToFields: true } },
+    { id: "organize", options: { excludeByName: { Field: true }, renameByName: { ...ROTULOS_ACESSO, "Last *": expr } } },
+  ];
+  const IP_LINKS = coluna("IP", {
+    links: [
+      { title: "Tudo deste IP", url: "/d/bergatrix-acessos/?var-ip=${__value.raw}&${__url_time_range}" },
+      { title: "Reputação (AbuseIPDB)", url: "https://www.abuseipdb.com/check/${__value.raw}", targetBlank: true },
+    ],
+  });
+
+  g.add(6, 4, stat("Requisições", [li(`sum(count_over_time(${AC} [$__range]))`)], {}));
+  g.add(6, 4, stat("IPs diferentes", [li(`count(sum by (ClientHost) (count_over_time(${AC} [$__range])))`)], {}));
+  g.add(6, 4, stat("IPs de fora do Brasil", [li(`count(sum by (ClientHost) (count_over_time(${AC} | pais != "" | pais != "Brazil" [$__range]))) or vector(0)`)], {
+    thresholds: limites([null, OK], [1, ATENCAO]),
+    descricao: "A VPS bloqueia o que vem de fora do Brasil. IP estrangeiro aqui entrou por outro caminho (rede local, VPN) ou a base de países discorda.",
+  }));
+  g.add(6, 4, stat("Negados (401/403)", [li(`sum(count_over_time(${AC} | DownstreamStatus =~ "401|403" [$__range])) or vector(0)`)], {
+    descricao: "Login recusado ou acesso proibido. Muitos do mesmo IP = tentativa de adivinhar senha.",
+  }));
+
+  g.add(24, 10, tabela("Quem acessou (clique no IP para ver só ele)", [
+    li(`topk(100, sum by (ClientHost, pais, cidade, asn_org) (count_over_time(${AC} [$__range])))`),
+  ], { transformacoes: linhas("Requisições"), colunas: [IP_LINKS], ordenarPor: "Requisições" }));
+
+  g.add(12, 10, tabela("IP × app", [
+    li(`topk(100, sum by (ClientHost, RequestHost) (count_over_time(${AC} [$__range])))`),
+  ], { transformacoes: linhas("Requisições"), colunas: [IP_LINKS], ordenarPor: "Requisições" }));
+  g.add(12, 10, tabela("Erros por IP (4xx e 5xx)", [
+    li(`topk(100, sum by (ClientHost, pais, DownstreamStatus) (count_over_time(${AC} | DownstreamStatus >= 400 [$__range])))`),
+  ], { transformacoes: linhas("Respostas"), colunas: [IP_LINKS], ordenarPor: "Respostas" }));
+
+  g.add(12, 8, serie("Requisições por app", [l(`sum by (RequestHost) (count_over_time(${AC} [$__auto]))`, "{{RequestHost}}")], {
+    barras: true, empilhar: true, preencher: 80, legenda: "table",
+  }));
+  g.add(12, 8, serie("Requisições por país", [l(`sum by (pais) (count_over_time(${AC} | pais != "" [$__auto]))`, "{{pais}}")], {
+    barras: true, empilhar: true, preencher: 80, legenda: "table",
+  }));
+
+  g.add(8, 10, tabela("Operadoras (ASN)", [li(`topk(30, sum by (asn_org) (count_over_time(${AC} | asn_org != "" [$__range])))`)], {
+    transformacoes: linhas("Requisições"), ordenarPor: "Requisições",
+    descricao: "Datacenters (Amazon, Google, DigitalOcean, OVH…) costumam ser robôs; operadoras residenciais, pessoas.",
+  }));
+  g.add(8, 10, tabela("Caminhos procurados que não existem (404)", [
+    li(`topk(30, sum by (RequestPath) (count_over_time(${AC} | DownstreamStatus = "404" [$__range])))`),
+  ], {
+    transformacoes: linhas("Vezes"), ordenarPor: "Vezes",
+    descricao: "/.env, /wp-admin, /.git… são varreduras atrás de falhas conhecidas.",
+  }));
+  g.add(8, 10, tabela("Navegadores e robôs (User-Agent)", [
+    li(`topk(30, sum by (ua) (count_over_time({job="traefik"} | json ClientHost="ClientHost", RequestHost="RequestHost", ua="[\\"request_User-Agent\\"]" | ClientHost=~"$ip" | RequestHost=~"$app" [$__range])))`),
+  ], { transformacoes: linhas("Requisições"), ordenarPor: "Requisições" }));
+
+  g.add(24, 14, logs("Acessos",
+    '{job="traefik"} | json | ClientHost=~"$ip" | RequestHost=~"$app" | line_format "{{.ClientHost}} {{.pais}} {{.asn_org}} · {{.RequestMethod}} {{.RequestHost}}{{.RequestPath}} → {{.DownstreamStatus}} · {{.request_User_Agent}}"'));
+
+  dashboards["07-acessos"] = dashboard("bergatrix-acessos", "Acessos", g, {
+    descricao: "Quem acessa os apps pelo Traefik: IP, país, operadora, app, erros e robôs",
+    de: "now-24h",
+    variaveis: [
+      varTexto("ip", "IP (regex)", ".*"),
+      varTexto("app", "App (regex do endereço)", ".*"),
+    ],
+  });
+}
+
+// ════════════════════════════════════════════════════════════════
 // Alertas (Grafana, e-mail)
 // ════════════════════════════════════════════════════════════════
 
@@ -505,9 +633,12 @@ const L = (x: string) => `{{ $labels.${x} }}`;
 
 const grupos: Record<string, Regra[]> = {
   "Máquinas": [
-    { uid: "alvo-fora", titulo: "Coleta parou", expr: "up", op: "lt", limite: 1, para: "5m", gravidade: "critico",
-      resumo: `${L("job")} em ${L("host")} (${L("instance")}) não responde há 5 min`,
-      descricao: "A máquina caiu, o exporter parou ou a rede até ela caiu." },
+    { uid: "maquina-fora", titulo: "Máquina fora do ar", expr: 'up{job="node"}', op: "lt", limite: 1, para: "5m", gravidade: "critico",
+      resumo: `${L("host")} não responde há 5 min`,
+      descricao: "A máquina caiu, o node_exporter parou ou a rede até ela caiu." },
+    { uid: "alvo-fora", titulo: "Coleta parou", expr: 'up{job!="node"}', op: "lt", limite: 1, para: "10m",
+      resumo: `${L("job")} (${L("instance")}) não responde há 10 min`,
+      descricao: "Um exporter parou: os painéis dele ficam sem dados, a máquina pode estar bem." },
     { uid: "cpu-alta", titulo: "CPU alta", expr: '100 * (1 - avg by (host) (rate(node_cpu_seconds_total{mode="idle"}[5m])))', op: "gt", limite: 90, para: "15m",
       resumo: `CPU de ${L("host")} em ${V}% há 15 min` },
     { uid: "memoria-alta", titulo: "Memória alta",
@@ -540,13 +671,18 @@ const grupos: Record<string, Regra[]> = {
     { uid: "disco-quente", titulo: "Disco quente",
       expr: 'max by (disk) (smartmon_attr_raw_value{name="temperature_celsius"}) or max by (disk) (smartmon_temperature_celsius_raw_value)',
       op: "gt", limite: 55, para: "10m", resumo: `O disco ${L("disk")} está a ${V} °C` },
+    { uid: "ssd-desgaste", titulo: "SSD perto do fim da vida útil", expr: VIDA_SSD, op: "lt", limite: 20, para: "1h",
+      resumo: `O SSD ${L("disk")} tem ${V}% de vida útil restante`, descricao: "Planeje a troca; abaixo de 10% o fabricante não garante mais nada." },
+    { uid: "nvme-aviso", titulo: "NVMe com aviso crítico", expr: "nvme_critical_warning", op: "gt", limite: 0, para: "0s",
+      gravidade: "critico", resumo: `O NVMe ${L("device")} acendeu o aviso crítico (código ${V})`,
+      descricao: "Pode ser falta de blocos reserva, temperatura, modo só leitura ou falha de backup de energia. Faça backup." },
   ],
   "Servidor Docker": [
     { uid: "container-reiniciando", titulo: "Container reiniciando", expr: 'changes(container_start_time_seconds{name!=""}[15m])', op: "gt", limite: 2, para: "0s",
       resumo: `${L("name")} reiniciou ${V} vezes em 15 min` },
     { uid: "gpu-quente", titulo: "GPU quente", expr: "nvidia_smi_temperature_gpu", op: "gt", limite: 85, para: "5m", resumo: `GPU a ${V} °C` },
     { uid: "traefik-5xx", titulo: "Muitos erros 5xx",
-      expr: '(100 * sum by (service) (rate(traefik_service_requests_total{code=~"5.."}[10m])) / sum by (service) (rate(traefik_service_requests_total[10m]))) and on (service) (sum by (service) (rate(traefik_service_requests_total[10m])) > 0.05)',
+      expr: SVC('(100 * sum by (service) (rate(traefik_service_requests_total{code=~"5.."}[10m])) / sum by (service) (rate(traefik_service_requests_total[10m]))) and on (service) (sum by (service) (rate(traefik_service_requests_total[10m])) > 0.05)'),
       op: "gt", limite: 10, para: "10m", resumo: `${L("service")} com ${V}% de respostas 5xx` },
     { uid: "oom", titulo: "Processo morto por falta de memória", fonte: "loki",
       expr: 'sum by (host) (count_over_time({job=~"journal|syslog"} |~ "(?i)out of memory: killed process" [10m]))', op: "gt", limite: 0, para: "0s",
@@ -555,8 +691,14 @@ const grupos: Record<string, Regra[]> = {
   "Rede": [
     { uid: "tunel-caiu", titulo: "Túnel WireGuard sem handshake", expr: 'time() - wireguard_latest_handshake_seconds{host="vps"}', op: "gt", limite: 300, para: "2m",
       gravidade: "critico", resumo: `Túnel SP ↔ casa sem handshake há ${V} s (${L("allowed_ips")})`, descricao: "Os sites ficam fora do ar para quem vem pela VPS." },
-    { uid: "ping-falhou", titulo: "Sem resposta ao ping", expr: 'probe_success{job="ping"}', op: "lt", limite: 1, para: "3m",
-      gravidade: "critico", resumo: `${L("instance")} não responde ao ping há 3 min` },
+    { uid: "ping-falhou", titulo: "Sem resposta ao ping", expr: 'probe_success{job="ping"}', op: "lt", limite: 1, para: "5m",
+      resumo: `${L("instance")} não responde ao ping há 5 min` },
+    { uid: "link-mudou", titulo: "Velocidade de link mudou", expr: `changes(node_network_speed_bytes{${NET}}[30m])`, op: "gt", limite: 0, para: "0s",
+      resumo: `${L("device")} em ${L("host")} renegociou a velocidade`,
+      descricao: "Cabo, porta ou placa com problema costuma aparecer assim (ex.: 1 Gb/s caindo para 100 Mb/s). Veja o painel Máquina." },
+    { uid: "internet-lenta", titulo: "Internet lenta",
+      expr: "100 * speedtest_download_bits_per_second / quantile_over_time(0.5, speedtest_download_bits_per_second[7d])", op: "lt", limite: 50, para: "2h",
+      resumo: `Download em ${V}% do normal da última semana há 2 h`, descricao: "Pelo teste de velocidade de hora em hora." },
     { uid: "tunel-lento", titulo: "Túnel lento", expr: `(${RTT("vps")}) * 1000`, op: "gt", limite: 100, para: "10m",
       resumo: `Latência casa → VPS em ${V} ms` },
     { uid: "gateway", titulo: "Gateway com problema", expr: "opnsense_gateways_status", op: "lt", limite: 1, para: "3m",
@@ -573,6 +715,27 @@ const grupos: Record<string, Regra[]> = {
       gravidade: "critico", resumo: `${L("instance")} não responde pelo caminho público há 3 min` },
     { uid: "certificado", titulo: "Certificado perto de vencer", expr: '(probe_ssl_earliest_cert_expiry{job="sites"} - time()) / 86400', op: "lt", limite: 14, para: "1h",
       resumo: `O certificado de ${L("instance")} vence em ${V} dias`, descricao: "O Traefik renova sozinho com 30 dias; se chegou aqui, a renovação está falhando (deSEC)." },
+  ],
+  "Acessos": [
+    { uid: "acesso-estrangeiro", titulo: "Acesso de fora do Brasil", fonte: "loki",
+      expr: 'sum by (ip, pais, asn_org) (count_over_time({job="traefik"} | pais != "" | pais != "Brazil" [15m]))', op: "gt", limite: 0, para: "0s",
+      resumo: `${L("ip")} (${L("pais")}, ${L("asn_org")}) fez ${V} requisições em 15 min`,
+      descricao: "A VPS bloqueia fora do Brasil: veio por outro caminho (VPN, rede local) ou a base de países discorda. Painel Acessos, filtre pelo IP." },
+    { uid: "forca-bruta", titulo: "Muitos logins recusados", fonte: "loki",
+      expr: 'sum by (ClientHost) (count_over_time({job="traefik"} | json ClientHost="ClientHost", DownstreamStatus="DownstreamStatus" | DownstreamStatus =~ "401|403" [10m]))',
+      op: "gt", limite: 30, para: "0s",
+      resumo: `${L("ClientHost")} teve ${V} respostas 401/403 em 10 min`,
+      descricao: "Pode ser alguém tentando senhas, ou um app com a senha antiga salva. O CrowdSec costuma banir sozinho." },
+    { uid: "varredura", titulo: "Varredura de caminhos", fonte: "loki",
+      expr: 'sum by (ClientHost) (count_over_time({job="traefik"} | json ClientHost="ClientHost", DownstreamStatus="DownstreamStatus" | DownstreamStatus = "404" [10m]))',
+      op: "gt", limite: 100, para: "0s",
+      resumo: `${L("ClientHost")} pediu ${V} caminhos inexistentes em 10 min`,
+      descricao: "Robô procurando falhas conhecidas (/.env, /wp-admin…). Veja no painel Acessos o que ele tentou." },
+    { uid: "volume-ip", titulo: "IP com volume muito alto", fonte: "loki",
+      expr: `sum by (ClientHost) (count_over_time({job="traefik"} | json ClientHost="ClientHost" | ${PRIVADO} [10m]))`,
+      op: "gt", limite: 5000, para: "0s",
+      resumo: `${L("ClientHost")} fez ${V} requisições em 10 min`,
+      descricao: "Raspagem, abuso ou um app seu em loop. Rede local fica de fora." },
   ],
 };
 

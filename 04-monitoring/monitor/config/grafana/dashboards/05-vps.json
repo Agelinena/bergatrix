@@ -745,9 +745,13 @@
         },
         "legend": {
           "showLegend": true,
-          "displayMode": "list",
+          "displayMode": "table",
           "placement": "bottom",
-          "calcs": []
+          "calcs": [
+            "mean",
+            "max",
+            "lastNotNull"
+          ]
         }
       },
       "id": 9,
@@ -847,9 +851,13 @@
         },
         "legend": {
           "showLegend": true,
-          "displayMode": "list",
+          "displayMode": "table",
           "placement": "bottom",
-          "calcs": []
+          "calcs": [
+            "mean",
+            "max",
+            "lastNotNull"
+          ]
         }
       },
       "id": 10,
@@ -1291,7 +1299,13 @@
               "__name__": true,
               "family": true,
               "host": true,
-              "papel": true
+              "papel": true,
+              "table": false,
+              "chain": false,
+              "rule": false,
+              "verdict": false,
+              "Value #A": false,
+              "Value #B": false
             },
             "renameByName": {
               "table": "Tabela",

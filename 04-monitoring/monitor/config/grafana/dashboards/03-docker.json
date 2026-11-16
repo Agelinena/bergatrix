@@ -769,7 +769,12 @@
               "Time": true,
               "job": true,
               "instance": true,
-              "__name__": true
+              "__name__": true,
+              "container_label_com_docker_compose_project": false,
+              "Value #A": false,
+              "Value #B": false,
+              "Value #C": false,
+              "Value #D": false
             },
             "renameByName": {
               "container_label_com_docker_compose_project": "Stack",
@@ -1203,7 +1208,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (service) (rate(traefik_service_requests_total[$__rate_interval]))",
+          "expr": "label_replace(sum by (service) (rate(traefik_service_requests_total[$__rate_interval])), \"service\", \"$1\", \"service\", \"(.+?)(-service)?@.*\")",
           "legendFormat": "{{service}}",
           "range": true,
           "instant": false
@@ -1285,7 +1290,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "100 * sum by (service) (rate(traefik_service_requests_total{code=~\"5..\"}[5m])) / sum by (service) (rate(traefik_service_requests_total[5m]))",
+          "expr": "label_replace(100 * sum by (service) (rate(traefik_service_requests_total{code=~\"5..\"}[5m])) / sum by (service) (rate(traefik_service_requests_total[5m])), \"service\", \"$1\", \"service\", \"(.+?)(-service)?@.*\")",
           "legendFormat": "{{service}}",
           "range": true,
           "instant": false
@@ -1368,7 +1373,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "histogram_quantile(0.95, sum by (le, service) (rate(traefik_service_request_duration_seconds_bucket[5m])))",
+          "expr": "label_replace(histogram_quantile(0.95, sum by (le, service) (rate(traefik_service_request_duration_seconds_bucket[5m]))), \"service\", \"$1\", \"service\", \"(.+?)(-service)?@.*\")",
           "legendFormat": "{{service}}",
           "range": true,
           "instant": false

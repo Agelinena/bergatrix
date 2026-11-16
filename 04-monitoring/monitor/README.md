@@ -7,7 +7,8 @@ Painéis e alertas por e-mail de toda a Bergatrix: o servidor Ubuntu e os contai
 | **Grafana** (`grafana.${DOMAIN}`) | Painéis e alertas. Login pelo Authentik (OIDC). |
 | **Prometheus** | Guarda as métricas (90 dias ou 20 GB). |
 | **Loki** + **Alloy** | Guarda os logs (30 dias): containers, journal do Ubuntu, access.log do Traefik e o syslog do OPNsense e da VPS. |
-| **Exporters** | node_exporter, cAdvisor (containers), GPU, blackbox (ping e sites), pve-exporter (Proxmox) e opnsense-exporter. |
+| **Exporters** | node_exporter, cAdvisor (containers), GPU, blackbox (ping e sites), pve-exporter (Proxmox), opnsense-exporter e teste de velocidade (Ookla, de hora em hora). |
+| **Resumo** | Junta os alertas e manda um e-mail por dia de manhã. |
 
 ```
              ┌──────────── bergaserver (esta stack) ─────────────┐
@@ -28,25 +29,38 @@ Ficam na pasta **Bergatrix** do Grafana. A *Visão geral* abre como página inic
 
 | Painel | O que mostra |
 |---|---|
-| **Visão geral** | Máquinas, VMs, internet, túnel e sites no ar; alertas ativos; CPU, memória e discos de todas as máquinas; latência; tráfego da WAN e do Traefik |
-| **Máquina** | Uma máquina por vez (seletor no topo): CPU, memória, discos, I/O, rede, temperaturas e carga |
-| **Proxmox e VMs** | Host, tabela das VMs, CPU, memória, rede e disco por VM, storages, SMART dos discos físicos |
+| **Visão geral** | Máquinas, VMs, internet, túnel e sites no ar; alertas ativos; CPU, memória e discos de todas as máquinas; latência; tráfego da WAN e do Traefik; velocidade da internet |
+| **Máquina** | Uma máquina por vez (seletor no topo): CPU, memória, discos, I/O, rede, temperaturas, carga e velocidade negociada de cada link |
+| **Proxmox e VMs** | Host, tabela das VMs, CPU, memória, rede e disco por VM, storages, SMART dos discos físicos (saúde, temperatura, setores ruins e vida útil dos SSDs) |
 | **Servidor Docker** | Containers (CPU, memória e rede por container e por stack, reinícios), GPU, Traefik (requisições, 5xx, tempo de resposta, quem mais acessa) e CrowdSec |
-| **OPNsense** | Gateways (latência e perda), interfaces, tabela de estados, serviços, WireGuard e o log de bloqueios (top origens, portas, últimos bloqueios) |
+| **OPNsense** | Gateways (latência e perda), interfaces, tabela de estados, serviços, WireGuard, teste de velocidade da internet e o log de bloqueios (top origens, portas, últimos bloqueios) |
 | **VPS e túnel** | Handshake e tráfego do WireGuard, latência casa ↔ SP, nftables (bloqueio geográfico), CAKE, HAProxy e tentativas de SSH |
 | **Logs** | Busca nos logs de tudo, por máquina, origem e container |
+| **Acessos** | Quem acessa os apps pelo Traefik: IP, país, cidade, operadora, app, erros, caminhos procurados e User-Agent. Clique num IP para ver só ele, ou abra a reputação dele no AbuseIPDB |
 
 ## Alertas
 
-Os alertas vão por e-mail para `ALERTAS_EMAIL`. Problemas do mesmo tipo na mesma máquina chegam juntos num e-mail só. Um problema que continua é lembrado a cada 12 h, e outro e-mail avisa quando ele se resolve.
+Os e-mails vão para `ALERTAS_EMAIL`, de dois jeitos:
+
+- **Críticos chegam na hora**: máquina fora do ar, disco cheio (> 95 %), temperatura > 85 °C, VM parada, SMART reprovado, aviso crítico de NVMe, túnel caído, internet fora (gateway offline) e site fora do ar. Problemas iguais chegam juntos num e-mail só, o que continua é lembrado a cada 12 h, e outro e-mail avisa quando resolve.
+- **Todo o resto vai para o resumo diário**, às 07:00 (`RESUMO_HORA`): o que ainda está ativo e o que aconteceu e já resolveu desde o resumo anterior, com quantas vezes e por quanto tempo. Os críticos também aparecem lá, marcados como já avisados. Sem nada no período, não há e-mail (`RESUMO_ENVIAR_VAZIO=true` muda isso).
+
+Para mudar o que é crítico, troque a `gravidade` da regra em [`dashboards/gerar.ts`](dashboards/gerar.ts).
+
+Para testar o resumo sem esperar a manhã:
+
+```bash
+docker exec monitor-resumo wget -qO- --post-data= http://localhost:8080/enviar-agora
+```
 
 | Grupo | Alertas |
 |---|---|
-| Máquinas | Coleta parou (máquina ou exporter fora), CPU > 90 % (15 min), memória > 90 %, disco > 85 % e > 95 %, disco vai encher em 24 h, temperatura > 85 °C, serviço do systemd falhou |
-| Proxmox | VM com início automático parada, storage > 85 %, SMART reprovado, setores realocados ou pendentes, disco > 55 °C |
+| Máquinas | Máquina fora do ar, coleta de um exporter parou, CPU > 90 % (15 min), memória > 90 %, disco > 85 % e > 95 %, disco vai encher em 24 h, temperatura > 85 °C, serviço do systemd falhou |
+| Proxmox | VM com início automático parada, storage > 85 %, SMART reprovado, setores realocados ou pendentes, disco > 55 °C, SSD com menos de 20 % de vida útil, aviso crítico de NVMe |
 | Servidor Docker | Container reiniciando (mais de 2 vezes em 15 min), GPU > 85 °C, mais de 10 % de 5xx num serviço, processo morto por falta de memória (log) |
-| Rede | Túnel sem handshake há 5 min, máquina sem responder ao ping, túnel > 100 ms, gateway com problema, perda > 10 %, serviço do OPNsense parado, tabela de estados > 80 % |
+| Rede | Túnel sem handshake há 5 min, máquina sem responder ao ping, túnel > 100 ms, gateway com problema, perda > 10 %, serviço do OPNsense parado, tabela de estados > 80 %, link renegociou a velocidade, internet abaixo de 50 % do normal da semana |
 | Sites | Site fora pelo caminho público, certificado vencendo em menos de 14 dias |
+| Acessos | IP de fora do Brasil, mais de 30 logins recusados (401/403) em 10 min, mais de 100 caminhos inexistentes (404) em 10 min, mais de 5000 requisições de um IP em 10 min |
 
 ## Subir
 
@@ -84,7 +98,7 @@ scp -r 04-monitoring/monitor/hosts/proxmox root@<proxmox>:/root/bergatrix-monito
 ssh root@<proxmox> 'cd /root/bergatrix-monitor && bash instalar.sh'
 ```
 
-Instala o node_exporter, o SMART dos discos (a cada 15 min) e cria o usuário `monitor@pve` só leitura, com um token. **O segredo do token aparece uma vez só**: copie o `value` para `PVE_TOKEN_VALUE`.
+Instala o node_exporter, o SMART e o NVMe dos discos (a cada 15 min), agenda os autotestes SMART no `smartd` (curto toda madrugada às 02h, longo todo dia 1º às 03h) e cria o usuário `monitor@pve` só leitura, com um token. **O segredo do token aparece uma vez só**: copie o `value` para `PVE_TOKEN_VALUE`.
 
 ### 3. OMV
 
@@ -148,7 +162,7 @@ cd ../../02-security/crowdsec && docker compose up -d
 docker exec crowdsec cscli config show --key Config.Prometheus
 
 # Pastas
-sudo mkdir -p /srv/appdata/monitor/grafana /srv/cache/monitor/{prometheus,loki,alloy,gerado}
+sudo mkdir -p /srv/appdata/monitor/{grafana,resumo} /srv/cache/monitor/{prometheus,loki,alloy,gerado}
 sudo chown -R 1000:1000 /srv/appdata/monitor /srv/cache/monitor
 
 # Stack
@@ -159,6 +173,13 @@ docker compose ps
 ```
 
 Se o `listen_addr` do CrowdSec for `127.0.0.1`, troque para `0.0.0.0` em `/srv/appdata/crowdsec/config/config.yaml` (seção `prometheus`) e reinicie o CrowdSec. A porta não é publicada no host: só a rede `bergatrix-monitor` chega a ela.
+
+O Alloy usa as bases de países (GeoLite2) que o CrowdSec baixa. Confira que elas existem antes de subir, porque sem elas os logs do Traefik param de chegar:
+
+```bash
+ls /srv/appdata/crowdsec/data/GeoLite2-*.mmdb
+# Se não houver: docker exec crowdsec cscli parsers install crowdsecurity/geoip-enrich && docker restart crowdsec
+```
 
 ### 7. Conferir
 

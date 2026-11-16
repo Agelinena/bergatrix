@@ -765,7 +765,15 @@
               "job": true,
               "instance": true,
               "__name__": true,
-              "host": true
+              "host": true,
+              "id": false,
+              "name": false,
+              "Value #A": false,
+              "Value #B": false,
+              "Value #C": false,
+              "Value #D": false,
+              "Value #E": false,
+              "Value #F": false
             },
             "renameByName": {
               "id": "ID",
@@ -1228,8 +1236,8 @@
       "gridPos": {
         "x": 0,
         "y": 27,
-        "w": 12,
-        "h": 8
+        "w": 24,
+        "h": 6
       }
     },
     {
@@ -1290,13 +1298,24 @@
           "format": "table",
           "range": false,
           "instant": true
+        },
+        {
+          "refId": "F",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (disk) (smartmon_attr_value{name=~\"wear_leveling_count|media_wearout_indicator|ssd_life_left|percent_lifetime_remain\"}) or label_replace(100 - 100 * nvme_percentage_used_ratio, \"disk\", \"$1\", \"device\", \"(.*)\")",
+          "format": "table",
+          "range": false,
+          "instant": true
         }
       ],
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "description": "Qualquer setor realocado ou pendente é sinal de disco começando a falhar.",
+      "description": "Qualquer setor realocado ou pendente é sinal de disco começando a falhar. Vida útil só para SSD e NVMe (100% = novo). O SMART roda a cada 15 min; os autotestes (curto toda madrugada, longo todo dia 1º) são do smartd.",
       "fieldConfig": {
         "defaults": {
           "unit": "short",
@@ -1471,6 +1490,54 @@
                 }
               }
             ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Vida útil (SSD)"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percent"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "value": null,
+                      "color": "red"
+                    },
+                    {
+                      "value": 10,
+                      "color": "orange"
+                    },
+                    {
+                      "value": 20,
+                      "color": "green"
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              }
+            ]
           }
         ]
       },
@@ -1497,7 +1564,14 @@
               "Time": true,
               "job": true,
               "instance": true,
-              "__name__": true
+              "__name__": true,
+              "disk": false,
+              "Value #A": false,
+              "Value #B": false,
+              "Value #C": false,
+              "Value #D": false,
+              "Value #E": false,
+              "Value #F": false
             },
             "renameByName": {
               "disk": "Disco",
@@ -1505,7 +1579,8 @@
               "Value #B": "Temperatura",
               "Value #C": "Horas ligado",
               "Value #D": "Setores realocados",
-              "Value #E": "Setores pendentes"
+              "Value #E": "Setores pendentes",
+              "Value #F": "Vida útil (SSD)"
             },
             "indexByName": {}
           }
@@ -1513,9 +1588,9 @@
       ],
       "id": 13,
       "gridPos": {
-        "x": 12,
-        "y": 27,
-        "w": 12,
+        "x": 0,
+        "y": 33,
+        "w": 24,
         "h": 8
       }
     },
@@ -1611,7 +1686,7 @@
       "id": 14,
       "gridPos": {
         "x": 0,
-        "y": 35,
+        "y": 41,
         "w": 24,
         "h": 8
       }

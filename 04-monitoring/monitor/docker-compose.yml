@@ -185,6 +185,8 @@ services:
       - /run/log/journal:/run/log/journal:ro
       - /etc/machine-id:/etc/machine-id:ro
       - ${APPDATA_PATH:?}/traefik/logs:/var/log/traefik:ro
+      # Bases GeoLite2 (país e operadora dos IPs) baixadas pelo CrowdSec
+      - ${APPDATA_PATH:?}/crowdsec/data:/geoip:ro
     ports:
       # Syslog (TCP). Só o OPNsense e a VPS mandam; ver README.
       - "5140:5140/tcp"
@@ -276,6 +278,56 @@ services:
       - "omv:${OMV_IP:?}"
       - "opnsense:${OPNSENSE_IP:?}"
       - "vps:${VPS_TUNNEL_IP:?}"
+    networks:
+      - monitor-internal
+      - monitor-egress
+
+  # Resumo diário dos alertas (um e-mail de manhã). O Grafana manda todo
+  # alerta para cá por webhook; os críticos também saem na hora por e-mail.
+  resumo:
+    image: python:3.13.9-alpine
+    container_name: monitor-resumo
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    user: "${PUID}:${PGID}"
+    command: ["python", "-u", "/app/resumo.py"]
+    environment:
+      RESUMO_HORA: ${RESUMO_HORA:-07:00}
+      RESUMO_ENVIAR_VAZIO: ${RESUMO_ENVIAR_VAZIO:-false}
+      GRAFANA_URL: https://grafana.${DOMAIN}
+      SMTP_HOST: ${SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USERNAME: ${SMTP_USERNAME}
+      SMTP_PASSWORD: ${SMTP_PASSWORD}
+      SMTP_FROM_ADDRESS: ${SMTP_FROM_ADDRESS}
+      SMTP_STARTTLS_POLICY: ${SMTP_STARTTLS_POLICY:-MandatoryStartTLS}
+      ALERTAS_EMAIL: ${ALERTAS_EMAIL}
+    volumes:
+      - ./resumo:/app:ro
+      # O que aconteceu desde o último resumo (pequeno)
+      - ${APPDATA_PATH:?}/monitor/resumo:/dados
+      # Fuso do host: o horário do resumo é o local
+      - /etc/localtime:/etc/localtime:ro
+    networks:
+      - monitor-internal
+      # Saída para o SMTP
+      - monitor-egress
+
+  # Teste de velocidade da internet (Ookla). O Prometheus lê a cada 5 min,
+  # mas o teste só roda de hora em hora (SPEEDTEST_CACHE_FOR): nas outras
+  # leituras o exporter devolve o último resultado.
+  speedtest:
+    image: miguelndecarvalho/speedtest-exporter:v3.5.4
+    container_name: monitor-speedtest
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      SPEEDTEST_CACHE_FOR: "3600"
+      SPEEDTEST_TIMEOUT: "120"
+      # Servidor fixo (ID da Ookla) deixa os testes comparáveis; vazio = o mais próximo
+      SPEEDTEST_SERVER: ${SPEEDTEST_SERVER:-}
     networks:
       - monitor-internal
       - monitor-egress
