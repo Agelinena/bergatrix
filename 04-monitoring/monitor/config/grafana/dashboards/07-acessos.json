@@ -1,7 +1,7 @@
 {
   "uid": "bergatrix-acessos",
   "title": "Acessos",
-  "description": "Quem acessa os apps pelo Traefik: IP, país, operadora, app, erros e robôs",
+  "description": "Quem acessa os apps pelo Traefik: IP, país, operadora, app, erros e robôs. Países e operadoras: IP Geolocation by DB-IP (db-ip.com), CC BY 4.0",
   "tags": [
     "bergatrix"
   ],

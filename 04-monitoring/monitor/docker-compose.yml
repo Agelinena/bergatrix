@@ -31,6 +31,20 @@ services:
       - ${CACHE_PATH:?}/monitor/gerado:/gerado
     command: ["sh", "/gerar-config.sh"]
 
+  # Baixa as bases de país e operadora dos IPs (DB-IP Lite, grátis, formato
+  # MaxMind) para o Alloy. Só baixa de novo quando passam de 32 dias. Termina.
+  geoip:
+    image: alpine:3.20
+    container_name: monitor-geoip
+    restart: "no"
+    user: "${PUID}:${PGID}"
+    volumes:
+      - ./config/baixar-geoip.sh:/baixar-geoip.sh:ro
+      - ${CACHE_PATH:?}/monitor/geoip:/geoip
+    networks:
+      - monitor-egress
+    command: ["sh", "/baixar-geoip.sh"]
+
   grafana:
     image: grafana/grafana:13.2.6
     container_name: monitor-grafana
@@ -185,8 +199,8 @@ services:
       - /run/log/journal:/run/log/journal:ro
       - /etc/machine-id:/etc/machine-id:ro
       - ${APPDATA_PATH:?}/traefik/logs:/var/log/traefik:ro
-      # Bases GeoLite2 (país e operadora dos IPs) baixadas pelo CrowdSec
-      - ${APPDATA_PATH:?}/crowdsec/data:/geoip:ro
+      # Bases de país e operadora dos IPs (DB-IP), baixadas pelo serviço geoip
+      - ${CACHE_PATH:?}/monitor/geoip:/geoip:ro
     ports:
       # Syslog (TCP). Só o OPNsense e a VPS mandam; ver README.
       - "5140:5140/tcp"
@@ -196,7 +210,10 @@ services:
       # Rede interna não publica porta; o syslog entra por esta
       - monitor-egress
     depends_on:
-      - loki
+      loki:
+        condition: service_started
+      geoip:
+        condition: service_completed_successfully
 
   # Métricas do Ubuntu (bergaserver). Rede do host para ver as interfaces de
   # verdade; escuta só no IP do host na docker0 (172.17.0.1), que é onde o

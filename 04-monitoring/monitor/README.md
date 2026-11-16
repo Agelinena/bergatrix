@@ -162,7 +162,7 @@ cd ../../02-security/crowdsec && docker compose up -d
 docker exec crowdsec cscli config show --key Config.Prometheus
 
 # Pastas
-sudo mkdir -p /srv/appdata/monitor/{grafana,resumo} /srv/cache/monitor/{prometheus,loki,alloy,gerado}
+sudo mkdir -p /srv/appdata/monitor/{grafana,resumo} /srv/cache/monitor/{prometheus,loki,alloy,gerado,geoip}
 sudo chown -R 1000:1000 /srv/appdata/monitor /srv/cache/monitor
 
 # Stack
@@ -174,12 +174,7 @@ docker compose ps
 
 Se o `listen_addr` do CrowdSec for `127.0.0.1`, troque para `0.0.0.0` em `/srv/appdata/crowdsec/config/config.yaml` (seção `prometheus`) e reinicie o CrowdSec. A porta não é publicada no host: só a rede `bergatrix-monitor` chega a ela.
 
-O Alloy usa as bases de países (GeoLite2) que o CrowdSec baixa. Confira que elas existem antes de subir, porque sem elas os logs do Traefik param de chegar:
-
-```bash
-ls /srv/appdata/crowdsec/data/GeoLite2-*.mmdb
-# Se não houver: docker exec crowdsec cscli parsers install crowdsecurity/geoip-enrich && docker restart crowdsec
-```
+O serviço `geoip` baixa as bases gratuitas de país e operadora da [DB-IP](https://db-ip.com) (licença CC BY 4.0) a cada subida, quando a cópia tem mais de 32 dias. Sem elas o Alloy não sobe e **nenhum log chega**. Se o `docker compose up` parar no `geoip`, veja `docker logs monitor-geoip`.
 
 ### 7. Conferir
 

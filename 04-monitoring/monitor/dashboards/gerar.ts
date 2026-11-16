@@ -607,7 +607,7 @@ const dashboards: Record<string, unknown> = {};
     '{job="traefik"} | json | ClientHost=~"$ip" | RequestHost=~"$app" | line_format "{{.ClientHost}} {{.pais}} {{.asn_org}} · {{.RequestMethod}} {{.RequestHost}}{{.RequestPath}} → {{.DownstreamStatus}} · {{.request_User_Agent}}"'));
 
   dashboards["07-acessos"] = dashboard("bergatrix-acessos", "Acessos", g, {
-    descricao: "Quem acessa os apps pelo Traefik: IP, país, operadora, app, erros e robôs",
+    descricao: "Quem acessa os apps pelo Traefik: IP, país, operadora, app, erros e robôs. Países e operadoras: IP Geolocation by DB-IP (db-ip.com), CC BY 4.0",
     de: "now-24h",
     variaveis: [
       varTexto("ip", "IP (regex)", ".*"),
