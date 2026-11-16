@@ -756,7 +756,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "probe_success{job=\"sites\"}",
+          "expr": "(probe_success{job=\"sites\"}) + 0",
           "format": "table",
           "range": false,
           "instant": true
@@ -767,7 +767,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "probe_duration_seconds{job=\"sites\"}",
+          "expr": "(probe_duration_seconds{job=\"sites\"}) + 0",
           "format": "table",
           "range": false,
           "instant": true
@@ -778,7 +778,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "(probe_ssl_earliest_cert_expiry{job=\"sites\"} - time()) / 86400",
+          "expr": "((probe_ssl_earliest_cert_expiry{job=\"sites\"} - time()) / 86400) + 0",
           "format": "table",
           "range": false,
           "instant": true

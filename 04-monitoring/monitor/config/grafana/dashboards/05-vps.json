@@ -1207,7 +1207,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "nftables_rule_packets_total{host=\"vps\"}",
+          "expr": "(nftables_rule_packets_total{host=\"vps\"}) + 0",
           "format": "table",
           "range": false,
           "instant": true
@@ -1218,7 +1218,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "nftables_rule_bytes_total{host=\"vps\"}",
+          "expr": "(nftables_rule_bytes_total{host=\"vps\"}) + 0",
           "format": "table",
           "range": false,
           "instant": true

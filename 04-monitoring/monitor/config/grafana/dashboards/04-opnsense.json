@@ -1036,7 +1036,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "opnsense_services_status",
+          "expr": "(opnsense_services_status) + 0",
           "format": "table",
           "range": false,
           "instant": true
@@ -1169,7 +1169,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "opnsense_wireguard_peer_status",
+          "expr": "(opnsense_wireguard_peer_status) + 0",
           "format": "table",
           "range": false,
           "instant": true
@@ -1180,7 +1180,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "time() - opnsense_wireguard_peer_last_handshake_seconds",
+          "expr": "(time() - opnsense_wireguard_peer_last_handshake_seconds) + 0",
           "format": "table",
           "range": false,
           "instant": true
@@ -1899,7 +1899,7 @@
             "uid": "loki"
           },
           "expr": "topk(15, sum by (src) (count_over_time({host=\"opnsense\", program=\"filterlog\", action=\"block\"} | regexp `^(?:[^,]*,){8}4,(?:[^,]*,){7}(?P<proto>[^,]*),[^,]*,(?P<src>[^,]*),(?P<dst>[^,]*),?(?P<srcport>[^,]*),?(?P<dstport>[^,]*)` [$__range])))",
-          "legendFormat": "{{src}}",
+          "legendFormat": "",
           "queryType": "instant"
         }
       ],
@@ -1952,20 +1952,30 @@
       },
       "transformations": [
         {
-          "id": "reduce",
+          "id": "labelsToFields",
           "options": {
-            "reducers": [
-              "lastNotNull"
-            ],
-            "mode": "seriesToRows"
+            "mode": "columns"
+          }
+        },
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "renameByRegex",
+          "options": {
+            "regex": "^Value.*",
+            "renamePattern": "Bloqueios"
           }
         },
         {
           "id": "organize",
           "options": {
+            "excludeByName": {
+              "Time": true
+            },
             "renameByName": {
-              "Field": "Origem",
-              "Last *": "Bloqueios"
+              "src": "Origem"
             }
           }
         }
@@ -1989,7 +1999,7 @@
             "uid": "loki"
           },
           "expr": "topk(15, sum by (dstport, proto) (count_over_time({host=\"opnsense\", program=\"filterlog\", action=\"block\"} | regexp `^(?:[^,]*,){8}4,(?:[^,]*,){7}(?P<proto>[^,]*),[^,]*,(?P<src>[^,]*),(?P<dst>[^,]*),?(?P<srcport>[^,]*),?(?P<dstport>[^,]*)` | dstport != \"\" [$__range])))",
-          "legendFormat": "{{dstport}}/{{proto}}",
+          "legendFormat": "",
           "queryType": "instant"
         }
       ],
@@ -2042,20 +2052,31 @@
       },
       "transformations": [
         {
-          "id": "reduce",
+          "id": "labelsToFields",
           "options": {
-            "reducers": [
-              "lastNotNull"
-            ],
-            "mode": "seriesToRows"
+            "mode": "columns"
+          }
+        },
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "renameByRegex",
+          "options": {
+            "regex": "^Value.*",
+            "renamePattern": "Bloqueios"
           }
         },
         {
           "id": "organize",
           "options": {
+            "excludeByName": {
+              "Time": true
+            },
             "renameByName": {
-              "Field": "Porta",
-              "Last *": "Bloqueios"
+              "dstport": "Porta",
+              "proto": "Protocolo"
             }
           }
         }

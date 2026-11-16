@@ -8,7 +8,7 @@
 
 import { stringify } from "jsr:@std/yaml@1.0.5";
 import {
-  alertas, barras, binario, coluna, CRITICO, dashboard, GRAVE, Grade, juntar, l, li, limites, logs, mapa,
+  alertas, barras, binario, coluna, topLoki, CRITICO, dashboard, GRAVE, Grade, juntar, l, li, limites, logs, mapa,
   NO_AR, OK, PARA_BAIXO, q, qi, qt, SAUDE, SERVICO, serie, sobe, sobrescrever, stat, tabela, varFixa,
   varLokiLabel, varProm, varTexto, ATENCAO,
 } from "./lib.ts";
@@ -343,12 +343,9 @@ const dashboards: Record<string, unknown> = {};
     q(SVC("histogram_quantile(0.95, sum by (le, service) (rate(traefik_service_request_duration_seconds_bucket[5m])))"), "{{service}}"),
   ], { unit: "s", legenda: "table" }));
   g.add(12, 8, tabela("Quem mais acessa (período)", [
-    li('topk(15, sum by (ClientHost) (count_over_time({job="traefik"} | json ClientHost="ClientHost" [$__range])))', "{{ClientHost}}"),
+    li('topk(15, sum by (ClientHost) (count_over_time({job="traefik"} | json ClientHost="ClientHost" [$__range])))'),
   ], {
-    transformacoes: [
-      { id: "reduce", options: { reducers: ["lastNotNull"], mode: "seriesToRows" } },
-      { id: "organize", options: { renameByName: { Field: "IP", "Last *": "Requisições" } } },
-    ],
+    transformacoes: topLoki("Requisições", { ClientHost: "IP" }),
     ordenarPor: "Requisições",
     descricao: "IPs reais (via Proxy Protocol da VPS), do access.log do Traefik",
   }));
@@ -432,21 +429,15 @@ const dashboards: Record<string, unknown> = {};
     l(`sum by (interface) (count_over_time(${BLOQUEIOS} [$__auto]))`, "{{interface}}"),
   ], { barras: true, empilhar: true, preencher: 80, descricao: "Só regras com log ligado entram aqui (bloqueio padrão: Firewall → Settings → Advanced)" }));
   g.add(8, 10, tabela("Quem mais foi bloqueado (origem)", [
-    li(`topk(15, sum by (src) (count_over_time(${BLOQUEIOS} | regexp ${FILTERLOG_RE} [$__range])))`, "{{src}}"),
+    li(`topk(15, sum by (src) (count_over_time(${BLOQUEIOS} | regexp ${FILTERLOG_RE} [$__range])))`),
   ], {
-    transformacoes: [
-      { id: "reduce", options: { reducers: ["lastNotNull"], mode: "seriesToRows" } },
-      { id: "organize", options: { renameByName: { Field: "Origem", "Last *": "Bloqueios" } } },
-    ],
+    transformacoes: topLoki("Bloqueios", { src: "Origem" }),
     ordenarPor: "Bloqueios",
   }));
   g.add(8, 10, tabela("Portas mais procuradas", [
-    li(`topk(15, sum by (dstport, proto) (count_over_time(${BLOQUEIOS} | regexp ${FILTERLOG_RE} | dstport != "" [$__range])))`, "{{dstport}}/{{proto}}"),
+    li(`topk(15, sum by (dstport, proto) (count_over_time(${BLOQUEIOS} | regexp ${FILTERLOG_RE} | dstport != "" [$__range])))`),
   ], {
-    transformacoes: [
-      { id: "reduce", options: { reducers: ["lastNotNull"], mode: "seriesToRows" } },
-      { id: "organize", options: { renameByName: { Field: "Porta", "Last *": "Bloqueios" } } },
-    ],
+    transformacoes: topLoki("Bloqueios", { dstport: "Porta", proto: "Protocolo" }),
     ordenarPor: "Bloqueios",
   }));
   g.add(8, 10, logs("Últimos bloqueios",
@@ -550,10 +541,7 @@ const dashboards: Record<string, unknown> = {};
   // IP, app, caminho e status vêm do JSON do access.log; país, cidade e
   // operadora são metadados que o Alloy põe em cada linha (GeoLite2).
   const AC = '{job="traefik"} | json ClientHost="ClientHost", RequestHost="RequestHost", RequestPath="RequestPath", DownstreamStatus="DownstreamStatus" | ClientHost=~"$ip" | RequestHost=~"$app"';
-  const linhas = (expr: string) => [
-    { id: "reduce", options: { reducers: ["lastNotNull"], mode: "seriesToRows", labelsToFields: true } },
-    { id: "organize", options: { excludeByName: { Field: true }, renameByName: { ...ROTULOS_ACESSO, "Last *": expr } } },
-  ];
+  const linhas = (valor: string) => topLoki(valor, ROTULOS_ACESSO);
   const IP_LINKS = coluna("IP", {
     links: [
       { title: "Tudo deste IP", url: "/d/bergatrix-acessos/?var-ip=${__value.raw}&${__url_time_range}" },
@@ -604,7 +592,7 @@ const dashboards: Record<string, unknown> = {};
   ], { transformacoes: linhas("Requisições"), ordenarPor: "Requisições" }));
 
   g.add(24, 14, logs("Acessos",
-    '{job="traefik"} | json | ClientHost=~"$ip" | RequestHost=~"$app" | line_format "{{.ClientHost}} {{.pais}} {{.asn_org}} · {{.RequestMethod}} {{.RequestHost}}{{.RequestPath}} → {{.DownstreamStatus}} · {{.request_User_Agent}}"'));
+    '{job="traefik"} | json ClientHost="ClientHost", RequestMethod="RequestMethod", RequestHost="RequestHost", RequestPath="RequestPath", DownstreamStatus="DownstreamStatus", ua="[\\"request_User-Agent\\"]" | ClientHost=~"$ip" | RequestHost=~"$app" | line_format "{{.ClientHost}} {{.pais}} {{.asn_org}} · {{.RequestMethod}} {{.RequestHost}}{{.RequestPath}} → {{.DownstreamStatus}} · {{.ua}}"'));
 
   dashboards["07-acessos"] = dashboard("bergatrix-acessos", "Acessos", g, {
     descricao: "Quem acessa os apps pelo Traefik: IP, país, operadora, app, erros e robôs. Países e operadoras: IP Geolocation by DB-IP (db-ip.com), CC BY 4.0",

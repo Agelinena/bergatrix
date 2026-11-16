@@ -22,9 +22,11 @@ export function q(expr: string, legenda = "", extra: Alvo = {}): Alvo {
 export function qi(expr: string, legenda = "", extra: Alvo = {}): Alvo {
   return { datasource: PROM, expr, legendFormat: legenda || "__auto", range: false, instant: true, ...extra };
 }
-/** Consulta PromQL do valor atual em formato de tabela (uma coluna por consulta). */
+/** Consulta PromQL do valor atual em formato de tabela (uma coluna por consulta).
+ * O "+ 0" tira o nome da métrica: sem isso o Grafana não junta as consultas
+ * na mesma linha (cada métrica viraria uma linha repetida). */
 export function qt(expr: string, extra: Alvo = {}): Alvo {
-  return { datasource: PROM, expr, format: "table", range: false, instant: true, ...extra };
+  return { datasource: PROM, expr: `(${expr}) + 0`, format: "table", range: false, instant: true, ...extra };
 }
 /** Consulta LogQL (logs ou métrica ao longo do tempo). */
 export function l(expr: string, legenda = "", extra: Alvo = {}): Alvo {
@@ -341,4 +343,15 @@ export function varFixa(name: string, label: string, valores: string[], c: { tod
 }
 export function varTexto(name: string, label: string, padrao = "") {
   return { type: "textbox", name, label, query: padrao, current: { text: padrao, value: padrao } };
+}
+
+/** Tabela de "top" do Loki: uma linha por série, uma coluna por label.
+ * As consultas não podem ter legenda (ela troca o nome da coluna do valor). */
+export function topLoki(valor: string, rotulos: Record<string, string> = {}) {
+  return [
+    { id: "labelsToFields", options: { mode: "columns" } },
+    { id: "merge", options: {} },
+    { id: "renameByRegex", options: { regex: "^Value.*", renamePattern: valor } },
+    { id: "organize", options: { excludeByName: { Time: true }, renameByName: rotulos } },
+  ];
 }

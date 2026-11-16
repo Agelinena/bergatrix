@@ -630,7 +630,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (container_label_com_docker_compose_project) (rate(container_cpu_usage_seconds_total[5m])) * 100",
+          "expr": "(sum by (container_label_com_docker_compose_project) (rate(container_cpu_usage_seconds_total[5m])) * 100) + 0",
           "format": "table",
           "range": false,
           "instant": true
@@ -641,7 +641,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (container_label_com_docker_compose_project) (container_memory_working_set_bytes)",
+          "expr": "(sum by (container_label_com_docker_compose_project) (container_memory_working_set_bytes)) + 0",
           "format": "table",
           "range": false,
           "instant": true
@@ -652,7 +652,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (container_label_com_docker_compose_project) (rate(container_network_receive_bytes_total[5m]) + rate(container_network_transmit_bytes_total[5m])) * 8",
+          "expr": "(sum by (container_label_com_docker_compose_project) (rate(container_network_receive_bytes_total[5m]) + rate(container_network_transmit_bytes_total[5m])) * 8) + 0",
           "format": "table",
           "range": false,
           "instant": true
@@ -663,7 +663,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "count by (container_label_com_docker_compose_project) (count by (container_label_com_docker_compose_project, name) (container_start_time_seconds))",
+          "expr": "(count by (container_label_com_docker_compose_project) (count by (container_label_com_docker_compose_project, name) (container_start_time_seconds))) + 0",
           "format": "table",
           "range": false,
           "instant": true
@@ -1456,7 +1456,7 @@
             "uid": "loki"
           },
           "expr": "topk(15, sum by (ClientHost) (count_over_time({job=\"traefik\"} | json ClientHost=\"ClientHost\" [$__range])))",
-          "legendFormat": "{{ClientHost}}",
+          "legendFormat": "",
           "queryType": "instant"
         }
       ],
@@ -1510,20 +1510,30 @@
       },
       "transformations": [
         {
-          "id": "reduce",
+          "id": "labelsToFields",
           "options": {
-            "reducers": [
-              "lastNotNull"
-            ],
-            "mode": "seriesToRows"
+            "mode": "columns"
+          }
+        },
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "renameByRegex",
+          "options": {
+            "regex": "^Value.*",
+            "renamePattern": "Requisições"
           }
         },
         {
           "id": "organize",
           "options": {
+            "excludeByName": {
+              "Time": true
+            },
             "renameByName": {
-              "Field": "IP",
-              "Last *": "Requisições"
+              "ClientHost": "IP"
             }
           }
         }

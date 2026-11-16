@@ -1261,7 +1261,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "(node_network_speed_bytes{host=\"$host\", device!~\"lo.*|veth.*|br-.*|docker.*|tap.*|fwbr.*|fwln.*|fwpr.*|enc.*|pflog.*|pfsync.*\"} > 0) * 8",
+          "expr": "((node_network_speed_bytes{host=\"$host\", device!~\"lo.*|veth.*|br-.*|docker.*|tap.*|fwbr.*|fwln.*|fwpr.*|enc.*|pflog.*|pfsync.*\"} > 0) * 8) + 0",
           "format": "table",
           "range": false,
           "instant": true
@@ -1272,7 +1272,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "node_network_up{host=\"$host\", device!~\"lo.*|veth.*|br-.*|docker.*|tap.*|fwbr.*|fwln.*|fwpr.*|enc.*|pflog.*|pfsync.*\"} and on (device) (node_network_speed_bytes{host=\"$host\", device!~\"lo.*|veth.*|br-.*|docker.*|tap.*|fwbr.*|fwln.*|fwpr.*|enc.*|pflog.*|pfsync.*\"} > 0)",
+          "expr": "(node_network_up{host=\"$host\", device!~\"lo.*|veth.*|br-.*|docker.*|tap.*|fwbr.*|fwln.*|fwpr.*|enc.*|pflog.*|pfsync.*\"} and on (device) (node_network_speed_bytes{host=\"$host\", device!~\"lo.*|veth.*|br-.*|docker.*|tap.*|fwbr.*|fwln.*|fwpr.*|enc.*|pflog.*|pfsync.*\"} > 0)) + 0",
           "format": "table",
           "range": false,
           "instant": true
@@ -1283,7 +1283,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "node_network_mtu_bytes{host=\"$host\", device!~\"lo.*|veth.*|br-.*|docker.*|tap.*|fwbr.*|fwln.*|fwpr.*|enc.*|pflog.*|pfsync.*\"} and on (device) (node_network_speed_bytes{host=\"$host\", device!~\"lo.*|veth.*|br-.*|docker.*|tap.*|fwbr.*|fwln.*|fwpr.*|enc.*|pflog.*|pfsync.*\"} > 0)",
+          "expr": "(node_network_mtu_bytes{host=\"$host\", device!~\"lo.*|veth.*|br-.*|docker.*|tap.*|fwbr.*|fwln.*|fwpr.*|enc.*|pflog.*|pfsync.*\"} and on (device) (node_network_speed_bytes{host=\"$host\", device!~\"lo.*|veth.*|br-.*|docker.*|tap.*|fwbr.*|fwln.*|fwpr.*|enc.*|pflog.*|pfsync.*\"} > 0)) + 0",
           "format": "table",
           "range": false,
           "instant": true

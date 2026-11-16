@@ -498,7 +498,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "pve_up{id=~\"(qemu|lxc)/.*\"} * on (id) group_left (name) pve_guest_info",
+          "expr": "(pve_up{id=~\"(qemu|lxc)/.*\"} * on (id) group_left (name) pve_guest_info) + 0",
           "format": "table",
           "range": false,
           "instant": true
@@ -509,7 +509,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "pve_cpu_usage_ratio{id=~\"(qemu|lxc)/.*\"} * 100 * on (id) group_left (name) pve_guest_info",
+          "expr": "(pve_cpu_usage_ratio{id=~\"(qemu|lxc)/.*\"} * 100 * on (id) group_left (name) pve_guest_info) + 0",
           "format": "table",
           "range": false,
           "instant": true
@@ -520,7 +520,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "pve_memory_usage_bytes{id=~\"(qemu|lxc)/.*\"} * on (id) group_left (name) pve_guest_info",
+          "expr": "(pve_memory_usage_bytes{id=~\"(qemu|lxc)/.*\"} * on (id) group_left (name) pve_guest_info) + 0",
           "format": "table",
           "range": false,
           "instant": true
@@ -531,7 +531,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "pve_memory_size_bytes{id=~\"(qemu|lxc)/.*\"} * on (id) group_left (name) pve_guest_info",
+          "expr": "(pve_memory_size_bytes{id=~\"(qemu|lxc)/.*\"} * on (id) group_left (name) pve_guest_info) + 0",
           "format": "table",
           "range": false,
           "instant": true
@@ -542,7 +542,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "pve_disk_size_bytes{id=~\"(qemu|lxc)/.*\"} * on (id) group_left (name) pve_guest_info",
+          "expr": "(pve_disk_size_bytes{id=~\"(qemu|lxc)/.*\"} * on (id) group_left (name) pve_guest_info) + 0",
           "format": "table",
           "range": false,
           "instant": true
@@ -553,7 +553,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "pve_uptime_seconds{id=~\"(qemu|lxc)/.*\"} * on (id) group_left (name) pve_guest_info",
+          "expr": "(pve_uptime_seconds{id=~\"(qemu|lxc)/.*\"} * on (id) group_left (name) pve_guest_info) + 0",
           "format": "table",
           "range": false,
           "instant": true
@@ -1250,7 +1250,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "max by (disk) (smartmon_device_smart_healthy)",
+          "expr": "(max by (disk) (smartmon_device_smart_healthy)) + 0",
           "format": "table",
           "range": false,
           "instant": true
@@ -1261,7 +1261,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "max by (disk) (smartmon_attr_raw_value{name=\"temperature_celsius\"}) or max by (disk) (smartmon_temperature_celsius_raw_value)",
+          "expr": "(max by (disk) (smartmon_attr_raw_value{name=\"temperature_celsius\"}) or max by (disk) (smartmon_temperature_celsius_raw_value)) + 0",
           "format": "table",
           "range": false,
           "instant": true
@@ -1272,7 +1272,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "max by (disk) (smartmon_attr_raw_value{name=\"power_on_hours\"}) or max by (disk) (smartmon_power_on_hours_raw_value)",
+          "expr": "(max by (disk) (smartmon_attr_raw_value{name=\"power_on_hours\"}) or max by (disk) (smartmon_power_on_hours_raw_value)) + 0",
           "format": "table",
           "range": false,
           "instant": true
@@ -1283,7 +1283,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "max by (disk) (smartmon_attr_raw_value{name=\"reallocated_sector_ct\"}) or max by (disk) (smartmon_reallocated_sector_ct_raw_value)",
+          "expr": "(max by (disk) (smartmon_attr_raw_value{name=\"reallocated_sector_ct\"}) or max by (disk) (smartmon_reallocated_sector_ct_raw_value)) + 0",
           "format": "table",
           "range": false,
           "instant": true
@@ -1294,7 +1294,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "max by (disk) (smartmon_attr_raw_value{name=\"current_pending_sector\"}) or max by (disk) (smartmon_current_pending_sector_raw_value)",
+          "expr": "(max by (disk) (smartmon_attr_raw_value{name=\"current_pending_sector\"}) or max by (disk) (smartmon_current_pending_sector_raw_value)) + 0",
           "format": "table",
           "range": false,
           "instant": true
@@ -1305,7 +1305,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "max by (disk) (smartmon_attr_value{name=~\"wear_leveling_count|media_wearout_indicator|ssd_life_left|percent_lifetime_remain\"}) or label_replace(100 - 100 * nvme_percentage_used_ratio, \"disk\", \"$1\", \"device\", \"(.*)\")",
+          "expr": "(max by (disk) (smartmon_attr_value{name=~\"wear_leveling_count|media_wearout_indicator|ssd_life_left|percent_lifetime_remain\"}) or label_replace(100 - 100 * nvme_percentage_used_ratio, \"disk\", \"$1\", \"device\", \"(.*)\")) + 0",
           "format": "table",
           "range": false,
           "instant": true

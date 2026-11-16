@@ -403,20 +403,27 @@
       },
       "transformations": [
         {
-          "id": "reduce",
+          "id": "labelsToFields",
           "options": {
-            "reducers": [
-              "lastNotNull"
-            ],
-            "mode": "seriesToRows",
-            "labelsToFields": true
+            "mode": "columns"
+          }
+        },
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "renameByRegex",
+          "options": {
+            "regex": "^Value.*",
+            "renamePattern": "Requisições"
           }
         },
         {
           "id": "organize",
           "options": {
             "excludeByName": {
-              "Field": true
+              "Time": true
             },
             "renameByName": {
               "ClientHost": "IP",
@@ -426,8 +433,7 @@
               "RequestHost": "App",
               "RequestPath": "Caminho",
               "DownstreamStatus": "Status",
-              "ua": "User-Agent",
-              "Last *": "Requisições"
+              "ua": "User-Agent"
             }
           }
         }
@@ -527,20 +533,27 @@
       },
       "transformations": [
         {
-          "id": "reduce",
+          "id": "labelsToFields",
           "options": {
-            "reducers": [
-              "lastNotNull"
-            ],
-            "mode": "seriesToRows",
-            "labelsToFields": true
+            "mode": "columns"
+          }
+        },
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "renameByRegex",
+          "options": {
+            "regex": "^Value.*",
+            "renamePattern": "Requisições"
           }
         },
         {
           "id": "organize",
           "options": {
             "excludeByName": {
-              "Field": true
+              "Time": true
             },
             "renameByName": {
               "ClientHost": "IP",
@@ -550,8 +563,7 @@
               "RequestHost": "App",
               "RequestPath": "Caminho",
               "DownstreamStatus": "Status",
-              "ua": "User-Agent",
-              "Last *": "Requisições"
+              "ua": "User-Agent"
             }
           }
         }
@@ -651,20 +663,27 @@
       },
       "transformations": [
         {
-          "id": "reduce",
+          "id": "labelsToFields",
           "options": {
-            "reducers": [
-              "lastNotNull"
-            ],
-            "mode": "seriesToRows",
-            "labelsToFields": true
+            "mode": "columns"
+          }
+        },
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "renameByRegex",
+          "options": {
+            "regex": "^Value.*",
+            "renamePattern": "Respostas"
           }
         },
         {
           "id": "organize",
           "options": {
             "excludeByName": {
-              "Field": true
+              "Time": true
             },
             "renameByName": {
               "ClientHost": "IP",
@@ -674,8 +693,7 @@
               "RequestHost": "App",
               "RequestPath": "Caminho",
               "DownstreamStatus": "Status",
-              "ua": "User-Agent",
-              "Last *": "Respostas"
+              "ua": "User-Agent"
             }
           }
         }
@@ -915,20 +933,27 @@
       },
       "transformations": [
         {
-          "id": "reduce",
+          "id": "labelsToFields",
           "options": {
-            "reducers": [
-              "lastNotNull"
-            ],
-            "mode": "seriesToRows",
-            "labelsToFields": true
+            "mode": "columns"
+          }
+        },
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "renameByRegex",
+          "options": {
+            "regex": "^Value.*",
+            "renamePattern": "Requisições"
           }
         },
         {
           "id": "organize",
           "options": {
             "excludeByName": {
-              "Field": true
+              "Time": true
             },
             "renameByName": {
               "ClientHost": "IP",
@@ -938,8 +963,7 @@
               "RequestHost": "App",
               "RequestPath": "Caminho",
               "DownstreamStatus": "Status",
-              "ua": "User-Agent",
-              "Last *": "Requisições"
+              "ua": "User-Agent"
             }
           }
         }
@@ -1017,20 +1041,27 @@
       },
       "transformations": [
         {
-          "id": "reduce",
+          "id": "labelsToFields",
           "options": {
-            "reducers": [
-              "lastNotNull"
-            ],
-            "mode": "seriesToRows",
-            "labelsToFields": true
+            "mode": "columns"
+          }
+        },
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "renameByRegex",
+          "options": {
+            "regex": "^Value.*",
+            "renamePattern": "Vezes"
           }
         },
         {
           "id": "organize",
           "options": {
             "excludeByName": {
-              "Field": true
+              "Time": true
             },
             "renameByName": {
               "ClientHost": "IP",
@@ -1040,8 +1071,7 @@
               "RequestHost": "App",
               "RequestPath": "Caminho",
               "DownstreamStatus": "Status",
-              "ua": "User-Agent",
-              "Last *": "Vezes"
+              "ua": "User-Agent"
             }
           }
         }
@@ -1118,20 +1148,27 @@
       },
       "transformations": [
         {
-          "id": "reduce",
+          "id": "labelsToFields",
           "options": {
-            "reducers": [
-              "lastNotNull"
-            ],
-            "mode": "seriesToRows",
-            "labelsToFields": true
+            "mode": "columns"
+          }
+        },
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "renameByRegex",
+          "options": {
+            "regex": "^Value.*",
+            "renamePattern": "Requisições"
           }
         },
         {
           "id": "organize",
           "options": {
             "excludeByName": {
-              "Field": true
+              "Time": true
             },
             "renameByName": {
               "ClientHost": "IP",
@@ -1141,8 +1178,7 @@
               "RequestHost": "App",
               "RequestPath": "Caminho",
               "DownstreamStatus": "Status",
-              "ua": "User-Agent",
-              "Last *": "Requisições"
+              "ua": "User-Agent"
             }
           }
         }
@@ -1165,7 +1201,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "{job=\"traefik\"} | json | ClientHost=~\"$ip\" | RequestHost=~\"$app\" | line_format \"{{.ClientHost}} {{.pais}} {{.asn_org}} · {{.RequestMethod}} {{.RequestHost}}{{.RequestPath}} → {{.DownstreamStatus}} · {{.request_User_Agent}}\"",
+          "expr": "{job=\"traefik\"} | json ClientHost=\"ClientHost\", RequestMethod=\"RequestMethod\", RequestHost=\"RequestHost\", RequestPath=\"RequestPath\", DownstreamStatus=\"DownstreamStatus\", ua=\"[\\\"request_User-Agent\\\"]\" | ClientHost=~\"$ip\" | RequestHost=~\"$app\" | line_format \"{{.ClientHost}} {{.pais}} {{.asn_org}} · {{.RequestMethod}} {{.RequestHost}}{{.RequestPath}} → {{.DownstreamStatus}} · {{.ua}}\"",
           "legendFormat": "",
           "queryType": "range"
         }
