@@ -240,6 +240,7 @@ class _SidebarPlaylists extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final server = ref.watch(myPlaylistsProvider).value ?? const [];
     final local = ref.watch(localPlaylistsProvider);
+    final playing = ref.watch(playerProvider.select((s) => s.playlistId));
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: 4),
       children: [
@@ -252,6 +253,7 @@ class _SidebarPlaylists extends ConsumerWidget {
             ),
             cover: playlistImage(ref, p.id, p.coverUrl),
             coverSize: 48,
+            playing: p.id == playing,
             onTap: () => GoRouter.of(context).go(AppRoutes.playlist(p.id)),
             onMenu: () => showPlaylistMenu(
               context,

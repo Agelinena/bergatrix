@@ -181,11 +181,12 @@ _FAILURES_KEY = "bergastream:deemix:failures"
 _FAILURES_KEEP = 100
 
 
-async def _note_deemix_failure(play_req: PlayRequest, deezer_id: str, recovered: bool) -> None:
+async def _note_deemix_failure(play_req: PlayRequest, deezer_id: str, recovered: bool,
+                               track_id: str | None = None) -> None:
     """Falhas recentes do Deemix (Ajustes → No servidor): motivo e se o
     YouTube conseguiu baixar a faixa no lugar."""
     entry = {
-        "title": play_req.title, "artist": play_req.artist,
+        "title": play_req.title, "artist": play_req.artist, "track_id": track_id,
         "error": deemix.pop_error(deezer_id) or "não baixou",
         "recovered": recovered, "at": datetime.now(timezone.utc).isoformat(),
     }
@@ -199,7 +200,7 @@ async def _note_deemix_failure(play_req: PlayRequest, deezer_id: str, recovered:
 
 async def _fallback_after_deemix(play_req: PlayRequest, track_id: str, deezer_id: str) -> tuple[bool, str | None]:
     ok, provider = await _do_download_youtube_fallback(play_req, track_id)
-    await _note_deemix_failure(play_req, deezer_id, recovered=ok)
+    await _note_deemix_failure(play_req, deezer_id, recovered=ok, track_id=track_id)
     return ok, provider
 
 

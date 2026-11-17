@@ -72,9 +72,13 @@ class _QueuePanelState extends ConsumerState<QueuePanel> {
           ),
         _Header(
           title:
-              state.shared ||
-                  state.context == 'Busca' ||
-                  state.context == 'Sua fila'
+              (state.context ?? '').startsWith(
+                PlayerController.radioContextPrefix,
+              )
+              ? 'A seguir na rádio'
+              : state.shared ||
+                    state.context == 'Busca' ||
+                    state.context == 'Sua fila'
               ? 'A seguir'
               : 'A seguir da playlist',
         ),

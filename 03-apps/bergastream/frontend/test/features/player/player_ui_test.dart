@@ -1,5 +1,7 @@
 import 'package:bergastream/core/platform/app_platform.dart';
+import 'package:bergastream/data/repositories/radio_repository.dart';
 import 'package:bergastream/features/player/full_player.dart';
+import 'package:bergastream/features/player/lyrics.dart';
 import 'package:bergastream/features/player/player_bar.dart';
 import 'package:bergastream/features/player/player_controller.dart';
 import 'package:bergastream/features/player/queue_panel.dart';
@@ -51,7 +53,8 @@ void main() {
     await tester.tap(find.text('Queen · A Night at the Opera'));
     await tester.pumpAndSettle();
     expect(find.byType(FullPlayer), findsOneWidget);
-    expect(find.text('Tocando de Busca'), findsOneWidget);
+    // Tocar uma música da busca começa a rádio dela.
+    expect(find.text('Rádio de Bohemian Rhapsody'), findsOneWidget);
 
     await tester.tap(find.byIcon(Icons.pause).last);
     await tester.pump();
@@ -107,6 +110,9 @@ void main() {
       tester,
       platform: const AppPlatform.web(),
       size: const Size(1280, 900),
+      radio: FakeRadioRepository([
+        [song('Parecida 1'), song('Parecida 2')],
+      ]),
     );
     expect(find.byTooltip('Fila'), findsNothing);
     await tester.tap(find.text('Buscar'));
@@ -121,6 +127,38 @@ void main() {
     await tester.tap(find.byTooltip('Fila'));
     await tester.pumpAndSettle();
     expect(find.byType(QueuePanel), findsOneWidget);
-    expect(find.text('A seguir'), findsOneWidget);
+    expect(find.text('A seguir na rádio'), findsOneWidget);
+    expect(find.text('Parecida 1'), findsOneWidget);
+  });
+
+  testWidgets('tela larga: player dividido, letra ou fila à direita', (
+    tester,
+  ) async {
+    await pumpBergastream(
+      tester,
+      platform: const AppPlatform.web(),
+      size: const Size(1400, 900),
+      radio: FakeRadioRepository([
+        [song('Parecida 1')],
+      ]),
+    );
+    await tester.tap(find.text('Buscar'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'queen');
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Bohemian Rhapsody'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Abrir player'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(FullPlayer), findsOneWidget);
+    expect(find.byType(LyricsView), findsOneWidget, reason: 'letra à direita');
+    expect(find.byType(QueuePanel), findsNothing);
+    // O botão Fila (ou o chip) troca o painel da direita.
+    await tester.tap(find.byTooltip('Fila').last);
+    await tester.pumpAndSettle();
+    expect(find.byType(QueuePanel), findsOneWidget);
+    expect(find.text('Parecida 1'), findsWidgets);
   });
 }

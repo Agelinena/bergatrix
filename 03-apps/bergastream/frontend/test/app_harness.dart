@@ -21,6 +21,7 @@ import 'package:bergastream/features/player/audio_engine.dart';
 import 'package:bergastream/features/player/player_controller.dart';
 import 'package:bergastream/data/repositories/account_repository.dart';
 import 'package:bergastream/data/repositories/failures_repository.dart';
+import 'package:bergastream/data/repositories/radio_repository.dart';
 import 'package:bergastream/features/account/account_providers.dart';
 import 'package:bergastream/features/auth/oidc_launcher.dart';
 import 'package:bergastream/features/auth/session.dart';
@@ -106,6 +107,8 @@ Future<ProviderContainer> pumpBergastream(
   FakeOidcLauncher? oidc,
   FakeAccountRepository? accounts,
   FakeFailuresRepository? failures,
+  FakeRadioRepository? radio,
+  FakeServerStatusRepository? serverStatus,
   FakeLyricsRepository? lyrics,
 }) async {
   tester.view.physicalSize = size;
@@ -116,7 +119,7 @@ Future<ProviderContainer> pumpBergastream(
     overrides: [
       appPlatformProvider.overrideWithValue(platform),
       serverStatusRepositoryProvider.overrideWithValue(
-        FakeServerStatusRepository(),
+        serverStatus ?? FakeServerStatusRepository(),
       ),
       serverStatusRefreshProvider.overrideWithValue(null),
       lyricsRepositoryProvider.overrideWithValue(
@@ -178,6 +181,7 @@ Future<ProviderContainer> pumpBergastream(
       failuresRepositoryProvider.overrideWithValue(
         failures ?? FakeFailuresRepository(),
       ),
+      radioRepositoryProvider.overrideWithValue(radio ?? FakeRadioRepository()),
       accountRepositoryProvider.overrideWithValue(
         accounts ?? FakeAccountRepository(),
       ),
@@ -195,6 +199,7 @@ Future<ProviderContainer> pumpBergastream(
           pollInterval: Duration.zero,
           rapidChangeDelay: Duration.zero,
           autoSkipDelay: Duration.zero,
+          radioDelay: Duration.zero,
           fades: false,
         ),
       ),

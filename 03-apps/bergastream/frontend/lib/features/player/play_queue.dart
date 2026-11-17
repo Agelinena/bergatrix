@@ -92,6 +92,13 @@ class PlayQueue {
     return null;
   }
 
+  /// Mais músicas no fim da lista que está tocando (a rádio, a cada leva).
+  void appendUpNext(List<SearchResult> tracks) {
+    final items = [for (final t in tracks) _item(t)];
+    _source.addAll(items);
+    _upNext.addAll(items);
+  }
+
   /// "Adicionar à fila": entra no fim da sua fila (FIFO).
   QueueItem add(SearchResult track) {
     final item = _item(track);

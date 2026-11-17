@@ -14,6 +14,7 @@ import '../../core/theme/berga_text.dart';
 import '../../core/widgets/widgets.dart';
 import '../../core/utils/format.dart';
 import '../../core/network/api_error.dart';
+import '../account/account_providers.dart';
 import '../../data/local/database.dart';
 import '../../data/repositories/server_status_repository.dart';
 import '../auth/session.dart';
@@ -407,6 +408,7 @@ class _ServerStatusCardState extends ConsumerState<_ServerStatusCard> {
     final title = BergaText.trackTitle.copyWith(color: c.tx);
     final mu = BergaText.secondary.copyWith(color: c.mu);
     final status = ref.watch(serverStatusProvider);
+    final isAdmin = ref.watch(myAccountProvider).value?.isAdmin ?? false;
     Widget line(String label, String value) => Padding(
       padding: const EdgeInsets.only(top: 6),
       child: Row(
@@ -487,22 +489,41 @@ class _ServerStatusCardState extends ConsumerState<_ServerStatusCard> {
                             '${value.deemixFailed > 0 ? ' · ${value.deemixFailed} com falha' : ''}'
                       : 'indisponível',
                 ),
+                // O servidor só manda as que ainda não têm solução (a que o
+                // YouTube baixou no lugar ou foi baixada depois some).
                 if (value.deemixFailures.isNotEmpty)
                   line(
-                    'Falhas recentes do Deemix',
-                    '${value.deemixFailures.length} · '
-                        '${value.deemixFailures.where((f) => f.recovered).length} '
-                        'baixadas pelo YouTube',
+                    'Falhas do Deemix sem solução',
+                    '${value.deemixFailures.length}',
                   ),
                 for (final f in value.deemixFailures.take(5))
                   Padding(
                     padding: const EdgeInsets.only(top: 6, left: 12),
                     child: Text(
-                      '${f.title} — ${f.artist} · '
-                      '${f.recovered ? 'tocando pelo YouTube' : 'não encontrada'}',
+                      '${f.title} — ${f.artist} · não encontrada',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: mu.copyWith(color: f.recovered ? c.mu : c.ac),
+                      style: mu.copyWith(color: c.ac),
+                    ),
+                  ),
+                if (value.deemixFailures.isNotEmpty && isAdmin)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8, left: 12),
+                    child: AppChip(
+                      label: 'Limpar falhas',
+                      icon: Icons.delete_sweep_outlined,
+                      onTap: () async {
+                        try {
+                          await ref
+                              .read(serverStatusRepositoryProvider)
+                              .clearDeemixFailures();
+                        } on ApiException catch (e) {
+                          if (context.mounted) {
+                            AppToast.show(context, e.message);
+                          }
+                        }
+                        ref.invalidate(serverStatusProvider);
+                      },
                     ),
                   ),
                 for (final item in value.deemixItems.take(10))

@@ -1,3 +1,4 @@
+import 'package:bergastream/data/repositories/server_status_repository.dart';
 import 'package:bergastream/features/settings/preferences.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -52,12 +53,26 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('Levitating — Dua Lipa · na fila'), findsOneWidget);
-    expect(find.text('2 · 1 baixadas pelo YouTube'), findsOneWidget);
-    expect(
-      find.text('Redbone — Childish Gambino · tocando pelo YouTube'),
-      findsOneWidget,
-    );
+    expect(find.text('Falhas do Deemix sem solução'), findsOneWidget);
     expect(find.text('Rara — Alguém · não encontrada'), findsOneWidget);
+  });
+
+  testWidgets('admin limpa as falhas do Deemix', (tester) async {
+    final status = FakeServerStatusRepository(
+      FakeServerStatusRepository.sample,
+    );
+    await pumpBergastream(
+      tester,
+      size: const Size(400, 2400),
+      serverStatus: status,
+    );
+    await openSettings(tester);
+    expect(find.text('Rara — Alguém · não encontrada'), findsOneWidget);
+    await tester.tap(find.text('Limpar falhas'));
+    await tester.pumpAndSettle();
+    expect(status.cleared, isTrue);
+    expect(find.text('Rara — Alguém · não encontrada'), findsNothing);
+    expect(find.text('Limpar falhas'), findsNothing);
   });
 
   testWidgets('sem servidor o painel não aparece', (tester) async {

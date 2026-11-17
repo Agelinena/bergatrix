@@ -18,6 +18,7 @@ from app.accounts.routes import admin_router as accounts_admin_router
 from app.accounts.routes import me_router as accounts_me_router
 from app.auth.routes import router as auth_router
 from app.downloads.failures import router as failures_router
+from app.radio.routes import router as radio_router
 from app.playlists.routes import router as playlists_router
 from app.history.routes import router as history_router
 from app.images.routes import router as images_router
@@ -82,6 +83,7 @@ async def health():
 
 app.include_router(auth_router)
 app.include_router(failures_router)
+app.include_router(radio_router)
 app.include_router(accounts_admin_router)
 app.include_router(accounts_me_router)
 app.include_router(playlists_router)

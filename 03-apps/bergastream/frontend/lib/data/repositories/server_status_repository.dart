@@ -98,6 +98,27 @@ class ServerStatus {
 
   /// Último teste diário do Spotify.
   final SpotifyHealth? spotify;
+
+  ServerStatus copyWith({List<DeemixFailure>? deemixFailures}) => ServerStatus(
+    tracks: tracks,
+    permanent: permanent,
+    cache: cache,
+    bytes: bytes,
+    bytesPermanent: bytesPermanent,
+    bytesCache: bytesCache,
+    diskTotal: diskTotal,
+    diskFree: diskFree,
+    queueWaiting: queueWaiting,
+    queueActive: queueActive,
+    deemixAvailable: deemixAvailable,
+    deemixDownloading: deemixDownloading,
+    deemixWaiting: deemixWaiting,
+    deemixFailed: deemixFailed,
+    deemixItems: deemixItems,
+    deemixFailures: deemixFailures ?? this.deemixFailures,
+    quality: quality,
+    spotify: spotify,
+  );
 }
 
 /// Músicas do servidor por qualidade e a melhoria das playlists (Deemix e
@@ -237,6 +258,9 @@ class DeemixItem {
 abstract interface class ServerStatusRepository {
   /// Lança [ApiException].
   Future<ServerStatus> status();
+
+  /// Limpa as falhas recentes do Deemix (só admin).
+  Future<void> clearDeemixFailures();
 }
 
 class HttpServerStatusRepository implements ServerStatusRepository {
@@ -249,6 +273,15 @@ class HttpServerStatusRepository implements ServerStatusRepository {
     try {
       final r = await _dio.get<Map<String, dynamic>>('/api/server/status');
       return ServerStatus.fromJson(r.data!);
+    } on DioException catch (e) {
+      throw ApiException.fromDio(e);
+    }
+  }
+
+  @override
+  Future<void> clearDeemixFailures() async {
+    try {
+      await _dio.delete<void>('/api/server/deemix-failures');
     } on DioException catch (e) {
       throw ApiException.fromDio(e);
     }
@@ -298,12 +331,6 @@ class FakeServerStatusRepository implements ServerStatusRepository {
     spotify: SpotifyHealth(ok: true, libraryVersion: '3.9.2'),
     deemixFailures: [
       DeemixFailure(
-        title: 'Redbone',
-        artist: 'Childish Gambino',
-        error: "reading 'HREF'",
-        recovered: true,
-      ),
-      DeemixFailure(
         title: 'Rara',
         artist: 'Alguém',
         error: 'não baixou',
@@ -316,6 +343,14 @@ class FakeServerStatusRepository implements ServerStatusRepository {
   Future<ServerStatus> status() async {
     calls++;
     return value;
+  }
+
+  bool cleared = false;
+
+  @override
+  Future<void> clearDeemixFailures() async {
+    cleared = true;
+    value = value.copyWith(deemixFailures: const []);
   }
 }
 

@@ -24,6 +24,35 @@ marcadas como públicas. Stream e download aceitam também `?t=<token de stream>
 - **`ArtistResult`:** `provider`, `external_id`, `name`, `image_url`. **`AlbumResult`:** `provider`, `external_id`, `title`, `artist`, `year`, `image_url`.
 - **`ResolvedLink`:** `source` (`spotify`\|`deezer`\|`youtube`), `kind` (`track`\|`album`\|`playlist`), `title`, `subtitle`, `cover_url`, `description`, `total`, `tracks` (até 10.000), `external_url`.
 
+### Rádio (`POST /api/radio`)
+
+Uma leva de músicas parecidas com uma música. O app guarda o estado da rádio e manda tudo a cada
+pedido; o servidor não guarda sessão.
+
+- **Corpo:** `seed` (`SearchResult`, a música que começou a rádio), `recent` (até 2 ouvidas sem
+  pular), `skipped` (artista → vezes pulado antes dos 30 s), `exclude` (`[{artist, title}]`, o que
+  já tocou ou está na fila), `last_artist`, `count` (1–30, padrão 15).
+- **Resposta:** `tracks` (`list[SearchResult]`) e `sources` (fonte → `ok` \| `fora` \| `erro` \|
+  `sem chave`).
+- **Fontes cruzadas:** rádio do YouTube Music da música, Last.fm (músicas parecidas com nota,
+  artistas parecidos e tags; precisa de `LASTFM_API_KEY`), Deezer (artistas relacionados e rádio
+  do artista) e ListenBrainz (artistas parecidos, pelo MBID do Last.fm). Nada da biblioteca de
+  quem ouve.
+- **Pontuação:** a música em mais de uma fonte ganha mais; o artista precisa ser confirmado por
+  alguma fonte de artistas (ou a música vir de duas fontes); as tags do artista precisam bater com
+  as do perfil. Fora: versões ao vivo/karaokê/remix/cover (salvo se a semente for uma), o que está
+  em `exclude`, as últimas 50 do histórico da pessoa e artista pulado 2 vezes.
+- **Anti-deriva:** a semente vale metade do peso; as recentes, o resto. Nunca o mesmo artista
+  seguido (sem limite de quantas vezes ele aparece).
+- **Controle:** limite por pessoa (`RADIO_PER_MINUTE`, padrão 20 → **429** "Muitas rádios
+  seguidas. Espere um pouco."); um pedido novo da mesma pessoa cancela o anterior (**409**); a
+  mesma semente em paralelo vira uma chamada só; resultados no Redis por 24 h (Last.fm 7 dias);
+  cada fonte com prazo (`RADIO_SOURCE_TIMEOUT`, 4 s), limite de chamadas e disjuntor (3 falhas
+  seguidas = 5 min fora).
+- **No app:** tocar uma música na busca toca ela na hora e pede a rádio depois de 3 s (só a
+  última de vários toques pede); "Iniciar rádio" no menu de qualquer música; pede mais quando
+  sobram 5.
+
 ---
 
 ## 2. Tocar uma faixa
@@ -191,6 +220,10 @@ o app nunca vê o token do Authentik, só os do Bergastream:
 | Endpoint | Quem | Resposta |
 |---|---|---|
 | `GET /api/server/status` | logado | `storage` (`tracks`, `permanent`, `cache`, `bytes`, `bytes_permanent`, `bytes_cache`, `disk_total`, `disk_free`), `queue` (`waiting`, `active`), `deemix` (`available`, `downloading`, `waiting`, `failed`, `completed`, `items[]` com `title`, `artist`, `status`, `progress`) |
+
+`deemix.recent_failures` traz só as falhas sem solução (some a que o YouTube baixou no lugar,
+a que depois foi baixada por outro caminho e a repetida). `DELETE /api/server/deemix-failures`
+(admin, **204**) limpa a lista.
 
 `POST /api/history` aceita `playlist_id` em cada reprodução; `GET /api/me/playlists` devolve
 `last_played_at` e vem ordenado pela última tocada.

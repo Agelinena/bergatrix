@@ -78,6 +78,15 @@ class Settings(BaseSettings):
     access_token_minutes: int = 15
     refresh_token_days: int = 30
     stream_token_hours: int = 6
+
+    # ── Rádio ─────────────────────────────────────────────────
+    # Chave grátis do Last.fm (last.fm/api/account/create). Vazio = a rádio
+    # usa só YT Music, Deezer e ListenBrainz.
+    lastfm_api_key: str = ""
+    # Prazo de cada fonte por chamada: fonte lenta fica de fora da leva.
+    radio_source_timeout: float = 4.0
+    # Rádios por minuto por pessoa (cada leva conta uma).
+    radio_per_minute: int = 20
     allow_registration: bool = False
     # Falhas de login por usuário+IP antes de bloquear por login_block_minutes.
     login_max_failures: int = 5

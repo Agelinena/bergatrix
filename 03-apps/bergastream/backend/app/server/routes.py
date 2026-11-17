@@ -14,7 +14,7 @@ import httpx
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
-from app.auth.dependencies import CurrentUser, current_user
+from app.auth.dependencies import CurrentUser, admin_user, current_user
 from app.config import settings
 from app.core.db import get_pool
 from app.core.redis import get_redis
@@ -53,6 +53,7 @@ class DeemixItem(BaseModel):
 class DeemixFailure(BaseModel):
     title: str
     artist: str
+    track_id: str | None = None
     error: str
     recovered: bool  # baixada pelo YouTube no lugar
     at: str
@@ -139,16 +140,37 @@ async def _deemix() -> DeemixQueue:
         items=[i for i in items if i.status != "completed"][:_DEEMIX_ITEMS])
 
 
+_FAILURES_KEY = "bergastream:deemix:failures"
+
+
 async def _failures() -> list[DeemixFailure]:
+    """Falhas do Deemix ainda sem solução: some a que o YouTube baixou no
+    lugar, a que depois foi baixada por outro caminho (aba "Músicas com
+    erro", tentar de novo) e a repetida (fica a mais recente)."""
     redis = await get_redis()
-    raw = await redis.lrange("bergastream:deemix:failures", 0, 49)
-    out = []
+    raw = await redis.lrange(_FAILURES_KEY, 0, 99)
+    found: list[DeemixFailure] = []
+    seen: set[tuple[str, str]] = set()
     for item in raw:
         try:
-            out.append(DeemixFailure(**json.loads(item)))
+            f = DeemixFailure(**json.loads(item))
         except (ValueError, TypeError):
             continue
-    return out
+        k = (f.title.lower(), f.artist.lower())
+        if f.recovered or k in seen:
+            seen.add(k)
+            continue
+        seen.add(k)
+        found.append(f)
+    ids = [f.track_id for f in found if f.track_id]
+    if ids:
+        try:
+            done = {str(r["track_id"]) for r in await get_pool().fetch(
+                "SELECT track_id FROM files WHERE track_id = ANY($1::uuid[])", ids)}
+        except Exception:  # id antigo malformado: mostra tudo
+            done = set()
+        found = [f for f in found if f.track_id not in done]
+    return found[:50]
 
 
 async def _quality() -> QualityStatus:
@@ -183,3 +205,10 @@ async def server_status(user: CurrentUser = Depends(current_user)):
         _storage(), _queue(), _deemix(), _failures(), _quality(), _spotify())
     deemix.recent_failures = failures
     return ServerStatus(storage=storage, queue=queue, deemix=deemix, quality=quality, spotify=spotify)
+
+
+@router.delete("/server/deemix-failures", status_code=204)
+async def clear_deemix_failures(_: CurrentUser = Depends(admin_user)):
+    """Limpa a lista de falhas do Deemix (Ajustes → No servidor)."""
+    redis = await get_redis()
+    await redis.delete(_FAILURES_KEY)

@@ -16,6 +16,7 @@ import '../../data/models/playlist_models.dart';
 import '../auth/session.dart';
 import '../playlists/playlist_store.dart';
 import '../playlists/sync_notices.dart';
+import '../player/player_controller.dart';
 import 'library_providers.dart';
 import 'playlist_menu.dart';
 import '../sync/sync_now_button.dart';
@@ -33,6 +34,9 @@ class LibraryScreen extends ConsumerWidget {
     final server = ref.watch(myPlaylistsProvider);
     final local = ref.watch(localPlaylistsProvider);
     final serverList = server.value ?? const [];
+    final playingPlaylist = ref.watch(
+      playerProvider.select((s) => s.playlistId),
+    );
     final serverIds = {for (final p in serverList) p.id};
     final downloaded = ref.watch(downloadedPlaylistsProvider).value ?? const [];
     final downloadedIds = {for (final d in downloaded) d.id};
@@ -105,6 +109,7 @@ class LibraryScreen extends ConsumerWidget {
                 people: p.peopleCount,
               ),
               cover: playlistImage(ref, p.id, p.coverUrl),
+              playing: p.id == playingPlaylist,
               onTap: () => context.push(AppRoutes.playlist(p.id)),
               onMenu: () => showPlaylistMenu(
                 context,
@@ -120,6 +125,7 @@ class LibraryScreen extends ConsumerWidget {
               title: p.name,
               subtitle: 'Baixada',
               cover: playlistImage(ref, p.id, p.coverUrl),
+              playing: p.id == playingPlaylist,
               onTap: () => context.push(AppRoutes.playlist(p.id)),
               trailing: const DownloadStateIcon(state: DownloadState.baixada),
             ),
@@ -180,7 +186,11 @@ class PlaylistRow extends StatelessWidget {
     this.coverSize = 56,
     this.trailing,
     this.onMenu,
+    this.playing = false,
   });
+
+  /// É a playlist que está tocando: título em destaque com o equalizador.
+  final bool playing;
 
   /// Botão direito (computador e web).
   final VoidCallback? onMenu;
@@ -212,14 +222,25 @@ class PlaylistRow extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: BergaText.trackTitle.copyWith(color: c.tx),
+                    Row(
+                      spacing: 6,
+                      children: [
+                        if (playing)
+                          Icon(Icons.graphic_eq, size: 16, color: c.ac),
+                        Flexible(
+                          child: Text(
+                            title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: BergaText.trackTitle.copyWith(
+                              color: playing ? c.ac : c.tx,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                     Text(
-                      subtitle,
+                      playing ? 'Tocando agora · $subtitle' : subtitle,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: BergaText.secondary.copyWith(color: c.mu),

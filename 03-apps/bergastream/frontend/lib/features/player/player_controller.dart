@@ -12,6 +12,7 @@ import '../../core/storage/key_value_store.dart';
 import '../../data/local/database.dart';
 import '../../data/models/search_result.dart';
 import '../../data/repositories/playback_repository.dart';
+import '../../data/repositories/radio_repository.dart';
 import '../../data/repositories/session_repository.dart';
 import '../auth/session.dart';
 import '../downloads/download_manager.dart';
@@ -40,6 +41,7 @@ class PlayerState {
     this.shared = false,
     this.playingOn,
     this.quality,
+    this.playlistId,
   });
 
   final QueueItem? current;
@@ -74,6 +76,10 @@ class PlayerState {
   /// não se sabe (ou em outro aparelho).
   final String? quality;
 
+  /// Playlist da música atual (nula se ela veio da sua fila, da busca...).
+  /// A Biblioteca e a tela da playlist destacam a que está tocando.
+  final String? playlistId;
+
   bool get isPlaying => status == PlaybackStatus.tocando;
   bool get isPreparing => status == PlaybackStatus.preparando;
 }
@@ -98,6 +104,7 @@ class PlayerTimings {
     this.autoSkipDelay = const Duration(seconds: 2),
     this.fades = true,
     this.pausedKeepAlive = const Duration(minutes: 30),
+    this.radioDelay = const Duration(seconds: 3),
   });
 
   /// Fades (pausa e troca de música); os testes desligam para não esperar.
@@ -123,6 +130,10 @@ class PlayerTimings {
   /// Música da fila que não tocou (avanço automático): pula para a seguinte
   /// depois disto, em vez de parar tudo.
   final Duration autoSkipDelay;
+
+  /// Tocou uma música da busca: espera isto antes de pedir a rádio. Quem
+  /// toca várias seguidas só pede a rádio da última (a música toca na hora).
+  final Duration radioDelay;
 }
 
 final playerTimingsProvider = Provider<PlayerTimings>(
@@ -750,6 +761,7 @@ class PlayerController extends Notifier<PlayerState> {
       }
       _remoteTicker?.cancel();
       _idleTimer?.cancel();
+      _radioTimer?.cancel();
       _positions.close();
     });
     return const PlayerState();
@@ -803,6 +815,7 @@ class PlayerController extends Notifier<PlayerState> {
       }
       return;
     }
+    _stopRadio();
     // Aleatório da nova lista (sem gravar na playlist que tocava antes).
     if (shuffle != null) _queue.setShuffle(shuffle);
     _queue.playList(tracks, index);
@@ -827,6 +840,126 @@ class PlayerController extends Notifier<PlayerState> {
 
   /// Playlist que está tocando (para o botão "Aleatório" da playlist).
   String? get playlistId => _playlistId;
+
+  // ── Rádio ──
+
+  _Radio? _radio;
+  Timer? _radioTimer;
+
+  /// Pedido da rádio em andamento (só um por vez; um novo toque vence).
+  int _radioGen = 0;
+
+  /// Recarrega quando sobram estas músicas na lista.
+  static const radioRefillAt = 5;
+  static const radioBatch = 15;
+  static const radioContextPrefix = 'Rádio de ';
+
+  bool get isRadio => _radio != null;
+
+  /// Toca [track] na hora e, depois de [PlayerTimings.radioDelay], monta a
+  /// rádio dela na fila (só a última de vários toques seguidos pede rádio).
+  /// Na sessão ou controlando outro aparelho, toca só a música.
+  Future<void> startRadio(SearchResult track) async {
+    if (_remote != null || _group != null) {
+      await playList([track], 0, context: 'Busca');
+      return;
+    }
+    await playList([track], 0, context: '$radioContextPrefix${track.title}');
+    final radio = _radio = _Radio(track)..played.add(track);
+    final gen = ++_radioGen;
+    _radioTimer?.cancel();
+    _radioTimer = Timer(ref.read(playerTimingsProvider).radioDelay, () {
+      if (gen == _radioGen && identical(_radio, radio)) {
+        unawaited(_fetchRadio(radio, gen));
+      }
+    });
+  }
+
+  void _stopRadio() {
+    _radio = null;
+    _radioTimer?.cancel();
+    _radioGen++;
+  }
+
+  /// Pede a próxima leva se a lista estiver no fim (e nada estiver pedindo).
+  void _maybeRefillRadio() {
+    final radio = _radio;
+    if (radio == null || radio.fetching || _radioTimer?.isActive == true) {
+      return;
+    }
+    if (_queue.upNext.length > radioRefillAt) return;
+    if (DateTime.now().isBefore(radio.retryAt)) return;
+    unawaited(_fetchRadio(radio, ++_radioGen));
+  }
+
+  Future<void> _fetchRadio(_Radio radio, int gen) async {
+    if (radio.fetching) return;
+    radio.fetching = true;
+    try {
+      final queued = [
+        for (final i in _queue.upNext) i.track,
+        for (final i in _queue.manual) i.track,
+      ];
+      final tracks = await ref
+          .read(radioRepositoryProvider)
+          .next(
+            RadioRequest(
+              seed: radio.seed,
+              recent: radio.recent.reversed.take(2).toList(),
+              skipped: radio.skipped,
+              exclude: [...radio.played, ...queued],
+              lastArtist: queued.isNotEmpty
+                  ? queued.last.artist
+                  : _queue.current?.track.artist,
+              count: radioBatch,
+            ),
+          );
+      // Outra rádio começou (ou a pessoa tocou outra coisa) no meio.
+      if (gen != _radioGen || !identical(_radio, radio)) return;
+      final have = {
+        for (final t in queued) t.id,
+        ...radio.played.map((t) => t.id),
+      };
+      final fresh = [
+        for (final t in tracks)
+          if (!have.contains(t.id)) t,
+      ];
+      if (fresh.isEmpty) {
+        radio.retryAt = DateTime.now().add(const Duration(minutes: 2));
+        return;
+      }
+      _queue.appendUpNext(fresh);
+      _publish();
+    } on ApiException catch (e) {
+      if (gen != _radioGen || !identical(_radio, radio)) return;
+      if (e.statusCode == 409) return; // substituída por um pedido mais novo
+      radio.retryAt = DateTime.now().add(const Duration(seconds: 30));
+      if (e.statusCode == 429) showMessage(e.serverMessage);
+      debugPrint('Rádio: $e');
+    } on Object catch (e) {
+      radio.retryAt = DateTime.now().add(const Duration(seconds: 30));
+      debugPrint('Rádio: $e');
+    } finally {
+      radio.fetching = false;
+    }
+  }
+
+  /// A música da rádio foi ouvida (30 s): entra nas sementes recentes.
+  void _radioListened(SearchResult track) {
+    final radio = _radio;
+    if (radio == null || track.id == radio.seed.id) return;
+    radio.recent
+      ..removeWhere((t) => t.id == track.id)
+      ..add(track);
+    if (radio.recent.length > 5) radio.recent.removeAt(0);
+  }
+
+  /// Pulou antes dos 30 s: o artista perde pontos nesta rádio.
+  void _radioSkipped(SearchResult track) {
+    final radio = _radio;
+    if (radio == null || track.id == radio.seed.id) return;
+    radio.skipped.update(track.artist, (n) => n + 1, ifAbsent: () => 1);
+  }
 
   // ── Continuar de onde parou depois de fechar o app ──
 
@@ -1020,6 +1153,8 @@ class PlayerController extends Notifier<PlayerState> {
       return;
     }
     if (_group case final group?) return group.act({'action': 'next'});
+    final current = _queue.current;
+    if (current != null && !_counted) _radioSkipped(current.track);
     await _advance(ended: false);
   }
 
@@ -1375,6 +1510,12 @@ class PlayerController extends Notifier<PlayerState> {
     _fadingOut = false;
     _quality = null;
     _loadedTrackId = item.track.id;
+    if (_radio case final radio?) {
+      if (!radio.played.any((t) => t.id == item.track.id)) {
+        radio.played.add(item.track);
+      }
+      _maybeRefillRadio();
+    }
     _publish(status: PlaybackStatus.preparando);
     _prefetchedFor = null;
     _notification?.showTrack(
@@ -1529,6 +1670,7 @@ class PlayerController extends Notifier<PlayerState> {
     if (position >= const Duration(seconds: 30) ||
         (half != null && half > Duration.zero && position >= half)) {
       _counted = true;
+      _radioListened(item.track);
       ref.read(playRecorderProvider)(
         item.track,
         playlistId: _playlistTracks.contains(item.track.id)
@@ -1660,6 +1802,9 @@ class PlayerController extends Notifier<PlayerState> {
       message: message,
       playingOn: _playingOn,
       quality: _quality,
+      playlistId: _playlistTracks.contains(_queue.current?.track.id)
+          ? _playlistId
+          : null,
     );
     _notification?.showState(
       // Preparando a próxima conta como "tocando" para o Android: o serviço
@@ -1671,4 +1816,26 @@ class PlayerController extends Notifier<PlayerState> {
     );
     if (changed) unawaited(_save());
   }
+}
+
+/// Estado da rádio que está tocando (fica no app; vai inteiro a cada pedido).
+class _Radio {
+  _Radio(this.seed);
+
+  /// A música que começou a rádio.
+  final SearchResult seed;
+
+  /// Ouvidas sem pular (30 s), da mais antiga para a mais nova.
+  final recent = <SearchResult>[];
+
+  /// Artista -> vezes pulado antes dos 30 s.
+  final skipped = <String, int>{};
+
+  /// Já tocaram nesta rádio.
+  final played = <SearchResult>[];
+
+  bool fetching = false;
+
+  /// Leva vazia ou erro: espera até aqui para pedir de novo.
+  DateTime retryAt = DateTime.fromMillisecondsSinceEpoch(0);
 }

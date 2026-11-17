@@ -116,21 +116,41 @@ async def main():
             ok(isinstance(st["deemix"]["available"], bool), True, "fila do Deemix (ou indisponível)")
             ok((await c.get("/api/server/status")).status_code, 401, "exige login")
 
-            print("=== falhas do Deemix registradas (e se o YouTube recuperou) ===")
+            print("=== falhas do Deemix: só as sem solução ===")
             from app.downloads import deemix as deemix_mod
             from app.downloads.service import _note_deemix_failure
             from app.tracks.models import PlayRequest
             redis = await get_redis()
             before = await redis.llen("bergastream:deemix:failures")
+
+            def titles(status):
+                return [f["title"] for f in status["deemix"]["recent_failures"]]
+
+            lost = str(await pool.fetchval(
+                "INSERT INTO tracks (title, artist, duration_seconds) VALUES ($1, 'Banda', 200) RETURNING id",
+                f"Falhou {tag}"))
+            tids.append(lost)
             deemix_mod._errors["999"] = "Cannot read properties of undefined (reading 'HREF')"
             await _note_deemix_failure(
                 PlayRequest(provider="spotify", external_id="x", title=f"Falhou {tag}", artist="Banda"),
-                "999", recovered=True)
+                "999", recovered=False, track_id=lost)
+            await _note_deemix_failure(
+                PlayRequest(provider="spotify", external_id="y", title=f"Salva {tag}", artist="Banda"),
+                "998", recovered=True)
             st = (await c.get("/api/server/status", headers=h)).json()
             first = st["deemix"]["recent_failures"][0]
             ok((first["title"], first["recovered"], "HREF" in first["error"]),
-               (f"Falhou {tag}", True, True), "falha com motivo e recuperada pelo YouTube")
+               (f"Falhou {tag}", False, True), "falha sem solução, com o motivo")
+            ok(f"Salva {tag}" in titles(st), False, "a que o YouTube baixou no lugar some")
             ok(deemix_mod.pop_error("999"), None, "motivo consumido")
+            await pool.execute(
+                "INSERT INTO files (track_id, path, format, kind) VALUES ($1, '/tmp/x.mp3', 'mp3', 'permanent') "
+                "ON CONFLICT DO NOTHING", lost)
+            st = (await c.get("/api/server/status", headers=h)).json()
+            ok(f"Falhou {tag}" in titles(st), False, "baixada depois por outro caminho: some")
+            ok((await c.delete("/api/server/deemix-failures", headers=h)).status_code, 403,
+               "limpar é só do admin")
+            await redis.lpop("bergastream:deemix:failures")
             await redis.lpop("bergastream:deemix:failures")
             ok(await redis.llen("bergastream:deemix:failures"), before, "limpeza do teste")
     finally:

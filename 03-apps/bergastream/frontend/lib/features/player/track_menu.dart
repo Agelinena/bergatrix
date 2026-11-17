@@ -36,6 +36,11 @@ Future<void> showTrackMenu(
 }) {
   final server = ref.read(sessionProvider).canUseServer;
   final actions = [
+    if (server)
+      (
+        'Iniciar rádio',
+        () => ref.read(playerProvider.notifier).startRadio(track),
+      ),
     ...extraActions,
     if (server) ('Baixar de novo', () => redownloadTrack(context, ref, track)),
   ];

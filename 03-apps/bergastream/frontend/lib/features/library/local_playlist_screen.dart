@@ -6,10 +6,10 @@ import 'package:image_picker/image_picker.dart';
 import '../../app/routes.dart';
 import '../../core/platform/app_layout.dart';
 import '../../core/theme/berga_colors.dart';
-import '../../core/theme/berga_sizes.dart';
 import '../../core/theme/berga_text.dart';
 import '../../core/widgets/widgets.dart';
 import '../../data/repositories/local_playlists.dart';
+import 'cover_editor.dart';
 import 'playlist_cover.dart';
 
 /// Playlist criada sem login ("Só neste aparelho"). Pode ser editada offline;
@@ -49,12 +49,15 @@ class LocalPlaylistScreen extends ConsumerWidget {
             else ...[
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 10),
-                child: GestureDetector(
-                  onTap: () => _changePhoto(context, ref),
-                  child: Cover.playlist(
-                    size: BergaSizes.playlistCoverMaxHeight,
-                    initialSize: 60,
-                    image: localPlaylistImage(p),
+                child: LayoutBuilder(
+                  builder: (context, constraints) => GestureDetector(
+                    onTap: () => _changePhoto(context, ref),
+                    child: PlaylistHeaderCover(
+                      id: p.id,
+                      coverUrl: null,
+                      maxWidth: constraints.maxWidth,
+                      image: localPlaylistImage(p),
+                    ),
                   ),
                 ),
               ),
@@ -115,9 +118,16 @@ class LocalPlaylistScreen extends ConsumerWidget {
       imageQuality: 85,
     );
     if (file == null) return;
-    await ref
-        .read(localPlaylistsProvider.notifier)
-        .setCover(id, await file.readAsBytes());
+    final bytes = await file.readAsBytes();
+    if (!context.mounted) return;
+    final edited = await showCoverEditor(
+      context,
+      bytes,
+      mimeType: file.mimeType ?? 'image/jpeg',
+      filename: file.name,
+    );
+    if (edited == null) return;
+    await ref.read(localPlaylistsProvider.notifier).setCover(id, edited.bytes);
     if (context.mounted) AppToast.show(context, 'Foto da playlist trocada');
   }
 }

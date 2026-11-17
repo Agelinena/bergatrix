@@ -172,9 +172,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
         case RecentKind.track:
           final t = item.track;
           if (t != null) {
-            ref
-                .read(playerProvider.notifier)
-                .playList([t], 0, context: 'Busca');
+            ref.read(playerProvider.notifier).startRadio(t);
           }
         case RecentKind.artist:
           openArtist(context, item.provider, item.externalId);
@@ -403,7 +401,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
       ],
       if (data.tracks.isNotEmpty) ...[
         const SectionTitle('Músicas'),
-        for (final (index, r) in data.tracks.indexed)
+        for (final r in data.tracks)
           TrackRow(
             key: ValueKey(r.id),
             id: r.id,
@@ -413,7 +411,8 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
             cover: coverImage(r),
             onTap: () {
               _remember(_trackItem(r));
-              player.playList(data.tracks, index, context: 'Busca');
+              // Toca a música e monta a rádio dela (parecidas) na fila.
+              player.startRadio(r);
             },
             onMore: () => showTrackMenu(
               context,
@@ -454,9 +453,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                   t.id,
               onTap: () {
                 _remember(_trackItem(t));
-                ref
-                    .read(playerProvider.notifier)
-                    .playList(link.tracks, 0, context: 'Busca');
+                ref.read(playerProvider.notifier).startRadio(t);
               },
               onMore: () => showTrackMenu(context, ref, t),
               onQueue: () => queueTrack(context, ref, t),

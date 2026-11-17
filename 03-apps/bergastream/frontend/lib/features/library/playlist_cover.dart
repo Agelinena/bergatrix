@@ -3,7 +3,9 @@ import 'dart:io';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/platform/app_layout.dart';
 import '../../core/platform/app_platform.dart';
+import '../../core/theme/berga_sizes.dart';
 import '../../core/widgets/widgets.dart';
 import '../../data/repositories/local_playlists.dart';
 import '../auth/session.dart';
@@ -102,4 +104,68 @@ class ServerPlaylistCover extends ConsumerWidget {
     initialSize: initialSize,
     image: playlistImage(ref, id, coverUrl),
   );
+}
+
+/// Foto no topo da tela da playlist, sempre inteira (sem cortar).
+/// No celular ocupa a largura toda, na proporção da foto. No computador e
+/// na web é um bloco de até [desktopBox] px com a foto inteira dentro.
+/// Sem foto: o quadrado com o gradiente.
+class PlaylistHeaderCover extends ConsumerWidget {
+  const PlaylistHeaderCover({
+    super.key,
+    required this.id,
+    required this.coverUrl,
+    required this.maxWidth,
+    this.image,
+  });
+
+  final String id;
+  final String? coverUrl;
+  final double maxWidth;
+
+  /// Foto já resolvida (playlists "Só neste aparelho"); senão a do servidor.
+  final ImageProvider? image;
+
+  static const desktopBox = 260.0;
+
+  /// No celular, foto muito alta (retrato) para aqui: o resto da tela é a lista.
+  static const maxPortrait = 1.25;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final desktop = AppLayout.isDesktop(context);
+    final img = image ?? playlistImage(ref, id, coverUrl);
+    final placeholderSize = desktop
+        ? desktopBox
+        : maxWidth.clamp(0, BergaSizes.playlistCoverMaxHeight).toDouble();
+    final placeholder = Cover.playlist(size: placeholderSize, initialSize: 60);
+    if (img == null) {
+      return Align(alignment: Alignment.centerLeft, child: placeholder);
+    }
+    final box = desktop
+        ? const BoxConstraints(maxWidth: desktopBox, maxHeight: desktopBox)
+        : BoxConstraints(maxWidth: maxWidth, maxHeight: maxWidth * maxPortrait);
+    return Align(
+      alignment: desktop ? Alignment.centerLeft : Alignment.center,
+      child: ConstrainedBox(
+        constraints: box,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(
+            desktop ? BergaSizes.coverRadius : BergaSizes.cardRadius,
+          ),
+          child: Image(
+            image: img,
+            // Sem largura/altura fixas: o tamanho segue a proporção da foto
+            // dentro do limite (inteira, sem corte).
+            width: desktop ? null : maxWidth,
+            fit: BoxFit.contain,
+            gaplessPlayback: true,
+            frameBuilder: (context, child, frame, sync) =>
+                frame == null && !sync ? placeholder : child,
+            errorBuilder: (context, error, stack) => placeholder,
+          ),
+        ),
+      ),
+    );
+  }
 }

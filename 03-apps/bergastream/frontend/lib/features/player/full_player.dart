@@ -43,6 +43,10 @@ Future<void> openFullPlayer(BuildContext context) {
 class FullPlayer extends ConsumerStatefulWidget {
   const FullPlayer({super.key});
 
+  /// Daqui para cima o player se divide: capa e controles à esquerda, letra
+  /// ou fila à direita.
+  static const wideFrom = 980.0;
+
   @override
   ConsumerState<FullPlayer> createState() => _FullPlayerState();
 }
@@ -109,7 +113,222 @@ class _FullPlayerState extends ConsumerState<FullPlayer> {
       );
     }
 
-    // Computador/web: largura de celular no meio da tela e Esc fecha.
+    final header = Row(
+      children: [
+        IconButton(
+          onPressed: () => Navigator.of(context).pop(),
+          icon: const Icon(Icons.keyboard_arrow_down),
+          iconSize: 28,
+          color: c.tx,
+          tooltip: 'Fechar',
+        ),
+        Expanded(
+          child: Text(
+            (state.context ?? '').startsWith(
+                  PlayerController.radioContextPrefix,
+                )
+                ? state.context!
+                : 'Tocando de ${state.context ?? 'Busca'}',
+            textAlign: TextAlign.center,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: BergaText.secondary.copyWith(color: c.mu),
+          ),
+        ),
+        const DevicesButton(),
+        const SessionButton(),
+        IconButton(
+          onPressed: openMenu,
+          icon: const Icon(Icons.more_vert),
+          color: c.tx,
+          tooltip: 'Mais opções',
+        ),
+      ],
+    );
+
+    Widget cover(double maxHeightFraction) => Padding(
+      padding: const EdgeInsets.only(top: 14, bottom: 20),
+      child: LayoutBuilder(
+        builder: (context, constraints) => ContextMenuRegion(
+          onMenu: openMenu,
+          child: Cover(
+            seed: track.id,
+            title: track.title,
+            // Janela larga e baixa: a capa não passa de uma fração da altura.
+            size: min(
+              constraints.maxWidth,
+              MediaQuery.sizeOf(context).height * maxHeightFraction,
+            ),
+            radius: BergaSizes.playerCoverRadius,
+            initialSize: 70,
+            image: coverImage(track),
+          ),
+        ),
+      ),
+    );
+
+    final info = <Widget>[
+      ScreenTitle(track.title, bottom: 2),
+      if (state.playingOn case final device?)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 4),
+          child: PlayingOnLabel(name: device),
+        ),
+      if (state.isPreparing)
+        Text('Baixando…', style: BergaText.secondary.copyWith(color: c.gr))
+      else
+        // Artista e álbum abrem a página deles (fechando o player).
+        Align(
+          alignment: Alignment.centerLeft,
+          child: ArtistAlbumLinks(
+            track: track,
+            style: BergaText.secondary.copyWith(color: c.mu),
+            beforeNavigate: () => Navigator.of(context).pop(),
+          ),
+        ),
+      // Qualidade do que está tocando ("FLAC 16/44.1", "AAC 160").
+      if (!state.isPreparing && state.quality != null)
+        Padding(
+          padding: const EdgeInsets.only(top: 4),
+          child: Text(
+            state.quality!,
+            key: const Key('player-quality'),
+            style: BergaText.secondary.copyWith(fontSize: 12, color: c.gr),
+          ),
+        ),
+      const SizedBox(height: 10),
+      const SeekBar(),
+    ];
+
+    final controls = Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          control(
+            Icons.shuffle,
+            'Aleatório',
+            controller.toggleShuffle,
+            active: state.shuffle,
+            disabled: state.shared,
+          ),
+          control(Icons.skip_previous, 'Anterior', controller.previous),
+          PlayButton(
+            playing: state.isPlaying,
+            size: BergaSizes.playButtonLarge,
+            onPressed: controller.togglePlay,
+          ),
+          control(Icons.skip_next, 'Próxima', controller.next),
+          control(
+            state.repeat == PlayerRepeat.umaFaixa
+                ? Icons.repeat_one
+                : Icons.repeat,
+            'Repetir',
+            controller.cycleRepeat,
+            active: state.repeat != PlayerRepeat.desligado,
+            disabled: state.shared,
+          ),
+          control(
+            Icons.queue_music,
+            'Fila',
+            () => setState(() => _showQueue = !_showQueue),
+            active: _showQueue,
+          ),
+        ],
+      ),
+    );
+
+    // Celular (e janela estreita): tudo numa coluna, letra embaixo.
+    Widget narrow() => Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 560),
+        child: ListView(
+          padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 22),
+          children: [
+            header,
+            cover(0.45),
+            ...info,
+            controls,
+            if (_showQueue) const QueuePanel(),
+            // Letra abaixo dos controles (como no Spotify); some sem letra.
+            if (!_showQueue) LyricsCard(track: track),
+            // Espaço no fim: dá para rolar até a letra ficar no meio da tela.
+            SizedBox(height: MediaQuery.sizeOf(context).height * 0.35),
+          ],
+        ),
+      ),
+    );
+
+    // Tela larga (computador, web, tablet deitado): capa e controles à
+    // esquerda; letra ou fila à direita, na altura toda.
+    Widget wide() => Row(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Expanded(
+          flex: 5,
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 520),
+              child: ListView(
+                shrinkWrap: true,
+                padding: const EdgeInsets.symmetric(
+                  vertical: 18,
+                  horizontal: 28,
+                ),
+                children: [header, cover(0.5), ...info, controls],
+              ),
+            ),
+          ),
+        ),
+        Expanded(
+          flex: 6,
+          child: Container(
+            margin: const EdgeInsets.fromLTRB(0, 18, 18, 18),
+            decoration: BoxDecoration(
+              color: c.card,
+              borderRadius: BorderRadius.circular(BergaSizes.cardRadius),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 4),
+                  child: Row(
+                    spacing: BergaSizes.chipGap,
+                    children: [
+                      AppChip(
+                        label: LyricsCard.title,
+                        active: !_showQueue,
+                        onTap: () => setState(() => _showQueue = false),
+                      ),
+                      AppChip(
+                        label: 'Fila',
+                        active: _showQueue,
+                        onTap: () => setState(() => _showQueue = true),
+                      ),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: _showQueue
+                      ? ListView(
+                          padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
+                          children: const [QueuePanel()],
+                        )
+                      // Uma por música: a linha seguida não passa para a próxima.
+                      : LyricsView(
+                          key: ValueKey(track.id),
+                          track: track,
+                          padding: const EdgeInsets.fromLTRB(20, 8, 20, 40),
+                        ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+
     return CallbackShortcuts(
       bindings: {
         const SingleActivator(LogicalKeyboardKey.escape): () =>
@@ -119,148 +338,12 @@ class _FullPlayerState extends ConsumerState<FullPlayer> {
         autofocus: true,
         child: Scaffold(
           body: SafeArea(
-            child: Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 560),
-                child: ListView(
-                  padding: const EdgeInsets.symmetric(
-                    vertical: 18,
-                    horizontal: 22,
-                  ),
-                  children: [
-                    Row(
-                      children: [
-                        IconButton(
-                          onPressed: () => Navigator.of(context).pop(),
-                          icon: const Icon(Icons.keyboard_arrow_down),
-                          iconSize: 28,
-                          color: c.tx,
-                          tooltip: 'Fechar',
-                        ),
-                        Expanded(
-                          child: Text(
-                            'Tocando de ${state.context ?? 'Busca'}',
-                            textAlign: TextAlign.center,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: BergaText.secondary.copyWith(color: c.mu),
-                          ),
-                        ),
-                        const DevicesButton(),
-                        const SessionButton(),
-                        IconButton(
-                          onPressed: openMenu,
-                          icon: const Icon(Icons.more_vert),
-                          color: c.tx,
-                          tooltip: 'Mais opções',
-                        ),
-                      ],
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.only(top: 14, bottom: 20),
-                      child: LayoutBuilder(
-                        builder: (context, constraints) => ContextMenuRegion(
-                          onMenu: openMenu,
-                          child: Cover(
-                            seed: track.id,
-                            title: track.title,
-                            // Janela larga e baixa: a capa não passa de 45% da altura.
-                            size: min(
-                              constraints.maxWidth,
-                              MediaQuery.sizeOf(context).height * 0.45,
-                            ),
-                            radius: BergaSizes.playerCoverRadius,
-                            initialSize: 70,
-                            image: coverImage(track),
-                          ),
-                        ),
-                      ),
-                    ),
-                    ScreenTitle(track.title, bottom: 2),
-                    if (state.playingOn case final device?)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 4),
-                        child: PlayingOnLabel(name: device),
-                      ),
-                    if (state.isPreparing)
-                      Text(
-                        'Baixando…',
-                        style: BergaText.secondary.copyWith(color: c.gr),
-                      )
-                    else
-                      // Artista e álbum abrem a página deles (fechando o player).
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: ArtistAlbumLinks(
-                          track: track,
-                          style: BergaText.secondary.copyWith(color: c.mu),
-                          beforeNavigate: () => Navigator.of(context).pop(),
-                        ),
-                      ),
-                    // Qualidade do que está tocando ("FLAC 16/44.1", "AAC 160").
-                    if (!state.isPreparing && state.quality != null)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 4),
-                        child: Text(
-                          state.quality!,
-                          key: const Key('player-quality'),
-                          style: BergaText.secondary.copyWith(
-                            fontSize: 12,
-                            color: c.gr,
-                          ),
-                        ),
-                      ),
-                    const SizedBox(height: 10),
-                    const SeekBar(),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 8),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          control(
-                            Icons.shuffle,
-                            'Aleatório',
-                            controller.toggleShuffle,
-                            active: state.shuffle,
-                            disabled: state.shared,
-                          ),
-                          control(
-                            Icons.skip_previous,
-                            'Anterior',
-                            controller.previous,
-                          ),
-                          PlayButton(
-                            playing: state.isPlaying,
-                            size: BergaSizes.playButtonLarge,
-                            onPressed: controller.togglePlay,
-                          ),
-                          control(Icons.skip_next, 'Próxima', controller.next),
-                          control(
-                            state.repeat == PlayerRepeat.umaFaixa
-                                ? Icons.repeat_one
-                                : Icons.repeat,
-                            'Repetir',
-                            controller.cycleRepeat,
-                            active: state.repeat != PlayerRepeat.desligado,
-                            disabled: state.shared,
-                          ),
-                          control(
-                            Icons.queue_music,
-                            'Fila',
-                            () => setState(() => _showQueue = !_showQueue),
-                            active: _showQueue,
-                          ),
-                        ],
-                      ),
-                    ),
-                    if (_showQueue) const QueuePanel(),
-                    // Letra abaixo dos controles (como no Spotify); some sem letra.
-                    if (!_showQueue) LyricsCard(track: track),
-                    // Espaço no fim: dá para rolar até a letra ficar no meio da tela.
-                    SizedBox(height: MediaQuery.sizeOf(context).height * 0.35),
-                  ],
-                ),
-              ),
+            child: LayoutBuilder(
+              builder: (context, constraints) =>
+                  constraints.maxWidth >= FullPlayer.wideFrom &&
+                      constraints.maxHeight >= 520
+                  ? wide()
+                  : narrow(),
             ),
           ),
         ),

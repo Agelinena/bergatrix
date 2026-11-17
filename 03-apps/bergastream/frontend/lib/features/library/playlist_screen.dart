@@ -27,6 +27,7 @@ import '../player/track_menu.dart';
 import '../playlists/playlist_shuffle.dart';
 import '../playlists/playlist_store.dart';
 import 'library_providers.dart';
+import 'cover_editor.dart';
 import 'playlist_cover.dart';
 
 /// Detalhe da playlist (Seção 6.4).
@@ -138,15 +139,23 @@ class _PlaylistScreenState extends ConsumerState<PlaylistScreen> {
     );
     if (file == null) return;
     final bytes = await file.readAsBytes();
+    if (!mounted) return;
     final mime =
         file.mimeType ??
         (file.name.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg');
+    final edited = await showCoverEditor(
+      context,
+      bytes,
+      mimeType: mime,
+      filename: file.name,
+    );
+    if (edited == null) return;
     await _run(() async {
       await _repo.uploadCover(
         widget.id,
-        bytes,
-        filename: file.name,
-        mimeType: mime,
+        edited.bytes,
+        filename: edited.filename,
+        mimeType: edited.mimeType,
       );
       _refresh();
     }, done: 'Foto da playlist trocada');
@@ -427,13 +436,10 @@ class _PlaylistScreenState extends ConsumerState<PlaylistScreen> {
             // Botão direito na capa: o menu da playlist (⋮).
             onSecondaryTap: () => _openMenu(p),
             // Foto guardada no aparelho (aparece offline) ou do servidor.
-            child: ServerPlaylistCover(
+            child: PlaylistHeaderCover(
               id: p.id,
               coverUrl: p.coverUrl,
-              size: constraints.maxWidth
-                  .clamp(0, BergaSizes.playlistCoverMaxHeight)
-                  .toDouble(),
-              initialSize: 60,
+              maxWidth: constraints.maxWidth,
             ),
           ),
         ),

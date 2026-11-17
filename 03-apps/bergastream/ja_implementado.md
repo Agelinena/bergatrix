@@ -406,6 +406,29 @@ Rodado na imagem `ghcr.io/cirruslabs/flutter:stable` (Flutter 3.44.0 / Dart 3.12
 - Testes: `test_quality` 61, `test_upgrade_flow` 10 (novo; banco real e Lidarr falso). Validado
   contra o MusicBrainz e um Lidarr local (ISRC → álbum de estúdio → `album/lookup` por MBID).
 
+### Versão 0.6.0 — rádio, capa inteira e player dividido
+- **Rádio** (`POST /api/radio`): tocar uma música na busca toca ela na hora e, 3 s depois, monta a
+  rádio dela na fila; "Iniciar rádio" no menu de qualquer música; o player mostra "Rádio de …".
+  Cruza YouTube Music, Last.fm, Deezer e ListenBrainz (sem nada da biblioteca de quem ouve): a
+  música em mais de uma fonte sobe, artista sem confirmação sai, tags precisam bater, versões ao
+  vivo/karaokê/remix/cover saem. A música inicial segura o tema (metade do peso) e as recentes
+  ouvidas sem pular trazem novidade; pular antes dos 30 s penaliza o artista. Nada repetido (o
+  que tocou, a fila, as últimas 50 do histórico), nunca o mesmo artista seguido, recarga quando
+  sobram 5. Controle de chamadas: um pedido por pessoa (o novo cancela o anterior), limite por
+  minuto, uma chamada por semente, cache no Redis, prazo e disjuntor por fonte.
+  Configuração: `LASTFM_API_KEY` (grátis; sem ela, sem Last.fm e ListenBrainz).
+- **Capa da playlist inteira**, sem corte: no celular na largura toda, na proporção da foto; no
+  computador e na web, um bloco de até 260 px.
+- **Editor de capa** ao escolher a foto: arrastar, zoom, girar, "Recortar" (quadrado) ou "Usar
+  inteira".
+- **Playlist tocando em destaque** na Biblioteca e na barra lateral (equalizador e "Tocando
+  agora").
+- **Falhas do Deemix** (Ajustes → No servidor): só as sem solução (some a que o YouTube baixou no
+  lugar ou que foi baixada depois) e "Limpar falhas" para o admin.
+- **Player em tela cheia dividido** em telas largas (≥ 980 px): capa e controles à esquerda, letra
+  ou fila à direita na altura toda.
+- Testes: backend `test_radio` 26 (novo), `test_history` 30; app 446.
+
 ### Versão 0.5.0 — normalização de volume, letra editável e músicas com erro
 - **Normalização de volume refeita** (pesquisa: o Spotify normaliza para −14 LUFS, sobe as
   músicas baixas só até o pico real permitir e tem o modo "alto" em −11). Agora:
