@@ -72,7 +72,8 @@ Elas se falam pelo nome do container, numa rede compartilhada ([06-redes.md](06-
 
 | Quem usa | Usa o quê | Endereço | Rede |
 |---|---|---|---|
-| Traefik (forward-auth), Bergalink, Bergastream, Berganews, Doberga, Grafana e Transcriptor (OIDC) | Authentik | `authentik-server:9000` | `bergatrix-proxy` |
+| Traefik (forward-auth) | Authentik | `authentik-server:9000` | `bergatrix-proxy` |
+| Bergastream, Berganews, Doberga, Transcriptor, Bergakup e Grafana (OIDC) | Authentik | `authentik-server:9000` | `bergatrix-auth` |
 | Jellyfin (plugin Bergafin Auth) | Authentik (OIDC) | `https://auth.${DOMAIN}`, pelo Traefik | `bergatrix-proxy` |
 | Traefik (bouncer) | CrowdSec | `crowdsec:8080` | `bergatrix-proxy` |
 | CrowdSec | Log do Traefik | `${APPDATA_PATH}/traefik/logs` | (arquivo) |

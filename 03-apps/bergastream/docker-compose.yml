@@ -184,8 +184,8 @@ services:
       - bergastream-internal
       - bergastream-egress
       # Fala com o Authentik direto (OIDC_INTERNAL_URL=http://authentik-server:9000),
-      # sem passar pelo Traefik. Sem labels: o Traefik não publica a API.
-      - bergatrix-proxy
+      # sem passar pelo Traefik. Sem rota: o caminho até a API é pelo `web`.
+      - bergatrix-auth
     depends_on:
       redis:
         condition: service_healthy
@@ -231,6 +231,8 @@ networks:
   bergastream-egress:
     name: bergastream-egress
   bergatrix-proxy:
+    external: true
+  bergatrix-auth:
     external: true
   bergatrix-media:
     external: true

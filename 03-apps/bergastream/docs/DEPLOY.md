@@ -29,7 +29,7 @@ Traefik (bergatrix-proxy) ──► bergastream-web (nginx: app web + /api/ → 
 - Traefik rodando com a rede `bergatrix-proxy` e, no `dynamic.yml`, os middlewares
   `crowdsec-bouncer`.
 - Authentik com o provider e a aplicação do Bergastream ([AUTHENTIK.md](AUTHENTIK.md)). A API entra
-  na rede `bergatrix-proxy` para falar com o `authentik-server` direto.
+  na rede `bergatrix-auth` para falar com o `authentik-server` direto.
 - DNS de `bergastream.example.com` apontando para o servidor (o curinga do `${DOMAIN}` já resolve).
 - **Pare a versão antiga** (`03-apps/bergastream02`) se ela estiver rodando: ela usa os mesmos
   nomes de container e o mesmo domínio.

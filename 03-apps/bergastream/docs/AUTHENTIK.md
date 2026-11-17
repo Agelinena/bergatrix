@@ -82,7 +82,7 @@ OIDC_AUTO_CREATE=false        # true depois que as contas antigas estiverem liga
 PASSWORD_LOGIN=true           # auto depois que todos os aparelhos estiverem na 0.4 (passo 5)
 ```
 
-- `OIDC_INTERNAL_URL`: a API fala com o Authentik pela rede `bergatrix-proxy` (o compose já põe
+- `OIDC_INTERNAL_URL`: a API fala com o Authentik pela rede `bergatrix-auth` (o compose já põe
   a API nela), sem sair pelo Traefik. O Host público vai junto, então o `iss` continua o público.
   Se o container do Authentik tiver outro nome, ajuste; vazio = pelo endereço público.
 - `OIDC_ADMIN_GROUP`: quem está no grupo vira admin a cada login, e quem sai do grupo deixa de
@@ -204,7 +204,7 @@ As mensagens aparecem na página de erro do Bergastream; os detalhes ficam em
 | "Não foi possível confirmar o login no Authentik." | `OIDC_ISSUER` diferente do Issuer do provider (falta a barra final?) ou `BERGASTREAM_SSO_CLIENT_ID` errado. O log mostra o motivo. |
 | "Sua conta não tem acesso ao Bergastream." | A pessoa não está em `bergastream_users`, ou o escopo `profile` (que traz os grupos) não está no provider. |
 | "Não há uma conta do Bergastream para este usuário." | `OIDC_AUTO_CREATE=false` e nada casou: veja o passo 4. |
-| "Authentik indisponível" | A API não alcança o Authentik: confira `OIDC_INTERNAL_URL` e se o `bergastream-api` está na rede `bergatrix-proxy` (`docker network inspect bergatrix-proxy`). |
+| "Authentik indisponível" | A API não alcança o Authentik: confira `OIDC_INTERNAL_URL` e se o `bergastream-api` está na rede `bergatrix-auth` (`docker network inspect bergatrix-auth`). |
 | "Login expirado…" | Mais de 10 min entre abrir o Authentik e voltar, ou a mesma página aberta duas vezes. Tente de novo. |
 | Android não volta ao app depois do Authentik | Versão do app anterior à 0.4, ou o navegador perguntou "Abrir com Bergastream?" e foi negado. |
 | Login por senha responde "Entre pelo Authentik" | `PASSWORD_LOGIN=auto` (ou `false`) com o OIDC configurado. Use `true` na transição. |

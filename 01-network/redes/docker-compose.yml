@@ -22,6 +22,7 @@ services:
       - bergatrix-drop
       - bergatrix-office
       - bergatrix-monitor
+      - bergatrix-auth
 
 networks:
   # Traefik e os serviços com rota. Também o CrowdSec, que o bouncer do
@@ -59,4 +60,12 @@ networks:
   # monitor-internal.
   bergatrix-monitor:
     name: bergatrix-monitor
+    internal: true
+
+  # Authentik (authentik-server) e os apps que fazem login OIDC e falam com ele
+  # direto (troca do código, chaves, userinfo). Sem internet: quem precisa de
+  # internet tem a rede própria. Um app sem rota no Traefik entra só aqui, e
+  # não na bergatrix-proxy.
+  bergatrix-auth:
+    name: bergatrix-auth
     internal: true

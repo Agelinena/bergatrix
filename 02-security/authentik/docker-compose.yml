@@ -62,6 +62,8 @@ services:
     networks:
       - bergatrix-proxy
       - authentik-internal
+      # Apps com login OIDC falam com o Authentik por aqui (authentik-server:9000).
+      - bergatrix-auth
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=bergatrix-proxy"
@@ -126,6 +128,8 @@ services:
 
 networks:
   bergatrix-proxy:
+    external: true
+  bergatrix-auth:
     external: true
   authentik-internal:
     driver: bridge

@@ -23,7 +23,7 @@ em lotes de 40.
 ```
 app (Flutter) ──▶ Traefik ──▶ api ──┬─▶ db, redis                 (berganews-internal)
                                     ├─▶ egress ──▶ internet      (achar feed, imagens)
-                                    └─▶ authentik-server         (bergatrix-proxy)
+                                    └─▶ authentik-server         (bergatrix-auth)
 fetcher ──▶ db, redis; egress ──▶ internet                       (só berganews-internal)
 ai ──▶ db, redis; ollama                                         (bergatrix-ai, sem internet)
 ```

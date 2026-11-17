@@ -24,13 +24,13 @@ e cada módulo novo só declara as suas tabelas e telas.
 
 ```
 app (Flutter) ──▶ Traefik ──▶ web (nginx) ──▶ api ──┬─▶ db, redis        (doberga-internal)
-                                                     └─▶ authentik-server (bergatrix-proxy)
+                                                     └─▶ authentik-server (bergatrix-auth)
 ```
 
 | Serviço | O quê | Redes |
 |---|---|---|
 | `web` | Flutter web no nginx; repassa `/api/` à API. Única rota no Traefik (`crowdsec-bouncer@file`) | `doberga-internal`, `bergatrix-proxy` |
-| `api` | FastAPI: login, usuários, espaços, convites, sync, eventos (SSE) | `doberga-internal`, `bergatrix-proxy` (só para o Authentik, sem labels) |
+| `api` | FastAPI: login, usuários, espaços, convites, sync, eventos (SSE) | `doberga-internal`, `bergatrix-auth` (só para o Authentik) |
 | `db` | `postgres:16-alpine`, label `bergatrix.backup.dump=postgres` | `doberga-internal` |
 | `migrate` | `dbmate`, roda antes da API | `doberga-internal` |
 | `redis` | Estado do login OIDC e pub/sub dos avisos de sync | `doberga-internal` |

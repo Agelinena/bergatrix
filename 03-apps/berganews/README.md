@@ -9,7 +9,7 @@ Arquitetura, modelo de dados e fases: [docs/ARQUITETURA.md](docs/ARQUITETURA.md)
 | Serviço | O que faz | Redes |
 |---|---|---|
 | `web` | App web (Flutter) no nginx, que repassa `/api/` à API; tem a rota no Traefik | `berganews-internal`, `bergatrix-proxy` |
-| `api` | API do app, login pelo Authentik, imagens pelo servidor | `berganews-internal`, `bergatrix-proxy` (Authentik) |
+| `api` | API do app, login pelo Authentik, imagens pelo servidor | `berganews-internal`, `bergatrix-auth` (Authentik) |
 | `fetcher` | Coleta os feeds e o texto completo, limpeza diária | só `berganews-internal` (sai pelo `egress`) |
 | `ai` | No Ollama: tradução sob demanda, embeddings e histórias (depois: resumos, newsletter) | `berganews-internal`, `bergatrix-ai` |
 | `egress` | Proxy de saída (smokescreen): recusa redes privadas | `berganews-internal`, `berganews-egress` |

@@ -105,9 +105,9 @@ services:
     networks:
       # Banco e Redis.
       - doberga-internal
-      # Fala com o Authentik direto (authentik-server:9000). Sem labels: o
-      # Traefik não publica a API; o caminho é pelo `web`.
-      - bergatrix-proxy
+      # Fala com o Authentik direto (authentik-server:9000). Sem rota: o
+      # caminho até a API é pelo `web`.
+      - bergatrix-auth
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -149,4 +149,6 @@ networks:
     name: doberga-internal
     internal: true
   bergatrix-proxy:
+    external: true
+  bergatrix-auth:
     external: true

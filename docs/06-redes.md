@@ -16,6 +16,7 @@ Ficam em [`01-network/redes/docker-compose.yml`](../01-network/redes/docker-comp
 | `bergatrix-drop` | Só o Traefik e o Drop. O Drop é público, então fica fora da `bergatrix-proxy`: não alcança nenhum outro container | Não |
 | `bergatrix-office` | Só o Traefik e o Collabora (editor de documentos do Nextcloud). O Traefik tem nela o alias `storange.${DOMAIN}`, que é como o Collabora chega ao Nextcloud | Não |
 | `bergatrix-monitor` | O Prometheus (stack monitor) e quem ele lê em outras stacks: Traefik (métricas na 8082) e CrowdSec (6060) | Não |
+| `bergatrix-auth` | O `authentik-server` e os apps com login OIDC que falam com ele direto: Bergastream, Berganews, Doberga, Transcriptor, Bergakup e Grafana | Não |
 
 ### Da própria stack
 
@@ -61,6 +62,7 @@ networks:
 - **Serviço público sem conta tem rede própria com o Traefik** (`bergatrix-drop`), e não entra na `bergatrix-proxy`.
 - **Serviço que processa arquivos enviados pelas pessoas** (hoje, o Collabora) também tem rede própria com o Traefik (`bergatrix-office`), sem internet.
 - **`bergatrix-proxy` é só para quem tem rota no Traefik.** Um serviço sem labels do Traefik não entra nela. Para falar com outra stack, use a rede do assunto (`bergatrix-media`, `bergatrix-ai`…).
+- **Login OIDC pela `bergatrix-auth`.** O app que troca o código, lê as chaves ou o userinfo no `authentik-server:9000` entra na `bergatrix-auth`, mesmo que já esteja na `bergatrix-proxy` por ter rota. Uma API sem rota entra só nela: na `bergatrix-proxy`, alcançaria direto os serviços que ficam atrás do forward-auth, sem passar pelo login.
 - **O banco nunca fica numa rede compartilhada.** Ele fica só na `<stack>-internal`.
 - **`internal: true` sempre que der:** a rede não tem saída para a internet.
 - **O nome do container é o endereço.** Quem está na mesma rede chama `http://<container_name>:<porta>`. Mudar o nome quebra quem depende dele (veja as [dependências](01-infraestrutura.md#dependências-entre-stacks)).
@@ -132,6 +134,39 @@ docker network rm bergatrix-proxy media-internal
 ```
 
 Se a `bergatrix-proxy` não for recriada, tudo funciona do mesmo jeito. O Compose só avisa, a cada subida, que ela não foi criada por ele.
+
+## Migração para a `bergatrix-auth` (uma vez, nov/2026)
+
+Antes, as APIs do Bergastream, Berganews e Doberga ficavam na `bergatrix-proxy` sem rota, só para falar com o Authentik. A ordem importa: o Authentik precisa estar na rede nova antes de as APIs saírem da antiga.
+
+```bash
+cd ~/bergatrix && git pull
+
+# 1. Criar a rede
+cd ~/bergatrix/01-network/redes && docker compose run --rm redes
+
+# 2. Authentik entra na rede (o login fica fora por alguns segundos)
+cd ~/bergatrix/02-security/authentik && docker compose up -d server
+
+# 3. Os apps com login OIDC
+for s in 03-apps/bergastream 03-apps/berganews 03-apps/doberga 03-apps/transcriptor \
+         00-infrastructure/bergakup 04-monitoring/monitor; do
+  (cd ~/bergatrix/$s && docker compose up -d)
+done
+```
+
+Conferir:
+
+```bash
+# Esperado: authentik-server e os seis apps (bergastream-api, berganews-api, doberga-api,
+# transcriptor-api, bergakup-app e monitor-grafana, ou como estiverem nomeados)
+docker network inspect bergatrix-auth --format '{{range .Containers}}{{.Name}} {{end}}'
+
+# As três APIs sem rota não podem mais aparecer aqui
+docker network inspect bergatrix-proxy --format '{{range .Containers}}{{.Name}} {{end}}' | tr ' ' '\n' | grep -E 'bergastream-api|berganews-api|doberga-api'
+```
+
+Depois, sair e entrar de novo em cada app. Se o login de algum der "Authentik indisponível", o container dele não está na `bergatrix-auth`.
 
 ## Migração para a `bergatrix-office` (uma vez, out/2026)
 

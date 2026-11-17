@@ -132,9 +132,9 @@ services:
     networks:
       # Banco, Redis e o proxy de saída (achar o feed de um site, baixar imagens).
       - berganews-internal
-      # Fala com o Authentik direto (authentik-server:9000). Sem labels: o
-      # Traefik não publica a API; o caminho é pelo `web`.
-      - bergatrix-proxy
+      # Fala com o Authentik direto (authentik-server:9000). Sem rota: o
+      # caminho até a API é pelo `web`.
+      - bergatrix-auth
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health').status == 200 else 1)"]
       interval: 30s
@@ -222,6 +222,8 @@ networks:
   berganews-egress:
     name: berganews-egress
   bergatrix-proxy:
+    external: true
+  bergatrix-auth:
     external: true
   bergatrix-ai:
     external: true

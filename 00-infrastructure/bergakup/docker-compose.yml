@@ -84,8 +84,10 @@ services:
       - "127.0.0.1:${BERGAKUP_AGENT_PORT:-8087}:8000"
     networks:
       - bergakup-internal
-      # Rota no Traefik e acesso ao Authentik (authentik-server:9000).
+      # Rota no Traefik.
       - bergatrix-proxy
+      # Fala com o Authentik direto (authentik-server:9000).
+      - bergatrix-auth
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -107,4 +109,6 @@ networks:
     name: bergakup-internal
     internal: true
   bergatrix-proxy:
+    external: true
+  bergatrix-auth:
     external: true
