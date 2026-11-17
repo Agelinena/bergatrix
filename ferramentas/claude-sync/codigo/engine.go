@@ -428,7 +428,26 @@ func (e *Engine) localFor(remotePath string, projects []LocalProject) []string {
 	return nil
 }
 
+// managedGlobal: partes dos itens globais que o próprio Claude Code cuida em
+// cada PC e não sobem: skills/synced (skills sincronizadas pela conta) e
+// qualquer pasta ou arquivo oculto (.trash, .last-complete-round...).
+func managedGlobal(rel string) bool {
+	rel = filepath.ToSlash(rel)
+	if rel == "skills/synced" || strings.HasPrefix(rel, "skills/synced/") {
+		return true
+	}
+	for _, part := range strings.Split(rel, "/") {
+		if strings.HasPrefix(part, ".") {
+			return true
+		}
+	}
+	return false
+}
+
 func (e *Engine) globalAllowed(rel string) bool {
+	if managedGlobal(rel) {
+		return false
+	}
 	top, _, _ := strings.Cut(rel, "/")
 	for _, item := range e.cfg.GlobalItems {
 		if item == top {
@@ -473,6 +492,11 @@ func (e *Engine) scanLocal(projects []LocalProject) map[string]localFile {
 	for _, item := range e.cfg.GlobalItems {
 		addTree(filepath.Join(e.cfg.SyncDir, item), root+"/global/"+item)
 	}
+	for remote := range out {
+		if rel, ok := strings.CutPrefix(remote, root+"/global/"); ok && managedGlobal(rel) {
+			delete(out, remote)
+		}
+	}
 	return out
 }
 
@@ -513,64 +537,83 @@ func (e *Engine) pull(ctx context.Context, projects []LocalProject) error {
 			if hasState && known.ETag == entry.ETag && exists {
 				continue // lá não mudou
 			}
+			var err error
 			switch {
 			case !exists:
-				if err := e.download(ctx, remotePath, local, entry.ETag, key); err != nil {
-					return err
-				}
-				e.setStatus(func(s *EngineStatus) { s.Counts.Down++ })
-				e.note("down", "Baixado: %s", shortName(remotePath))
+				err = e.download(ctx, remotePath, local, entry.ETag, key, "Baixado")
 			case hasState && known.Size == info.Size() && known.MTime == info.ModTime().UnixNano():
-				if err := e.download(ctx, remotePath, local, entry.ETag, key); err != nil {
-					return err
-				}
-				e.setStatus(func(s *EngineStatus) { s.Counts.Down++ })
-				e.note("down", "Atualizado: %s", shortName(remotePath))
+				err = e.download(ctx, remotePath, local, entry.ETag, key, "Atualizado")
 			default:
-				if err := e.resolve(ctx, remotePath, local, entry.ETag, key); err != nil {
-					return err
-				}
+				err = e.resolve(ctx, remotePath, local, entry.ETag, key)
+			}
+			if err != nil && !errors.Is(err, errIncomplete) {
+				return err
 			}
 		}
 	}
 	return nil
 }
 
-// dropTemp apaga um envio temporário que não vai ser usado. Tem prazo próprio
-// porque o contexto da volta pode já ter sido cancelado.
-func (e *Engine) dropTemp(tmp string) {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	_ = e.dav.Delete(ctx, tmp)
-}
+// errIncomplete: a conversa no Nextcloud termina no meio de uma linha (envio
+// cortado ou em andamento). Não é baixada; a próxima volta tenta de novo.
+var errIncomplete = errors.New("conversa incompleta no Nextcloud")
 
-func (e *Engine) download(ctx context.Context, remotePath, local, etag, key string) error {
+func isConversation(path string) bool { return strings.HasSuffix(path, ".jsonl") }
+
+// download traz o arquivo de lá. verb vai para o registro ("Baixado", "Atualizado").
+func (e *Engine) download(ctx context.Context, remotePath, local, etag, key, verb string) error {
 	data, err := e.dav.Get(ctx, remotePath)
 	if err != nil {
 		return err
 	}
 	data = e.down(remotePath, data)
-	// Conversa só cresce. Se a que veio não continua a daqui, a daqui é
-	// guardada antes de ser trocada: nunca some trabalho deste PC.
-	if strings.HasSuffix(local, ".jsonl") {
+	if isConversation(local) {
+		if !endsComplete(data) {
+			e.note("warn", "%s está incompleta no Nextcloud; espero a próxima volta", shortName(remotePath))
+			return errIncomplete
+		}
+		// Conversa só cresce. Se a que veio não continua a daqui, junta as duas.
 		if mine, err := os.ReadFile(local); err == nil && !bytes.HasPrefix(data, mine) {
-			copyPath := conflictName(local, ".conflito-"+e.now().Format("20060102-150405"))
-			if err := writeAtomic(copyPath, mine, 0o600); err != nil {
-				return err
-			}
-			e.setStatus(func(s *EngineStatus) { s.Counts.Conflicts++ })
-			e.note("warn", "Chegou uma versão de %s que não continua a deste PC; a daqui ficou em %s",
-				shortName(remotePath), filepath.Base(copyPath))
+			return e.reconcile(remotePath, local, etag, key, mine, data)
 		}
 	}
 	if err := writeAtomic(local, data, 0o600); err != nil {
 		return err
 	}
 	e.record(key, etag, local)
+	e.setStatus(func(s *EngineStatus) { s.Counts.Down++ })
+	e.note("down", "%s: %s", verb, shortName(remotePath))
 	return nil
 }
 
-// conflictName: s.jsonl → s.conflito-<data>.jsonl
+// reconcile: a conversa mudou aqui e lá. Nada é descartado: fica a que já
+// tem tudo, ou a junção das duas (que sobe na volta seguinte).
+func (e *Engine) reconcile(remotePath, local, etag, key string, mine, theirs []byte) error {
+	result, outcome := mergeConversation(mine, theirs)
+	switch outcome {
+	case takeTheirs:
+		if err := writeAtomic(local, theirs, 0o600); err != nil {
+			return err
+		}
+		e.record(key, etag, local)
+		e.setStatus(func(s *EngineStatus) { s.Counts.Down++ })
+		e.note("down", "Atualizado: %s", shortName(remotePath))
+	case keepMine:
+		e.state.Files[key] = FileState{ETag: etag, Size: -1, MTime: -1}
+		e.dirty = true
+	default:
+		if err := writeAtomic(local, result, 0o600); err != nil {
+			return err
+		}
+		e.state.Files[key] = FileState{ETag: etag, Size: -1, MTime: -1}
+		e.dirty = true
+		e.setStatus(func(s *EngineStatus) { s.Counts.Conflicts++ })
+		e.note("warn", "%s mudou nos dois PCs: as duas partes foram juntadas", shortName(remotePath))
+	}
+	return nil
+}
+
+// conflictName: s.json → s.conflito-<data>.json
 func conflictName(path, stamp string) string {
 	ext := filepath.Ext(path)
 	return strings.TrimSuffix(path, ext) + stamp + ext
@@ -590,6 +633,13 @@ func (e *Engine) resolve(ctx context.Context, remotePath, local, etag, key strin
 	switch {
 	case bytes.Equal(theirs, mine):
 		e.record(key, etag, local)
+	case bytes.HasPrefix(mine, theirs):
+		// A daqui é a maior (ou a de lá ficou cortada): o push manda.
+		e.state.Files[key] = FileState{ETag: etag, Size: -1, MTime: -1}
+		e.dirty = true
+	case isConversation(local) && !endsComplete(theirs):
+		e.note("warn", "%s está incompleta no Nextcloud; espero a próxima volta", shortName(remotePath))
+		return errIncomplete
 	case bytes.HasPrefix(theirs, mine):
 		if err := writeAtomic(local, theirs, 0o600); err != nil {
 			return err
@@ -597,10 +647,8 @@ func (e *Engine) resolve(ctx context.Context, remotePath, local, etag, key strin
 		e.record(key, etag, local)
 		e.setStatus(func(s *EngineStatus) { s.Counts.Down++ })
 		e.note("down", "Continuação baixada: %s", shortName(remotePath))
-	case bytes.HasPrefix(mine, theirs):
-		// A daqui é a maior: o push manda.
-		e.state.Files[key] = FileState{ETag: etag, Size: -1, MTime: -1}
-		e.dirty = true
+	case isConversation(local):
+		return e.reconcile(remotePath, local, etag, key, mine, theirs)
 	default:
 		copyPath := conflictName(local, ".conflito-"+e.now().Format("20060102-150405"))
 		if err := writeAtomic(copyPath, theirs, 0o600); err != nil {
@@ -609,7 +657,7 @@ func (e *Engine) resolve(ctx context.Context, remotePath, local, etag, key strin
 		e.state.Files[key] = FileState{ETag: etag, Size: -1, MTime: -1}
 		e.dirty = true
 		e.setStatus(func(s *EngineStatus) { s.Counts.Conflicts++ })
-		e.note("warn", "Conversa divergente: a versão do Nextcloud ficou em %s", filepath.Base(copyPath))
+		e.note("warn", "%s mudou nos dois PCs: fica a daqui, e a do Nextcloud foi para %s", shortName(remotePath), filepath.Base(copyPath))
 	}
 	return nil
 }
@@ -632,11 +680,18 @@ func (e *Engine) push(ctx context.Context, projects []LocalProject) error {
 		for attempt := 0; ; attempt++ {
 			known, hasState := e.state.Files[key]
 			if entry, ok := e.tree.files[remotePath]; ok && (!hasState || known.ETag != entry.ETag) {
-				if err := e.resolve(ctx, remotePath, f.abs, entry.ETag, key); err != nil {
+				err := e.resolve(ctx, remotePath, f.abs, entry.ETag, key)
+				if errors.Is(err, errIncomplete) {
+					break
+				}
+				if err != nil {
 					return err
 				}
 				if e.state.Files[key].Size != -1 {
 					break // resolvido sem precisar mandar
+				}
+				if info, err := os.Stat(f.abs); err == nil && info.ModTime() != f.mtime {
+					break // juntou as duas aqui: sobe na próxima volta, depois de assentar
 				}
 			}
 			err := e.upload(ctx, remotePath, f, key)
@@ -656,13 +711,11 @@ func (e *Engine) push(ctx context.Context, projects []LocalProject) error {
 // último (outro PC mandou uma versão nova). Nada foi sobrescrito.
 var errRemoteChanged = errors.New("o arquivo mudou no Nextcloud desde a última leitura")
 
-// upload manda o arquivo sem nunca deixar o Nextcloud com uma cópia pela metade
-// e sem passar por cima de uma versão que este PC ainda não viu:
-//  1. sobe com um nome temporário e confere o tamanho que chegou;
-//  2. confere que o arquivo de destino ainda é o que o estado conhece;
-//  3. troca o temporário pelo destino numa operação só (MOVE).
-//
-// Se a conexão cair no meio, só o temporário fica incompleto.
+// upload manda o arquivo com If-Match: o Nextcloud só aceita se o arquivo lá
+// ainda for o que este PC viu por último, então nunca passa por cima de uma
+// versão nova de outro PC. O PUT vai por HTTP/1.1, em que o Nextcloud confere
+// o Content-Length e descarta envio cortado; o tamanho é conferido no fim.
+// O arquivo continua o mesmo no servidor (mesmo id e histórico de versões).
 func (e *Engine) upload(ctx context.Context, remotePath string, f localFile, key string) error {
 	data, err := os.ReadFile(f.abs)
 	if err != nil {
@@ -675,47 +728,34 @@ func (e *Engine) upload(ctx context.Context, remotePath string, f localFile, key
 	if err := e.mkdirs(ctx, path.Dir(remotePath)); err != nil {
 		return err
 	}
-	tmp := fmt.Sprintf("%s.%d%s", remotePath, e.now().UnixNano(), tmpSuffix)
-	if _, err := e.dav.Put(ctx, tmp, data, f.mtime); err != nil {
-		e.dropTemp(tmp)
-		return err
-	}
-	sent, err := e.dav.Propfind(ctx, tmp, "0")
-	if err != nil {
-		e.dropTemp(tmp)
-		return err
-	}
-	if len(sent) == 0 || sent[0].Size != int64(len(data)) {
-		e.dropTemp(tmp)
-		return fmt.Errorf("envio de %s chegou incompleto no Nextcloud", shortName(remotePath))
-	}
-	current, err := e.dav.Propfind(ctx, remotePath, "0")
-	if err != nil {
-		e.dropTemp(tmp)
-		return err
-	}
 	expected := e.state.Files[key].ETag // "" = este PC nunca viu o arquivo lá
-	if len(current) > 0 && current[0].ETag != expected || len(current) == 0 && expected != "" {
-		e.dropTemp(tmp)
+	if _, err := e.dav.PutIf(ctx, remotePath, data, f.mtime, expected); err != nil {
+		if !errors.Is(err, errRemoteChanged) {
+			return err
+		}
+		current, perr := e.dav.Propfind(ctx, remotePath, "0")
+		if perr != nil {
+			return perr
+		}
 		if len(current) > 0 {
 			e.tree.files[remotePath] = current[0]
 		} else {
-			delete(e.tree.files, remotePath)
 			// Sumiu de lá: manda de novo como arquivo novo.
+			delete(e.tree.files, remotePath)
 			e.state.Files[key] = FileState{Size: -1, MTime: -1}
 			e.dirty = true
 		}
 		return errRemoteChanged
 	}
-	if err := e.dav.Replace(ctx, tmp, remotePath); err != nil {
-		e.dropTemp(tmp)
+	entries, err := e.dav.Propfind(ctx, remotePath, "0")
+	if err != nil {
 		return err
 	}
-	etag := ""
-	if entries, err := e.dav.Propfind(ctx, remotePath, "0"); err == nil && len(entries) > 0 {
-		etag = entries[0].ETag
+	if len(entries) == 0 || entries[0].Size != int64(len(data)) {
+		return fmt.Errorf("envio de %s chegou incompleto no Nextcloud", shortName(remotePath))
 	}
-	e.tree.files[remotePath] = DavEntry{Path: remotePath, ETag: etag, Size: int64(len(data))}
+	etag := entries[0].ETag
+	e.tree.files[remotePath] = entries[0]
 	// Se o arquivo mudou durante o envio, o stat novo não bate e ele sobe de novo na próxima volta.
 	e.state.Files[key] = FileState{ETag: etag, Size: f.size, MTime: f.mtime.UnixNano()}
 	e.dirty = true

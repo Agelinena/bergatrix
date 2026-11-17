@@ -2,9 +2,11 @@ package main
 
 // Testes do caso de 17/11/2026: o notebook voltou da suspensão com a lista do
 // Nextcloud velha, mandou a conversa dele por cima da que o PC do trabalho
-// tinha enviado à tarde, e um envio que caiu deixou o arquivo cortado lá.
+// tinha enviado à tarde, um envio que caiu deixou o arquivo cortado lá, e
+// depois os dois PCs ficaram trocando versões entre si.
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os"
@@ -20,7 +22,7 @@ const remoteSession = "Claude/projects/bergatrix/s.jsonl"
 func twoPCs(t *testing.T) (*fakeNextcloud, *pc, *pc, string) {
 	nc := newFakeNextcloud(t)
 	a := newPC(t, nc, "pc-a")
-	session := jsonl(map[string]string{"type": "user", "cwd": a.project})
+	session := jsonl(map[string]string{"type": "user", "cwd": a.project, "timestamp": "2026-11-07T10:00:00Z"})
 	write(t, filepath.Join(a.folder(), "s.jsonl"), session)
 	a.sync(t)
 	b := newPC(t, nc, "pc-b")
@@ -33,29 +35,27 @@ func twoPCs(t *testing.T) (*fakeNextcloud, *pc, *pc, string) {
 	return nc, a, b, session
 }
 
-func serverHas(nc *fakeNextcloud, text string) bool {
-	nc.mu.Lock()
-	defer nc.mu.Unlock()
-	for _, data := range nc.files {
-		if strings.Contains(string(data), text) {
-			return true
-		}
-	}
-	return false
-}
-
 func conflictCopies(t *testing.T, dir string) []string {
 	t.Helper()
-	matches, _ := filepath.Glob(filepath.Join(dir, "s.conflito-*.jsonl"))
+	matches, _ := filepath.Glob(filepath.Join(dir, "*conflito*"))
 	return matches
 }
 
-// A lista do Nextcloud que A tem está velha (sem refresh) e A manda a conversa
-// dele: a de B, que chegou antes, não pode sumir.
+func serverSession(nc *fakeNextcloud) string {
+	data, _ := nc.file(remoteSession)
+	return string(data)
+}
+
+func msg(kind, text, ts string) string {
+	return jsonl(map[string]string{"type": kind, "text": text, "timestamp": ts})
+}
+
+// A está com a lista do Nextcloud velha e manda a conversa dele: a de B, que
+// chegou antes, não pode sumir. As duas partes são juntadas, sem cópia de conflito.
 func TestStaleListNeverOverwritesOtherPC(t *testing.T) {
 	nc, a, b, session := twoPCs(t)
 
-	afternoon := session + jsonl(map[string]string{"type": "assistant", "text": "trabalho da tarde no B"})
+	afternoon := session + msg("assistant", "trabalho da tarde no B", "2026-11-17T17:00:00Z")
 	write(t, filepath.Join(b.folder(), "s.jsonl"), afternoon)
 	b.sync(t)
 
@@ -64,23 +64,30 @@ func TestStaleListNeverOverwritesOtherPC(t *testing.T) {
 	if err := a.engine.Cycle(context.Background(), false); err != nil {
 		t.Fatal(err)
 	}
-	copies := conflictCopies(t, a.folder())
-	if len(copies) == 1 {
-		// A cópia de conflito sobe na volta seguinte.
-		a.sync(t)
-	}
-	if !serverHas(nc, "trabalho da tarde no B") {
+	if !strings.Contains(serverSession(nc), "trabalho da tarde no B") {
 		t.Fatal("a conversa de B sumiu do Nextcloud")
 	}
-	if len(copies) != 1 || !strings.Contains(read(t, copies[0]), "trabalho da tarde no B") {
-		t.Fatalf("A devia guardar a versão de B como conflito: %v", copies)
+	a.sync(t) // a junção sobe
+	b.sync(t)
+
+	for name, p := range map[string]*pc{"A": a, "B": b} {
+		got := read(t, filepath.Join(p.folder(), "s.jsonl"))
+		if !strings.Contains(got, "trabalho da tarde no B") || !strings.Contains(got, "cost-state") {
+			t.Errorf("%s não tem as duas partes: %q", name, got)
+		}
+		if got != serverSession(nc) {
+			t.Errorf("%s diferente do Nextcloud", name)
+		}
+		if c := conflictCopies(t, p.folder()); len(c) != 0 {
+			t.Errorf("%s: cópias de conflito sem necessidade: %v", name, c)
+		}
 	}
 }
 
 // A lista velha, mas a de B é só continuação da de A: A recebe sem conflito.
 func TestStaleListTakesContinuation(t *testing.T) {
-	nc, a, b, session := twoPCs(t)
-	longer := session + jsonl(map[string]string{"type": "assistant", "text": "continuação"})
+	_, a, b, session := twoPCs(t)
+	longer := session + msg("assistant", "continuação", "2026-11-17T17:00:00Z")
 	write(t, filepath.Join(b.folder(), "s.jsonl"), longer)
 	b.sync(t)
 
@@ -90,45 +97,77 @@ func TestStaleListTakesContinuation(t *testing.T) {
 	if err := a.engine.Cycle(context.Background(), false); err != nil {
 		t.Fatal(err)
 	}
-	if got, _ := nc.file(remoteSession); string(got) != longer {
-		t.Fatalf("Nextcloud = %q", got)
-	}
 	if got := read(t, filepath.Join(a.folder(), "s.jsonl")); got != longer {
 		t.Fatalf("A = %q", got)
 	}
-	if n := len(conflictCopies(t, a.folder())); n != 0 {
-		t.Fatalf("%d cópias de conflito sem motivo", n)
+}
+
+// Os dois PCs mudaram a conversa ao mesmo tempo: em poucas voltas os dois e o
+// Nextcloud ficam iguais, e depois disso ninguém manda mais nada.
+func TestDivergedPCsConverge(t *testing.T) {
+	nc, a, b, session := twoPCs(t)
+	write(t, filepath.Join(a.folder(), "s.jsonl"), session+msg("user", "no notebook", "2026-11-17T19:38:00Z"))
+	write(t, filepath.Join(b.folder(), "s.jsonl"), session+msg("assistant", "tarde no trabalho", "2026-11-17T17:00:00Z"))
+	for i := 0; i < 3; i++ {
+		a.sync(t)
+		b.sync(t)
+	}
+	want := serverSession(nc)
+	if !strings.Contains(want, "no notebook") || !strings.Contains(want, "tarde no trabalho") {
+		t.Fatalf("Nextcloud perdeu uma das partes: %q", want)
+	}
+	if strings.Index(want, "tarde no trabalho") > strings.Index(want, "no notebook") {
+		t.Error("a junção devia seguir a ordem de horário")
+	}
+	for name, p := range map[string]*pc{"A": a, "B": b} {
+		if got := read(t, filepath.Join(p.folder(), "s.jsonl")); got != want {
+			t.Errorf("%s não convergiu: %q", name, got)
+		}
+	}
+	upsBefore := a.engine.Status().Counts.Up + b.engine.Status().Counts.Up
+	a.sync(t)
+	b.sync(t)
+	if after := a.engine.Status().Counts.Up + b.engine.Status().Counts.Up; after != upsBefore {
+		t.Fatalf("depois de convergir ainda mandaram %d envios", after-upsBefore)
 	}
 }
 
-// Envio que chega cortado não pode substituir o arquivo bom.
-func TestTruncatedUploadKeepsServerFile(t *testing.T) {
-	nc, a, _, session := twoPCs(t)
-	write(t, filepath.Join(a.folder(), "s.jsonl"), session+jsonl(map[string]string{"text": strings.Repeat("x", 500)}))
+// Servidor que grava envio cortado (o que o HTTP/2 fez): o app percebe, o
+// outro PC não baixa a conversa quebrada, e a volta seguinte conserta.
+func TestTruncatedUploadIsDetectedAndHealed(t *testing.T) {
+	nc, a, b, session := twoPCs(t)
+	full := session + msg("assistant", strings.Repeat("x", 500), "2026-11-17T17:00:00Z")
+	write(t, filepath.Join(a.folder(), "s.jsonl"), full)
 
 	nc.mu.Lock()
-	nc.truncate = 20
+	nc.truncate = len(session) + 20
 	nc.mu.Unlock()
-	// A volta pode devolver erro (o envio falhou); o que importa é o servidor.
-	_ = a.engine.Cycle(context.Background(), true)
-	if got, _ := nc.file(remoteSession); string(got) != session {
-		t.Fatalf("o arquivo bom foi trocado por um cortado: %q", got)
+	if err := a.engine.Cycle(context.Background(), true); err == nil || !strings.Contains(err.Error(), "incompleto") {
+		t.Fatalf("envio cortado não foi percebido: %v", err)
 	}
+	b.sync(t)
+	if got := read(t, filepath.Join(b.folder(), "s.jsonl")); got != session {
+		t.Fatalf("B baixou a conversa cortada: %q", got)
+	}
+
 	nc.mu.Lock()
-	for p := range nc.files {
-		if strings.HasSuffix(p, tmpSuffix) {
-			t.Errorf("temporário ficou no Nextcloud: %s", p)
-		}
-	}
 	nc.truncate = 0
 	nc.mu.Unlock()
+	a.sync(t)
+	if serverSession(nc) != full {
+		t.Fatalf("o Nextcloud não foi consertado: %q", serverSession(nc))
+	}
+	b.sync(t)
+	if read(t, filepath.Join(b.folder(), "s.jsonl")) != full {
+		t.Fatal("B não recebeu a conversa inteira")
+	}
 }
 
 // Chegou de outro PC uma versão que não continua a daqui (mais curta ou
-// diferente): a daqui é guardada antes de ser trocada.
+// diferente): nada da daqui se perde.
 func TestDownloadNeverDropsLocalWork(t *testing.T) {
 	nc, _, b, session := twoPCs(t)
-	afternoon := session + jsonl(map[string]string{"type": "assistant", "text": "trabalho da tarde no B"})
+	afternoon := session + msg("assistant", "trabalho da tarde no B", "2026-11-17T17:00:00Z")
 	write(t, filepath.Join(b.folder(), "s.jsonl"), afternoon)
 	b.sync(t)
 
@@ -137,14 +176,64 @@ func TestDownloadNeverDropsLocalWork(t *testing.T) {
 	nc.files[remoteSession] = []byte(session + jsonl(map[string]string{"type": "cost-state"}))
 	nc.mu.Unlock()
 	b.sync(t)
+	b.sync(t)
 
-	copies := conflictCopies(t, b.folder())
-	if len(copies) != 1 || read(t, copies[0]) != afternoon {
-		t.Fatalf("o trabalho de B devia ficar numa cópia: %v", copies)
+	for where, got := range map[string]string{"B": read(t, filepath.Join(b.folder(), "s.jsonl")), "Nextcloud": serverSession(nc)} {
+		if !strings.Contains(got, "trabalho da tarde no B") || !strings.Contains(got, "cost-state") {
+			t.Errorf("%s não tem as duas partes: %q", where, got)
+		}
 	}
 }
 
-// Temporário de envio de outro PC não é baixado.
+func TestMergeIsDeterministic(t *testing.T) {
+	base := msg("user", "oi", "2026-11-07T10:00:00Z")
+	x := base + msg("user", "x", "2026-11-17T10:00:00Z") + jsonl(map[string]string{"type": "cost-state", "n": "1"})
+	y := base + msg("user", "y", "2026-11-17T09:00:00Z") + msg("user", "z", "2026-11-17T11:00:00Z")
+	xy, o1 := mergeConversation([]byte(x), []byte(y))
+	yx, o2 := mergeConversation([]byte(y), []byte(x))
+	if o1 != merged || o2 != merged || !bytes.Equal(xy, yx) {
+		t.Fatalf("junção depende da ordem:\n%s\n---\n%s", xy, yx)
+	}
+	if got, o := mergeConversation(xy, []byte(x)); o != keepMine || !bytes.Equal(got, xy) {
+		t.Fatal("versão que já tem tudo devia ficar")
+	}
+	if !strings.HasPrefix(string(xy), base) || strings.Count(string(xy), "\n") != 5 {
+		t.Fatalf("junção errada: %q", xy)
+	}
+}
+
+// skills/synced e ocultos são do Claude Code de cada PC: não sobem nem descem.
+func TestManagedSkillsStayLocal(t *testing.T) {
+	nc, a, b, _ := twoPCs(t)
+	write(t, filepath.Join(a.syncDir, "skills", "minha", "SKILL.md"), "minha skill")
+	write(t, filepath.Join(a.syncDir, "skills", "synced", "x", "manifest.json"), "{}")
+	write(t, filepath.Join(a.syncDir, "skills", ".trash", "velha", "SKILL.md"), "lixo")
+	write(t, filepath.Join(a.syncDir, "skills", "minha", ".last-complete-round"), "1")
+	nc.mu.Lock()
+	nc.files["Claude/global/skills/synced/y/manifest.json"] = []byte("{}")
+	nc.mu.Unlock()
+	a.sync(t)
+	b.sync(t)
+
+	if _, ok := nc.file("Claude/global/skills/minha/SKILL.md"); !ok {
+		t.Error("a skill do usuário não subiu")
+	}
+	nc.mu.Lock()
+	for p := range nc.files {
+		if strings.Contains(p, "/.trash/") || strings.Contains(p, ".last-complete-round") || strings.Contains(p, "synced/x/") {
+			t.Errorf("subiu o que é do Claude Code: %s", p)
+		}
+	}
+	nc.mu.Unlock()
+	if _, err := os.Stat(filepath.Join(b.syncDir, "skills", "synced")); err == nil {
+		t.Error("B baixou skills/synced")
+	}
+	if read(t, filepath.Join(b.syncDir, "skills", "minha", "SKILL.md")) != "minha skill" {
+		t.Error("B não recebeu a skill do usuário")
+	}
+}
+
+// Temporário de envio da 0.2.2 que ficou no Nextcloud não é baixado.
 func TestRemoteTempIsIgnored(t *testing.T) {
 	nc, a, _, _ := twoPCs(t)
 	nc.mu.Lock()

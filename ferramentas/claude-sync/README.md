@@ -31,7 +31,11 @@ Claude Code ──grava──▶ ~/ClaudeSync  ◀──sincroniza──▶  Nex
   - **Recebimento:** a cada 30 s (configurável), o app consulta o Nextcloud. O Nextcloud propaga o etag para as pastas acima, então uma volta sem mudanças custa uma única consulta.
 - **Nunca apaga nada,** nem lá nem aqui. Se a mesma conversa mudou nos dois PCs:
   - se uma versão continua a outra (o caso normal), fica a maior;
-  - se divergiram de verdade, as duas ficam. A do Nextcloud vira `<sessão>.conflito-<data>.jsonl`, e o `/resume` mostra as duas.
+  - se cada uma tem algo que a outra não tem, as linhas das duas são juntadas no mesmo arquivo (o começo comum, depois o resto em ordem de horário). A junção é igual em qualquer PC, então os dois convergem; o Claude Code segue a mensagem mais recente.
+  - outros arquivos (memória, CLAUDE.md) que divergiram: fica o daqui, e o do Nextcloud vira `<nome>.conflito-<data>.<ext>`.
+- **Nunca sobrescreve o que não viu:** todo envio vai com `If-Match` (o etag que este PC viu por último). Se outro PC mandou uma versão nova nesse meio-tempo, o Nextcloud recusa, e o app junta as duas antes de mandar.
+- **Envio cortado não estraga o arquivo:** os envios vão por HTTP/1.1, em que o Nextcloud confere o tamanho e descarta envio incompleto. O app confere o tamanho no fim, e uma conversa no Nextcloud que termina no meio de uma linha não é baixada. O arquivo fica o mesmo no servidor, com o histórico de versões do Nextcloud.
+- **Fica de fora:** `skills/synced` (skills que o Claude Code sincroniza pela conta) e pastas ou arquivos ocultos dentro dos itens globais.
 - **Interface só local** (`http://127.0.0.1:47823`):
   - confere o `Host` (contra DNS rebinding) e exige um cabeçalho próprio em toda ação (contra outros sites);
   - CSP `default-src 'self'`.

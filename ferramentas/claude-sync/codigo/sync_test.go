@@ -148,6 +148,15 @@ func (f *fakeNextcloud) handle(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusConflict)
 			return
 		}
+		old, exists := f.files[path]
+		if m := r.Header.Get("If-Match"); m != "" && (!exists || strings.Trim(m, `"`) != md5hex(old)) {
+			w.WriteHeader(http.StatusPreconditionFailed)
+			return
+		}
+		if r.Header.Get("If-None-Match") == "*" && exists {
+			w.WriteHeader(http.StatusPreconditionFailed)
+			return
+		}
 		if f.truncate > 0 && len(body) > f.truncate {
 			body = body[:f.truncate]
 		}
@@ -354,24 +363,19 @@ func TestDivergedConversationKeepsBoth(t *testing.T) {
 	b.sync(t)
 	a.sync(t)
 	a.sync(t)
+	b.sync(t)
 
-	copies, _ := filepath.Glob(filepath.Join(a.folder(), "s.conflito-*.jsonl"))
-	if len(copies) != 1 || !strings.Contains(read(t, copies[0]), "no B") {
-		t.Fatalf("cópia de conflito = %v", copies)
-	}
-	if !strings.Contains(read(t, filepath.Join(a.folder(), "s.jsonl")), "no A") {
-		t.Fatal("a versão local foi perdida")
-	}
+	// Conversa divergente é juntada: as duas partes ficam no mesmo arquivo, nos dois PCs e lá.
 	remote, _ := nc.file("Claude/projects/bergatrix/s.jsonl")
-	if !strings.Contains(string(remote), "no A") {
-		t.Fatal("a versão do A não subiu")
+	for where, got := range map[string]string{
+		"A": read(t, filepath.Join(a.folder(), "s.jsonl")), "B": read(t, filepath.Join(b.folder(), "s.jsonl")), "Nextcloud": string(remote),
+	} {
+		if !strings.Contains(got, "no A") || !strings.Contains(got, "no B") {
+			t.Errorf("%s não tem as duas partes: %q", where, got)
+		}
 	}
-	found := false
-	for p := range nc.files {
-		found = found || strings.Contains(p, "conflito")
-	}
-	if !found {
-		t.Fatal("a cópia de conflito não subiu")
+	if copies, _ := filepath.Glob(filepath.Join(a.folder(), "s.conflito-*.jsonl")); len(copies) != 0 {
+		t.Fatalf("conversa não devia virar cópia de conflito: %v", copies)
 	}
 }
 

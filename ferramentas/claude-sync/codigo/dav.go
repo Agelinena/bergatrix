@@ -8,6 +8,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/xml"
 	"errors"
 	"fmt"
@@ -39,8 +40,15 @@ var errUnauthorized = errors.New("o Nextcloud recusou a senha de app (401): entr
 func newDav(server, user, password string) *Dav {
 	root := strings.TrimRight(server, "/") + "/remote.php/dav/files/" + url.PathEscape(user)
 	u, _ := url.Parse(root)
+	// Só HTTP/1.1: nele o Nextcloud confere o Content-Length e descarta um PUT
+	// que caiu no meio. Por HTTP/2, passando pelo Traefik, um envio cortado
+	// em 17/11/2026 ficou gravado pela metade.
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.ForceAttemptHTTP2 = false
+	transport.TLSNextProto = map[string]func(string, *tls.Conn) http.RoundTripper{}
+	transport.TLSClientConfig = &tls.Config{NextProtos: []string{"http/1.1"}}
 	return &Dav{root: root, rootPath: strings.TrimRight(u.Path, "/"), user: user, password: password,
-		client: &http.Client{Timeout: 2 * time.Minute}}
+		client: &http.Client{Timeout: 2 * time.Minute, Transport: transport}}
 }
 
 func escapePath(p string) string {
@@ -187,44 +195,36 @@ func (d *Dav) Move(ctx context.Context, from, to string) error {
 	return nil
 }
 
-// Replace move `from` para `to`, substituindo o que houver lá. O Nextcloud faz
-// isso numa operação só, então quem lê `to` vê o arquivo antigo ou o novo inteiro.
-func (d *Dav) Replace(ctx context.Context, from, to string) error {
-	resp, _, err := d.do(ctx, "MOVE", from, nil, map[string]string{
-		"Destination": d.root + "/" + escapePath(to),
-		"Overwrite":   "T",
-	})
-	if err != nil {
-		return err
-	}
-	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusNoContent {
-		return fmt.Errorf("MOVE %s → %s: HTTP %d", from, to, resp.StatusCode)
-	}
-	return nil
-}
-
-func (d *Dav) Delete(ctx context.Context, path string) error {
-	resp, _, err := d.do(ctx, http.MethodDelete, path, nil, nil)
-	if err != nil {
-		return err
-	}
-	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNotFound {
-		return fmt.Errorf("DELETE %s: HTTP %d", path, resp.StatusCode)
-	}
-	return nil
-}
-
-// Put envia o arquivo e devolve o etag novo (vazio se o servidor não mandar).
+// Put envia o arquivo sem condição e devolve o etag novo (vazio se o servidor não mandar).
 func (d *Dav) Put(ctx context.Context, path string, data []byte, mtime time.Time) (string, error) {
-	resp, _, err := d.do(ctx, http.MethodPut, path, data, map[string]string{
+	return d.put(ctx, path, data, mtime, nil)
+}
+
+// PutIf só grava se o arquivo lá ainda tiver o etag ifMatch ("" = não pode
+// existir). Se não bater, o Nextcloud recusa (412) e volta errRemoteChanged.
+func (d *Dav) PutIf(ctx context.Context, path string, data []byte, mtime time.Time, ifMatch string) (string, error) {
+	if ifMatch == "" {
+		return d.put(ctx, path, data, mtime, map[string]string{"If-None-Match": "*"})
+	}
+	return d.put(ctx, path, data, mtime, map[string]string{"If-Match": `"` + ifMatch + `"`})
+}
+
+func (d *Dav) put(ctx context.Context, path string, data []byte, mtime time.Time, cond map[string]string) (string, error) {
+	headers := map[string]string{
 		"Content-Type": "application/octet-stream",
 		"X-OC-Mtime":   strconv.FormatInt(mtime.Unix(), 10),
-	})
+	}
+	for k, v := range cond {
+		headers[k] = v
+	}
+	resp, _, err := d.do(ctx, http.MethodPut, path, data, headers)
 	if err != nil {
 		return "", err
 	}
 	switch resp.StatusCode {
 	case http.StatusOK, http.StatusCreated, http.StatusNoContent:
+	case http.StatusPreconditionFailed:
+		return "", errRemoteChanged
 	default:
 		return "", fmt.Errorf("PUT %s: HTTP %d", path, resp.StatusCode)
 	}
