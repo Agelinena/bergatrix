@@ -32,6 +32,8 @@ type fakeNextcloud struct {
 	propfinds atomic.Int32
 	polls     atomic.Int32
 	server    *httptest.Server
+	// truncate > 0: os próximos PUTs guardam só esse tanto de bytes, como um envio que caiu no meio.
+	truncate int
 }
 
 func newFakeNextcloud(t *testing.T) *fakeNextcloud {
@@ -146,9 +148,19 @@ func (f *fakeNextcloud) handle(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusConflict)
 			return
 		}
+		if f.truncate > 0 && len(body) > f.truncate {
+			body = body[:f.truncate]
+		}
 		f.files[path] = body
 		w.Header().Set("OC-ETag", `"`+md5hex(body)+`"`)
 		w.WriteHeader(http.StatusCreated)
+	case http.MethodDelete:
+		if _, ok := f.files[path]; !ok {
+			http.NotFound(w, r)
+			return
+		}
+		delete(f.files, path)
+		w.WriteHeader(http.StatusNoContent)
 	case "MOVE":
 		dest, err := url.Parse(r.Header.Get("Destination"))
 		if err != nil {
@@ -158,7 +170,7 @@ func (f *fakeNextcloud) handle(w http.ResponseWriter, r *http.Request) {
 		target, _ := url.PathUnescape(dest.Path)
 		target = strings.Trim(strings.TrimPrefix(target, root), "/")
 		_, targetFile := f.files[target]
-		if f.dirs[target] || targetFile {
+		if f.dirs[target] || targetFile && r.Header.Get("Overwrite") != "T" {
 			w.WriteHeader(http.StatusPreconditionFailed)
 			return
 		}
@@ -224,7 +236,9 @@ func newPC(t *testing.T, nc *fakeNextcloud, name string) *pc {
 	return &pc{engine: e, syncDir: cfg.SyncDir, project: filepath.Join(base, "src", "bergatrix")}
 }
 
-func (p *pc) folder() string { return filepath.Join(p.syncDir, "projects", encodeProjectDir(p.project)) }
+func (p *pc) folder() string {
+	return filepath.Join(p.syncDir, "projects", encodeProjectDir(p.project))
+}
 
 func (p *pc) sync(t *testing.T) {
 	t.Helper()

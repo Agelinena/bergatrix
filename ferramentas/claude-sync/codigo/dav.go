@@ -187,6 +187,33 @@ func (d *Dav) Move(ctx context.Context, from, to string) error {
 	return nil
 }
 
+// Replace move `from` para `to`, substituindo o que houver lá. O Nextcloud faz
+// isso numa operação só, então quem lê `to` vê o arquivo antigo ou o novo inteiro.
+func (d *Dav) Replace(ctx context.Context, from, to string) error {
+	resp, _, err := d.do(ctx, "MOVE", from, nil, map[string]string{
+		"Destination": d.root + "/" + escapePath(to),
+		"Overwrite":   "T",
+	})
+	if err != nil {
+		return err
+	}
+	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusNoContent {
+		return fmt.Errorf("MOVE %s → %s: HTTP %d", from, to, resp.StatusCode)
+	}
+	return nil
+}
+
+func (d *Dav) Delete(ctx context.Context, path string) error {
+	resp, _, err := d.do(ctx, http.MethodDelete, path, nil, nil)
+	if err != nil {
+		return err
+	}
+	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNotFound {
+		return fmt.Errorf("DELETE %s: HTTP %d", path, resp.StatusCode)
+	}
+	return nil
+}
+
 // Put envia o arquivo e devolve o etag novo (vazio se o servidor não mandar).
 func (d *Dav) Put(ctx context.Context, path string, data []byte, mtime time.Time) (string, error) {
 	resp, _, err := d.do(ctx, http.MethodPut, path, data, map[string]string{
