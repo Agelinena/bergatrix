@@ -165,4 +165,24 @@ void main() {
     expect(state().message?.text, 'Muitas rádios seguidas. Espere um pouco.');
     expect(state().current!.track.title, 'A', reason: 'a música continua');
   });
+
+  test(
+    'pular para a última já pede mais, sem repetir o que estava no meio',
+    () async {
+      radio.batches.addAll([songs('R', 12), songs('S', 10)]);
+      await controller().startRadio(song('Semente'));
+      await Future<void>.delayed(const Duration(milliseconds: 80));
+      expect(state().upNext, hasLength(12));
+      // Toca direto a última da fila (as do meio nunca tocaram).
+      await controller().jumpTo(state().upNext.last.uid);
+      await settle();
+      expect(radio.requests, hasLength(2), reason: 'já pede a próxima leva');
+      final excluded = radio.requests.last.exclude.map((t) => t.title).toSet();
+      expect(
+        excluded,
+        containsAll(['R0', 'R5', 'R10', 'R11']),
+        reason: 'o que apareceu na fila não volta, mesmo sem ter tocado',
+      );
+    },
+  );
 }

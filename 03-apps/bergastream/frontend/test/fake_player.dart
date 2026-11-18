@@ -135,9 +135,16 @@ class FakePlaybackRepository implements PlaybackRepository {
   final prepared = <String>[];
   int statusCalls = 0;
 
+  /// Títulos adiantados pela pré-busca (`prefetch`).
+  final prefetched = <String>[];
+
   @override
-  Future<PreparedTrack> prepare(SearchResult track) async {
+  Future<PreparedTrack> prepare(
+    SearchResult track, {
+    bool prefetch = false,
+  }) async {
     prepared.add(track.title);
+    if (prefetch) prefetched.add(track.title);
     if (gate != null) await gate!.future;
     if (gates[track.title] != null) await gates[track.title]!.future;
     if (failPrepare || failTitles.contains(track.title)) {
@@ -161,13 +168,32 @@ class FakePlaybackRepository implements PlaybackRepository {
   Map<String, Map<String, TrackQuality>> serverQualities = {};
   int qualityCalls = 0;
 
+  /// Volume alvo pedido em cada stream (nulo = sem normalizar no servidor).
+  final streamNorms = <double?>[];
+
+  /// Faixas "aquecidas" (versão preparada antes de tocar).
+  final warmed = <String>[];
+
   @override
-  Future<Uri> streamUrl(String trackId, {String quality = 'original'}) async {
+  Future<Uri> streamUrl(
+    String trackId, {
+    String quality = 'original',
+    double? norm,
+  }) async {
     streamQualities.add(quality);
+    streamNorms.add(norm);
     return Uri.parse(
-      'https://s.com/api/tracks/$trackId/stream?t=x&quality=$quality',
+      'https://s.com/api/tracks/$trackId/stream?t=x&quality=$quality'
+      '${norm == null ? '' : '&norm=${norm.round()}'}',
     );
   }
+
+  @override
+  Future<void> warm(
+    String trackId, {
+    String quality = 'original',
+    double? norm,
+  }) async => warmed.add(trackId);
 
   @override
   Future<Uri> downloadUrl(String trackId, {String quality = 'original'}) async {

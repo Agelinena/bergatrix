@@ -12,6 +12,7 @@ import '../../data/local/database.dart';
 import '../../data/models/search_result.dart';
 import '../../data/repositories/lyrics_repository.dart';
 import '../auth/session.dart';
+import 'lyrics_marker.dart';
 import 'player_controller.dart';
 
 /// Pedido de letra: igualdade pelo id da faixa (chave do provider).
@@ -413,6 +414,10 @@ Future<void> showLyricsEditor(
   if (choice == 'texto' && context.mounted) {
     await _editText(context, ref, track, lyrics);
   }
+  if (choice == 'marcar' && context.mounted) {
+    final saved = await openLyricsMarker(context, track, lyrics);
+    if (saved == true) ref.invalidate(lyricsProvider(LyricsRequest(track)));
+  }
 }
 
 /// Atraso/adiantamento em texto ("+1,25 s", "−1 s").
@@ -474,15 +479,16 @@ class _LyricsEditorSheet extends ConsumerWidget {
             if (base.isSynced) ...[
               Text('Sincronia: ${offsetLabel(total)}', style: mu),
               Text(
-                'A letra aparece antes da voz? Toque em "+" (atrasa). Depois '
-                'da voz? Toque em "−" (adianta). A letra na tela já muda.',
+                'A letra toda aparece antes da voz? Toque em "+" (atrasa). '
+                'Depois da voz? "−" (adianta). Cada linha num tempo '
+                'diferente? Use "Marcar linha a linha".',
                 style: mu,
               ),
               Wrap(
                 spacing: BergaSizes.chipGap,
                 runSpacing: 8,
                 children: [
-                  for (final step in const [-1000, -250, 250, 1000])
+                  for (final step in const [-1000, -500, -100, 100, 500, 1000])
                     AppChip(
                       label: offsetLabel(step),
                       onTap: () => shift.add(step),
@@ -507,6 +513,12 @@ class _LyricsEditorSheet extends ConsumerWidget {
                       'Sincronia salva',
                     ),
                   ),
+                AppChip(
+                  label: 'Marcar linha a linha',
+                  icon: Icons.touch_app_outlined,
+                  // A marcação abre depois que esta folha fecha.
+                  onTap: () => Navigator.of(context).pop('marcar'),
+                ),
                 AppChip(
                   label: 'Editar o texto',
                   icon: Icons.edit_note,

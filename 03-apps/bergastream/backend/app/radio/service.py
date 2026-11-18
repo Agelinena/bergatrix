@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import random
 from dataclasses import dataclass, field
 
 from app.config import settings
@@ -28,6 +29,9 @@ from app.radio import guard, match, sources
 from app.search.models import SearchResult
 
 logger = logging.getLogger("bergastream.radio")
+
+# Sorteio da ordem (os testes trocam por um com semente fixa).
+_rng = random.Random()
 
 DAY = 24 * 3600
 WEEK = 7 * DAY
@@ -144,17 +148,28 @@ def _tag_affinity(profile: dict[str, float], tags: list[str] | None) -> float | 
 
 
 def _spread(cands: list[Candidate], last_artist: str | None) -> list[Candidate]:
-    """Mantém a ordem da pontuação, mas nunca o mesmo artista seguido."""
+    """Sorteia a ordem: quem tem mais pontos tende a vir antes, mas não é uma
+    lista fixa. Cada música a mais de um artista na leva pesa menos (o
+    artista com muitas músicas aparece espalhado, sem padrão), nunca o mesmo
+    artista seguido, e a distância até ele voltar também é sorteada."""
     out: list[Candidate] = []
     pending = list(cands)
-    prev = match.norm_artist(last_artist) if last_artist else None
+    used: dict[str, int] = {}
+    recent: list[str] = [match.norm_artist(last_artist)] if last_artist else []
     while pending:
-        pick = next((c for c in pending if c.artist_key != prev), None)
-        if pick is None:  # só sobrou o mesmo artista: deixa para a próxima leva
+        gap = _rng.choice((1, 2, 2, 3, 4))
+        blocked = set(recent[-gap:])
+        options = [c for c in pending if c.artist_key not in blocked]
+        if not options:
+            options = [c for c in pending if not recent or c.artist_key != recent[-1]]
+        if not options:  # só sobrou o mesmo artista: deixa para a próxima leva
             break
+        weights = [max(c.score, 0.05) * (0.6 ** used.get(c.artist_key, 0)) for c in options]
+        pick = _rng.choices(options, weights=weights)[0]
         out.append(pick)
         pending.remove(pick)
-        prev = pick.artist_key
+        used[pick.artist_key] = used.get(pick.artist_key, 0) + 1
+        recent.append(pick.artist_key)
     return out
 
 
@@ -189,8 +204,13 @@ async def build(user_id: str, seed: SearchResult, recent: list[SearchResult],
             c = pool[k] = Candidate(artist=artist, title=title, duration=duration)
         c.track_sources.add(src)
         c.score += value
-        if track and c.track is None:
+        # A mesma música em outra versão (remaster, ao vivo...) cai na mesma
+        # chave e conta como uma só; fica a versão normal, se alguma fonte a
+        # trouxer.
+        if track and (c.track is None or match.plainness(title, track.get("album", ""))
+                      < match.plainness(c.title, c.track.get("album", ""))):
             c.track = track
+            c.title = title
 
     for (s, w), d in zip(seeds, data):
         vote(s.artist, w * 1.0)

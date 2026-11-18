@@ -13,6 +13,7 @@ import '../../app/catalog_navigation.dart';
 import '../devices/devices_sheet.dart';
 import '../session/session_sheet.dart';
 import 'play_queue.dart';
+import 'in_playlists.dart';
 import 'lyrics.dart';
 import 'player_controller.dart';
 import 'player_texts.dart';
@@ -196,6 +197,10 @@ class _FullPlayerState extends ConsumerState<FullPlayer> {
             style: BergaText.secondary.copyWith(fontSize: 12, color: c.gr),
           ),
         ),
+      InPlaylistsLabel(
+        track: track,
+        beforeOpen: () => Navigator.of(context).pop(),
+      ),
       const SizedBox(height: 10),
       const SeekBar(),
     ];

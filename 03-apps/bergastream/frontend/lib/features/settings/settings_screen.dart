@@ -306,8 +306,9 @@ class _PlaybackCard extends ConsumerWidget {
             style: BergaText.body.copyWith(color: c.tx),
           ),
           Text(
-            '${prefs.loudness.detail}. As músicas altas descem; as baixas '
-            'sobem até o limite em que não distorcem.',
+            '${prefs.loudness.detail}. O servidor ajusta cada música, igual '
+            'em todos os aparelhos: as altas descem e as baixas sobem até o '
+            'limite em que não distorcem.',
             style: mu,
           ),
           const SizedBox(height: 8),

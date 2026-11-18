@@ -96,30 +96,89 @@ def qualities(row) -> dict[str, dict]:
     return {level: delivered(master, level).as_dict() for level in LEVELS}
 
 
+# ── Normalização no servidor ─────────────────────────────────────
+# O app pede ?norm=-10 (ou -14): a faixa sai já no volume alvo, igual em
+# todo aparelho (a web não consegue aumentar o volume sozinha, e o mpv do
+# computador só sobe +6 dB). As altas descem; as baixas sobem até
+# NORM_MAX_BOOST_DB e, se o pico passar de NORM_PEAK_DB, um limitador segura
+# só os picos (como o modo "alto" do Spotify).
+NORM_PEAK_DB = -1.5
+NORM_MAX_BOOST_DB = 12.0
+LIMITER_MARGIN_DB = 1.5
+# Diferença menor que isto não vale uma conversão.
+NORM_MIN_DB = 0.5
+
+
+def norm_gain(lufs: float, peak: float, target: float) -> tuple[float, bool]:
+    """Ganho em dB para chegar a [target] LUFS e se precisa do limitador."""
+    gain = min(target - lufs, NORM_MAX_BOOST_DB)
+    return round(gain, 1), gain > 0 and peak + gain > NORM_PEAK_DB
+
+
+def _norm_target(master: AudioInfo | None, delivery: Delivery) -> Target:
+    """Formato da versão normalizada: o do nível, ou (no "original") FLAC
+    para mestre sem perdas e MP3 320 para o resto."""
+    if delivery.target is not None:
+        return delivery.target
+    if master is not None and master.lossless:
+        deep = (master.bit_depth or 16) > 16
+        return Target("flac", 0, ".flac", ("-c:a", "flac", "-sample_fmt", "s32" if deep else "s16",
+                                           *(("-bits_per_raw_sample", "24") if deep else ())))
+    return TARGETS["high"]
+
+
 _locks: dict[str, asyncio.Lock] = {}
 
 
 async def path_for(track_id: str, master_path: Path, master: AudioInfo | None,
-                   level: str) -> tuple[Path, Delivery]:
-    """Arquivo a servir no [level] (o mestre ou a versão convertida)."""
+                   level: str, loudness: tuple[float, float] | None = None,
+                   norm: float | None = None) -> tuple[Path, Delivery, bool]:
+    """Arquivo a servir no [level] (o mestre ou a versão convertida) e se
+    saiu normalizado. Com [norm] e o volume medido ([loudness] = LUFS e pico
+    real), a faixa sai no volume alvo."""
     delivery = delivered(master, level)
-    if delivery.target is None:
-        return master_path, delivery
-    target = delivery.target
+    gain, limit = (0.0, False)
+    if norm is not None and loudness is not None:
+        gain, limit = norm_gain(loudness[0], loudness[1], norm)
+        if abs(gain) < NORM_MIN_DB:
+            gain = 0.0  # já está no alvo: vale como normalizada, sem converter
+    normalized = norm is not None and loudness is not None
+    if not normalized or gain == 0.0:
+        if delivery.target is None:
+            return master_path, delivery, normalized
+        target = delivery.target
+        filters: tuple[str, ...] = ()
+        tag = ""
+    else:
+        target = _norm_target(master, delivery)
+        if delivery.target is None:
+            out = AudioInfo(codec=target.codec, bitrate_kbps=target.kbps or None,
+                            sample_rate=master.sample_rate if master else None,
+                            bit_depth=master.bit_depth if target.codec == "flac" and master else None)
+            delivery = Delivery(label=out.label, rank=out.rank, target=target)
+        af = f"volume={gain}dB"
+        if limit:
+            # O alimiter segura a amostra, não o pico real entre amostras (que
+            # passa ~1 dB): mira LIMITER_MARGIN_DB abaixo para o pico real
+            # ficar em NORM_PEAK_DB.
+            ceiling = 10 ** ((NORM_PEAK_DB - LIMITER_MARGIN_DB) / 20)
+            af += f",alimiter=limit={ceiling:.3f}:attack=5:release=50:level=disabled"
+        filters = ("-af", af)
+        tag = f".n{gain:+.1f}{'L' if limit else ''}"
     # O tamanho do mestre entra no nome: mestre trocado = versão nova.
-    name = f"{track_id}.{level}.{master_path.stat().st_size}{target.ext}"
+    name = f"{track_id}.{level}{tag}.{master_path.stat().st_size}{target.ext}"
     path = VARIANTS_DIR / name
     lock = _locks.setdefault(name, asyncio.Lock())
     async with lock:
         if path.exists() and path.stat().st_size > 0:
             os.utime(path)  # usado agora: a limpeza conta a partir daqui
-            return path, delivery
+            return path, delivery, normalized
         VARIANTS_DIR.mkdir(parents=True, exist_ok=True)
         tmp = path.with_name(f".{name}.part{target.ext}")
         started = time.monotonic()
         proc = await asyncio.create_subprocess_exec(
             "ffmpeg", "-v", "error", "-y", "-i", str(master_path), "-map", "0:a:0", "-vn",
-            "-map_metadata", "0", *target.args, str(tmp),
+            "-map_metadata", "0", *filters, *target.args, str(tmp),
             stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE)
         try:
             _, err = await asyncio.wait_for(proc.communicate(), timeout=180)
@@ -131,10 +190,10 @@ async def path_for(track_id: str, master_path: Path, master: AudioInfo | None,
             tmp.unlink(missing_ok=True)
             raise RuntimeError(f"ffmpeg falhou: {err.decode(errors='replace')[-200:]}")
         os.replace(tmp, path)
-        logger.info("[variants] %s %s → %s (%.1fs)", track_id[:8], master.label if master else "?",
-                    delivery.label, time.monotonic() - started)
+        logger.info("[variants] %s %s → %s%s (%.1fs)", track_id[:8], master.label if master else "?",
+                    delivery.label, f" {tag[1:]} dB" if tag else "", time.monotonic() - started)
     _locks.pop(name, None)
-    return path, delivery
+    return path, delivery, normalized
 
 
 def remove_for(track_id: str) -> int:

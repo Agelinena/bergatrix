@@ -57,7 +57,8 @@ def fake_yt(seed):
     if seed.title == "Aerials":  # a recente traz músicas próprias
         return {"tracks": [t("Deftones", "Change"), t("Korn", "Freak On a Leash")]}
     return {"tracks": [
-        t("Linkin Park", "Numb"),
+        t("Linkin Park", "Numb (Live at Milton Keynes)"),     # versão: a normal vem do Deezer
+        t("Linkin Park", "Numb - 2014 Remaster"),
         t("Linkin Park", "In the End"),
         t("Papa Roach", "Last Resort"),
         t("Disturbed", "Down with the Sickness (Live)"),   # versão ao vivo: fora
@@ -144,6 +145,23 @@ def unit():
     ok(match.versions("Down with the Sickness (Live)"), {"live"}, "ao vivo detectado")
     ok(match.versions("Numb"), set(), "versão normal")
 
+    print("=== ordem sorteada, mesmo artista espalhado ===")
+    import random
+    from app.radio import service
+    cands = [service.Candidate("Armandinho", f"A{i}", score=5.0) for i in range(6)] + \
+            [service.Candidate(f"Outro {i}", f"O{i}", score=2.0) for i in range(8)]
+    patterns = set()
+    for seed in range(30):
+        service._rng = random.Random(seed)
+        order = service._spread(cands, None)
+        arts = [c.artist_key for c in order]
+        if any(a == b for a, b in zip(arts, arts[1:])):
+            patterns.add("seguido")
+        patterns.add(tuple(i for i, a in enumerate(arts) if a == "armandinho"))
+    ok("seguido" in patterns, False, "nunca o mesmo artista seguido")
+    ok(len(patterns) > 10, True, "as posições do artista variam (sem padrão fixo)")
+    service._rng = random.Random()
+
     print("=== disjuntor ===")
 
     async def breaker():
@@ -227,7 +245,8 @@ def main():
             got = r.json()
             names = [x["title"] for x in got["tracks"]]
             print("    leva:", [(x["artist"], x["title"]) for x in got["tracks"]])
-            ok(set(names[:2]), {"Numb", "Last Resort"}, "as que aparecem em várias fontes vêm primeiro")
+            ok({"Numb", "Last Resort"} <= set(names), True, "as que aparecem em várias fontes entram")
+            ok(names.count("Numb"), 1, "Numb ao vivo e Numb normal contam como uma só")
             ok("Envolver" in names, False, "artista que nenhuma fonte confirma fica fora")
             ok(any("Live" in n for n in names), False, "versão ao vivo fica fora")
             ok("Duality" in names, False, "já ouvida no histórico fica fora")

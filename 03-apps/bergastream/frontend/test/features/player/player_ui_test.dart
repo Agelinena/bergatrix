@@ -1,6 +1,7 @@
 import 'package:bergastream/core/platform/app_platform.dart';
 import 'package:bergastream/data/repositories/radio_repository.dart';
 import 'package:bergastream/features/player/full_player.dart';
+import 'package:bergastream/features/player/in_playlists.dart';
 import 'package:bergastream/features/player/lyrics.dart';
 import 'package:bergastream/features/player/player_bar.dart';
 import 'package:bergastream/features/player/player_controller.dart';
@@ -160,5 +161,21 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(QueuePanel), findsOneWidget);
     expect(find.text('Parecida 1'), findsWidgets);
+  });
+
+  testWidgets('player mostra se a música está numa playlist sua', (
+    tester,
+  ) async {
+    await pumpBergastream(
+      tester,
+      size: const Size(400, 1000),
+      inPlaylists: FakeInPlaylistsLookup({
+        'Bohemian Rhapsody': [(id: 'p1', name: 'Rock in Metal')],
+      }),
+    );
+    await searchAndPlay(tester, 'Bohemian Rhapsody');
+    await tester.tap(find.text('Queen · A Night at the Opera'));
+    await tester.pumpAndSettle();
+    expect(find.text('Na sua playlist Rock in Metal'), findsOneWidget);
   });
 }

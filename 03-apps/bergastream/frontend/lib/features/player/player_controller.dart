@@ -99,7 +99,7 @@ class PlayerTimings {
     this.pollInterval = const Duration(seconds: 1),
     this.prepareTimeout = const Duration(minutes: 3),
     this.rapidChangeDelay = const Duration(milliseconds: 500),
-    this.prefetchAfter = const Duration(seconds: 8),
+    this.prefetchAfter = const Duration(seconds: 5),
     this.prefetchRetry = const Duration(seconds: 20),
     this.autoSkipDelay = const Duration(seconds: 2),
     this.fades = true,
@@ -364,6 +364,25 @@ class PlayerController extends Notifier<PlayerState> {
     final n = await _gainFor(track);
     _trackGain = n.gain;
     await _engine.setBoost(n.boostDb);
+  }
+
+  /// Volume alvo para o servidor normalizar o stream de [track]: o nível
+  /// escolhido, se o volume da faixa já foi medido (o servidor só normaliza
+  /// nesse caso). Nulo = o app ajusta no aparelho, como antes.
+  Future<double?> _serverNorm(SearchResult track) async {
+    final target = _prefs.loudness.lufs;
+    if (target == null) return null;
+    final loud = await _loudnessOf(track);
+    if (loud == null || loud.lufs == 0) return null;
+    return target;
+  }
+
+  /// Depois de carregar o stream: com [norm] o servidor já ajustou o volume
+  /// (nada no aparelho); sem ele, a normalização do aparelho.
+  Future<void> _applyStreamNorm(SearchResult track, double? norm) async {
+    if (norm == null) return _normalize(track);
+    _trackGain = 1;
+    await _engine.setBoost(0);
   }
 
   Future<TrackLoudness?> _loudnessOf(SearchResult track) async {
@@ -738,7 +757,10 @@ class PlayerController extends Notifier<PlayerState> {
       }
       if (before?.loudness != now.loudness) {
         final track = _queue.current?.track;
-        if (track == null) {
+        if (track != null && _streamTrackId != null) {
+          // Tocando pelo servidor: pede o stream de novo no volume novo.
+          unawaited(_resumeStream('normalização mudou', count: false));
+        } else if (track == null) {
           _trackGain = 1;
           unawaited(engine.setBoost(0));
           _applyVolume();
@@ -865,7 +887,7 @@ class PlayerController extends Notifier<PlayerState> {
       return;
     }
     await playList([track], 0, context: '$radioContextPrefix${track.title}');
-    final radio = _radio = _Radio(track)..played.add(track);
+    final radio = _radio = _Radio(track)..appeared.add(track);
     final gen = ++_radioGen;
     _radioTimer?.cancel();
     _radioTimer = Timer(ref.read(playerTimingsProvider).radioDelay, () {
@@ -907,7 +929,12 @@ class PlayerController extends Notifier<PlayerState> {
               seed: radio.seed,
               recent: radio.recent.reversed.take(2).toList(),
               skipped: radio.skipped,
-              exclude: [...radio.played, ...queued],
+              // Tudo que já apareceu nesta rádio (tocado, pulado na fila ou
+              // ainda nela) não volta.
+              exclude: [
+                ...radio.appeared.reversed.take(500),
+                ...queued.take(100),
+              ],
               lastArtist: queued.isNotEmpty
                   ? queued.last.artist
                   : _queue.current?.track.artist,
@@ -918,7 +945,7 @@ class PlayerController extends Notifier<PlayerState> {
       if (gen != _radioGen || !identical(_radio, radio)) return;
       final have = {
         for (final t in queued) t.id,
-        ...radio.played.map((t) => t.id),
+        ...radio.appeared.map((t) => t.id),
       };
       final fresh = [
         for (final t in tracks)
@@ -928,6 +955,7 @@ class PlayerController extends Notifier<PlayerState> {
         radio.retryAt = DateTime.now().add(const Duration(minutes: 2));
         return;
       }
+      radio.appeared.addAll(fresh);
       _queue.appendUpNext(fresh);
       _publish();
     } on ApiException catch (e) {
@@ -1401,18 +1429,27 @@ class PlayerController extends Notifier<PlayerState> {
   }
 
   /// Retoma o stream do ponto em que parou, com uma URL nova.
-  Future<void> _resumeStream(String why) async {
+  Future<void> _resumeStream(String why, {bool count = true}) async {
     final trackId = _streamTrackId;
+    final track = _queue.current?.track;
     final at = _lastPosition;
-    if (trackId == null) return;
-    _streamResumes++;
+    if (trackId == null || track == null) return;
+    if (count) _streamResumes++;
     final generation = _generation;
     debugPrint('Stream $why em ${at.inSeconds}s: retomando ($_streamResumes)');
     try {
       final level = await _streamQuality();
-      final url = await _repository.streamUrl(trackId, quality: level.api);
+      final norm = await _serverNorm(track);
+      final url = await _repository.streamUrl(
+        trackId,
+        quality: level.api,
+        norm: norm,
+      );
       if (generation != _generation) return;
       await _own(() => _engine.setUrl(url));
+      if (generation != _generation) return;
+      await _applyStreamNorm(track, norm);
+      _applyVolume();
       if (generation != _generation) return;
       if (at > Duration.zero) await _engine.seek(at);
       if (generation != _generation) return;
@@ -1511,8 +1548,8 @@ class PlayerController extends Notifier<PlayerState> {
     _quality = null;
     _loadedTrackId = item.track.id;
     if (_radio case final radio?) {
-      if (!radio.played.any((t) => t.id == item.track.id)) {
-        radio.played.add(item.track);
+      if (!radio.appeared.any((t) => t.id == item.track.id)) {
+        radio.appeared.add(item.track);
       }
       _maybeRefillRadio();
     }
@@ -1584,16 +1621,18 @@ class PlayerController extends Notifier<PlayerState> {
             : 0;
       }
       final level = await _streamQuality();
+      final norm = await _serverNorm(item.track);
       final url = await _repository.streamUrl(
         prepared.trackId,
         quality: level.api,
+        norm: norm,
       );
       if (generation != _generation) return;
       unawaited(_loadQualityLabel(item.track.id, level.api, generation));
       await _own(() => _engine.setUrl(url));
       if (generation != _generation) return;
       _streamTrackId = prepared.trackId;
-      await _normalize(item.track);
+      await _applyStreamNorm(item.track, norm);
       if (generation != _generation) return;
       await _start(startAt);
       _autoSkips = 0;
@@ -1711,8 +1750,11 @@ class PlayerController extends Notifier<PlayerState> {
     }
   }
 
-  /// Pede ao servidor só a próxima música, depois de a atual tocar um pouco
-  /// (quem passa músicas rápido não dispara downloads).
+  /// Quantas próximas o app adianta (download no servidor, fila média).
+  static const prefetchAhead = 2;
+
+  /// Adianta as [prefetchAhead] próximas no servidor, depois de a atual
+  /// tocar um pouco (quem passa músicas rápido não dispara downloads).
   void _maybePrefetch(QueueItem current, Duration position) {
     if (_prefetchedFor == current.uid ||
         state.status != PlaybackStatus.tocando ||
@@ -1725,21 +1767,36 @@ class PlayerController extends Notifier<PlayerState> {
     if (position < timings.prefetchAfter && (half == null || position < half)) {
       return;
     }
-    final next = _queue.peekNext;
-    if (next == null || !ref.read(sessionProvider).canUseServer) return;
+    final ahead = _queue.peekAhead(prefetchAhead);
+    if (ahead.isEmpty || !ref.read(sessionProvider).canUseServer) return;
     // Marca já (não pede duas vezes enquanto espera); se falhar, desmarca e
     // tenta de novo depois de prefetchRetry.
     _prefetchedFor = current.uid;
     unawaited(() async {
       try {
-        final local = await ref
-            .read(localDatabaseProvider)
-            ?.downloadedFor(next.track);
-        unawaited(_loudnessOf(next.track)); // volume da próxima, já em cache
-        if (local?.audioPath != null) return; // já está no aparelho
-        await _repository.prepare(next.track);
+        for (final next in ahead) {
+          final local = await ref
+              .read(localDatabaseProvider)
+              ?.downloadedFor(next.track);
+          unawaited(_loudnessOf(next.track)); // volume já em cache
+          if (local?.audioPath != null) continue; // já está no aparelho
+          final prepared = await _repository.prepare(
+            next.track,
+            prefetch: true,
+          );
+          if (prepared.readiness == TrackReadiness.pronta &&
+              identical(next, ahead.first)) {
+            // Já baixada: deixa pronta a versão no nível e volume certos.
+            final level = await _streamQuality();
+            await _repository.warm(
+              prepared.trackId,
+              quality: level.api,
+              norm: await _serverNorm(next.track),
+            );
+          }
+        }
       } on Object catch (e) {
-        debugPrint('Não preparou a próxima: $e');
+        debugPrint('Não preparou as próximas: $e');
         if (_prefetchedFor == current.uid) _prefetchedFor = null;
         _prefetchRetryAt = DateTime.now().add(timings.prefetchRetry);
       }
@@ -1831,8 +1888,8 @@ class _Radio {
   /// Artista -> vezes pulado antes dos 30 s.
   final skipped = <String, int>{};
 
-  /// Já tocaram nesta rádio.
-  final played = <SearchResult>[];
+  /// Já apareceram na fila desta rádio (tocadas, puladas ou ainda nela).
+  final appeared = <SearchResult>[];
 
   bool fetching = false;
 

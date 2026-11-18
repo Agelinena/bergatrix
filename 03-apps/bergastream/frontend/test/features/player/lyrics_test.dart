@@ -7,6 +7,7 @@ import 'package:bergastream/data/repositories/lyrics_repository.dart';
 import 'package:bergastream/features/auth/session.dart';
 import 'package:bergastream/features/player/full_player.dart';
 import 'package:bergastream/features/player/lyrics.dart';
+import 'package:bergastream/features/player/lyrics_marker.dart';
 import 'package:bergastream/features/player/player_controller.dart';
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
@@ -137,16 +138,68 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Sincronia: sem ajuste'), findsOneWidget);
     await tester.tap(find.text('+1 s'));
-    await tester.tap(find.text('+0,25 s'));
+    await tester.tap(find.text('+0,1 s'));
     await tester.pumpAndSettle();
-    expect(find.text('Sincronia: +1,25 s'), findsOneWidget);
+    expect(find.text('Sincronia: +1,1 s'), findsOneWidget);
 
     await tester.tap(find.text('Salvar para todos'));
     await tester.pumpAndSettle();
-    expect(lyrics.edits.single.offsetMs, 1250);
+    expect(lyrics.edits.single.offsetMs, 1100);
     expect(find.text('Sincronia salva'), findsOneWidget);
     await tester.pump(const Duration(seconds: 3));
     await tester.pumpAndSettle();
+  });
+
+  testWidgets('marcar linha a linha: cada linha no tempo em que é cantada', (
+    tester,
+  ) async {
+    final lyrics = FakeLyricsRepository();
+    final engine = await playAndOpen(tester, lyrics: lyrics);
+    await tester.tap(find.text(LyricsCard.title));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Ajustar letra'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Marcar linha a linha'));
+    await tester.pumpAndSettle();
+    expect(find.text('Marcar a letra'), findsOneWidget);
+
+    // A primeira linha começa aos 7,15 s (marca com o tempo de reação).
+    engine.emitPosition(const Duration(milliseconds: 7150));
+    await tester.pump();
+    await tester.tap(find.text('Marcar'));
+    await tester.pumpAndSettle();
+    expect(find.text('00:07.00'), findsOneWidget);
+    // Agora a segunda está escolhida: ajuste fino de +0,1 s.
+    await tester.tap(find.text('+0,1 s'));
+    await tester.pumpAndSettle();
+    expect(find.text('00:15.10'), findsOneWidget);
+
+    await tester.tap(find.text('Salvar para todos'));
+    await tester.pumpAndSettle();
+    final saved = lyrics.edits.single;
+    expect(saved.offsetMs, 0);
+    expect(
+      saved.lrc,
+      '[00:07.00] Primeira linha da letra\n'
+      '[00:15.10] Segunda linha da letra\n'
+      '[00:25.00] Terceira linha da letra',
+    );
+    expect(find.text('Marcar a letra'), findsNothing);
+    await tester.pump(const Duration(seconds: 3));
+    await tester.pumpAndSettle();
+  });
+
+  test('LRC das linhas marcadas sai em ordem de tempo', () {
+    final lines = [
+      MarkLine('b', const Duration(seconds: 70, milliseconds: 500)),
+      MarkLine('a', const Duration(seconds: 3)),
+    ];
+    expect(toLrc(lines), '[00:03.00] a\n[01:10.50] b');
+    expect(
+      markLinesFrom(const Lyrics(found: true, plain: 'um\n\ndois')).length,
+      2,
+      reason: 'letra simples: uma linha por verso, sem tempo',
+    );
   });
 
   testWidgets('editar o texto da letra', (tester) async {

@@ -59,7 +59,7 @@ pedido; o servidor não guarda sessão.
 
 | Endpoint | Corpo / resposta |
 |---|---|
-| `POST /api/play` | corpo `SearchResult` → `{"track_id", "status"}`; registra a faixa e põe o download na fila |
+| `POST /api/play` | corpo `SearchResult` → `{"track_id", "status"}`; registra a faixa e põe o download na fila (alta). `?prefetch=true`: o app só está adiantando as próximas (fila média; tocar a música depois a promove) |
 | `GET /api/tracks/{track_id}/status` | `{"track_id", "status", "kind"?}` |
 
 Status: `ready`/`done` → pronta; `downloading`/`queued`/`registered` → baixando; `error`/`failed` → erro; `unknown` → desconhecido (o app desiste após 10 seguidos). O player consulta a cada 1,5 s.
@@ -82,7 +82,7 @@ O `<audio>` do navegador não envia `Authorization`: a web pede o token e toca `
 
 | Endpoint | Observação |
 |---|---|
-| `POST /api/tracks/loudness` | `{"refs": ["provider:external_id", …]}` → `{ref: {"lufs", "peak"}}` (só as já medidas). `GET /api/tracks/{id}/status` também traz `loudness`. O app normaliza com isso: alvo −10 LUFS (Alto, padrão) ou −14 (Normal, o do Spotify); as altas descem pelo volume e as baixas sobem até o pico real chegar a −1,5 dBTP (Android pelo LoudnessEnhancer, até +12 dB; Windows/Linux pelo mpv, até +6 dB; o navegador não sobe). |
+| `POST /api/tracks/loudness` | `{"refs": ["provider:external_id", …]}` → `{ref: {"lufs", "peak"}}` (só as já medidas). `GET /api/tracks/{id}/status` também traz `loudness`. **Normalização no servidor:** `GET …/stream` e `…/download` aceitam `norm` (LUFS alvo: −10 Alto, padrão; −14 Normal). Com o volume já medido, a faixa sai no alvo (ffmpeg, uma vez, guardada como variante): as altas descem, as baixas sobem até +12 dB e, se o pico real passaria de −1,5 dBTP, um limitador segura só os picos. FLAC continua FLAC; no nível "original" de um mestre com perdas sai MP3 320. Cabeçalho `X-Track-Normalized: 1\|0`. Sem medição, sai como está e o app ajusta no aparelho (como antes, também para as músicas baixadas: Android até +12 dB, Windows/Linux até +6 dB, navegador não sobe). |
 | `POST /api/tracks/redownload` | Corpo `SearchResult`: apaga o arquivo no servidor e baixa de novo com prioridade alta (409 se já está baixando). |
 
 ---
@@ -105,6 +105,7 @@ já vêm com o ajuste `offset_ms`; `lrc` é o texto guardado, sem o ajuste (para
 | Endpoint | Quem | Corpo / resposta |
 |---|---|---|
 | `GET /api/me/playlists` | logado | `list[PlaylistSummary]` (minhas e compartilhadas comigo) |
+| `GET /api/me/playlists/containing?title=&artist=&provider=&external_id=&isrc=` | logado | `[{id, name}]`: em quais playlists minhas (dono ou membro) a música está; vale outra fonte (`external_ids`), o ISRC e outra versão (artista e título normalizados). O player mostra "Na sua playlist …" |
 | `POST /api/playlists` | logado | `{"name", "description"?}` → `PlaylistSummary` (201) |
 | `GET /api/playlists/{id}` | membro | `PlaylistDetail` |
 | `PATCH /api/playlists/{id}` | dono/editor | `{"name"?, "description"?}` |

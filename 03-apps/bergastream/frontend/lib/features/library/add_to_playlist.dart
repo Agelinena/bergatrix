@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../player/in_playlists.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../app/routes.dart';
@@ -27,6 +29,8 @@ Future<void> addToPlaylist(
   if (target == null || !context.mounted) return;
   try {
     await ref.read(playlistEditorProvider).addTracks(target.id, tracks);
+    // O selo "Na sua playlist" do player passa a valer na hora.
+    ref.invalidate(inPlaylistsProvider);
     if (context.mounted) {
       AppToast.show(
         context,

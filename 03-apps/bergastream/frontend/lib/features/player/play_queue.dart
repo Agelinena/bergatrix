@@ -99,6 +99,12 @@ class PlayQueue {
     _upNext.addAll(items);
   }
 
+  /// As próximas [n] depois da atual (sua fila primeiro), sem avançar.
+  List<QueueItem> peekAhead(int n) {
+    if (_current == null || repeat == PlayerRepeat.umaFaixa) return const [];
+    return [..._manual, ..._upNext].take(n).toList();
+  }
+
   /// "Adicionar à fila": entra no fim da sua fila (FIFO).
   QueueItem add(SearchResult track) {
     final item = _item(track);

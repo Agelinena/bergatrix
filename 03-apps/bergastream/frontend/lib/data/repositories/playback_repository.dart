@@ -53,16 +53,31 @@ class TrackLoudness {
 
 /// Reprodução no servidor (Seção 9, área "Reprodução").
 abstract interface class PlaybackRepository {
-  /// `POST /api/play`: registra a faixa e enfileira o download.
-  Future<PreparedTrack> prepare(SearchResult track);
+  /// `POST /api/play`: registra a faixa e enfileira o download. [prefetch]
+  /// = só adiantando as próximas (fila média, atrás de quem quer ouvir já).
+  Future<PreparedTrack> prepare(SearchResult track, {bool prefetch = false});
 
   /// `GET /api/tracks/{id}/status`.
   Future<TrackReadiness> status(String trackId);
 
   /// URL de stream com token curto (`?t=`), que funciona igual em todas as
   /// plataformas (o `<audio>` da web não envia cabeçalhos). [quality] é o
-  /// nível pedido (`AudioQuality.api`: original, high, normal, low).
-  Future<Uri> streamUrl(String trackId, {String quality = 'original'});
+  /// nível pedido (`AudioQuality.api`: original, high, normal, low). Com
+  /// [norm] (LUFS alvo), o servidor entrega a faixa já normalizada (se o
+  /// volume dela já foi medido).
+  Future<Uri> streamUrl(
+    String trackId, {
+    String quality = 'original',
+    double? norm,
+  });
+
+  /// Pede o começo do stream para o servidor deixar pronta a versão no
+  /// nível e volume pedidos (a troca para a próxima fica instantânea).
+  Future<void> warm(
+    String trackId, {
+    String quality = 'original',
+    double? norm,
+  });
 
   /// URL do arquivo completo (modo offline), com o mesmo token curto.
   Future<Uri> downloadUrl(String trackId, {String quality = 'original'});
@@ -87,16 +102,18 @@ class HttpPlaybackRepository implements PlaybackRepository {
   final Dio _dio;
 
   @override
-  Future<PreparedTrack> prepare(SearchResult track) => _call(() async {
-    final r = await _dio.post<Map<String, dynamic>>(
-      '/api/play',
-      data: track.toJson(),
-    );
-    return PreparedTrack(
-      r.data!['track_id'] as String,
-      readinessFrom(r.data!['status'] as String?),
-    );
-  });
+  Future<PreparedTrack> prepare(SearchResult track, {bool prefetch = false}) =>
+      _call(() async {
+        final r = await _dio.post<Map<String, dynamic>>(
+          '/api/play',
+          data: track.toJson(),
+          queryParameters: {if (prefetch) 'prefetch': true},
+        );
+        return PreparedTrack(
+          r.data!['track_id'] as String,
+          readinessFrom(r.data!['status'] as String?),
+        );
+      });
 
   @override
   Future<TrackReadiness> status(String trackId) => _call(() async {
@@ -107,8 +124,29 @@ class HttpPlaybackRepository implements PlaybackRepository {
   });
 
   @override
-  Future<Uri> streamUrl(String trackId, {String quality = 'original'}) =>
-      _tokenUrl(trackId, 'stream', quality);
+  Future<Uri> streamUrl(
+    String trackId, {
+    String quality = 'original',
+    double? norm,
+  }) => _tokenUrl(trackId, 'stream', quality, norm: norm);
+
+  @override
+  Future<void> warm(
+    String trackId, {
+    String quality = 'original',
+    double? norm,
+  }) async {
+    final url = await streamUrl(trackId, quality: quality, norm: norm);
+    await _call(
+      () => _dio.getUri<void>(
+        url,
+        options: Options(
+          headers: {'Range': 'bytes=0-1'},
+          responseType: ResponseType.bytes,
+        ),
+      ),
+    );
+  }
 
   @override
   Future<Uri> downloadUrl(String trackId, {String quality = 'original'}) =>
@@ -158,18 +196,25 @@ class HttpPlaybackRepository implements PlaybackRepository {
     );
   });
 
-  Future<Uri> _tokenUrl(String trackId, String kind, String quality) => _call(
-    () async {
-      final r = await _dio.post<Map<String, dynamic>>(
-        '/api/tracks/$trackId/stream-token',
-      );
-      final base = Uri.parse(_dio.options.baseUrl);
-      return base.replace(
-        path: '${base.path}/api/tracks/$trackId/$kind'.replaceAll('//', '/'),
-        queryParameters: {'t': r.data!['token'] as String, 'quality': quality},
-      );
-    },
-  );
+  Future<Uri> _tokenUrl(
+    String trackId,
+    String kind,
+    String quality, {
+    double? norm,
+  }) => _call(() async {
+    final r = await _dio.post<Map<String, dynamic>>(
+      '/api/tracks/$trackId/stream-token',
+    );
+    final base = Uri.parse(_dio.options.baseUrl);
+    return base.replace(
+      path: '${base.path}/api/tracks/$trackId/$kind'.replaceAll('//', '/'),
+      queryParameters: {
+        't': r.data!['token'] as String,
+        'quality': quality,
+        if (norm != null) 'norm': norm.round().toString(),
+      },
+    );
+  });
 
   static Future<T> _call<T>(Future<T> Function() body) async {
     try {

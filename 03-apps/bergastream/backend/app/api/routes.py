@@ -183,11 +183,16 @@ async def reset_lyrics(track_id: str, pool=Depends(_get_pool), user: CurrentUser
 
 
 @router.post("/play", response_model=PlayResponse)
-async def play(body: PlayRequest, pool=Depends(_get_pool), user: CurrentUser = Depends(current_user)):
+async def play(body: PlayRequest, prefetch: bool = False, pool=Depends(_get_pool),
+               user: CurrentUser = Depends(current_user)):
+    """Registra a faixa e põe o download na fila. [prefetch] = o app só está
+    adiantando as próximas: fila média, atrás de quem quer ouvir agora (se a
+    música for tocada antes de baixar, o pedido normal a promove)."""
     result = await tracks_service.resolve_and_register(pool, body)
     if result.status != "ready":
         r = await get_redis()
-        await q.enqueue(r, result.track_id, body.provider, priority=1, external_id=body.external_id, title=body.title, artist=body.artist)
+        await q.enqueue(r, result.track_id, body.provider, priority=2 if prefetch else 1,
+                        external_id=body.external_id, title=body.title, artist=body.artist)
         result.status = "downloading"
     return result
 
@@ -303,15 +308,20 @@ _QUALITY = Query("original", pattern="^(original|high|normal|low)$",
                  description="original (o arquivo do servidor) | high (MP3 320) | normal (AAC 160) | low (AAC 96)")
 
 
-async def _file_for(track_id: str, quality: str) -> tuple[Path, "object"]:
-    """Arquivo da faixa no nível pedido (o mestre ou a versão convertida)."""
+_NORM = Query(None, ge=-24, le=-5, description="Volume alvo em LUFS (-10, -14): a faixa sai normalizada")
+
+
+async def _file_for(track_id: str, quality: str, norm: float | None = None) -> tuple[Path, "object", bool]:
+    """Arquivo da faixa no nível pedido (o mestre ou a versão convertida) e
+    se saiu normalizado ([norm] e o volume já medido)."""
     import re as _re
     from app.downloads import variants
     if not _re.match(_TRACK_ID, track_id):
         raise HTTPException(404, detail="ID invalido")
     pool = get_pool()
     row = await pool.fetchrow(
-        "SELECT path, codec, bitrate_kbps, sample_rate, bit_depth FROM files WHERE track_id=$1", track_id)
+        """SELECT path, codec, bitrate_kbps, sample_rate, bit_depth, loudness_lufs, true_peak_db
+           FROM files WHERE track_id=$1""", track_id)
     if not row:
         if not await pool.fetchval("SELECT 1 FROM tracks WHERE id=$1", track_id):
             raise HTTPException(404, detail="Faixa nao encontrada")
@@ -319,27 +329,32 @@ async def _file_for(track_id: str, quality: str) -> tuple[Path, "object"]:
     master = Path(row["path"])
     if not master.exists():
         raise HTTPException(404, detail="Arquivo nao encontrado em disco")
+    # LUFS 0 = não deu para medir: vai sem normalizar (o app ajusta).
+    loud = ((row["loudness_lufs"], row["true_peak_db"] or 0.0)
+            if row["loudness_lufs"] not in (None, 0) else None)
     try:
-        return await variants.path_for(track_id, master, variants.master_info(row), quality)
+        return await variants.path_for(track_id, master, variants.master_info(row), quality,
+                                       loudness=loud, norm=norm)
     except RuntimeError as exc:
         logger.warning("[stream] %s em %s: %s — vai o original", track_id[:8], quality, exc)
-        return master, variants.delivered(variants.master_info(row), "original")
+        return master, variants.delivered(variants.master_info(row), "original"), False
 
 
-def _quality_headers(path: Path, delivery) -> dict:
+def _quality_headers(path: Path, delivery, normalized: bool = False) -> dict:
     """Formato (extensão) e qualidade entregues: o app guarda nas cópias offline."""
     return {"X-Track-Format": path.suffix.lower().lstrip("."),
-            "X-Track-Quality": delivery.label, "X-Track-Quality-Rank": str(delivery.rank)}
+            "X-Track-Quality": delivery.label, "X-Track-Quality-Rank": str(delivery.rank),
+            "X-Track-Normalized": "1" if normalized else "0"}
 
 
 @router.get("/tracks/{track_id}/stream")
 async def stream_track(track_id: str, request: Request, quality: str = _QUALITY,
-                       user: CurrentUser = Depends(stream_user)):
+                       norm: float | None = _NORM, user: CurrentUser = Depends(stream_user)):
     import re as _re
-    file_path, delivery = await _file_for(track_id, quality)
+    file_path, delivery, normalized = await _file_for(track_id, quality, norm)
     await get_pool().execute("UPDATE files SET last_played_at = now() WHERE track_id=$1", track_id)
     media_type = _MEDIA_TYPES.get(file_path.suffix.lower(), "application/octet-stream")
-    headers = {"Accept-Ranges": "bytes", **_quality_headers(file_path, delivery)}
+    headers = {"Accept-Ranges": "bytes", **_quality_headers(file_path, delivery, normalized)}
     range_hdr = request.headers.get("range")
     if not range_hdr:
         return FileResponse(path=str(file_path), media_type=media_type, filename=file_path.name, headers=headers)
@@ -377,15 +392,16 @@ async def stream_track(track_id: str, request: Request, quality: str = _QUALITY,
                                       "Content-Length": str(cl)})
 
 @router.get("/tracks/{track_id}/download")
-async def download_track(track_id: str, quality: str = _QUALITY, user: CurrentUser = Depends(stream_user)):
+async def download_track(track_id: str, quality: str = _QUALITY, norm: float | None = _NORM,
+                         user: CurrentUser = Depends(stream_user)):
     """Arquivo completo para o modo offline, no nível pedido. Mesma
     autenticação do stream (Bearer ou ?t=). O tamanho vai em Content-Length
     para o app validar o arquivo; X-Track-Quality diz o que foi entregue."""
-    file_path, delivery = await _file_for(track_id, quality)
+    file_path, delivery, normalized = await _file_for(track_id, quality, norm)
     media_type = _MEDIA_TYPES.get(file_path.suffix.lower(), "application/octet-stream")
     return FileResponse(path=str(file_path), media_type=media_type,
                         filename=f"{track_id}{file_path.suffix.lower()}",
-                        headers=_quality_headers(file_path, delivery))
+                        headers=_quality_headers(file_path, delivery, normalized))
 
 # Admin
 

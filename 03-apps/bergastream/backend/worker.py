@@ -17,7 +17,9 @@ from app.downloads import failures
 
 logging.basicConfig(level=getattr(logging, settings.log_level.upper(), logging.INFO), format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger("bergastream.worker")
-MAX_CONCURRENT = 2; _POLL_TIMEOUT = 3
+# 3 de uma vez: a que alguém quer ouvir, as próximas da fila e no máximo
+# MAX_LOW de playlist em segundo plano.
+MAX_CONCURRENT = 3; _POLL_TIMEOUT = 3
 MAX_LOW = 1                        # downloads de playlist ao mesmo tempo
 SPOTIFY_FIRST_CHECK = 120          # s depois de subir
 SPOTIFY_CHECK_HOURS = 24

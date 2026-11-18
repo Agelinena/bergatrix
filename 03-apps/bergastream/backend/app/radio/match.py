@@ -58,3 +58,13 @@ def versions(title: str, album: str = "") -> set[str]:
     """Marcas de versão no título (ou no álbum: "Live at Wembley")."""
     text = f"{title or ''} {album or ''}"
     return {name for name, rx in VERSION_MARKERS.items() if rx.search(text)}
+
+
+def plainness(title: str, album: str = "") -> int:
+    """Qual versão mostrar quando a mesma música chega de várias formas:
+    0 = título limpo ("Numb"), 1 = com sufixo ("Numb - 2014 Remaster"),
+    2 = ao vivo, cover, remix... (só entra se a semente também for)."""
+    if versions(title, album):
+        return 2
+    t = (title or "").strip()
+    return 1 if _BRACKETS.search(t) or _SUFFIX.search(t) or " - " in t else 0

@@ -13,7 +13,7 @@ logger = logging.getLogger("bergastream.downloads.queue")
 
 PRIORITY_QUEUES = {
     1: "bergastream:q:high",    # clique direto
-    2: "bergastream:q:medium",  # radio (reservado)
+    2: "bergastream:q:medium",  # próximas da fila, adiantadas pelo app
     3: "bergastream:q:low",     # playlists/background
 }
 _JOB_PREFIX = "bergastream:job:"

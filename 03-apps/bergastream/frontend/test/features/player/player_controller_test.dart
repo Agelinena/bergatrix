@@ -366,17 +366,18 @@ void main() {
       expect(handler.playbackState.value.playing, isFalse);
     });
 
-    test('depois de 8 s pede ao servidor só a próxima', () async {
-      await controller().playList(abc, 0, context: 'Busca');
+    test('depois de 5 s adianta as 2 próximas (fila média), uma vez', () async {
+      await controller().playList([...abc, song('D')], 0, context: 'Busca');
       engine.emitDuration(const Duration(minutes: 4));
       repo.prepared.clear();
-      engine.emitPosition(const Duration(seconds: 5));
+      engine.emitPosition(const Duration(seconds: 3));
       await pumpEventQueue();
       expect(repo.prepared, isEmpty);
-      engine.emitPosition(const Duration(seconds: 9));
+      engine.emitPosition(const Duration(seconds: 6));
       engine.emitPosition(const Duration(seconds: 40));
       await pumpEventQueue();
-      expect(repo.prepared, ['B']); // só a próxima, uma vez
+      expect(repo.prepared, ['B', 'C']); // as 2 próximas, uma vez
+      expect(repo.prefetched, ['B', 'C'], reason: 'como pré-busca');
     });
 
     test('pedido da próxima falhou: tenta de novo', () async {
@@ -396,13 +397,13 @@ void main() {
       ], reason: 'espera o intervalo de nova tentativa');
     });
 
-    test('faixa curta: pede a próxima na metade', () async {
+    test('faixa curta: adianta as próximas na metade', () async {
       await controller().playList(abc, 0, context: 'Busca');
-      engine.emitDuration(const Duration(seconds: 30));
+      engine.emitDuration(const Duration(seconds: 8));
       repo.prepared.clear();
-      engine.emitPosition(const Duration(seconds: 16));
+      engine.emitPosition(const Duration(milliseconds: 4500));
       await pumpEventQueue();
-      expect(repo.prepared, ['B']);
+      expect(repo.prepared, ['B', 'C']);
     });
 
     test('vários toques rápidos: só a última vai para o servidor', () async {
@@ -543,57 +544,84 @@ void main() {
       expect(engine.playing, isTrue);
     });
 
-    test(
-      'normalização (alto, −10): a alta desce, a baixa sobe pelo motor',
-      () async {
-        repo.serverLoudness = {
-          song('A').id: const TrackLoudness(-4, -0.5), // 6 dB acima do alvo
-          song('B').id: const TrackLoudness(-16, -9), // 6 dB abaixo, pico baixo
-          song('C').id: const TrackLoudness(-16, -3), // abaixo, pico alto
-        };
-        await controller().playList(abc, 0, context: 'Busca');
-        expect(engine.volume, closeTo(0.501, 0.01));
-        expect(engine.boost, 0);
-        await controller().next();
-        expect(engine.volume, 1.0);
-        expect(engine.boost, closeTo(6, 0.01), reason: 'sobe tudo o que falta');
-        await controller().next();
-        expect(
-          engine.boost,
-          closeTo(1.5, 0.01),
-          reason: 'só até o pico chegar a −1,5 dBTP',
-        );
-      },
-    );
+    test('normalização no aparelho (músicas baixadas): a conta', () {
+      final n = PlayerController.normalization;
+      final loud = n(-10, const TrackLoudness(-4, -0.5), 12);
+      expect(loud.gain, closeTo(0.501, 0.01), reason: '6 dB acima: desce');
+      expect(loud.boostDb, 0);
+      expect(
+        n(-10, const TrackLoudness(-16, -9), 12).boostDb,
+        closeTo(6, 0.01),
+      );
+      expect(
+        n(-10, const TrackLoudness(-16, -3), 12).boostDb,
+        closeTo(1.5, 0.01),
+        reason: 'só até o pico chegar a −1,5 dBTP',
+      );
+      expect(
+        n(-10, const TrackLoudness(-16, -9), 0).boostDb,
+        0,
+        reason: 'motor sem ganho (navegador) não sobe',
+      );
+    });
 
-    test('normalização: o motor sem ganho (navegador) não sobe', () async {
-      engine.maxBoostDb = 0;
-      repo.serverLoudness = {song('A').id: const TrackLoudness(-16, -9)};
+    test('stream: o servidor normaliza e o aparelho não mexe', () async {
+      repo.serverLoudness = {
+        song('A').id: const TrackLoudness(-4, -0.5),
+        song('B').id: const TrackLoudness(-16, -9),
+      };
       await controller().playList(abc, 0, context: 'Busca');
+      expect(repo.streamNorms, [-10]);
+      expect((engine.volume, engine.boost), (1.0, 0.0));
+      await controller().next();
+      expect(repo.streamNorms, [-10, -10]);
       expect((engine.volume, engine.boost), (1.0, 0.0));
     });
 
-    test('normalização normal (−14) e desligada', () async {
+    test('stream de música ainda não medida: o aparelho ajusta', () async {
+      await controller().playList(abc, 0, context: 'Busca');
+      expect(repo.streamNorms, [null]);
+      expect((engine.volume, engine.boost), (1.0, 0.0));
+    });
+
+    test('trocar o nível no meio da música pede o stream de novo', () async {
       repo.serverLoudness = {song('A').id: const TrackLoudness(-8, -0.5)};
       final prefs = container.read(preferencesProvider.notifier);
       await prefs.setLoudness(LoudnessLevel.normal);
       await controller().playList(abc, 0, context: 'Busca');
-      expect(engine.volume, closeTo(0.501, 0.01));
+      expect(repo.streamNorms, [-14]);
+      engine.emitPosition(const Duration(seconds: 40));
+      await pumpEventQueue();
       await prefs.setLoudness(LoudnessLevel.desligado);
       await pumpEventQueue();
+      expect(
+        repo.streamNorms.last,
+        isNull,
+        reason: 'desligada: sem normalizar',
+      );
+      expect(
+        engine.log,
+        contains('seek 40'),
+        reason: 'continua do mesmo ponto',
+      );
       expect((engine.volume, engine.boost), (1.0, 0.0));
     });
 
-    test(
-      'volume da barra (curva cúbica) multiplica o da normalização',
-      () async {
-        repo.serverLoudness = {song('A').id: const TrackLoudness(-4, -0.5)};
-        await controller().playList(abc, 0, context: 'Busca');
-        controller().setVolume(0.5);
-        expect(engine.volume, closeTo(0.125 * 0.501, 0.005));
-        expect(container.read(preferencesProvider).volume, 0.5);
-      },
-    );
+    test('volume da barra segue a curva cúbica', () async {
+      repo.serverLoudness = {song('A').id: const TrackLoudness(-4, -0.5)};
+      await controller().playList(abc, 0, context: 'Busca');
+      controller().setVolume(0.5);
+      expect(engine.volume, closeTo(0.125, 0.005));
+      expect(container.read(preferencesProvider).volume, 0.5);
+    });
+
+    test('a próxima já baixada fica pronta no volume certo', () async {
+      repo.serverLoudness = {song('B').id: const TrackLoudness(-12, -3)};
+      await controller().playList(abc, 0, context: 'Busca');
+      engine.emitPosition(const Duration(seconds: 20));
+      await pumpEventQueue();
+      expect(repo.warmed, ['id-B']);
+    });
 
     test('fade ao pausar: o som desce até 0 e só então o motor para', () async {
       final c = fading();

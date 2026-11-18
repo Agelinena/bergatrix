@@ -406,6 +406,26 @@ Rodado na imagem `ghcr.io/cirruslabs/flutter:stable` (Flutter 3.44.0 / Dart 3.12
 - Testes: `test_quality` 61, `test_upgrade_flow` 10 (novo; banco real e Lidarr falso). Validado
   contra o MusicBrainz e um Lidarr local (ISRC → álbum de estúdio → `album/lookup` por MBID).
 
+### Versão 0.7.0 — normalização no servidor, fila mais rápida e letra marcada
+- **Normalização no servidor:** o stream sai já no volume alvo (−10 ou −14 LUFS), igual em
+  todos os aparelhos (antes a web não subia nada e o computador só +6 dB). As altas descem; as
+  baixas sobem até +12 dB, com limitador só nos picos (pico real ≤ −1,5 dBTP). A versão
+  normalizada é feita uma vez e guardada; FLAC continua FLAC. Trocar o nível no meio da música
+  recarrega o stream no mesmo ponto. Músicas baixadas no aparelho seguem com o ajuste local.
+- **Fila mais rápida:** o app adianta as 2 próximas (antes 1), a partir de 5 s (antes 8), na fila
+  média do servidor; tocar uma música a promove para a alta. O servidor baixa 3 ao mesmo tempo
+  (antes 2), com no máximo 1 de playlist em segundo plano. A próxima já baixada tem a versão
+  certa (nível e volume) preparada antes da troca.
+- **Letra marcada linha a linha** (Ajustar letra → Marcar linha a linha): com a música tocando,
+  "Marcar" (ou espaço) quando cada linha começa; tocar numa linha volta 3 s antes dela para
+  remarcar; ±0,1 s por linha; salva para todos. O ajuste geral ganhou passos de ±0,1 s e ±0,5 s.
+- **Rádio:** o mesmo artista aparece espalhado ao acaso (antes alternava em padrão); o que já
+  apareceu na fila da rádio (mesmo sem tocar) não volta; versões da mesma música (ao vivo,
+  remaster, single) contam como uma só e fica a versão normal.
+- **Player mostra se a música está numa playlist sua** ("Na sua playlist …", tocar abre).
+- Testes: backend `test_normalize` 14, `test_prefetch` 4, `test_containing` 5 (novos),
+  `test_radio` 29; app 452.
+
 ### Versão 0.6.0 — rádio, capa inteira e player dividido
 - **Rádio** (`POST /api/radio`): tocar uma música na busca toca ela na hora e, 3 s depois, monta a
   rádio dela na fila; "Iniciar rádio" no menu de qualquer música; o player mostra "Rádio de …".

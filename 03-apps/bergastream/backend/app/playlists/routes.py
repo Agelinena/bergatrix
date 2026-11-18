@@ -2,10 +2,11 @@
 from __future__ import annotations
 
 import logging
+import re
 import uuid
 from pathlib import Path
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
@@ -70,6 +71,48 @@ class MemberRole(BaseModel):
 @router.get("/me/playlists", response_model=list[service.PlaylistSummary])
 async def my_playlists(user: CurrentUser = Depends(current_user)):
     return await service.list_for(get_pool(), user.id)
+
+
+class Containing(BaseModel):
+    id: str
+    name: str
+
+
+@router.get("/me/playlists/containing", response_model=list[Containing])
+async def playlists_containing(
+    title: str = Query(..., max_length=300),
+    artist: str = Query(..., max_length=300),
+    provider: str = Query("", max_length=20),
+    external_id: str = Query("", max_length=100),
+    isrc: str = Query("", max_length=20),
+    user: CurrentUser = Depends(current_user),
+):
+    """Em quais playlists da pessoa (dona ou membro) esta música está, para o
+    indicador do player. Vale a mesma música por outra fonte ou em outra
+    versão (remaster, ao vivo): compara pelo id da fonte, pelo ISRC e pelo
+    artista e título normalizados."""
+    from app.radio import match
+    base = re.split(r"\s+[-(\[]", title.strip(), maxsplit=1)[0][:60]
+    rows = await get_pool().fetch(
+        """SELECT DISTINCT p.id, p.name, t.title, t.artist, t.isrc,
+                  EXISTS (SELECT 1 FROM external_ids e WHERE e.track_id = t.id
+                          AND e.provider = $2 AND e.external_id = $3) AS same_id
+           FROM playlists p
+           JOIN playlist_tracks pt ON pt.playlist_id = p.id
+           JOIN tracks t ON t.id = pt.track_id
+           WHERE (p.user_id = $1 OR EXISTS (SELECT 1 FROM playlist_members m
+                                            WHERE m.playlist_id = p.id AND m.user_id = $1))
+             AND (lower(t.title) LIKE lower($4) || '%'
+                  OR ($5 <> '' AND t.isrc = $5)
+                  OR EXISTS (SELECT 1 FROM external_ids e WHERE e.track_id = t.id
+                             AND e.provider = $2 AND e.external_id = $3))""",
+        user.id, provider, external_id, base, isrc)
+    want = match.key(artist, title)
+    out: dict[str, str] = {}
+    for r in rows:
+        if r["same_id"] or (isrc and r["isrc"] == isrc) or match.key(r["artist"], r["title"]) == want:
+            out[str(r["id"])] = r["name"]
+    return [Containing(id=k, name=v) for k, v in sorted(out.items(), key=lambda kv: kv[1].lower())]
 
 
 @router.get("/users/directory", response_model=list[service.Person])
