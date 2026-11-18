@@ -47,13 +47,16 @@ Map<String, dynamic> playback({
 
 Map<String, dynamic> sessionJson({
   String mode = 'all',
+  String audio = 'all',
+  Person owner = FakeSessionRepository.me,
   Map<String, dynamic>? pb,
   int serverNow = start,
 }) => {
   'id': 's1',
   'name': '',
-  'owner': FakeSessionRepository.me.toJson(),
+  'owner': owner.toJson(),
   'pause_mode': mode,
+  'audio_mode': audio,
   'members': [
     {'user': FakeSessionRepository.me.toJson(), 'status': 'joined'},
     {'user': marina.toJson(), 'status': 'joined', 'online': true},
@@ -390,6 +393,36 @@ void main() {
     await player().togglePlay();
     await settle();
     expect(engine.playing, isTrue);
+  });
+
+  test(
+    'toca só no aparelho de quem criou: aqui só controla, sem som',
+    () async {
+      await joinWith(
+        sessionJson(
+          owner: marina,
+          audio: 'owner',
+          pb: playback(positionMs: 30000, anchorAt: start - 5000),
+        ),
+      );
+      expect(engine.log, isNot(contains('setUrl')), reason: 'não carrega nada');
+      expect(engine.playing, isFalse);
+      expect(playerState().current!.track.title, 'A');
+      expect(playerState().status, PlaybackStatus.tocando);
+      expect(playerState().playingOn, 'aparelho de Marina');
+      // Os controles mandam na sessão (no aparelho da Marina).
+      await player().togglePlay();
+      expect(actions().last, {'action': 'pause'});
+      await player().addToQueue(song('C'));
+      expect(actions().last['action'], 'add');
+    },
+  );
+
+  test('toca só no aparelho de quem criou: o de quem criou toca', () async {
+    await joinWith(sessionJson(audio: 'owner'));
+    expect(engine.log, contains('setUrl'));
+    expect(engine.playing, isTrue);
+    expect(playerState().playingOn, isNull);
   });
 
   test('convites pendentes chegam pela consulta', () async {

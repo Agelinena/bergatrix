@@ -4,6 +4,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/theme/berga_colors.dart';
 import '../../core/theme/berga_sizes.dart';
 import '../../core/theme/berga_text.dart';
+import '../player/player_controller.dart';
+import '../../core/widgets/widgets.dart';
+import '../output/output_devices.dart';
 import 'device_controller.dart';
 
 /// Textos do "Tocar em…".
@@ -15,8 +18,19 @@ abstract final class DevicesTexts {
       'Abra o Bergastream em outro aparelho com a mesma conta (celular, '
       'computador ou navegador) e ele aparece aqui.';
   static const offline = 'Sem conexão com o servidor.';
+  static const network = 'Na rede';
+  static const searching = 'Procurando Chromecast e TVs…';
+  static const noneFound =
+      'Nenhum Chromecast ou TV achado. Eles precisam estar ligados e na mesma '
+      'rede Wi-Fi.';
+  static const stopCasting = 'Parar de transmitir';
 
-  static String playingOn(String name) => 'Tocando em $name';
+  /// "Tocando em Notebook"; numa sessão que toca só no aparelho de quem
+  /// criou: "Tocando no aparelho de Lucas".
+  static String playingOn(String name) =>
+      name.startsWith(PlayerController.sessionOwnerPrefix)
+      ? 'Tocando no $name'
+      : 'Tocando em $name';
 }
 
 IconData deviceIcon(String platform) => switch (platform) {
@@ -36,9 +50,9 @@ class DevicesButton extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final c = BergaColors.of(context);
-    final elsewhere = ref.watch(
-      devicesProvider.select((d) => d.otherActive != null),
-    );
+    final elsewhere =
+        ref.watch(devicesProvider.select((d) => d.otherActive != null)) ||
+        ref.watch(playerProvider.select((s) => s.playingOn != null));
     return IconButton(
       onPressed: () => openDevicesSheet(context),
       icon: const Icon(Icons.speaker_group_outlined),
@@ -101,14 +115,53 @@ Future<void> openDevicesSheet(BuildContext context) {
   );
 }
 
-/// Lista dos aparelhos da pessoa: tocar num deles passa a música para lá.
-class DevicesSheet extends ConsumerWidget {
+/// Lista dos aparelhos da pessoa e, na rede, Chromecasts e TVs: tocar num
+/// deles passa a música para lá.
+class DevicesSheet extends ConsumerStatefulWidget {
   const DevicesSheet({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<DevicesSheet> createState() => _DevicesSheetState();
+}
+
+class _DevicesSheetState extends ConsumerState<DevicesSheet> {
+  @override
+  void initState() {
+    super.initState();
+    // Procura Chromecasts e TVs ao abrir.
+    Future.microtask(() {
+      if (mounted) ref.read(outputDevicesProvider.notifier).search();
+    });
+  }
+
+  Future<void> _cast(OutputDevice device) async {
+    final navigator = Navigator.of(context);
+    try {
+      final renderer = await ref
+          .read(outputDevicesProvider.notifier)
+          .connect(device);
+      await ref.read(playerProvider.notifier).switchOutput(renderer);
+      if (navigator.mounted) navigator.pop();
+    } on Object catch (e) {
+      debugPrint('Tocar em ${device.name}: $e');
+      if (mounted) {
+        AppToast.show(context, 'Não deu para conectar em ${device.name}.');
+      }
+    }
+  }
+
+  Future<void> _stopCasting() async {
+    await ref.read(playerProvider.notifier).switchOutput(null);
+    if (mounted) Navigator.of(context).pop();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final c = BergaColors.of(context);
     final devices = ref.watch(devicesProvider);
+    final network = ref.watch(outputDevicesProvider);
+    final casting = ref.watch(playerProvider.notifier).renderer;
+    ref.watch(playerProvider.select((s) => s.playingOn));
     final mu = BergaText.secondary.copyWith(color: c.mu);
     // Este aparelho primeiro; depois o que toca; depois os outros.
     final list = [...devices.devices]
@@ -138,6 +191,11 @@ class DevicesSheet extends ConsumerWidget {
                   here: d.id == devices.myId,
                   playing: d.id == devices.activeId,
                   onTap: () {
+                    // Transmitindo: "Este aparelho" traz a música de volta.
+                    if (casting != null && d.id == devices.myId) {
+                      _stopCasting();
+                      return;
+                    }
                     ref.read(devicesProvider.notifier).transfer(d.id);
                     Navigator.of(context).pop();
                   },
@@ -147,6 +205,122 @@ class DevicesSheet extends ConsumerWidget {
                 Text(DevicesTexts.alone, style: mu),
               ],
             ],
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    DevicesTexts.network,
+                    style: BergaText.trackTitle.copyWith(color: c.tx),
+                  ),
+                ),
+                if (network.searching)
+                  SizedBox.square(
+                    dimension: 16,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: c.mu,
+                    ),
+                  )
+                else
+                  IconButton(
+                    tooltip: 'Procurar de novo',
+                    onPressed: () =>
+                        ref.read(outputDevicesProvider.notifier).search(),
+                    icon: Icon(Icons.refresh, color: c.mu, size: 20),
+                  ),
+              ],
+            ),
+            if (casting != null)
+              _NetworkRow(
+                name: casting.name,
+                kind: casting.kind,
+                active: true,
+                subtitle: DevicesTexts.stopCasting,
+                onTap: _stopCasting,
+              ),
+            for (final d in network.devices)
+              if (casting == null || d.name != casting.name)
+                _NetworkRow(
+                  name: d.name,
+                  kind: d.kind,
+                  busy: network.connecting == d.id,
+                  onTap: network.connecting == null ? () => _cast(d) : null,
+                ),
+            if (network.searching && network.devices.isEmpty)
+              Text(DevicesTexts.searching, style: mu)
+            else if (!network.searching &&
+                network.devices.isEmpty &&
+                casting == null)
+              Text(DevicesTexts.noneFound, style: mu),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Chromecast ou TV na rede.
+class _NetworkRow extends StatelessWidget {
+  const _NetworkRow({
+    required this.name,
+    required this.kind,
+    required this.onTap,
+    this.active = false,
+    this.busy = false,
+    this.subtitle,
+  });
+
+  final String name;
+  final String kind;
+  final bool active;
+  final bool busy;
+  final String? subtitle;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = BergaColors.of(context);
+    final color = active ? c.gr : c.tx;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(BergaSizes.cardRadius),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
+        child: Row(
+          spacing: 14,
+          children: [
+            Icon(
+              kind == 'DLNA' ? Icons.tv : Icons.cast,
+              color: color,
+              size: 26,
+            ),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: BergaText.trackTitle.copyWith(color: color),
+                  ),
+                  Text(
+                    subtitle ?? kind,
+                    style: BergaText.secondary.copyWith(
+                      color: active ? c.gr : c.mu,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (busy)
+              SizedBox.square(
+                dimension: 18,
+                child: CircularProgressIndicator(strokeWidth: 2, color: c.mu),
+              )
+            else if (active)
+              Icon(Icons.cast_connected, color: c.gr, size: 20),
           ],
         ),
       ),

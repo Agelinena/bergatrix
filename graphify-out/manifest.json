@@ -516,15 +516,15 @@
     "semantic_hash": ""
   },
   "03-apps/bergastream/backend/app/sessions/routes.py": {
-    "mtime": 1791469990.6975288,
-    "seen": 1794056463.8189094,
-    "ast_hash": "251bb86655deeacf7b56b0f128166316",
+    "mtime": 1794963040.6998193,
+    "seen": 1794964775.8192973,
+    "ast_hash": "84eef72a8162fe2e834e0246d98caf2a",
     "semantic_hash": ""
   },
   "03-apps/bergastream/backend/app/sessions/service.py": {
-    "mtime": 1791469659.267164,
-    "seen": 1794056463.8189118,
-    "ast_hash": "f33864c86d63570c6e83d88731764625",
+    "mtime": 1794963122.4288926,
+    "seen": 1794964775.8192985,
+    "ast_hash": "2770e56c9c5264ffeba72599acef0fb9",
     "semantic_hash": ""
   },
   "03-apps/bergastream/backend/app/storage/__init__.py": {
@@ -702,9 +702,9 @@
     "semantic_hash": ""
   },
   "03-apps/bergastream/backend/tests/test_sessions.py": {
-    "mtime": 1791480546.7239437,
-    "seen": 1794056463.8189883,
-    "ast_hash": "e3a596c7b2eed6e9316e43f336909504",
+    "mtime": 1794963051.3311362,
+    "seen": 1794964775.8198187,
+    "ast_hash": "52a0bcb9b64b999251b3d708610c8490",
     "semantic_hash": ""
   },
   "03-apps/bergastream/backend/tests/test_stream_queue.py": {
@@ -762,9 +762,9 @@
     "semantic_hash": ""
   },
   "03-apps/bergastream/frontend/android/app/src/main/kotlin/com/bergastream/app/MainActivity.kt": {
-    "mtime": 1791340223.93612,
-    "seen": 1794056463.8190098,
-    "ast_hash": "987f94ef684227dd58f1c1d18be844e5",
+    "mtime": 1794963523.3047285,
+    "seen": 1794964775.8199496,
+    "ast_hash": "15667c812632d4f2cda13b27b4aecd01",
     "semantic_hash": ""
   },
   "03-apps/bergastream/frontend/android/build.gradle.kts": {
@@ -786,9 +786,9 @@
     "semantic_hash": ""
   },
   "03-apps/bergastream/frontend/lib/app/app.dart": {
-    "mtime": 1792678943.6711452,
-    "seen": 1794056463.8190186,
-    "ast_hash": "19722149d53714709d79369b25525b7b",
+    "mtime": 1794963832.164792,
+    "seen": 1794964775.8199935,
+    "ast_hash": "4ef7a535b7687f8edc265ce3aba125ce",
     "semantic_hash": ""
   },
   "03-apps/bergastream/frontend/lib/app/app_frame.dart": {
@@ -1212,9 +1212,9 @@
     "semantic_hash": ""
   },
   "03-apps/bergastream/frontend/lib/data/repositories/session_repository.dart": {
-    "mtime": 1791480584.95762,
-    "seen": 1794056463.8191938,
-    "ast_hash": "3dc814496a9f2967091a10e0f2109038",
+    "mtime": 1794963147.6545987,
+    "seen": 1794964775.8211472,
+    "ast_hash": "23cb0c7a15c540e1a0301b5233cb92c9",
     "semantic_hash": ""
   },
   "03-apps/bergastream/frontend/lib/features/account/account_card.dart": {
@@ -1314,9 +1314,9 @@
     "semantic_hash": ""
   },
   "03-apps/bergastream/frontend/lib/features/devices/devices_sheet.dart": {
-    "mtime": 1791482415.9486947,
-    "seen": 1794056463.819231,
-    "ast_hash": "09532d01de838e26f59686484846a32c",
+    "mtime": 1794963560.5607474,
+    "seen": 1794964775.8214123,
+    "ast_hash": "be6652b3008a6f57a3b0d9c89331eea2",
     "semantic_hash": ""
   },
   "03-apps/bergastream/frontend/lib/features/downloads/download_manager.dart": {
@@ -1422,9 +1422,9 @@
     "semantic_hash": ""
   },
   "03-apps/bergastream/frontend/lib/features/player/audio_engine.dart": {
-    "mtime": 1794079103.6227703,
-    "seen": 1794079901.3196244,
-    "ast_hash": "89f61f0386818df81f6ebfd0a57fc3bf",
+    "mtime": 1794963301.43672,
+    "seen": 1794964775.8217082,
+    "ast_hash": "6823b8aca53db43d11fafc063d87f2d7",
     "semantic_hash": ""
   },
   "03-apps/bergastream/frontend/lib/features/player/full_player.dart": {
@@ -1440,9 +1440,9 @@
     "semantic_hash": ""
   },
   "03-apps/bergastream/frontend/lib/features/player/media_notification.dart": {
-    "mtime": 1792493606.714644,
-    "seen": 1794056463.819275,
-    "ast_hash": "caaedabc82d45588ff985c463e579ea7",
+    "mtime": 1794963832.1632051,
+    "seen": 1794964775.821777,
+    "ast_hash": "a89427be3246b7c5d5d08d1042826ec0",
     "semantic_hash": ""
   },
   "03-apps/bergastream/frontend/lib/features/player/mini_player.dart": {
@@ -1464,9 +1464,9 @@
     "semantic_hash": ""
   },
   "03-apps/bergastream/frontend/lib/features/player/player_controller.dart": {
-    "mtime": 1794961261.140421,
-    "seen": 1794961798.6845772,
-    "ast_hash": "274ea760af396e0e35d76bda689f16c7",
+    "mtime": 1794963553.8453696,
+    "seen": 1794964775.8218288,
+    "ast_hash": "62c17e8b2aa793f0a849399ce78df383",
     "semantic_hash": ""
   },
   "03-apps/bergastream/frontend/lib/features/player/player_messages.dart": {
@@ -1560,15 +1560,15 @@
     "semantic_hash": ""
   },
   "03-apps/bergastream/frontend/lib/features/session/group_session.dart": {
-    "mtime": 1791909734.4403296,
-    "seen": 1794056463.8193164,
-    "ast_hash": "8de0454a53dbc8a8f5604287cbfd9fba",
+    "mtime": 1794963140.4495132,
+    "seen": 1794964775.8220668,
+    "ast_hash": "a9061c4d8997b0c893d652b1975e18da",
     "semantic_hash": ""
   },
   "03-apps/bergastream/frontend/lib/features/session/session_sheet.dart": {
-    "mtime": 1791470356.6070442,
-    "seen": 1794056463.8193188,
-    "ast_hash": "157817b490fe8c991f6d46a015dbb2cc",
+    "mtime": 1794963147.3058317,
+    "seen": 1794964775.8220675,
+    "ast_hash": "7e41dad9fb7eab881e06251e8bf34a38",
     "semantic_hash": ""
   },
   "03-apps/bergastream/frontend/lib/features/settings/preferences.dart": {
@@ -1692,9 +1692,9 @@
     "semantic_hash": ""
   },
   "03-apps/bergastream/frontend/pubspec.yaml": {
-    "mtime": 1794961495.091096,
-    "seen": 1794961798.685172,
-    "ast_hash": "51b902a8bc45895e99026d2d51f42c87",
+    "mtime": 1794963930.8112016,
+    "seen": 1794964775.8223655,
+    "ast_hash": "62d0f5ae331125b9b50366fe74595b36",
     "semantic_hash": ""
   },
   "03-apps/bergastream/frontend/test/app/gallery_golden_test.dart": {
@@ -1716,9 +1716,9 @@
     "semantic_hash": ""
   },
   "03-apps/bergastream/frontend/test/app_harness.dart": {
-    "mtime": 1794960808.4491236,
-    "seen": 1794961798.6852198,
-    "ast_hash": "66585f09450532352f1934c10afba25f",
+    "mtime": 1794963636.271369,
+    "seen": 1794964775.8224094,
+    "ast_hash": "0db42eaed6f715660387bee82fd94f6f",
     "semantic_hash": ""
   },
   "03-apps/bergastream/frontend/test/core/network/auth_interceptor_test.dart": {
@@ -1788,9 +1788,9 @@
     "semantic_hash": ""
   },
   "03-apps/bergastream/frontend/test/fake_player.dart": {
-    "mtime": 1794961252.9032729,
-    "seen": 1794961798.6853964,
-    "ast_hash": "a15129c9a03f45cbd858a5076aa5f1b1",
+    "mtime": 1794963636.289369,
+    "seen": 1794964775.8225887,
+    "ast_hash": "9697a6c3680a6d348fb69bc959c4c80b",
     "semantic_hash": ""
   },
   "03-apps/bergastream/frontend/test/fake_update.dart": {
@@ -1944,9 +1944,9 @@
     "semantic_hash": ""
   },
   "03-apps/bergastream/frontend/test/features/session/group_session_test.dart": {
-    "mtime": 1791482549.6707788,
-    "seen": 1794056463.8194535,
-    "ast_hash": "600c614626f4b38d54d81ae2fa5bfa06",
+    "mtime": 1794963184.1758058,
+    "seen": 1794964775.8230603,
+    "ast_hash": "f34c4e9fa49d9997f97485a71d619e43",
     "semantic_hash": ""
   },
   "03-apps/bergastream/frontend/test/features/session/session_ui_test.dart": {
@@ -2022,9 +2022,9 @@
     "semantic_hash": ""
   },
   "03-apps/bergastream/frontend/test/helpers.dart": {
-    "mtime": 1794960808.4492178,
-    "seen": 1794961798.6860042,
-    "ast_hash": "579095cc025ed7732b39383c18930914",
+    "mtime": 1794963593.4788902,
+    "seen": 1794964775.8232517,
+    "ast_hash": "dc1789620a2c240f399abd23878cab31",
     "semantic_hash": ""
   },
   "03-apps/bergastream/frontend/test/widget_test.dart": {
@@ -2526,9 +2526,9 @@
     "semantic_hash": ""
   },
   "03-apps/bergastream/docs/API_MAP.md": {
-    "mtime": 1794961495.087533,
-    "seen": 1794961798.6894774,
-    "ast_hash": "1f6cf7c548dd3f87fad02246bfa71bb6",
+    "mtime": 1794963930.80737,
+    "seen": 1794964775.8266764,
+    "ast_hash": "420849c214368157ae9fa5c3d98a1929",
     "semantic_hash": ""
   },
   "03-apps/bergastream/docs/AUTHENTIK.md": {
@@ -2616,9 +2616,9 @@
     "semantic_hash": ""
   },
   "03-apps/bergastream/ja_implementado.md": {
-    "mtime": 1794961791.6297562,
-    "seen": 1794961798.6896946,
-    "ast_hash": "4598889a45bb8e3ca46d9ad119aaca57",
+    "mtime": 1794964768.3694208,
+    "seen": 1794964775.8268898,
+    "ast_hash": "2c404b6816b291b1155ceb69cc23c119",
     "semantic_hash": ""
   },
   "03-apps/drop/README.md": {
@@ -5739,6 +5739,78 @@
     "mtime": 1794961447.2932856,
     "seen": 1794961798.684528,
     "ast_hash": "01359389b1a312e8ae26c6019953a699",
+    "semantic_hash": ""
+  },
+  "03-apps/bergastream/frontend/lib/features/output/cast/cast_channel.dart": {
+    "mtime": 1794963523.300007,
+    "seen": 1794964775.8217025,
+    "ast_hash": "f5b504b36cc478c41acef73f3031bf20",
+    "semantic_hash": ""
+  },
+  "03-apps/bergastream/frontend/lib/features/output/cast/cast_engine.dart": {
+    "mtime": 1794963389.7006824,
+    "seen": 1794964775.8217034,
+    "ast_hash": "c9fdb74c9824c6ca1fc89085b861d946",
+    "semantic_hash": ""
+  },
+  "03-apps/bergastream/frontend/lib/features/output/dlna/dlna.dart": {
+    "mtime": 1794963647.1960182,
+    "seen": 1794964775.8217044,
+    "ast_hash": "cbebf421e2bda9bad3852063233fce83",
+    "semantic_hash": ""
+  },
+  "03-apps/bergastream/frontend/lib/features/output/output_devices.dart": {
+    "mtime": 1794963460.3723717,
+    "seen": 1794964775.821705,
+    "ast_hash": "2bb5b46932101f669c66aaca510b53a6",
+    "semantic_hash": ""
+  },
+  "03-apps/bergastream/frontend/lib/features/output/output_engine.dart": {
+    "mtime": 1794963301.864473,
+    "seen": 1794964775.821706,
+    "ast_hash": "02d022346a8fdd1cc6dc57b8360847c5",
+    "semantic_hash": ""
+  },
+  "03-apps/bergastream/frontend/lib/features/output/output_platform_io.dart": {
+    "mtime": 1794963499.5495937,
+    "seen": 1794964775.8217068,
+    "ast_hash": "4a17a32cfbb5f470c753746514cdf625",
+    "semantic_hash": ""
+  },
+  "03-apps/bergastream/frontend/lib/features/output/output_platform_web.dart": {
+    "mtime": 1794963499.5515938,
+    "seen": 1794964775.8217072,
+    "ast_hash": "55fde2c140487daca900c3519374b2fc",
+    "semantic_hash": ""
+  },
+  "03-apps/bergastream/frontend/lib/features/player/car_library.dart": {
+    "mtime": 1794963832.606488,
+    "seen": 1794964775.8217092,
+    "ast_hash": "765883410e75c0fc38bf392f89efdc01",
+    "semantic_hash": ""
+  },
+  "03-apps/bergastream/frontend/test/features/output/cast_test.dart": {
+    "mtime": 1794963636.3273692,
+    "seen": 1794964775.8228261,
+    "ast_hash": "bb2f8bf8d52d6ed064edf72655917029",
+    "semantic_hash": ""
+  },
+  "03-apps/bergastream/frontend/test/features/output/dlna_test.dart": {
+    "mtime": 1794963636.3293693,
+    "seen": 1794964775.822827,
+    "ast_hash": "ce993a96d777c8e665ec3350a4d7a2bb",
+    "semantic_hash": ""
+  },
+  "03-apps/bergastream/frontend/test/features/output/switch_output_test.dart": {
+    "mtime": 1794963665.6765356,
+    "seen": 1794964775.8228283,
+    "ast_hash": "2c9ac890467281163ce66e3a887a3518",
+    "semantic_hash": ""
+  },
+  "03-apps/bergastream/frontend/test/features/player/car_library_test.dart": {
+    "mtime": 1794963876.7290885,
+    "seen": 1794964775.8228288,
+    "ast_hash": "c00709f045d68bfa5de9b57572deed40",
     "semantic_hash": ""
   }
 }

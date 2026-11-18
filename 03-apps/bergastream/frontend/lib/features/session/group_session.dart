@@ -154,7 +154,19 @@ class GroupSessionController extends Notifier<GroupState>
       state.playback.playing &&
       state.playback.current != null &&
       !state.localPaused &&
+      playsHere &&
       ref.read(devicesProvider).canPlayHere;
+
+  /// Sessão "só no aparelho de quem criou": aqui só controla.
+  @override
+  bool get playsHere {
+    final info = state.info;
+    if (info == null || info.audioMode == AudioMode.all) return true;
+    return info.owner.username == ref.read(sessionProvider).username;
+  }
+
+  @override
+  String? get playsOn => playsHere ? null : state.info?.owner.name;
 
   @override
   void act(Map<String, Object?> action) {
@@ -191,6 +203,12 @@ class GroupSessionController extends Notifier<GroupState>
     final info = state.info;
     if (info == null) return;
     final pb = state.playback;
+    if (!playsHere) {
+      // Só controla: o play/pause vale para a sessão (no aparelho de quem
+      // criou).
+      act({'action': pb.playing ? 'pause' : 'resume'});
+      return;
+    }
     if (shouldPlay) {
       if (info.pauseMode == PauseMode.all) {
         act({'action': 'pause'});
@@ -227,9 +245,13 @@ class GroupSessionController extends Notifier<GroupState>
   }
 
   /// Cria uma sessão já com o que está tocando aqui.
-  Future<void> create({required String name, required PauseMode mode}) async {
+  Future<void> create({
+    required String name,
+    required PauseMode mode,
+    AudioMode audio = AudioMode.all,
+  }) async {
     final seed = _player.sessionSeed();
-    var info = await _repository.create(name: name, mode: mode);
+    var info = await _repository.create(name: name, mode: mode, audio: audio);
     if (seed != null) {
       try {
         var playback = await _repository.act(info.id, {
@@ -295,6 +317,16 @@ class GroupSessionController extends Notifier<GroupState>
       // Pausa só aqui não existe em "pausar para todos".
       localPaused: mode == PauseMode.all ? false : null,
     );
+  }
+
+  /// Onde a sessão toca (só quem criou muda).
+  Future<void> setAudioMode(AudioMode mode) async {
+    final info = state.info;
+    if (info == null || info.audioMode == mode) return;
+    final updated = await _repository.update(info.id, audio: mode);
+    if (state.info?.id != updated.id) return;
+    state = state.copyWith(info: updated.copyWith(playback: state.playback));
+    await _apply();
   }
 
   Future<void> kick(String userId) async {

@@ -406,6 +406,24 @@ Rodado na imagem `ghcr.io/cirruslabs/flutter:stable` (Flutter 3.44.0 / Dart 3.12
 - Testes: `test_quality` 61, `test_upgrade_flow` 10 (novo; banco real e Lidarr falso). Validado
   contra o MusicBrainz e um Lidarr local (ISRC → álbum de estúdio → `album/lookup` por MBID).
 
+### Versão 0.8.0 — jam só controle, Chromecast, DLNA e Android Auto
+- **Jam "só controle"** (Ouvir junto → Onde toca: "Só no de quem criou"): só o aparelho de quem
+  criou toca (a caixa da festa, a TV); os outros mostram a sessão sem som ("Tocando no aparelho
+  de …") e controlam tudo: fila, adicionar, pular, pausar (pausar vale para a sessão mesmo no
+  modo "cada um pausa o seu"). Migração `0019_session_audio_mode.sql`.
+- **Chromecast em todas as plataformas** ("Tocar em…" → Na rede): no Android, Windows e Linux o
+  app procura os aparelhos (mDNS) e fala o protocolo do Cast direto (sem SDK nativo); na web, pelo
+  SDK do Google (o Chrome mostra a lista dele). O aparelho busca a música no servidor (MP3 320 já
+  normalizado), mostra título, artista e capa; a barra de volume vira o volume do Chromecast.
+- **DLNA** (TVs Samsung e outras, Android/Windows/Linux): busca por SSDP e controle UPnP (tocar,
+  pausar, avançar, volume), com título e capa. A TV precisa conseguir abrir o endereço HTTPS do
+  servidor.
+- O player troca de saída sem perder o ponto (pausado continua pausado); fila, rádio e jam
+  continuam iguais. Se o aparelho sair da rede, volta a tocar aqui e avisa.
+- **Android Auto:** Playlists → músicas (com capa) no painel do carro, tocar a partir de uma
+  música, a fila atual e busca por voz ("tocar … no Bergastream" começa a rádio da música).
+- Testes: backend `test_sessions` 42; app 470.
+
 ### Versão 0.7.0 — normalização no servidor, fila mais rápida e letra marcada
 - **Normalização no servidor:** o stream sai já no volume alvo (−10 ou −14 LUFS), igual em
   todos os aparelhos (antes a web não subia nada e o computador só +6 dB). As altas descem; as

@@ -239,9 +239,9 @@ quem criou muda as configurações, remove pessoas e encerra.
 | Endpoint | Quem | Corpo / resposta |
 |---|---|---|
 | `GET /api/sessions/me` | logado | `{"current": SessionInfo\|null, "invites": [Invite]}` (o app consulta a cada 20 s) |
-| `POST /api/sessions` | logado | `{"name"?, "pause_mode": "all"\|"individual"}` → `SessionInfo` (201) |
+| `POST /api/sessions` | logado | `{"name"?, "pause_mode": "all"\|"individual", "audio_mode": "all"\|"owner"}` → `SessionInfo` (201). `audio_mode` "owner": só o aparelho de quem criou toca; os outros controlam (fila, pular, pausar, adicionar) sem som, e pausar vale para todos |
 | `GET /api/sessions/{id}` | participante | `SessionInfo` |
-| `PATCH /api/sessions/{id}` | dono | `{"name"?, "pause_mode"?}` → `SessionInfo` |
+| `PATCH /api/sessions/{id}` | dono | `{"name"?, "pause_mode"?, "audio_mode"?}` → `SessionInfo` |
 | `DELETE /api/sessions/{id}` | dono | encerra para todos (204) |
 | `POST /api/sessions/{id}/invite` | participante | `{"user_ids": [...]}` → 204 |
 | `POST /api/sessions/{id}/join` · `/leave` · `/decline` | convidado / participante | `join` → `SessionInfo`; os outros 204 |

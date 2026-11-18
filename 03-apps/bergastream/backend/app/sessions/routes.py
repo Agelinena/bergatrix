@@ -29,11 +29,14 @@ router = APIRouter(prefix="/api/sessions", tags=["sessions"])
 class NewSession(BaseModel):
     name: str = Field("", max_length=60)
     pause_mode: str = "all"
+    # "all" = toca em todos; "owner" = só no aparelho de quem criou.
+    audio_mode: str = "all"
 
 
 class SessionPatch(BaseModel):
     name: str | None = Field(None, max_length=60)
     pause_mode: str | None = None
+    audio_mode: str | None = None
 
 
 class InviteBody(BaseModel):
@@ -65,7 +68,7 @@ async def my_sessions(user: CurrentUser = Depends(current_user)):
 @router.post("", status_code=201, response_model=svc.SessionInfo)
 async def create(body: NewSession, user: CurrentUser = Depends(current_user)):
     try:
-        session_id = await svc.create(get_pool(), user.id, body.name, body.pause_mode)
+        session_id = await svc.create(get_pool(), user.id, body.name, body.pause_mode, body.audio_mode)
         return await svc.info(get_pool(), session_id)
     except svc.SessionError as exc:
         raise _http(exc)
@@ -83,7 +86,8 @@ async def get(session_id: str, user: CurrentUser = Depends(current_user)):
 @router.patch("/{session_id}", response_model=svc.SessionInfo)
 async def update(session_id: str, body: SessionPatch, user: CurrentUser = Depends(current_user)):
     try:
-        return await svc.update(get_pool(), session_id, user.id, body.name, body.pause_mode)
+        return await svc.update(get_pool(), session_id, user.id, body.name, body.pause_mode,
+                                body.audio_mode)
     except svc.SessionError as exc:
         raise _http(exc)
 

@@ -20,6 +20,7 @@ import 'package:bergastream/features/player/player_controller.dart';
 import 'package:bergastream/data/repositories/account_repository.dart';
 import 'package:bergastream/data/repositories/failures_repository.dart';
 import 'package:bergastream/data/repositories/radio_repository.dart';
+import 'package:bergastream/features/output/output_devices.dart';
 import 'package:bergastream/features/player/in_playlists.dart';
 import 'package:bergastream/features/account/account_providers.dart';
 import 'package:bergastream/features/auth/oidc_launcher.dart';
@@ -129,6 +130,7 @@ Widget wrap(
       coverFetcherProvider.overrideWithValue(_NoFetcher()),
       failuresRepositoryProvider.overrideWithValue(FakeFailuresRepository()),
       radioRepositoryProvider.overrideWithValue(FakeRadioRepository()),
+      outputPlatformProvider.overrideWithValue(FakeOutputPlatform()),
       inPlaylistsLookupProvider.overrideWithValue(FakeInPlaylistsLookup()),
       accountRepositoryProvider.overrideWithValue(FakeAccountRepository()),
       externalLinkProvider.overrideWithValue((url) async {}),

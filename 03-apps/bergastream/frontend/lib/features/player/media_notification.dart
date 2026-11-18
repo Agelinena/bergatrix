@@ -2,12 +2,39 @@ import 'package:audio_service/audio_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'car_library.dart';
+
 /// Ponte com o `audio_service`: notificação de mídia e tela de bloqueio no
 /// Android (e Media Session na web). Os botões da notificação chamam as
 /// funções que o player registra em [onCommand].
 class BergaAudioHandler extends BaseAudioHandler with SeekHandler {
   /// Recebe "play", "pause", "next", "previous", "stop" e "seek".
   void Function(String command, [Duration? position])? onCommand;
+
+  /// Android Auto: o que navegar e tocar no painel do carro.
+  CarLibrary? library;
+
+  @override
+  Future<List<MediaItem>> getChildren(
+    String parentMediaId, [
+    Map<String, dynamic>? options,
+  ]) async => await library?.children(parentMediaId) ?? const [];
+
+  @override
+  Future<void> playFromMediaId(
+    String mediaId, [
+    Map<String, dynamic>? extras,
+  ]) async => library?.play(mediaId);
+
+  @override
+  Future<void> playFromSearch(
+    String query, [
+    Map<String, dynamic>? extras,
+  ]) async => library?.search(query);
+
+  @override
+  Future<void> skipToQueueItem(int index) async =>
+      library?.skipToQueueItem(index);
 
   @override
   Future<void> play() async => onCommand?.call('play');

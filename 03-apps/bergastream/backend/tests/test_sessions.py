@@ -130,6 +130,15 @@ def main():
                 r = c.patch(f"/api/sessions/{sid}", json={"pause_mode": "individual"}, headers=h["lucas"])
                 ok(r.json()["pause_mode"], "individual", "dono muda para pausa individual")
                 ok(recv(wm, "session")["session"]["pause_mode"], "individual", "todos ficam sabendo")
+                r = c.patch(f"/api/sessions/{sid}", json={"audio_mode": "owner"}, headers=h["lucas"])
+                ok(r.json()["audio_mode"], "owner", "dono: toca só no aparelho dele")
+                ok(recv(wm, "session")["session"]["audio_mode"], "owner", "todos ficam sabendo do modo de áudio")
+                ok(c.patch(f"/api/sessions/{sid}", json={"audio_mode": "x"}, headers=h["lucas"]).status_code,
+                   422, "modo de áudio inválido")
+                ok(c.patch(f"/api/sessions/{sid}", json={"audio_mode": "all"}, headers=h["marina"]).status_code,
+                   403, "marina não muda o modo de áudio")
+                c.patch(f"/api/sessions/{sid}", json={"audio_mode": "all"}, headers=h["lucas"])
+                recv(wm, "session")
                 wm.send_json({"type": "action", "action": "pause"})
                 wm.send_json({"type": "ping", "t0": 1})
                 ok(wm.receive_json()["type"], "pong", "pausa individual não muda o estado de ninguém")

@@ -24,6 +24,9 @@ if TYPE_CHECKING:
 logger = logging.getLogger("bergastream.sessions")
 
 PAUSE_MODES = ("all", "individual")
+# Onde toca: em todos os aparelhos, ou só no de quem criou (os outros
+# controlam a sessão sem som).
+AUDIO_MODES = ("all", "owner")
 # Rede de segurança: se ninguém avisar o fim da faixa, avança depois disto
 # além da duração (folga para versões um pouco mais longas).
 ENDED_GRACE_MS = 20_000
@@ -46,6 +49,7 @@ class SessionInfo(BaseModel):
     name: str
     owner: Person
     pause_mode: str
+    audio_mode: str = "all"
     members: list[Member]
     playback: Playback
     server_now: int
@@ -130,7 +134,7 @@ async def info(pool, session_id: str) -> SessionInfo:
     online = hub.online_users(session_id)
     return SessionInfo(
         id=str(row["id"]), name=row["name"], owner=_person(row, "owner"),
-        pause_mode=row["pause_mode"],
+        pause_mode=row["pause_mode"], audio_mode=row["audio_mode"],
         members=[Member(user=_person(m, "u"), status=m["status"], online=str(m["u_id"]) in online)
                  for m in members],
         playback=await _playback(pool, session_id, row), server_now=now_ms())
@@ -144,15 +148,18 @@ async def _leave_others(conn, user_id: str, keep: str | None) -> list[str]:
     return [str(r["session_id"]) for r in rows]
 
 
-async def create(pool, user_id: str, name: str, pause_mode: str) -> str:
+async def create(pool, user_id: str, name: str, pause_mode: str, audio_mode: str = "all") -> str:
     if pause_mode not in PAUSE_MODES:
         raise SessionError(422, "Modo de pausa inválido")
+    if audio_mode not in AUDIO_MODES:
+        raise SessionError(422, "Modo de áudio inválido")
     async with pool.acquire() as conn:
         async with conn.transaction():
             left = await _leave_others(conn, user_id, None)
             session_id = str(await conn.fetchval(
-                "INSERT INTO listen_sessions (owner_id, name, pause_mode) VALUES ($1, $2, $3) RETURNING id",
-                user_id, name.strip()[:60], pause_mode))
+                """INSERT INTO listen_sessions (owner_id, name, pause_mode, audio_mode)
+                   VALUES ($1, $2, $3, $4) RETURNING id""",
+                user_id, name.strip()[:60], pause_mode, audio_mode))
             await conn.execute(
                 "INSERT INTO listen_session_members (session_id, user_id, status) VALUES ($1, $2, 'joined')",
                 session_id, user_id)
@@ -237,16 +244,19 @@ async def _after_leaving(pool, session_id: str, user_id: str) -> None:
     await after_members_change(pool, session_id, user_left=user_id)
 
 
-async def update(pool, session_id: str, by: str, name: str | None, pause_mode: str | None) -> SessionInfo:
+async def update(pool, session_id: str, by: str, name: str | None, pause_mode: str | None,
+                 audio_mode: str | None = None) -> SessionInfo:
     row = await require_member(pool, session_id, by)
     if str(row["owner_id"]) != by:
         raise SessionError(403, "Só quem criou a sessão muda as configurações")
     if pause_mode is not None and pause_mode not in PAUSE_MODES:
         raise SessionError(422, "Modo de pausa inválido")
+    if audio_mode is not None and audio_mode not in AUDIO_MODES:
+        raise SessionError(422, "Modo de áudio inválido")
     await pool.execute(
         """UPDATE listen_sessions SET name = coalesce($2, name), pause_mode = coalesce($3, pause_mode),
-                  updated_at = now() WHERE id = $1""",
-        session_id, name.strip()[:60] if name is not None else None, pause_mode)
+                  audio_mode = coalesce($4, audio_mode), updated_at = now() WHERE id = $1""",
+        session_id, name.strip()[:60] if name is not None else None, pause_mode, audio_mode)
     await after_members_change(pool, session_id)
     return await info(pool, session_id)
 
@@ -295,7 +305,10 @@ async def _act(pool, session_id: str, row, username: str, action: dict) -> Playb
     async with r.lock:
         pb = await _playback(pool, session_id, row)
         try:
-            changed = apply(pb, action, now_ms(), username, row["pause_mode"])
+            # Tocando só no aparelho de quem criou, pausar vale para a sessão
+            # (não há "cada um pausa o seu" sem som nos outros).
+            pause_mode = row["pause_mode"] if row["audio_mode"] == "all" else "all"
+            changed = apply(pb, action, now_ms(), username, pause_mode)
         except ActionError as exc:
             raise SessionError(400, str(exc))
         except Exception as exc:  # faixa com campos inválidos, etc.

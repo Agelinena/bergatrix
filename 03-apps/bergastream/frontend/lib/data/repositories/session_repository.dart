@@ -32,6 +32,24 @@ enum PauseMode {
       value == 'individual' ? PauseMode.individual : PauseMode.all;
 }
 
+/// Onde a sessão toca.
+enum AudioMode {
+  /// Em todos os aparelhos: cada um ouve no seu.
+  all('all', 'Em todos'),
+
+  /// Só no aparelho de quem criou; os outros controlam (fila, pular, pausar,
+  /// adicionar) sem som.
+  owner('owner', 'Só no de quem criou');
+
+  const AudioMode(this.apiValue, this.label);
+
+  final String apiValue;
+  final String label;
+
+  static AudioMode parse(String? value) =>
+      value == 'owner' ? AudioMode.owner : AudioMode.all;
+}
+
 class SessionEntry {
   const SessionEntry({
     required this.uid,
@@ -140,6 +158,7 @@ class SessionInfo {
     required this.name,
     required this.owner,
     required this.pauseMode,
+    this.audioMode = AudioMode.all,
     this.members = const [],
     this.playback = const SessionPlayback(),
     this.serverNow = 0,
@@ -150,6 +169,7 @@ class SessionInfo {
     name: json['name'] as String? ?? '',
     owner: Person.fromJson(json['owner'] as Map<String, dynamic>),
     pauseMode: PauseMode.parse(json['pause_mode'] as String?),
+    audioMode: AudioMode.parse(json['audio_mode'] as String?),
     members: [
       for (final m in json['members'] as List<dynamic>? ?? const [])
         SessionMember.fromJson(m as Map<String, dynamic>),
@@ -164,20 +184,25 @@ class SessionInfo {
   final String name;
   final Person owner;
   final PauseMode pauseMode;
+  final AudioMode audioMode;
   final List<SessionMember> members;
   final SessionPlayback playback;
   final int serverNow;
 
-  SessionInfo copyWith({SessionPlayback? playback, PauseMode? pauseMode}) =>
-      SessionInfo(
-        id: id,
-        name: name,
-        owner: owner,
-        pauseMode: pauseMode ?? this.pauseMode,
-        members: members,
-        playback: playback ?? this.playback,
-        serverNow: serverNow,
-      );
+  SessionInfo copyWith({
+    SessionPlayback? playback,
+    PauseMode? pauseMode,
+    AudioMode? audioMode,
+  }) => SessionInfo(
+    id: id,
+    name: name,
+    owner: owner,
+    pauseMode: pauseMode ?? this.pauseMode,
+    audioMode: audioMode ?? this.audioMode,
+    members: members,
+    playback: playback ?? this.playback,
+    serverNow: serverNow,
+  );
 
   /// Nome de quem tem este username (para "Marina pausou").
   String nameOf(String username) => members
@@ -240,12 +265,21 @@ class MySessions {
 /// Rotas REST das sessões. Lança [ApiException].
 abstract interface class SessionRepository {
   Future<MySessions> mine();
-  Future<SessionInfo> create({required String name, required PauseMode mode});
+  Future<SessionInfo> create({
+    required String name,
+    required PauseMode mode,
+    AudioMode audio = AudioMode.all,
+  });
   Future<void> invite(String sessionId, List<String> userIds);
   Future<SessionInfo> join(String sessionId);
   Future<void> leave(String sessionId);
   Future<void> decline(String sessionId);
-  Future<SessionInfo> update(String sessionId, {String? name, PauseMode? mode});
+  Future<SessionInfo> update(
+    String sessionId, {
+    String? name,
+    PauseMode? mode,
+    AudioMode? audio,
+  });
   Future<void> end(String sessionId);
   Future<void> kick(String sessionId, String userId);
 
@@ -274,14 +308,21 @@ class HttpSessionRepository implements SessionRepository {
   });
 
   @override
-  Future<SessionInfo> create({required String name, required PauseMode mode}) =>
-      _call(() async {
-        final r = await _dio.post<Map<String, dynamic>>(
-          '/api/sessions',
-          data: {'name': name, 'pause_mode': mode.apiValue},
-        );
-        return SessionInfo.fromJson(r.data!);
-      });
+  Future<SessionInfo> create({
+    required String name,
+    required PauseMode mode,
+    AudioMode audio = AudioMode.all,
+  }) => _call(() async {
+    final r = await _dio.post<Map<String, dynamic>>(
+      '/api/sessions',
+      data: {
+        'name': name,
+        'pause_mode': mode.apiValue,
+        'audio_mode': audio.apiValue,
+      },
+    );
+    return SessionInfo.fromJson(r.data!);
+  });
 
   @override
   Future<void> invite(String sessionId, List<String> userIds) => _call(
@@ -312,10 +353,15 @@ class HttpSessionRepository implements SessionRepository {
     String sessionId, {
     String? name,
     PauseMode? mode,
+    AudioMode? audio,
   }) => _call(() async {
     final r = await _dio.patch<Map<String, dynamic>>(
       '/api/sessions/$sessionId',
-      data: {'name': ?name, 'pause_mode': ?mode?.apiValue},
+      data: {
+        'name': ?name,
+        'pause_mode': ?mode?.apiValue,
+        'audio_mode': ?audio?.apiValue,
+      },
     );
     return SessionInfo.fromJson(r.data!);
   });
@@ -423,6 +469,7 @@ class FakeSessionRepository implements SessionRepository {
     String id = 's1',
     Person owner = me,
     PauseMode mode = PauseMode.all,
+    AudioMode audio = AudioMode.all,
     List<SessionMember> members = const [
       SessionMember(user: me, status: 'joined', online: true),
     ],
@@ -432,6 +479,7 @@ class FakeSessionRepository implements SessionRepository {
     name: '',
     owner: owner,
     pauseMode: mode,
+    audioMode: audio,
     members: members,
     playback: playback,
   );
@@ -446,9 +494,10 @@ class FakeSessionRepository implements SessionRepository {
   Future<SessionInfo> create({
     required String name,
     required PauseMode mode,
+    AudioMode audio = AudioMode.all,
   }) async {
     calls.add('create:${mode.apiValue}');
-    return current = session(mode: mode);
+    return current = session(mode: mode, audio: audio);
   }
 
   @override
@@ -485,9 +534,12 @@ class FakeSessionRepository implements SessionRepository {
     String sessionId, {
     String? name,
     PauseMode? mode,
+    AudioMode? audio,
   }) async {
-    calls.add('update:${mode?.apiValue}');
-    return current = current!.copyWith(pauseMode: mode);
+    calls.add(
+      audio == null ? 'update:${mode?.apiValue}' : 'audio:${audio.apiValue}',
+    );
+    return current = current!.copyWith(pauseMode: mode, audioMode: audio);
   }
 
   @override

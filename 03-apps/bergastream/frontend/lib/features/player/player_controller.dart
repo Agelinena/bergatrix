@@ -20,6 +20,7 @@ import '../home/home_providers.dart';
 import '../playlists/last_played.dart';
 import '../playlists/playlist_shuffle.dart';
 import '../settings/preferences.dart';
+import '../output/output_engine.dart';
 import 'audio_engine.dart';
 import 'media_notification.dart';
 import 'play_queue.dart';
@@ -249,6 +250,13 @@ abstract interface class SharedPlayback {
   /// aqui).
   bool get shouldPlay;
 
+  /// Se a sessão sai som neste aparelho (falso = só controla: a sessão toca
+  /// só no aparelho de quem criou).
+  bool get playsHere;
+
+  /// Quem toca quando não é aqui (nome de quem criou a sessão).
+  String? get playsOn;
+
   void act(Map<String, Object?> action);
 
   Future<void> togglePlay();
@@ -322,7 +330,8 @@ class PlayerController extends Notifier<PlayerState> {
   /// o anterior. Devolve se terminou (não foi cancelado).
   Future<bool> _fadeTo(double target, int ms) async {
     final token = ++_fadeGen;
-    if (ms <= 0 || !ref.read(playerTimingsProvider).fades) {
+    // No Chromecast/TV cada passo do fade seria um comando pela rede.
+    if (ms <= 0 || !ref.read(playerTimingsProvider).fades || _onRenderer) {
       _fade = target;
       _applyVolume();
       return true;
@@ -444,6 +453,18 @@ class PlayerController extends Notifier<PlayerState> {
   final _subscriptions = <StreamSubscription<Object?>>[];
 
   AudioEngine get _engine => ref.read(audioEngineProvider);
+
+  /// A saída trocável (nula nos testes com motor falso simples).
+  OutputEngine? get _output => switch (_engine) {
+    final OutputEngine o => o,
+    _ => null,
+  };
+
+  /// Tocando num Chromecast/TV: sem arquivo local, sem fades, MP3 320.
+  bool get _onRenderer => _output?.remote != null;
+
+  /// O Chromecast/TV em uso (nulo = toca aqui).
+  RemoteRenderer? get renderer => _output?.remote;
   PlaybackRepository get _repository => ref.read(playbackRepositoryProvider);
   BergaAudioHandler? get _notification => ref.read(mediaNotificationProvider);
 
@@ -616,6 +637,7 @@ class PlayerController extends Notifier<PlayerState> {
   void detachGroup() {
     if (_group == null || !ref.mounted) return;
     _group = null;
+    _stopSilent();
     _sharedUids.clear();
     _sharedOrder = const [];
     _sharedIndex = -1;
@@ -681,6 +703,11 @@ class PlayerController extends Notifier<PlayerState> {
             item.uid: playback.queue[i].uid,
         });
     }
+    if (!group.playsHere) {
+      await _followSilently(playback, group);
+      return;
+    }
+    _stopSilent();
     final current = _queue.current;
     if (current == null) {
       // Sessão sem nada tocando.
@@ -723,6 +750,48 @@ class PlayerController extends Notifier<PlayerState> {
     } else {
       _publish();
     }
+  }
+
+  // ── Sessão que toca só no aparelho de quem criou ──
+
+  Timer? _silentTicker;
+  String? _sessionPlaysOn;
+
+  /// Rótulo "Tocando no aparelho de Lucas" (ver DevicesTexts.playingOn).
+  static const sessionOwnerPrefix = 'aparelho de ';
+
+  /// Este aparelho só controla: mostra a fila e o estado da sessão (tocando,
+  /// posição) sem carregar nem tocar nada.
+  Future<void> _followSilently(
+    SessionPlayback playback,
+    SharedPlayback group,
+  ) async {
+    _generation++; // descarta qualquer carregamento em andamento
+    _loadedTrackId = null;
+    _streamTrackId = null;
+    _sessionPlaysOn = group.playsOn == null
+        ? null
+        : '$sessionOwnerPrefix${group.playsOn}';
+    await _own(_engine.pause);
+    if (!ref.mounted) return;
+    _silentTicker ??= Timer.periodic(
+      const Duration(milliseconds: 500),
+      (_) => _positions.add(group.position),
+    );
+    _positions.add(group.position);
+    _publish(
+      status: _queue.current == null
+          ? PlaybackStatus.parado
+          : playback.playing
+          ? PlaybackStatus.tocando
+          : PlaybackStatus.pausado,
+    );
+  }
+
+  void _stopSilent() {
+    _silentTicker?.cancel();
+    _silentTicker = null;
+    _sessionPlaysOn = null;
   }
 
   String? _sharedUidOf(int localUid) => _sharedUids[localUid];
@@ -776,6 +845,11 @@ class PlayerController extends Notifier<PlayerState> {
       ..add(engine.playingStream.listen(_onEnginePlaying))
       ..add(engine.errorStream.listen(_onEngineError));
     _notification?.onCommand = _onNotificationCommand;
+    if (engine case final OutputEngine output) {
+      _subscriptions.add(
+        output.lostStream.listen((_) => unawaited(_rendererLost())),
+      );
+    }
     Future.microtask(_restore);
     ref.onDispose(() {
       for (final s in _subscriptions) {
@@ -784,6 +858,7 @@ class PlayerController extends Notifier<PlayerState> {
       _remoteTicker?.cancel();
       _idleTimer?.cancel();
       _radioTimer?.cancel();
+      _silentTicker?.cancel();
       _positions.close();
     });
     return const PlayerState();
@@ -862,6 +937,37 @@ class PlayerController extends Notifier<PlayerState> {
 
   /// Playlist que está tocando (para o botão "Aleatório" da playlist).
   String? get playlistId => _playlistId;
+
+  // ── Tocar num Chromecast ou TV ──
+
+  /// Passa a tocar em [renderer] (nulo = volta para este aparelho), do ponto
+  /// em que estava; pausado continua pausado.
+  Future<void> switchOutput(RemoteRenderer? renderer) async {
+    final output = _output;
+    if (output == null || identical(output.remote, renderer)) return;
+    final at = _lastPosition;
+    final wasPlaying = state.isPlaying;
+    _generation++;
+    await output.use(renderer);
+    if (!ref.mounted) return;
+    _streamTrackId = null;
+    _loadedTrackId = null;
+    _publish();
+    if (_queue.current == null || _group != null && !(_group!.playsHere)) {
+      return;
+    }
+    await _loadCurrent(startAt: at);
+    if (!wasPlaying && state.isPlaying && ref.mounted) {
+      await _own(_engine.pause);
+      _publish(status: PlaybackStatus.pausado);
+    }
+  }
+
+  Future<void> _rendererLost() async {
+    final name = _output?.remote?.name;
+    await switchOutput(null);
+    if (name != null) showMessage('$name saiu da rede. Tocando aqui.');
+  }
 
   // ── Rádio ──
 
@@ -1503,6 +1609,8 @@ class PlayerController extends Notifier<PlayerState> {
   /// Nível pedido ao servidor para tocar: o do Wi-Fi (ou cabo, ou web) ou o
   /// de dados móveis (Ajustes → Qualidade).
   Future<AudioQuality> _streamQuality() async {
+    // Chromecast e TV: MP3 320, que todos tocam (e o servidor já normaliza).
+    if (_onRenderer) return AudioQuality.alta;
     final notifier = ref.read(preferencesProvider.notifier);
     await notifier.ready;
     final prefs = ref.read(preferencesProvider);
@@ -1547,6 +1655,7 @@ class PlayerController extends Notifier<PlayerState> {
     _fadingOut = false;
     _quality = null;
     _loadedTrackId = item.track.id;
+    _output?.describe(item.track);
     if (_radio case final radio?) {
       if (!radio.appeared.any((t) => t.id == item.track.id)) {
         radio.appeared.add(item.track);
@@ -1574,7 +1683,7 @@ class PlayerController extends Notifier<PlayerState> {
         ?.downloadedFor(item.track);
     if (generation != _generation) return;
     final path = local?.audioPath;
-    if (path != null && File(path).existsSync()) {
+    if (path != null && File(path).existsSync() && !_onRenderer) {
       _quality = local?.qualityLabel;
       await _own(() => _engine.setFile(path));
       if (generation != _generation) return;
@@ -1857,7 +1966,7 @@ class PlayerController extends Notifier<PlayerState> {
       context: _context,
       duration: _duration,
       message: message,
-      playingOn: _playingOn,
+      playingOn: _playingOn ?? _sessionPlaysOn ?? _output?.remote?.name,
       quality: _quality,
       playlistId: _playlistTracks.contains(_queue.current?.track.id)
           ? _playlistId

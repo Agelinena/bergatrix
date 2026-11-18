@@ -25,6 +25,14 @@ abstract final class SessionTexts {
   static const leave = 'Sair da sessão';
   static const end = 'Encerrar para todos';
   static const pauseTitle = 'Modo de pausa';
+  static const audioTitle = 'Onde toca';
+
+  static String audioDetail(AudioMode mode) => switch (mode) {
+    AudioMode.all => 'Cada pessoa ouve no próprio aparelho.',
+    AudioMode.owner =>
+      'Só o aparelho de quem criou toca (a caixa de som da festa, a TV). Os '
+          'outros controlam sem som: põem músicas na fila, pulam e pausam.',
+  };
 
   static String pauseDetail(PauseMode mode) => switch (mode) {
     PauseMode.all => 'Quem pausa, pausa para todo mundo.',
@@ -85,6 +93,7 @@ class SessionSheet extends ConsumerStatefulWidget {
 class _SessionSheetState extends ConsumerState<SessionSheet> {
   final _name = TextEditingController();
   var _mode = PauseMode.all;
+  var _audio = AudioMode.all;
   var _busy = false;
 
   @override
@@ -197,6 +206,16 @@ class _SessionSheetState extends ConsumerState<SessionSheet> {
           value: _mode,
           onChanged: (mode) => setState(() => _mode = mode),
         ),
+        const SizedBox(height: 18),
+        Text(
+          SessionTexts.audioTitle,
+          style: BergaText.trackTitle.copyWith(color: c.tx),
+        ),
+        const SizedBox(height: 8),
+        _AudioModePicker(
+          value: _audio,
+          onChanged: (mode) => setState(() => _audio = mode),
+        ),
         const SizedBox(height: 14),
         Text(SessionTexts.seed, style: mu),
         const SizedBox(height: 14),
@@ -207,7 +226,11 @@ class _SessionSheetState extends ConsumerState<SessionSheet> {
           onPressed: _busy
               ? null
               : () => _run(
-                  () => _group.create(name: _name.text.trim(), mode: _mode),
+                  () => _group.create(
+                    name: _name.text.trim(),
+                    mode: _mode,
+                    audio: _audio,
+                  ),
                 ),
         ),
       ],
@@ -251,6 +274,19 @@ class _SessionSheetState extends ConsumerState<SessionSheet> {
           ),
           Text(SessionTexts.pauseDetail(info.pauseMode), style: mu),
         ],
+        const SizedBox(height: 18),
+        Text(
+          SessionTexts.audioTitle,
+          style: BergaText.trackTitle.copyWith(color: c.tx),
+        ),
+        const SizedBox(height: 8),
+        if (isOwner)
+          _AudioModePicker(
+            value: info.audioMode,
+            onChanged: (mode) => _run(() => _group.setAudioMode(mode)),
+          )
+        else
+          Text(SessionTexts.audioDetail(info.audioMode), style: mu),
         const SizedBox(height: 18),
         Row(
           children: [
@@ -359,6 +395,40 @@ class _Offline extends StatelessWidget {
         Text(
           'Precisa do servidor: entre na sua conta e fique online para ouvir '
           'junto.',
+          style: BergaText.secondary.copyWith(color: c.mu),
+        ),
+      ],
+    );
+  }
+}
+
+/// "Onde toca": em todos, ou só no aparelho de quem criou.
+class _AudioModePicker extends StatelessWidget {
+  const _AudioModePicker({required this.value, required this.onChanged});
+
+  final AudioMode value;
+  final ValueChanged<AudioMode> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = BergaColors.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      spacing: 6,
+      children: [
+        Wrap(
+          spacing: BergaSizes.chipGap,
+          children: [
+            for (final mode in AudioMode.values)
+              AppChip(
+                label: mode.label,
+                active: mode == value,
+                onTap: () => onChanged(mode),
+              ),
+          ],
+        ),
+        Text(
+          SessionTexts.audioDetail(value),
           style: BergaText.secondary.copyWith(color: c.mu),
         ),
       ],

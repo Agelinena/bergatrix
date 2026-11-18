@@ -5,6 +5,7 @@ import 'package:audio_session/audio_session.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:just_audio/just_audio.dart' as ja;
+import '../output/output_engine.dart';
 
 /// O que o player precisa de um motor de áudio. Separado para os testes
 /// usarem um motor falso (o `just_audio` precisa da plataforma).
@@ -166,8 +167,10 @@ class JustAudioEngine implements AudioEngine {
   Future<void> dispose() => _player.dispose();
 }
 
+/// O motor do player: o do aparelho, trocável por um Chromecast ou TV
+/// ("Tocar em…" → na rede).
 final audioEngineProvider = Provider<AudioEngine>((ref) {
-  final engine = JustAudioEngine();
+  final engine = OutputEngine(JustAudioEngine());
   ref.onDispose(engine.dispose);
   return engine;
 });

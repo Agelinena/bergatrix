@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:bergastream/core/network/api_error.dart';
 import 'package:bergastream/data/models/search_result.dart';
 import 'package:bergastream/data/repositories/playback_repository.dart';
+import 'package:bergastream/features/output/output_devices.dart';
+import 'package:bergastream/features/output/output_engine.dart';
 import 'package:bergastream/features/player/audio_engine.dart';
 
 /// Motor de áudio falso: registra os comandos e deixa o teste emitir
@@ -235,3 +237,61 @@ SearchResult song(String name) => SearchResult(
   album: 'Álbum',
   durationSeconds: 200,
 );
+
+/// Chromecast/TV falso: grava os comandos e deixa o teste avisar o fim da
+/// música ou a queda da conexão.
+class FakeRenderer extends FakeAudioEngine implements RemoteRenderer {
+  FakeRenderer({this.name = 'TV da sala', this.kind = 'Chromecast'});
+
+  @override
+  final String name;
+
+  @override
+  final String kind;
+
+  final described = <String>[];
+  final _lost = StreamController<void>.broadcast();
+  bool disposed = false;
+
+  @override
+  void describe(SearchResult track) => described.add(track.title);
+
+  @override
+  Future<void> setFile(String path) =>
+      throw UnsupportedError('remoto não toca arquivo');
+
+  @override
+  double get maxBoostDb => 0;
+
+  @override
+  Stream<void> get lostStream => _lost.stream;
+
+  void lose() => _lost.add(null);
+
+  @override
+  Future<void> dispose() async {
+    disposed = true;
+  }
+}
+
+/// Rede falsa: devolve [devices] e conecta em [renderers] pelo id.
+class FakeOutputPlatform implements OutputPlatform {
+  FakeOutputPlatform({
+    this.devices = const [],
+    Map<String, RemoteRenderer>? renderers,
+  }) : renderers = renderers ?? {};
+
+  final List<OutputDevice> devices;
+  final Map<String, RemoteRenderer> renderers;
+  int searches = 0;
+
+  @override
+  Future<List<OutputDevice>> discover() async {
+    searches++;
+    return devices;
+  }
+
+  @override
+  Future<RemoteRenderer> connect(OutputDevice device) async =>
+      renderers[device.id] ?? (throw StateError('não conectou'));
+}
