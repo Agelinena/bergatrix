@@ -4,8 +4,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/models/playlist_models.dart';
 import '../../data/models/search_result.dart';
+import '../../data/models/stats.dart';
 import '../../data/repositories/search_repository.dart';
 import '../auth/session.dart';
+import '../home/home_providers.dart';
 import '../playlists/playlist_store.dart';
 import 'media_notification.dart';
 import 'player_controller.dart';
@@ -19,8 +21,20 @@ class CarLibrary {
   final Ref _ref;
 
   static const playlists = 'playlists';
+  static const top = 'top';
   static const _playlistPrefix = 'playlist:';
   static const _trackPrefix = 'track:';
+  static const _topPrefix = 'top:';
+  static const _searchPrefix = 'search:';
+
+  /// Extras do Android Auto: mostrar em grade (2) ou lista (1).
+  static const _grid = {
+    'android.media.browse.CONTENT_STYLE_BROWSABLE_HINT': 2,
+    'android.media.browse.CONTENT_STYLE_PLAYABLE_HINT': 1,
+  };
+
+  /// Resultados da última busca feita na tela do carro.
+  List<SearchResult> _found = const [];
 
   /// Ordem da fila mostrada no carro (índice → uid do player).
   List<int> _queueUids = const [];
@@ -28,8 +42,22 @@ class CarLibrary {
   Future<List<MediaItem>> children(String parentId) async {
     try {
       if (parentId == AudioService.browsableRootId) {
+        // As abas do Android Auto (no máximo 4).
         return const [
-          MediaItem(id: playlists, title: 'Playlists', playable: false),
+          MediaItem(
+            id: playlists,
+            title: 'Playlists',
+            playable: false,
+            extras: _grid,
+          ),
+          MediaItem(id: top, title: 'Mais ouvidas', playable: false),
+        ];
+      }
+      if (parentId == top) {
+        final stats = await _ref.read(homeStatsProvider.future);
+        return [
+          for (final (i, t) in (stats?.topTracks ?? const []).indexed)
+            _trackItem(t.track, '$_topPrefix$i'),
         ];
       }
       if (parentId == AudioService.recentRootId) return _recent();
@@ -88,6 +116,25 @@ class CarLibrary {
 
   Future<void> play(String mediaId) async {
     final player = _ref.read(playerProvider.notifier);
+    if (mediaId.startsWith(_searchPrefix)) {
+      final i = int.tryParse(mediaId.substring(_searchPrefix.length)) ?? -1;
+      if (i >= 0 && i < _found.length) await player.startRadio(_found[i]);
+      return;
+    }
+    if (mediaId.startsWith(_topPrefix)) {
+      final i = int.tryParse(mediaId.substring(_topPrefix.length)) ?? 0;
+      final stats = await _ref.read(homeStatsProvider.future);
+      final tracks = <SearchResult>[
+        for (final t in stats?.topTracks ?? const <StatTrack>[]) t.track,
+      ];
+      if (tracks.isEmpty) return;
+      await player.playList(
+        tracks,
+        i.clamp(0, tracks.length - 1),
+        context: 'Mais ouvidas',
+      );
+      return;
+    }
     if (mediaId.startsWith('queue:')) {
       final uid = int.tryParse(mediaId.substring(6));
       if (uid != null) await player.jumpTo(uid);
@@ -129,6 +176,24 @@ class CarLibrary {
       if (found.tracks.isNotEmpty) await player.startRadio(found.tracks.first);
     } on Object catch (e) {
       debugPrint('Busca do carro: $e');
+    }
+  }
+
+  /// Busca na tela do carro (lupa): as músicas achadas; tocar uma começa a
+  /// rádio dela, como na busca do celular.
+  Future<List<MediaItem>> searchItems(String query) async {
+    if (query.trim().isEmpty) return const [];
+    try {
+      final found = await _ref
+          .read(searchRepositoryProvider)
+          .search(query.trim(), SearchSource.deezer);
+      _found = found.tracks.take(20).toList();
+      return [
+        for (final (i, t) in _found.indexed) _trackItem(t, '$_searchPrefix$i'),
+      ];
+    } on Object catch (e) {
+      debugPrint('Busca do carro: $e');
+      return const [];
     }
   }
 

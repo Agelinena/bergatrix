@@ -1,17 +1,17 @@
-# Graph Report - bergatrix  (2026-11-17)
+# Graph Report - bergatrix  (2026-11-18)
 
 ## Corpus Check
-- 844 files · ~572,733 words
+- 844 files · ~573,242 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 145 file(s) not represented in the graph (top: (none) 42, .xml 35, .example 19)
 
 ## Summary
-- 14097 nodes · 25082 edges · 656 communities (540 shown, 116 thin omitted)
+- 14106 nodes · 25093 edges · 648 communities (533 shown, 115 thin omitted)
 - Extraction: 97% EXTRACTED · 3% INFERRED · 0% AMBIGUOUS · INFERRED: 860 edges (avg confidence: 0.88)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `aad90c9a`
+- Built from commit: `3ecf2737`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -20,7 +20,7 @@
 - database.dart
 - test_subtitle_refine.py
 - pathlib
-- ../auth/session.dart
+- playlist_screen.dart
 - Engine
 - desktop_shell.dart
 - dlna.dart
@@ -42,7 +42,7 @@
 - bergastream/backend/app/auth/routes.py
 - api/routes.py
 - jsQR.js
-- PlayRequest
+- ops.py
 - group_session.dart
 - sync_controller.dart
 - lib/auth/session.dart
@@ -76,9 +76,9 @@
 - access_redirect_test.dart
 - accounts/service.py
 - re
-- failures.py
+- queue.py
 - family_home_screen.dart
-- download
+- 8. Modo offline e downloads locais (MUITO IMPORTANTE)
 - SearchResult
 - Lidarr
 - jellyfin — Centro de mídia self-hosted (Jellyfin + suite *arr) com automação própria de legendas PT-BR por IA, validação de áudio e reencode HEVC/NVENC
@@ -90,7 +90,7 @@
 - engine.go
 - berganews/frontend/linux/flutter/generated_plugin_registrant.cc
 - doberga/backend/app/auth/oidc.py
-- file_fetcher.dart
+- sync_test.dart
 - update_service.dart
 - output_platform_web.dart
 - with
@@ -99,19 +99,19 @@
 - cast_engine.dart
 - search_full.dart
 - httpx
-- video_card.dart
+- features/auth/login_screen.dart
 - jobs.py
 - bouncer
 - api.dart
 - playlist_sync_test.dart
-- shell_test.dart
+- package:bergastream/core/platform/app_platform.dart
 - update_prompt.dart
 - web_api.py
 - SearchResult
-- package:flutter/material.dart
+- features/search/search_screen.dart
 - router.dart
 - context.Context
-- Bergastream — Mapa da API (API_MAP.md)
+- Bergastream — login pelo Authentik
 - 3. Passos 6 a 13
 - berganews/backend/app/auth/routes.py
 - failures_repository.dart
@@ -140,16 +140,16 @@
 - qrcode.mjs
 - Settings
 - server/routes.py
-- devices/routes.py
+- dart:convert
 - stats.dart
-- sync_test.dart
-- reader_screen.dart
+- preferences.dart
+- deemix.py
 - app_release.dart
 - app/routes.py
 - 00-visao-geral.md
 - 📐 Bergatrix — Convenções & Padrões de Desenvolvimento
-- lyrics/service.py
-- story_screen.dart
+- app/app.dart
+- package:flutter_riverpod/flutter_riverpod.dart
 - Processor
 - bergalink/frontend/lib/main.dart
 - ai.py
@@ -157,7 +157,7 @@
 - history_repository.dart
 - environment
 - lyrics_repository.dart
-- berganews/frontend/lib/auth/oidc_launcher_web.dart
+- OidcLauncher
 - FlutterWindow
 - bergastream/frontend/windows/runner/win32_window.cpp
 - homeassistant
@@ -166,19 +166,19 @@
 - article_list.dart
 - FakeLidarr
 - make_icons.py
-- ConsumerWidget
+- sync_notices.dart
 - playlists/routes.py
 - location_tracking.dart
 - search_result.dart
 - catalog_repository.dart
 - CurrentUser
 - crowdsec
-- manage.dart
+- package:dio/dio.dart
 - doberga/frontend/lib/auth/session.dart
 - dumps.go
 - services/api_client.dart
 - spaces/routes.py
-- jobs.go
+- SearchResult
 - form_dialog.dart
 - subtitle_refine.py
 - fake_update.dart
@@ -192,7 +192,7 @@
 - docs/README.md
 - ollama
 - worker
-- shell.dart
+- invite.dart
 - memory_store.dart
 - homeassistant — Plataforma de automação residencial (Home Assistant Core em container) exposta via Traefik no Modelo B (Authentik de fora, direto para dispositivos de confiança, bypass para o app Companion)
 - codigo/main.go
@@ -210,11 +210,11 @@
 - cloudbeaver — Console web de administracao de banco de dados (CloudBeaver) para o Postgres global do homelab, protegido por Tailscale + Authentik SSO via Traefik
 - drop — Transferência segura e efêmera de mensagens/segredos entre dois dispositivos, com criptografia ponta-a-ponta no navegador e servidor como relay zero-knowledge.
 - litellm — Proxy/gateway LiteLLM auto-hospedado que expoe uma API unica compativel com OpenAI, roteando para modelos da OpenRouter (free e pagos), com um sidecar que sincroniza o catalogo e gerencia virtual keys
-- doberga/frontend/lib/settings/settings_screen.dart
+- return
 - transcriptor — Serviço de transcrição de áudio/vídeo com Whisper (faster-whisper) acelerado por GPU, com UI web, fila e API REST v1
 - wazuh — Plataforma SIEM/XDR (Wazuh 4.7.2) auto-hospedada para monitoramento de segurança, detecção de intrusão e conformidade
 - vaultwarden
-- guard.py
+- radio/routes.py
 - html.py
 - optimizer
 - Nextcloud
@@ -225,7 +225,7 @@
 - immich-machine-learning
 - collabora
 - egress
-- Padrão de stacks
+- spotify.py
 - cloudbeaver
 - static const
 - services
@@ -233,7 +233,7 @@
 - variants.py
 - Migração para o novo armazenamento
 - berganews/frontend/windows/runner/win32_window.cpp
-- Drop
+- search_history_repository.dart
 - sync_test.dart
 - migrate
 - db
@@ -304,21 +304,21 @@
 - web
 - worker
 - 11. Passos de implementação
-- spaces_screen.dart
+- ../../app_harness.dart
 - backend/tests/test_units.py
 - _this
 - legendarr-worker
 - torrent-indexer-br
 - db
 - app
-- playerProvider
+- devices_sheet.dart
 - cron
 - policies
 - sync/routes.py
 - Documentação da Infraestrutura: Edge Node L4 & Homelab
 - healthcheck
 - redis
-- clear_stuck
+- lidarr.py
 - lidarr
 - redis
 - track.dart
@@ -336,10 +336,10 @@
 - tls
 - web
 - bergatrix.yaml
-- sessionProvider
+- today_screen.dart
 - services
 - gerar.ts
-- sources.py
+- radio/service.py
 - bergastream/frontend/analysis_options.yaml
 - playlist.dart
 - FileAssembler
@@ -349,10 +349,10 @@
 - version
 - windows
 - Cue
-- radio_test.dart
+- search_test.dart
 - entryPoint
 - bergastream/backend/app/auth/service.py
-- web_version_watcher.dart
+- ../../core/widgets/widgets.dart
 - depends_on
 - rules
 - env
@@ -364,8 +364,8 @@
 - start-traefik.sh
 - app/MainActivity.kt
 - greeting.dart
+- resolve.py
 - manage.dart
-- feeds_tabs.dart
 - bergastream
 - derrubar-tudo.sh
 - subir-tudo.sh
@@ -380,7 +380,7 @@
 - notices.py
 - migrate
 - artist_tracks_pager.dart
-- failures_screen.dart
+- berganews/backend/app/auth/models.py
 - x-env
 - web/app.js
 - environment
@@ -388,13 +388,13 @@
 - projects.go
 - services
 - db
-- berga_colors.dart
+- local_playlists.dart
 - claude-sync
-- http.dart
+- berganews/frontend/lib/core/http.dart
 - mail.py
 - healthcheck
 - environment
-- media_notification.dart
+- car_library.dart
 - environment
 - sync_engine.dart
 - app_toast.dart
@@ -407,11 +407,11 @@
 - bergakup/agent
 - updateSendButton
 - onSwap
-- Berganews
+- downloads/__init__.py
 - playlists/service.py
 - auth_session.dart
 - claude-sync
-- upgrader.py
+- asyncio
 - db
 - lib/auth/oidc_launcher.dart
 - re
@@ -426,7 +426,7 @@
 - berganews/backend/app/auth/repository.py
 - ai
 - migrate
-- httpx
+- PlayerController
 - output_platform_io.dart
 - services
 - egress
@@ -434,15 +434,15 @@
 - Bergalink — Segurança e privacidade
 - doberga/backend/app/core/db.py
 - lang.py
-- ../core/http.dart
-- radio/service.py
+- refine_scenario.py
+- berganews/backend/tests/integration_pgserver.py
 - berganews/backend/app/prefs/routes.py
-- lib/home/home_screen.dart
+- doberga/frontend/lib/core/http.dart
 - _yt
 - sync_engine_test.dart
 - websocket_endpoint
 - Device
-- match.py
+- _get
 - main
 - bergalink-release.yml
 - core/format.dart
@@ -462,7 +462,7 @@
 - release
 - berganews/frontend/lib/auth/oidc_launcher_io.dart
 - Hub
-- ../core/widgets.dart
+- app/auth.py
 - berganews/frontend/analysis_options.yaml
 - api
 - version
@@ -472,9 +472,9 @@
 - android
 - test
 - berganews/MainActivity.kt
-- request_lidarr
-- in_playlists.dart
-- doberga/backend/app/main.py
+- Budget
+- static const
+- history/routes.py
 - locate
 - GenericGFPoly
 - dlna_test.dart
@@ -485,7 +485,7 @@
 - android
 - steps
 - env
-- package:flutter/material.dart
+- doberga/frontend/lib/auth/oidc_launcher_io.dart
 - healthcheck
 - networks
 - migrate
@@ -493,7 +493,7 @@
 - openuiweb — Open WebUI (interface estilo ChatGPT) auto-hospedada como "Bergatrix AI", conectada ao LiteLLM e a um Ollama local com GPU NVIDIA, exposta em chat.${DOMAIN} mas restrita a LAN
 - depends_on
 - environment
-- OIDCClient
+- ._run_audio_check
 - environment
 - _SubtitleEventHandler
 - http.py
@@ -506,10 +506,10 @@
 - BitStream
 - bergalink/frontend/README.md
 - doberga/MainActivity.kt
-- update_test.dart
+- bool get
 - opml.py
 - radio_repository.dart
-- TrackPage
+- registry.py
 - html
 - doberga/backend/app/users/routes.py
 - now
@@ -517,7 +517,7 @@
 - spaces/repository.py
 - environment
 - test_sessions.py
-- preferences.dart
+- library_providers.dart
 - doberga/backend/app/auth/repository.py
 - files_io.dart
 - LiveHub
@@ -526,7 +526,7 @@
 - api
 - TranslationStats
 - config
-- Modelos de Labels do Traefik — Bergatrix
+- test_real_episode_other_release
 - berganews/backend/app/auth/dependencies.py
 - datasources
 - services
@@ -539,7 +539,7 @@
 - db
 - Segment
 - pve-exporter
-- system_windows.go
+- fake_catalog.dart
 - networks
 - berganews/frontend/linux/runner/my_application.cc
 - bergastream/frontend/linux/runner/my_application.cc
@@ -547,7 +547,7 @@
 - app_layout.dart
 - providers
 - doberga/frontend/web/manifest.json
-- bool get
+- List
 - blackbox
 - opnsense-exporter
 - Bergakup
@@ -558,8 +558,8 @@
 - grafana
 - prometheus
 - accessLog
-- Módulos
-- .MessageHandler
+- logs
+- TranslationQueue
 - base
 - cadvisor
 - loki
@@ -570,14 +570,14 @@
 - web
 - geoip
 - SessionController
-- Transcriptor
+- hub.py
 - prometheus
 - doberga/frontend/analysis_options.yaml
 - first_frame_cb
 - MyApplicationClass
-- fake_oidc.dart
-- Point
-- Bergastream: Guia de Implementação do App Flutter
+- dart:math
+- Bergastream — O que já foi implementado
+- doberga/frontend/lib/auth/oidc_launcher.dart
 - Grade
 - depends_on
 - Jellyfin só pelo Authentik
@@ -587,29 +587,20 @@
 - vps/instalar.sh
 - gerar-config.sh
 - metricas-vps.sh
-- 6. Telas (especificação detalhada)
+- doberga/frontend/lib/auth/oidc_launcher_web.dart
 - backend/app/db.py
-- 🍊 Bergatrix — Visão Geral
+- Bergastream — versões dos apps (Android, Windows, Linux)
 - 🔑 Bergatrix — Guia do `.env` (como construir, o que ter e como manipular)
 - rate_limit.py
-- Infraestrutura
 - Settings
 - berga_theme.dart
 - Exception
-- files_io.dart
+- track_menu.dart
 - bergastream/backend/app/__init__.py
-- 8. Modo offline e downloads locais (MUITO IMPORTANTE)
-- SessionController
-- test_worker_pipeline
-- Settings
-- 🍊 BERGATRIX
-- run_once
+- RemoteRenderer
+- studio_album
 - FakeLidarr
-- 2. Plataformas e regras de acesso (AUTENTICAÇÃO)
-- 5. Design system (EXATO)
-- 7. Lógica do player e da fila
 - SecurityHeaders
-- Ligar e desligar tudo
 - FakeSessionRepository
 - SessionSocket
 
@@ -632,43 +623,43 @@
   docs/legado/stacks/berga-news.md → 03-apps/bergastream/backend/app/playlists/service.py
 - `4. OPNsense` --references--> `key()`  [INFERRED]
   04-monitoring/monitor/README.md → 03-apps/bergastream/backend/app/radio/match.py
-- `🗄️ Modelo de dados` --references--> `timestamp()`  [INFERRED]
-  docs/legado/stacks/transcriptor.md → 03-apps/transcriptor/app/formats.py
 - `Backup` --references--> `docker()`  [INFERRED]
   docs/02-armazenamento.md → 00-infrastructure/bergakup/agent/docker.go
+- `1. Busca` --references--> `owner`  [INFERRED]
+  03-apps/bergastream/docs/API_MAP.md → 00-infrastructure/bergakup/agent/owner_linux.go
 
 ## Import Cycles
 - None detected.
 
-## Communities (656 total, 116 thin omitted)
+## Communities (648 total, 115 thin omitted)
 
 ### Community 0 - "player_controller.dart"
 Cohesion: 0.01
-Nodes (186): act, addAllToQueue, addToQueue, _advance, appeared, applyRemoteState, applySession, _applyStreamNorm (+178 more)
+Nodes (178): act, addAllToQueue, addToQueue, _advance, appeared, applyRemoteState, applySession, _applyStreamNorm (+170 more)
 
 ### Community 1 - "database.dart"
 Cohesion: 0.02
 Nodes (92): addNotice, addPendingPlay, addPlaylistOp, asResult, bytes, clearNotices, collaborators, _countQualities (+84 more)
 
 ### Community 2 - "test_subtitle_refine.py"
-Cohesion: 0.09
-Nodes (34): clean_text(), OllamaEmbedder, read_subtitle(), refine_file(), build(), build_release(), ConceptEmbedder, release_offset() (+26 more)
+Cohesion: 0.15
+Nodes (24): fit_reading_time(), refine_file(), visible_chars(), build_release(), ConceptEmbedder, _start_errors(), test_already_synced_subtitle_keeps_starts(), test_isolated_wrong_lines_are_adjusted_individually() (+16 more)
 
 ### Community 3 - "pathlib"
 Cohesion: 0.03
-Nodes (70): main(), _main(), _read_password(), create_user(), get_user_by_username(), create_access_token(), create_stream_token(), hash_password() (+62 more)
+Nodes (82): main(), _main(), _read_password(), create_user(), get_user_by_username(), insert_refresh_token(), revoke_refresh_token(), set_password() (+74 more)
 
-### Community 4 - "../auth/session.dart"
+### Community 4 - "playlist_screen.dart"
 Cohesion: 0.02
-Nodes (78): preview, save, build, child, ContextMenuRegion, onMenu, cached, _cacheKey (+70 more)
+Nodes (113): ServerImage, _SubscriptionTile, MobileShell, _SidebarPlaylists, localPlaylistsProvider, trackDownloadStatesProvider, addToPlaylist, build (+105 more)
 
 ### Community 5 - "Engine"
-Cohesion: 0.08
-Nodes (20): LsEntry, Activity, Counts, Dav, DavEntry, Engine, EngineStatus, localFile (+12 more)
+Cohesion: 0.09
+Nodes (19): Activity, Counts, Dav, DavEntry, Engine, EngineStatus, localFile, LocalProject (+11 more)
 
 ### Community 6 - "desktop_shell.dart"
 Cohesion: 0.02
-Nodes (84): _BrandMark, _LocationMarker, _MapNotice, AppShell, build, currentIndex, goToTab, miniPlayerBottom (+76 more)
+Nodes (87): _BrandMark, _LocationMarker, _MapNotice, build, href, img, label, onTap (+79 more)
 
 ### Community 7 - "dlna.dart"
 Cohesion: 0.03
@@ -679,48 +670,44 @@ Cohesion: 0.02
 Nodes (97): addedAt, addedBy, album, artist, attempts, audioPath, coverPath, coverUrl (+89 more)
 
 ### Community 9 - "playlist_store.dart"
-Cohesion: 0.02
-Nodes (115): localDatabaseProvider, historyRepositoryProvider, playlistRepositoryProvider, _onMessage, _set, addAliases, addTracks, _again (+107 more)
+Cohesion: 0.03
+Nodes (78): addAliases, addTracks, _again, aliases, _aliasesKey, applyMine, base, batchSize (+70 more)
 
 ### Community 10 - "cast_channel.dart"
-Cohesion: 0.03
-Nodes (59): changes, current, SafeConnectivity, add, _buffer, CastChannel, CastFrameReader, CastMessage (+51 more)
+Cohesion: 0.06
+Nodes (35): add, _buffer, CastFrameReader, CastMessage, CastNs, close, _closed, _closedNow (+27 more)
 
 ### Community 11 - "app/static/assets/js/app.js"
 Cohesion: 0.12
 Nodes (30): actions, addFileItem(), addInboxItem(), addTextItem(), app, applyTheme(), clearInbox(), CLOSE_MESSAGES (+22 more)
 
 ### Community 12 - "sessions/service.py"
-Cohesion: 0.13
-Nodes (32): broadcast(), close_user(), online_users(), act(), _act(), _after_leaving(), after_members_change(), create() (+24 more)
+Cohesion: 0.14
+Nodes (31): broadcast(), close_user(), online_users(), act(), _act(), _after_leaving(), after_members_change(), create() (+23 more)
 
 ### Community 13 - "download_manager.dart"
-Cohesion: 0.02
-Nodes (98): build, setCover, playbackRepositoryProvider, build, _check, _checkedServer, _checking, _checkMessage (+90 more)
+Cohesion: 0.04
+Nodes (53): setCover, playbackRepositoryProvider, active, appDocuments, audio, available, changes, count (+45 more)
 
 ### Community 14 - "stream_quality_test.dart"
 Cohesion: 0.07
-Nodes (22): HttpPlaybackRepository, PlaybackRepository, ConnectivityNetworkCheck, NetworkCheck, _AlwaysWifi, FakePlaybackRepository, FakeNetwork, changes (+14 more)
+Nodes (24): KeyValueStore, MemoryKeyValueStore, SecureKeyValueStore, ConnectivityNetworkCheck, NetworkCheck, _AlwaysWifi, FakeNetwork, changes (+16 more)
 
 ### Community 15 - "session_repository.dart"
 Cohesion: 0.03
 Nodes (68): act, actions, addedBy, anchorAt, apiValue, base, calls, _channel (+60 more)
 
 ### Community 16 - "session_sheet.dart"
-Cohesion: 0.04
-Nodes (48): AudioMode, PauseMode, SessionMember, sync, transfer, groupSessionProvider, _audio, audioDetail (+40 more)
-
-### Community 17 - "Pipeline"
-Cohesion: 0.06
-Nodes (10): Pipeline, format_report(), load_reports(), main(), save_report(), select_reference_stream(), find_pt_subtitle(), get_media_info() (+2 more)
+Cohesion: 0.05
+Nodes (39): AudioMode, PauseMode, SessionMember, _audio, audioDetail, audioTitle, _busy, c (+31 more)
 
 ### Community 18 - "models.dart"
 Cohesion: 0.02
 Nodes (92): access, accountUrl, added, AdminUser, already, alsoIn, Article, articleCount (+84 more)
 
 ### Community 19 - "features/settings/settings_screen.dart"
-Cohesion: 0.03
-Nodes (49): BergastreamApp, _BergastreamAppState, build, createState, dispose, initState, _lifecycle, build (+41 more)
+Cohesion: 0.02
+Nodes (89): localDatabaseProvider, historyRepositoryProvider, playlistRepositoryProvider, serverStatusProvider, serverStatusRefreshProvider, downloadedPlaylistsProvider, downloadManagerProvider, playlistDownloadProvider (+81 more)
 
 ### Community 20 - "api/static/assets/js/app.js"
 Cohesion: 0.09
@@ -732,23 +719,23 @@ Nodes (3): close_code(), join(), RelayTests
 
 ### Community 22 - "api/main.py"
 Cohesion: 0.08
-Nodes (50): admin_status(), audio(), callback(), cancel_job(), check_capacity(), check_options(), check_url(), complete_upload() (+42 more)
+Nodes (51): admin_status(), audio(), callback(), cancel_job(), check_capacity(), check_options(), check_url(), complete_upload() (+43 more)
 
 ### Community 23 - "bergastream/backend/app/auth/routes.py"
 Cohesion: 0.10
 Nodes (22): AuthConfig, Credentials, OIDCExchange, RefreshRequest, RegisterRequest, StreamToken, UserOut, issue_code() (+14 more)
 
 ### Community 24 - "api/routes.py"
-Cohesion: 0.05
-Nodes (35): admin_cleanup(), album_page(), artist_page(), artist_tracks(), _catalog(), download_track(), edit_lyrics(), _file_for() (+27 more)
+Cohesion: 0.04
+Nodes (46): admin_cleanup(), album_page(), artist_page(), artist_tracks(), _catalog(), download_track(), edit_lyrics(), list_playlists() (+38 more)
 
 ### Community 25 - "jsQR.js"
 Cohesion: 0.19
 Nodes (14): decode(), decodeAlphanumeric(), decodeByte(), decodeKanji(), decodeNumeric(), extract(), findErrorLocations(), findErrorMagnitudes() (+6 more)
 
-### Community 26 - "PlayRequest"
-Cohesion: 0.05
-Nodes (31): get_redis(), close_redis(), get_redis(), add_track_to_playlist(), get_track_playlist_count(), release_if_orphan(), remove_track_from_playlist(), in_any_playlist() (+23 more)
+### Community 26 - "ops.py"
+Cohesion: 0.07
+Nodes (30): _add(), apply_batch(), _apply_one(), BatchResult, _cover(), _create(), _delete(), _Fail (+22 more)
 
 ### Community 27 - "group_session.dart"
 Cohesion: 0.03
@@ -764,23 +751,23 @@ Nodes (37): _access, _accessToken, build, checkServer, clear, dio, dioProvider, 
 
 ### Community 30 - "App"
 Cohesion: 0.07
-Nodes (26): App, AppStatus, Config, loginState, Settings, webServer, defaultConfig(), normalizeRemoteDir() (+18 more)
+Nodes (32): App, AppStatus, Config, FileState, loginState, State, webServer, newApp() (+24 more)
 
 ### Community 31 - "worker/core/scanner.py"
-Cohesion: 0.04
-Nodes (30): measure(), measure_and_store(), measure_later(), file_matches(), read_title(), DedupQueue, main(), _has_subtitle() (+22 more)
+Cohesion: 0.03
+Nodes (38): Settings, DedupQueue, main(), _has_subtitle(), _is_generated_subtitle(), _is_on_cooldown(), _is_pt_subtitle_path(), _is_resolved() (+30 more)
 
 ### Community 32 - "app_harness.dart"
 Cohesion: 0.03
-Nodes (54): AuthException, changes, container, fetch, initialLocation, loggedIn, _memoryDb, noDeviceTimers (+46 more)
+Nodes (60): changes, container, fetch, initialLocation, loggedIn, _memoryDb, noDeviceTimers, noGroupTimers (+52 more)
 
 ### Community 33 - "features/auth/session.dart"
-Cohesion: 0.04
-Nodes (53): _access, _accessToken, base, build, canUseServer, checkServer, clearLogin, clearLoginError (+45 more)
+Cohesion: 0.03
+Nodes (60): authRepositoryProvider, oidcLauncherProvider, _access, _accessToken, base, build, canUseServer, checkServer (+52 more)
 
 ### Community 34 - "device_controller.dart"
 Cohesion: 0.03
-Nodes (55): activeHere, activeId, _applyRemote, _attached, _attempt, base, canPlayHere, claim (+47 more)
+Nodes (65): activeHere, activeId, _applyRemote, _attached, _attempt, base, canPlayHere, claim (+57 more)
 
 ### Community 35 - "fake_player.dart"
 Cohesion: 0.03
@@ -791,20 +778,20 @@ Cohesion: 0.04
 Nodes (56): artist, bytes, bytesCache, bytesPermanent, cache, calls, checkedAt, clearDeemixFailures (+48 more)
 
 ### Community 37 - "bergastream/backend/app/auth/oidc.py"
-Cohesion: 0.07
-Nodes (15): begin(), client(), finish(), OIDCClient, OIDCError, redeem_code(), s256(), set_client() (+7 more)
+Cohesion: 0.12
+Nodes (8): begin(), client(), finish(), OIDCClient, OIDCError, redeem_code(), s256(), valid_app_redirect()
 
 ### Community 38 - "arr.py"
-Cohesion: 0.07
-Nodes (32): _delete(), find_movie_by_path(), _get(), get_movie_original_language(), get_movie_runtime(), get_series_original_language(), get_series_runtime(), _grabbed_id_by_download() (+24 more)
+Cohesion: 0.15
+Nodes (17): _delete(), _grabbed_id_by_download(), _grabbed_id_by_movie(), _headers(), _is_grabbed(), _post(), _queue(), radarr_enabled() (+9 more)
 
 ### Community 39 - "articles/routes.py"
 Cohesion: 0.09
 Nodes (24): Article, ArticleItem, ArticlePage, _check_lang(), _cursor(), get_article(), get_translation(), _get_visible() (+16 more)
 
 ### Community 40 - "OIDCClient"
-Cohesion: 0.09
-Nodes (13): begin(), _clean_username(), client(), finish(), _free(), Identity, link_user(), OIDCClient (+5 more)
+Cohesion: 0.10
+Nodes (11): begin(), _clean_username(), client(), finish(), _free(), Identity, link_user(), OIDCClient (+3 more)
 
 ### Community 41 - "doberga/frontend/lib/data/models.dart"
 Cohesion: 0.04
@@ -812,23 +799,23 @@ Nodes (51): access, accountUrl, AdminUser, alreadyMember, AuthConfig, available,
 
 ### Community 42 - "package:flutter_test/flutter_test.dart"
 Cohesion: 0.07
-Nodes (12): main, background, main, button, main, main, main, openSheet (+4 more)
+Nodes (13): main, background, main, button, main, main, main, openSheet (+5 more)
 
 ### Community 43 - "group_session_test.dart"
 Cohesion: 0.05
-Nodes (36): FakeAudioEngine, connect, container, devices, devicesState, engine, main, me (+28 more)
+Nodes (37): connect, container, devices, devicesState, engine, main, me, phone (+29 more)
 
 ### Community 44 - "go_pkg_strings"
-Cohesion: 0.13
-Nodes (16): dataBlob, FileState, State, Store, deleteSecret(), loadSecret(), saveSecret(), deleteSecret() (+8 more)
+Cohesion: 0.10
+Nodes (23): dataBlob, Store, deleteSecret(), loadSecret(), saveSecret(), deleteSecret(), loadSecret(), saveSecret() (+15 more)
 
 ### Community 45 - "web/main.py"
-Cohesion: 0.06
-Nodes (29): _download_episode_subtitle(), _download_movie_subtitle(), _find_episode_by_path(), _find_movie_by_path(), _headers(), search_subtitle(), arr_webhook(), bazarr_search() (+21 more)
+Cohesion: 0.07
+Nodes (23): arr_webhook(), bazarr_search(), find_poster(), get_external_subtitles(), get_image(), get_logs(), get_subtitle_status(), get_subtitles() (+15 more)
 
 ### Community 46 - "asyncpg"
 Cohesion: 0.04
-Nodes (44): current_agent(), enroll(), Enroll, _existing(), get_plan(), heartbeat(), Heartbeat, LogLine (+36 more)
+Nodes (28): begin_login(), client(), end_session(), finish_login(), s256(), safe_next(), create_pool(), _init() (+20 more)
 
 ### Community 47 - "_"
 Cohesion: 0.05
@@ -848,11 +835,11 @@ Nodes (41): container_name, depends_on, environment, image, labels, networks, re
 
 ### Community 51 - "asyncio"
 Cohesion: 0.04
-Nodes (28): create_access_token(), decode_token(), hash_refresh_token(), new_refresh_token(), TokenError, sign(), verify(), _clean_username() (+20 more)
+Nodes (25): redeem_code(), s256(), create_access_token(), decode_token(), hash_refresh_token(), new_refresh_token(), TokenError, sign() (+17 more)
 
 ### Community 52 - "admin_users_screen.dart"
-Cohesion: 0.07
-Nodes (27): Account, accountRepositoryProvider, AccountCard, build, externalLinkProvider, myAccountProvider, online, read (+19 more)
+Cohesion: 0.04
+Nodes (52): Account, accountRepositoryProvider, DownloadFailure, failuresRepositoryProvider, AccountCard, build, _edit, linkWarning (+44 more)
 
 ### Community 53 - "stories/routes.py"
 Cohesion: 0.10
@@ -867,44 +854,44 @@ Cohesion: 0.05
 Nodes (36): PlaylistRole, added, addTrack, addTracks, ana, applyOps, batches, covers (+28 more)
 
 ### Community 56 - "play_queue.dart"
-Cohesion: 0.04
-Nodes (42): add, appendUpNext, clearManual, _current, _fillUpNextAfter, _history, _item, jumpTo (+34 more)
+Cohesion: 0.05
+Nodes (36): add, appendUpNext, clearManual, _current, _fillUpNextAfter, _history, _item, jumpTo (+28 more)
 
 ### Community 57 - "access_redirect_test.dart"
 Cohesion: 0.17
 Nodes (10): expired, home, local, logged, loggedOut, logging, login, main (+2 more)
 
 ### Community 58 - "accounts/service.py"
-Cohesion: 0.09
-Nodes (25): AccountError, _active_admins(), admin_managed(), can_change_password(), _check_free(), clean_email(), clean_name(), clean_password() (+17 more)
+Cohesion: 0.10
+Nodes (23): AccountError, _active_admins(), admin_managed(), can_change_password(), _check_free(), clean_email(), clean_name(), clean_password() (+15 more)
 
 ### Community 59 - "re"
-Cohesion: 0.06
-Nodes (28): _do_download_youtube_direct(), normalize_title(), clean_title(), _cookie_file(), download_video(), _downloaded(), duration_penalty(), find_best_candidate() (+20 more)
+Cohesion: 0.09
+Nodes (16): clean_title(), _cookie_file(), download_video(), _downloaded(), duration_penalty(), find_best_candidate(), find_candidates(), _is_restricted() (+8 more)
 
-### Community 60 - "failures.py"
-Cohesion: 0.05
-Nodes (33): redownload(), candidates(), choose_source(), _enqueue(), Failure, ignore(), IgnoreBody, list_failures() (+25 more)
+### Community 60 - "queue.py"
+Cohesion: 0.08
+Nodes (18): _enqueue(), dequeue(), enqueue(), get_job(), mark_active(), mark_done(), pending_job(), track_job_key() (+10 more)
 
 ### Community 61 - "family_home_screen.dart"
 Cohesion: 0.04
 Nodes (49): _addMember, _api, avatar, build, _busy, _connect, _createGroup, createState (+41 more)
 
-### Community 62 - "download"
-Cohesion: 0.29
-Nodes (4): 8.4 Botão de download na playlist (detalhe da playlist, na linha de ações), Canceled, download(), hook()
+### Community 62 - "8. Modo offline e downloads locais (MUITO IMPORTANTE)"
+Cohesion: 0.12
+Nodes (13): 8.1 O que é salvo no aparelho, por faixa, 8.2 Estados, 8.3 Regra de permanência local (espelha a do servidor), 8.4 Botão de download na playlist (detalhe da playlist, na linha de ações), 8.5 Gerenciador de downloads, 8.6 Uso offline, 8.7 Dados locais e sincronização (PROPOSTA, validar antes de implementar), 8. Modo offline e downloads locais (MUITO IMPORTANTE) (+5 more)
 
 ### Community 63 - "SearchResult"
-Cohesion: 0.14
-Nodes (22): cached(), AlbumPage, ArtistPage, album(), artist(), deezer_album(), _deezer_album_full(), load() (+14 more)
+Cohesion: 0.10
+Nodes (36): cached(), AlbumPage, ArtistPage, TrackPage, album(), artist(), artist_tracks(), dedupe() (+28 more)
 
 ### Community 64 - "Lidarr"
-Cohesion: 0.19
-Nodes (4): Lidarr, check_lidarr(), ensure_monitored(), finish_album()
+Cohesion: 0.13
+Nodes (6): Lidarr, check_lidarr(), ensure_monitored(), finish_album(), _release_albums(), request_lidarr()
 
 ### Community 65 - "jellyfin — Centro de mídia self-hosted (Jellyfin + suite *arr) com automação própria de legendas PT-BR por IA, validação de áudio e reencode HEVC/NVENC"
-Cohesion: 0.08
-Nodes (18): TranslationQueue, check_existing_subtitle(), 🧩 Dependencias internas (Bergatrix), 🌐 Dominios / Roteamento, 🔌 Endpoints / API (legendarr-web), 🗂️ Estrutura de codigo, 🎯 Finalidade, 🛡️ Gestao de segredos (+10 more)
+Cohesion: 0.11
+Nodes (14): JobProcessor, 🧩 Dependencias internas (Bergatrix), 🌐 Dominios / Roteamento, 🔌 Endpoints / API (legendarr-web), 🗂️ Estrutura de codigo, 🎯 Finalidade, 🛡️ Gestao de segredos, 🔗 Integracoes externas (+6 more)
 
 ### Community 66 - "test_integration.py"
 Cohesion: 0.11
@@ -923,28 +910,28 @@ Cohesion: 0.11
 Nodes (18): admin_user(), begin_login(), client(), create_token(), current_user(), end_session(), finish_login(), Identity (+10 more)
 
 ### Community 70 - "doberga/frontend/windows/runner/win32_window.cpp"
-Cohesion: 0.08
-Nodes (16): EnableFullDpiSupportIfAvailable(), EnableNonClientDpiScaling, Scale(), Size, height, width, Win32Window, child_content_ (+8 more)
+Cohesion: 0.07
+Nodes (19): EnableFullDpiSupportIfAvailable(), EnableNonClientDpiScaling, Point, x, y, Scale(), Size, height (+11 more)
 
 ### Community 71 - "engine.go"
 Cohesion: 0.06
-Nodes (23): asSlice(), newClient(), baseEnv(), envOr(), BackupSummary, Client, Container, HTTPError (+15 more)
+Nodes (28): newClient(), checkSource(), jobStatePath(), loadJobStates(), updateJobState(), baseEnv(), BackupSummary, Client (+20 more)
 
 ### Community 72 - "berganews/frontend/linux/flutter/generated_plugin_registrant.cc"
 Cohesion: 0.24
 Nodes (4): fl_register_plugins(), my_application_activate(), fl_register_plugins(), my_application_activate()
 
 ### Community 73 - "doberga/backend/app/auth/oidc.py"
-Cohesion: 0.12
-Nodes (12): begin(), _clean_username(), client(), finish(), _free(), Identity, link_user(), OIDCError (+4 more)
+Cohesion: 0.08
+Nodes (14): begin(), _clean_username(), client(), finish(), _free(), Identity, link_user(), OIDCClient (+6 more)
 
-### Community 74 - "file_fetcher.dart"
-Cohesion: 0.09
-Nodes (21): BackgroundFileFetcher, bytes, configureDownloadNotifications, _dio, DioFileFetcher, expectedBytes, fetch, FetchResult (+13 more)
+### Community 74 - "sync_test.dart"
+Cohesion: 0.04
+Nodes (43): BackgroundFileFetcher, bytes, configureDownloadNotifications, _dio, DioFileFetcher, expectedBytes, fetch, FetchResult (+35 more)
 
 ### Community 75 - "update_service.dart"
 Cohesion: 0.06
-Nodes (29): asset, check, current, currentVersion, _dio, download, folderFor, GitHubUpdateRepository (+21 more)
+Nodes (33): asset, check, current, currentVersion, _dio, download, folderFor, GitHubUpdateRepository (+25 more)
 
 ### Community 76 - "output_platform_web.dart"
 Cohesion: 0.04
@@ -955,8 +942,8 @@ Cohesion: 0.05
 Nodes (46): defaults, env, runs-on, services, steps, timeout-minutes, defaults, run (+38 more)
 
 ### Community 78 - "feeds/routes.py"
-Cohesion: 0.07
-Nodes (26): create_folder(), _create_folder(), delete_folder(), export_opml(), Folder, FolderIn, import_opml(), ImportResult (+18 more)
+Cohesion: 0.11
+Nodes (21): create_folder(), _create_folder(), delete_folder(), export_opml(), Folder, FolderIn, import_opml(), ImportResult (+13 more)
 
 ### Community 79 - "account_repository.dart"
 Cohesion: 0.07
@@ -971,16 +958,16 @@ Cohesion: 0.07
 Nodes (28): albums, artist, artists, coverUrl, description, externalId, externalUrl, fromJson (+20 more)
 
 ### Community 82 - "httpx"
-Cohesion: 0.04
-Nodes (33): admin_identity(), current_identity(), Identity, OIDCVerifier, clear_failed(), clear_stale(), download_best(), download_track() (+25 more)
+Cohesion: 0.07
+Nodes (26): allowed(), fetch_allowed_image(), image(), ImageError, live(), ok(), fake_fetch(), _download_episode_subtitle() (+18 more)
 
-### Community 83 - "video_card.dart"
-Cohesion: 0.18
-Nodes (9): build, href, img, label, onTap, thumbnail, VideoCard, videoCardFor (+1 more)
+### Community 83 - "features/auth/login_screen.dart"
+Cohesion: 0.05
+Nodes (43): build, build, _check, _checkedServer, _checking, _checkMessage, _checkServer, _continueWithoutLogin (+35 more)
 
 ### Community 84 - "jobs.py"
-Cohesion: 0.11
-Nodes (13): add_segments(), cancel(), delete(), edit_segment(), finish(), playback_path(), rebuild_transcript(), remove_work() (+5 more)
+Cohesion: 0.10
+Nodes (14): add_segments(), cancel(), delete(), edit_segment(), finish(), playback_path(), rebuild_transcript(), remove_work() (+6 more)
 
 ### Community 85 - "bouncer"
 Cohesion: 0.08
@@ -992,43 +979,43 @@ Nodes (40): Api, article, articles, authConfig, copyWith, createFolder, deleteFo
 
 ### Community 87 - "playlist_sync_test.dart"
 Cohesion: 0.05
-Nodes (29): KeyValueStore, MemoryKeyValueStore, SecureKeyValueStore, main, t, apply, current, main (+21 more)
+Nodes (32): AuthException, ana, main, settings, users, field, fill, main (+24 more)
 
-### Community 88 - "shell_test.dart"
-Cohesion: 0.06
-Nodes (17): field, main, main, main, goTo, main, pumpApp, calls (+9 more)
+### Community 88 - "package:bergastream/core/platform/app_platform.dart"
+Cohesion: 0.11
+Nodes (8): field, main, main, goTo, main, pumpApp, main, p
 
 ### Community 89 - "update_prompt.dart"
 Cohesion: 0.09
 Nodes (26): build, checkForUpdatesManually, _checkOnStart, child, choice, createState, delay, dialog (+18 more)
 
 ### Community 90 - "web_api.py"
-Cohesion: 0.06
-Nodes (87): current_user(), _same_origin(), token_hash(), User, build(), create_defaults(), publish(), repository_url() (+79 more)
+Cohesion: 0.05
+Nodes (97): current_agent(), enroll(), Enroll, _existing(), get_plan(), heartbeat(), Heartbeat, LogLine (+89 more)
 
 ### Community 91 - "SearchResult"
-Cohesion: 0.03
-Nodes (64): search_all(), album_result(), DeezerError, get(), search_full(), track_from(), AlbumResult, ArtistResult (+56 more)
+Cohesion: 0.04
+Nodes (41): candidates(), search_all(), choose_source(), Failure, ignore(), IgnoreBody, list_failures(), record() (+33 more)
 
-### Community 92 - "package:flutter/material.dart"
-Cohesion: 0.02
-Nodes (127): AppFrame, build, child, contentKey, framedFrom, platform, albumPathOf, artistPathOf (+119 more)
+### Community 92 - "features/search/search_screen.dart"
+Cohesion: 0.03
+Nodes (62): _SearchScreenState, AppFrame, build, child, contentKey, framedFrom, platform, searchHistoryProvider (+54 more)
 
 ### Community 93 - "router.dart"
 Cohesion: 0.05
-Nodes (11): catalog, initialLocationProvider, refresh, router, tab, main, mediaNotification, platform (+3 more)
+Nodes (16): catalog, initialLocationProvider, refresh, router, tab, artistAndAlbum, coverImage, imageFor (+8 more)
 
 ### Community 94 - "context.Context"
-Cohesion: 0.08
-Nodes (19): docker(), listContainers(), newQuiesce(), orderedStacks(), readStacksOrder(), importDumps(), sqliteBackup(), waitHealthy() (+11 more)
+Cohesion: 0.07
+Nodes (21): docker(), listContainers(), newQuiesce(), orderedStacks(), readStacksOrder(), importDumps(), sqliteBackup(), waitHealthy() (+13 more)
 
-### Community 95 - "Bergastream — Mapa da API (API_MAP.md)"
-Cohesion: 0.08
-Nodes (22): 2. Tocar uma faixa, 5. Artista, 6. Álbum, 7. Histórico e métricas, 9. Imagens, 9b. Situação do servidor, 9c. Sessão compartilhada ("ouvir junto"), Bergastream — Mapa da API (API_MAP.md) (+14 more)
+### Community 95 - "Bergastream — login pelo Authentik"
+Cohesion: 0.22
+Nodes (9): 1. Grupos, 2. Provider e aplicação, 3. `.env` do Bergastream, 4. Contas que já existem, 5. Apps antigos e o login por senha, 6. Depois de ligada: quem muda o quê, 7. Testar, Bergastream — login pelo Authentik (+1 more)
 
 ### Community 96 - "3. Passos 6 a 13"
 Cohesion: 0.06
-Nodes (33): 3. Passos 6 a 13, Correção de concorrência no download (relatada no uso), Melhoria das playlists: filas separadas e orçamento do Lidarr (servidor), Passo 10 — Histórico e métricas, Passo 11 — Offline-first e sincronização, Passo 12 — Web, Passo 13 — Release e desktop, Passo 6 — Início com métricas (+25 more)
+Nodes (35): 3. Passos 6 a 13, Correção de concorrência no download (relatada no uso), Melhoria das playlists: filas separadas e orçamento do Lidarr (servidor), Passo 10 — Histórico e métricas, Passo 11 — Offline-first e sincronização, Passo 12 — Web, Passo 13 — Release e desktop, Passo 6 — Início com métricas (+27 more)
 
 ### Community 97 - "berganews/backend/app/auth/routes.py"
 Cohesion: 0.05
@@ -1063,16 +1050,16 @@ Cohesion: 0.08
 Nodes (23): accessToken, address, AuthError, AuthTokens, error, expiresIn, fromJson, id (+15 more)
 
 ### Community 105 - "package:flutter/material.dart"
-Cohesion: 0.06
-Nodes (30): c, showChoiceDialog, build, height, ProgressBarThin, value, bottom, build (+22 more)
+Cohesion: 0.07
+Nodes (24): c, showChoiceDialog, build, height, ProgressBarThin, value, bottom, build (+16 more)
 
 ### Community 106 - "catalog.dart"
 Cohesion: 0.09
 Nodes (18): albums, artist, artistId, externalId, followers, followersText, fromJson, imageUrl (+10 more)
 
 ### Community 107 - "audio_engine.dart"
-Cohesion: 0.07
-Nodes (24): _android, _boostDb, completedStream, dispose, durationStream, engine, _enhancer, errorStream (+16 more)
+Cohesion: 0.06
+Nodes (27): OutputEngine, _android, AudioEngine, _boostDb, completedStream, dispose, durationStream, engine (+19 more)
 
 ### Community 108 - "networks"
 Cohesion: 0.07
@@ -1080,7 +1067,7 @@ Nodes (26): name, internal, name, internal, name, name, internal, name (+18 more
 
 ### Community 109 - "app_flow.dart"
 Cohesion: 0.07
-Nodes (26): AppGate, _AppGateState, _BrandMark, build, _busy, createState, _error, _finishSignIn (+18 more)
+Nodes (27): AppGate, _AppGateState, _BrandMark, build, _busy, createState, _error, _finishSignIn (+19 more)
 
 ### Community 110 - "fetcher.py"
 Cohesion: 0.09
@@ -1092,11 +1079,11 @@ Nodes (20): assign(), decide(), Decision, label_pair(), merge(), new_story(), re
 
 ### Community 112 - "track_row.dart"
 Cohesion: 0.06
-Nodes (30): build, DownloadState, DownloadStateIcon, progress, size, state, addedBy, _armed (+22 more)
+Nodes (22): addedBy, _armed, artist, build, child, cover, createState, downloadProgress (+14 more)
 
 ### Community 113 - "output_engine.dart"
-Cohesion: 0.05
-Nodes (39): CastEngine, DlnaEngine, _active, _bind, _completed, completedStream, describe, dispose (+31 more)
+Cohesion: 0.06
+Nodes (31): _active, _bind, _completed, completedStream, describe, dispose, _duration, durationStream (+23 more)
 
 ### Community 114 - "String?"
 Cohesion: 0.10
@@ -1111,16 +1098,16 @@ Cohesion: 0.16
 Nodes (10): ActionError, apply(), _entry(), _index_of(), manual_end(), Playback, QueueEntry, SessionTrack (+2 more)
 
 ### Community 117 - "traefik — Reverse proxy / ingress central do homelab Bergatrix (Traefik v3.6.2) com TLS wildcard automatico via Let's Encrypt e DNS-01 challenge no deSEC."
-Cohesion: 0.09
-Nodes (23): auth(), 🧩 Dependencias internas (Bergatrix), 🔌 Endpoints / API, 🗂️ Estrutura de codigo, 🛡️ Gestao de segredos, 🔗 Integracoes externas, 🗄️ Modelo de dados, 🚧 Notas de evolucao / pendencias (+15 more)
+Cohesion: 0.07
+Nodes (31): auth(), Caminho do tráfego, Dependências entre stacks, Infraestrutura, Máquinas e discos, Ordem de subida, Redes Docker, Repositórios (+23 more)
 
 ### Community 118 - "environment"
 Cohesion: 0.16
 Nodes (28): environment, environment, AI_KEEP_ALIVE, AI_MODEL, ARTICLE_RETENTION_DAYS, BERGANEWS_SSO_CLIENT_ID, BERGANEWS_SSO_CLIENT_SECRET, DATABASE_URL (+20 more)
 
 ### Community 119 - "fake_auth_repository.dart"
-Cohesion: 0.04
-Nodes (48): AuthOptions, AuthRepository, bypassPrefix, discoverServer, exchangeOidc, forgotPassword, login, logout (+40 more)
+Cohesion: 0.05
+Nodes (36): AuthOptions, AuthRepository, bypassPrefix, discoverServer, exchangeOidc, forgotPassword, login, logout (+28 more)
 
 ### Community 120 - "playback_repository.dart"
 Cohesion: 0.08
@@ -1136,47 +1123,47 @@ Nodes (3): Settings, _origin(), Settings
 
 ### Community 123 - "server/routes.py"
 Cohesion: 0.12
-Nodes (17): enabled(), read_health(), clear_deemix_failures(), _deemix(), DeemixFailure, DeemixItem, DeemixQueue, DownloadQueue (+9 more)
+Nodes (18): active_count(), enabled(), read_health(), clear_deemix_failures(), _deemix(), DeemixFailure, DeemixItem, DeemixQueue (+10 more)
 
-### Community 124 - "devices/routes.py"
-Cohesion: 0.27
-Nodes (13): _broadcast(), _close(), Device, _device_info(), _listing(), notify_users(), now_ms(), _send() (+5 more)
+### Community 124 - "dart:convert"
+Cohesion: 0.05
+Nodes (28): CastChannel, main, t, close, FakeAdapter, fetch, fixture, jsonBody (+20 more)
 
 ### Community 125 - "stats.dart"
 Cohesion: 0.09
 Nodes (20): artist, coverUrl, distinctTracksMonth, fromJson, imageUrl, isEmpty, month, name (+12 more)
 
-### Community 126 - "sync_test.dart"
+### Community 126 - "preferences.dart"
 Cohesion: 0.06
-Nodes (27): auth, container, dioWith, main, server, store, main, of (+19 more)
+Nodes (34): api, AppTheme, AudioQuality, autoDownloadNew, build, copyWith, detail, _key (+26 more)
 
-### Community 127 - "reader_screen.dart"
-Cohesion: 0.08
-Nodes (25): TranslationState, _absoluteImages, _article, articleId, _body, build, context, createState (+17 more)
+### Community 127 - "deemix.py"
+Cohesion: 0.09
+Nodes (13): clear_failed(), clear_stale(), download_best(), download_track(), emit_download(), _get_queue(), _literal(), _local_path() (+5 more)
 
 ### Community 128 - "app_release.dart"
 Cohesion: 0.08
 Nodes (21): androidAsset, AppVersion, assets, compareTo, fromGitHub, hashCode, latestOf, linuxAsset (+13 more)
 
 ### Community 129 - "app/routes.py"
-Cohesion: 0.14
+Cohesion: 0.15
 Nodes (28): add_member(), create_group(), delete_group(), get_avatar(), get_locations(), get_profile(), get_recent_pings(), group_events() (+20 more)
 
 ### Community 130 - "00-visao-geral.md"
-Cohesion: 0.15
-Nodes (9): Como o dono deve usar o Projeto, 🤖 Instruções do Projeto Claude — Bergatrix, Persona / System prompt (colar nas instruções do Projeto), Prompts iniciais sugeridos, Resumo de contexto (denso, para o Claude já saber o essencial), Automação, Bergalink, Estado atual (+1 more)
+Cohesion: 0.08
+Nodes (18): 🍊 Bergatrix — Visão Geral, Camadas (ordem de dependência 00 → 04), Como operar (essencial), Fluxo de tráfego e dependências, Mapa de documentos, Maturidade, O que é, Stack tecnológica recorrente (+10 more)
 
 ### Community 131 - "📐 Bergatrix — Convenções & Padrões de Desenvolvimento"
 Cohesion: 0.18
 Nodes (11): 1. Organização em camadas, 2. Estrutura padrão de uma stack, 3. Nomenclatura, 4. Padrão de roteamento (labels Traefik), 5. Padrão de SSO (Authentik), 6. Gestão de segredos, 7. Versionamento (git), 8. Persistência (+3 more)
 
-### Community 132 - "lyrics/service.py"
-Cohesion: 0.16
-Nodes (12): clean_title(), edit(), fetch_lrclib(), format_lrc(), LyricLine, Lyrics, lyrics_for(), LyricsError (+4 more)
+### Community 132 - "app/app.dart"
+Cohesion: 0.08
+Nodes (11): BergastreamApp, _BergastreamAppState, build, createState, dispose, initState, _lifecycle, routerProvider (+3 more)
 
-### Community 133 - "story_screen.dart"
-Cohesion: 0.06
-Nodes (34): build, _startPolling, _toggleSaved, _translate, article, build, createState, _cursor (+26 more)
+### Community 133 - "package:flutter_riverpod/flutter_riverpod.dart"
+Cohesion: 0.01
+Nodes (194): main, BerganewsApp, _BerganewsAppState, build, createState, initState, build, createState (+186 more)
 
 ### Community 135 - "bergalink/frontend/lib/main.dart"
 Cohesion: 0.05
@@ -1202,13 +1189,13 @@ Nodes (40): GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES, GF_ANALYTICS_CHECK_FOR_UPDATE
 Cohesion: 0.07
 Nodes (27): calls, _dio, edit, edited, edits, FakeLyricsRepository, found, fromJson (+19 more)
 
-### Community 141 - "berganews/frontend/lib/auth/oidc_launcher_web.dart"
-Cohesion: 0.25
-Nodes (7): cancel, clearInitialCode, createOidcLauncher, initialCode, open, redirect, _WebLauncher
+### Community 141 - "OidcLauncher"
+Cohesion: 0.33
+Nodes (5): _AppLinkLauncher, _LoopbackLauncher, _WebLauncher, _AppLinkLauncher, _LoopbackLauncher
 
 ### Community 142 - "FlutterWindow"
-Cohesion: 0.06
-Nodes (11): FlutterWindow, flutter_controller_, FlutterWindow::FlutterWindow(), project_, FlutterWindow, flutter_controller_, project_, FlutterWindow (+3 more)
+Cohesion: 0.05
+Nodes (12): FlutterWindow, flutter_controller_, FlutterWindow::FlutterWindow(), project_, FlutterWindow, flutter_controller_, FlutterWindow::FlutterWindow(), project_ (+4 more)
 
 ### Community 143 - "bergastream/frontend/windows/runner/win32_window.cpp"
 Cohesion: 0.08
@@ -1231,16 +1218,16 @@ Cohesion: 0.08
 Nodes (27): apply, ArticleList, ArticleListState, ArticleMarks, articleMarksProvider, ArticleTile, build, createState (+19 more)
 
 ### Community 149 - "make_icons.py"
-Cohesion: 0.18
-Nodes (13): App, android(), desktop(), full_icon(), gradient(), hsl(), letter(), rounded() (+5 more)
+Cohesion: 0.10
+Nodes (24): App, Authentik, Berganews, Calibrar o limite, Dados pessoais (LGPD), Histórias, Matérias, vídeos e retenção, Subir (+16 more)
 
-### Community 150 - "ConsumerWidget"
-Cohesion: 0.04
-Nodes (65): build, _SidebarPlaylists, localPlaylistsProvider, downloadedPlaylistsProvider, downloadManagerProvider, playlistDownloadProvider, build, child (+57 more)
+### Community 150 - "sync_notices.dart"
+Cohesion: 0.13
+Nodes (16): SyncNotice, syncNoticesProvider, build, c, child, _choose, createState, dispose (+8 more)
 
 ### Community 151 - "playlists/routes.py"
 Cohesion: 0.07
-Nodes (42): audience(), changed(), _add(), apply_batch(), _apply_one(), BatchResult, _cover(), _create() (+34 more)
+Nodes (37): _broadcast(), _close(), Device, _device_info(), _listing(), notify_users(), now_ms(), _send() (+29 more)
 
 ### Community 152 - "location_tracking.dart"
 Cohesion: 0.07
@@ -1252,47 +1239,47 @@ Nodes (15): album, albumId, artist, artistId, coverUrl, durationSeconds, externa
 
 ### Community 154 - "catalog_repository.dart"
 Cohesion: 0.07
-Nodes (28): album, artist, artistTracks, CatalogRepository, catalogRepositoryProvider, _dio, failPageAt, FakeCatalogRepository (+20 more)
+Nodes (27): album, artist, artistTracks, CatalogRepository, catalogRepositoryProvider, _dio, failPageAt, FakeCatalogRepository (+19 more)
 
 ### Community 155 - "CurrentUser"
-Cohesion: 0.15
-Nodes (13): admin_user(), current_user(), CurrentUser, stream_user(), decode_token(), TokenError, PlayBatch, record() (+5 more)
+Cohesion: 0.18
+Nodes (9): admin_user(), current_user(), CurrentUser, stream_user(), decode_token(), TokenError, admin_user(), current_user() (+1 more)
 
 ### Community 156 - "crowdsec"
 Cohesion: 0.11
 Nodes (18): external, external, name, container_name, environment, image, networks, restart (+10 more)
 
-### Community 157 - "manage.dart"
-Cohesion: 0.10
-Nodes (17): apiProvider, createFolder, editFolder, editSubscription, build, _run, SubscriptionsScreen, _usersProvider (+9 more)
+### Community 157 - "package:dio/dio.dart"
+Cohesion: 0.07
+Nodes (21): createDio, dio, onError, onRequest, _retried, apiDioProvider, dio, server (+13 more)
 
 ### Community 158 - "doberga/frontend/lib/auth/session.dart"
 Cohesion: 0.05
 Nodes (37): _access, _accessToken, build, checkServer, clear, dio, dioProvider, error (+29 more)
 
 ### Community 159 - "dumps.go"
-Cohesion: 0.29
-Nodes (10): copyFile(), discoverDumps(), dumpsSummary(), importOne(), pgCommand(), pgDump(), pgIdentity(), lastLines() (+2 more)
+Cohesion: 0.23
+Nodes (11): copyFile(), discoverDumps(), dumpsSummary(), importOne(), pgCommand(), pgDump(), pgIdentity(), lastLines() (+3 more)
 
 ### Community 160 - "services/api_client.dart"
 Cohesion: 0.07
 Nodes (27): addMember, ApiClient, _auth, bergalinkApiUrl, _client, connectGroup, createGroup, _decode (+19 more)
 
 ### Community 161 - "spaces/routes.py"
-Cohesion: 0.12
-Nodes (20): member_ids(), accept_invite(), create_invite(), create_space(), delete_space(), InviteIn, list_invites(), list_spaces() (+12 more)
+Cohesion: 0.13
+Nodes (18): member_ids(), accept_invite(), create_invite(), create_space(), delete_space(), InviteIn, list_invites(), MemberPatch (+10 more)
 
-### Community 162 - "jobs.go"
-Cohesion: 0.08
-Nodes (22): newAgent(), checkSource(), jobStatePath(), loadJobStates(), ping(), updateJobState(), planPath(), guessRepoRoot() (+14 more)
+### Community 162 - "SearchResult"
+Cohesion: 0.16
+Nodes (15): ping(), SearchResult, 1. Busca, 2. Tocar uma faixa, 3. Streaming e download, 7. Histórico e métricas, 9. Imagens, 9b. Situação do servidor (+7 more)
 
 ### Community 163 - "form_dialog.dart"
 Cohesion: 0.07
 Nodes (26): build, checkbox, checkboxInitial, _checked, confirmLabel, _controllers, createState, dispose (+18 more)
 
 ### Community 164 - "subtitle_refine.py"
-Cohesion: 0.09
-Nodes (22): align(), rvec(), tvec(), Anchor, _combine(), _contains_neighbor(), _dot(), estimate_coarse_offset() (+14 more)
+Cohesion: 0.12
+Nodes (16): align(), rvec(), tvec(), Anchor, _combine(), _contains_neighbor(), _dot(), estimate_coarse_offset() (+8 more)
 
 ### Community 165 - "fake_update.dart"
 Cohesion: 0.12
@@ -1308,11 +1295,11 @@ Nodes (17): 1. Export `userdata` no OMV, 2. Pastas, 3. Traefik: timeout de uploa
 
 ### Community 169 - "lyrics.dart"
 Cohesion: 0.05
-Nodes (41): add, at, build, c, choice, clear, createState, currentLineIndex (+33 more)
+Nodes (45): add, at, build, c, choice, clear, createState, currentLineIndex (+37 more)
 
 ### Community 170 - "lyrics_marker.dart"
 Cohesion: 0.06
-Nodes (32): _changed, createState, cs, _firstUnmarked, _keys, lead, _lines, lrcTime (+24 more)
+Nodes (34): _changed, createState, cs, _firstUnmarked, _keys, lead, _lines, lrcTime (+26 more)
 
 ### Community 171 - "dependencies"
 Cohesion: 0.07
@@ -1323,8 +1310,8 @@ Cohesion: 0.12
 Nodes (6): qr8BitByte(), _this, qrAlphaNum(), _this, qrNumber(), _this
 
 ### Community 173 - "docs/README.md"
-Cohesion: 0.24
-Nodes (3): Bibliotecas de terceiros, Documentação da Bergatrix, Regras desta documentação
+Cohesion: 0.12
+Nodes (14): A ordem, Como se comportam, Depois de reiniciar o servidor, Ligar e desligar tudo, Stack nova, removida ou renomeada, Documentação legada, Documentação da Bergatrix, Regras desta documentação (+6 more)
 
 ### Community 174 - "ollama"
 Cohesion: 0.12
@@ -1334,21 +1321,21 @@ Nodes (16): external, resources, networks, bergatrix-ai, container_name, deploy,
 Cohesion: 0.12
 Nodes (16): resources, devices, reservations, worker, cap_drop, container_name, deploy, mem_limit (+8 more)
 
-### Community 176 - "shell.dart"
-Cohesion: 0.06
-Nodes (25): openLyrics, build, createState, DobergaApp, _DobergaAppState, initState, build, createState (+17 more)
+### Community 176 - "invite.dart"
+Cohesion: 0.20
+Nodes (8): inviteToken, _key, PendingInvite, save, _store, take, uri, value
 
 ### Community 177 - "memory_store.dart"
 Cohesion: 0.06
 Nodes (35): addNotice, applyLocal, applyRemote, clearNotices, close, cursors, _cursorsKey, _drop (+27 more)
 
 ### Community 178 - "homeassistant — Plataforma de automação residencial (Home Assistant Core em container) exposta via Traefik no Modelo B (Authentik de fora, direto para dispositivos de confiança, bypass para o app Companion)"
-Cohesion: 0.12
-Nodes (16): 🧩 Dependências internas (Bergatrix), 🌐 Domínios / Roteamento, 🗂️ Estrutura de código, 🎯 Finalidade, 🛡️ Gestão de segredos, homeassistant — Plataforma de automação residencial (Home Assistant Core em container) exposta via Traefik no Modelo B (Authentik de fora, direto para dispositivos de confiança, bypass para o app Companion), 🔗 Integrações externas, 🗄️ Modelo de dados (+8 more)
+Cohesion: 0.07
+Nodes (28): Bloquear navegador no bypass, ⚠️ Bugs que já nos morderam, Checklist ao adicionar um serviço novo, 📌 Dispositivos de confiança, Modelo A — Público, só navegador, Modelo B — Público, com app/API própria, Modelo C2 — Rede local inteira, Modelo C — Só dispositivos de confiança (+20 more)
 
 ### Community 179 - "codigo/main.go"
-Cohesion: 0.12
-Nodes (15): cmdEnroll(), cmdImportDumps(), cmdRun(), main(), requireRoot(), usage(), statOwner(), cmdRecover() (+7 more)
+Cohesion: 0.10
+Nodes (20): newAgent(), cmdEnroll(), cmdImportDumps(), cmdRun(), main(), requireRoot(), usage(), statOwner() (+12 more)
 
 ### Community 180 - "n8n — Plataforma de automação de workflows self-hosted, com imagem customizada (Python/yt-dlp) e execução de comandos habilitada"
 Cohesion: 0.12
@@ -1368,27 +1355,27 @@ Nodes (10): InvalidRefreshToken, _issue(), issue_for(), refresh(), user_out(), I
 
 ### Community 184 - "player_controller_test.dart"
 Cohesion: 0.04
-Nodes (38): at, main, main, openDetail, tracks, container, local, main (+30 more)
+Nodes (42): HttpPlaybackRepository, PlaybackRepository, auth, container, dioWith, main, server, store (+34 more)
 
 ### Community 185 - "spotify_health.py"
-Cohesion: 0.10
-Nodes (17): api_restart_watch(), check_and_heal(), install_and_verify(), latest_pypi_version(), library_version(), _main(), _run(), run_canary() (+9 more)
+Cohesion: 0.06
+Nodes (19): get_redis(), lifespan(), api_restart_watch(), check_and_heal(), install_and_verify(), latest_pypi_version(), library_version(), _main() (+11 more)
 
 ### Community 186 - "berganews/frontend/lib/core/widgets.dart"
-Cohesion: 0.03
-Nodes (60): action, askText, confirm, controller, error, ErrorView, false, fit (+52 more)
+Cohesion: 0.04
+Nodes (43): action, askText, build, confirm, controller, error, ErrorView, false (+35 more)
 
 ### Community 187 - "accounts/routes.py"
-Cohesion: 0.11
-Nodes (20): AccountOut, AccountPatch, Forgot, _form(), list_users(), mail_status(), _mine(), my_account() (+12 more)
+Cohesion: 0.09
+Nodes (22): AccountOut, AccountPatch, _form(), list_users(), mail_status(), _mine(), my_account(), MyAccount (+14 more)
 
 ### Community 188 - "Armazenamento"
 Cohesion: 0.14
 Nodes (14): `APPDATA_PATH` e `CACHE_PATH`: uma pasta por stack, Armazenamento, As quatro raízes, Backup, Como decidir onde um volume vai, Disco local (HD de 1 TB), Layout das pastas, `MEDIA_PATH`: por tipo de mídia, compartilhado entre stacks (+6 more)
 
 ### Community 189 - "berga-news — Agregador de RSS auto-hospedado que agrupa artigos por tópico com IA e gera digests resumidos em português"
-Cohesion: 0.13
-Nodes (15): berga-news — Agregador de RSS auto-hospedado que agrupa artigos por tópico com IA e gera digests resumidos em português, 🧩 Dependencias internas (Bergatrix), 🌐 Dominios / Roteamento, 🔌 Endpoints / API, 🗂️ Estrutura de codigo, 🎯 Finalidade, 🛡️ Gestao de segredos, 🔗 Integracoes externas (+7 more)
+Cohesion: 0.07
+Nodes (25): short(), Agrupamento em histórias, API, Berganews: arquitetura, Coleta, Decisões, Fases, IA: quando roda o quê (+17 more)
 
 ### Community 190 - "bitwarden — Gerenciador de senhas auto-hospedado (Vaultwarden) exposto via Traefik com o wildcard TLS compartilhado *.daberga.com"
 Cohesion: 0.12
@@ -1399,20 +1386,20 @@ Cohesion: 0.12
 Nodes (15): cloudbeaver — Console web de administracao de banco de dados (CloudBeaver) para o Postgres global do homelab, protegido por Tailscale + Authentik SSO via Traefik, 🧩 Dependencias internas (Bergatrix), 🌐 Dominios / Roteamento, 🔌 Endpoints / API, 🗂️ Estrutura de codigo, 🎯 Finalidade, 🛡️ Gestao de segredos, 🔗 Integracoes externas (+7 more)
 
 ### Community 192 - "drop — Transferência segura e efêmera de mensagens/segredos entre dois dispositivos, com criptografia ponta-a-ponta no navegador e servidor como relay zero-knowledge."
-Cohesion: 0.12
-Nodes (15): 🧩 Dependências internas (Bergatrix), 🌐 Domínios / Roteamento, drop — Transferência segura e efêmera de mensagens/segredos entre dois dispositivos, com criptografia ponta-a-ponta no navegador e servidor como relay zero-knowledge., 🔌 Endpoints / API, 🗂️ Estrutura de código, 🎯 Finalidade, 🛡️ Gestão de segredos, 🔗 Integrações externas (+7 more)
+Cohesion: 0.07
+Nodes (25): Bibliotecas de terceiros, Atualizar dependências, Como funciona, Drop, Inverter, Limites, Segurança, Subir (+17 more)
 
 ### Community 193 - "litellm — Proxy/gateway LiteLLM auto-hospedado que expoe uma API unica compativel com OpenAI, roteando para modelos da OpenRouter (free e pagos), com um sidecar que sincroniza o catalogo e gerencia virtual keys"
 Cohesion: 0.12
 Nodes (15): 🧩 Dependencias internas (Bergatrix), 🌐 Dominios / Roteamento, 🔌 Endpoints / API, 🗂️ Estrutura de codigo, 🎯 Finalidade, 🛡️ Gestao de segredos, 🔗 Integracoes externas, litellm — Proxy/gateway LiteLLM auto-hospedado que expoe uma API unica compativel com OpenAI, roteando para modelos da OpenRouter (free e pagos), com um sidecar que sincroniza o catalogo e gerencia virtual keys (+7 more)
 
-### Community 194 - "doberga/frontend/lib/settings/settings_screen.dart"
-Cohesion: 0.09
-Nodes (16): PrefsController, build, _keep, _key, PrefsController, prefsProvider, _refresh, save (+8 more)
+### Community 194 - "return"
+Cohesion: 0.07
+Nodes (23): appLinkFor, isLink, linkSource, null, u, accessRedirect, canUseApp, null (+15 more)
 
 ### Community 195 - "transcriptor — Serviço de transcrição de áudio/vídeo com Whisper (faster-whisper) acelerado por GPU, com UI web, fila e API REST v1"
-Cohesion: 0.12
-Nodes (15): 🧩 Dependencias internas (Bergatrix), 🌐 Dominios / Roteamento, 🔌 Endpoints / API, 🗂️ Estrutura de codigo, 🎯 Finalidade, 🛡️ Gestao de segredos, 🔗 Integracoes externas, 🗄️ Modelo de dados (+7 more)
+Cohesion: 0.14
+Nodes (14): 🧩 Dependencias internas (Bergatrix), 🌐 Dominios / Roteamento, 🔌 Endpoints / API, 🗂️ Estrutura de codigo, 🎯 Finalidade, 🛡️ Gestao de segredos, 🔗 Integracoes externas, 🚧 Notas de evolucao / pendencias (+6 more)
 
 ### Community 196 - "wazuh — Plataforma SIEM/XDR (Wazuh 4.7.2) auto-hospedada para monitoramento de segurança, detecção de intrusão e conformidade"
 Cohesion: 0.13
@@ -1422,12 +1409,12 @@ Nodes (14): 🧩 Dependencias internas (Bergatrix), 🌐 Dominios / Roteamento, 
 Cohesion: 0.14
 Nodes (13): external, name, networks, bergatrix-proxy, services, vaultwarden, container_name, environment (+5 more)
 
-### Community 198 - "guard.py"
-Cohesion: 0.13
-Nodes (8): cached(), check_rate(), run_latest(), TooMany, Played, radio(), RadioRequest, RadioResponse
+### Community 198 - "radio/routes.py"
+Cohesion: 0.23
+Nodes (4): Played, radio(), RadioRequest, RadioResponse
 
 ### Community 199 - "html.py"
-Cohesion: 0.15
+Cohesion: 0.14
 Nodes (11): _drop_empty(), drop_leading_title(), first_image(), fragment(), image_link(), _key(), proxy_images(), sanitize() (+3 more)
 
 ### Community 200 - "optimizer"
@@ -1466,17 +1453,17 @@ Nodes (13): cap_add, container_name, environment, image, labels, networks, resta
 Cohesion: 0.17
 Nodes (13): build, context, dockerfile, build, cap_drop, container_name, mem_limit, networks (+5 more)
 
-### Community 209 - "Padrão de stacks"
-Cohesion: 0.17
-Nodes (12): Acesso (Traefik e autenticação), Bloco base, Checklist de stack nova, Dívidas conhecidas, Estrutura do repositório, No compose, Padrão de stacks, Redes (+4 more)
+### Community 209 - "spotify.py"
+Cohesion: 0.12
+Nodes (10): album_result(), AlbumResult, album_result(), best_image(), client(), entity_id(), reset_client(), search() (+2 more)
 
 ### Community 210 - "cloudbeaver"
 Cohesion: 0.17
 Nodes (11): external, container_name, image, labels, networks, restart, volumes, networks (+3 more)
 
 ### Community 211 - "static const"
-Cohesion: 0.05
-Nodes (39): DesktopShell, FakeCatalog, mostPlayed, playlists, recentSearches, topAlbums, topArtists, tracks (+31 more)
+Cohesion: 0.04
+Nodes (55): build, DesktopShell, _cast, stopCasting, build, createState, FullPlayer, _FullPlayerState (+47 more)
 
 ### Community 212 - "services"
 Cohesion: 0.10
@@ -1488,23 +1475,23 @@ Nodes (12): container_name, environment, image, networks, restart, volumes, ARL,
 
 ### Community 214 - "variants.py"
 Cohesion: 0.07
-Nodes (20): Settings, AudioInfo, _int(), parse_ffprobe(), probe(), delivered(), Delivery, _equivalent() (+12 more)
+Nodes (21): _file_for(), AudioInfo, _int(), parse_ffprobe(), probe(), cleanup(), delivered(), Delivery (+13 more)
 
 ### Community 215 - "Migração para o novo armazenamento"
-Cohesion: 0.14
-Nodes (10): 1. Criar as raízes, 2. Mover os dados de cada stack, 3. Atualizar os `.env`, 4. Pontos de atenção, 5. Conferir depois de subir, Antes de começar, Dois cenários para o HD de 1 TB, Mapa antigo → novo (+2 more)
+Cohesion: 0.22
+Nodes (9): 1. Criar as raízes, 2. Mover os dados de cada stack, 3. Atualizar os `.env`, 4. Pontos de atenção, 5. Conferir depois de subir, Antes de começar, Dois cenários para o HD de 1 TB, Mapa antigo → novo (+1 more)
 
 ### Community 216 - "berganews/frontend/windows/runner/win32_window.cpp"
 Cohesion: 0.07
 Nodes (19): EnableFullDpiSupportIfAvailable(), EnableNonClientDpiScaling, Point, x, y, Scale(), Size, height (+11 more)
 
-### Community 217 - "Drop"
-Cohesion: 0.22
-Nodes (9): Atualizar dependências, Como funciona, Drop, Inverter, Limites, Segurança, Subir, Testes (+1 more)
+### Community 217 - "search_history_repository.dart"
+Cohesion: 0.09
+Nodes (22): add, build, clear, externalId, fromJson, imageUrl, key, kind (+14 more)
 
 ### Community 218 - "sync_test.dart"
-Cohesion: 0.04
-Nodes (45): AppDatabase, db, main, markDone, playlist, t, c, change (+37 more)
+Cohesion: 0.03
+Nodes (50): changes, current, SafeConnectivity, AppDatabase, db, main, markDone, playlist (+42 more)
 
 ### Community 219 - "migrate"
 Cohesion: 0.17
@@ -1535,16 +1522,16 @@ Cohesion: 0.18
 Nodes (22): applySwap(), closeMessage(), endSession(), enqueue(), expireSession(), goHome(), onControl(), onReconnecting() (+14 more)
 
 ### Community 226 - "users/routes.py"
-Cohesion: 0.16
-Nodes (6): AdminUser, _iso(), list_users(), logout_user(), patch_user(), UserPatch
+Cohesion: 0.09
+Nodes (8): health(), lifespan(), AdminUser, _iso(), list_users(), logout_user(), patch_user(), UserPatch
 
 ### Community 227 - "bergastream/frontend/web/manifest.json"
 Cohesion: 0.18
 Nodes (10): background_color, description, display, icons, name, orientation, prefer_related_applications, short_name (+2 more)
 
 ### Community 228 - "1. Backend (FastAPI + PostgreSQL + Redis)"
-Cohesion: 0.10
-Nodes (20): 1.10 Correções no download (feitas no Passo 5), 1.11 Usuário de teste local, 1.1 Infraestrutura, 1.2 Estrutura do Backend, 1.3 Endpoints da API, 1.4 Banco de Dados (7 tabelas), 1.5 Fluxo de Resolução (anti-duplicação cross-provider), 1.6 Fila Redis (3 prioridades) (+12 more)
+Cohesion: 0.18
+Nodes (11): 1.10 Correções no download (feitas no Passo 5), 1.11 Usuário de teste local, 1.1 Infraestrutura, 1.2 Estrutura do Backend, 1.3 Endpoints da API, 1.5 Fluxo de Resolução (anti-duplicação cross-provider), 1.6 Fila Redis (3 prioridades), 1.7 Ciclo de Vida de Permanência (+3 more)
 
 ### Community 229 - "assets/manifest.json"
 Cohesion: 0.18
@@ -1563,7 +1550,7 @@ Cohesion: 0.18
 Nodes (11): cap_drop, container_name, labels, mem_limit, networks, read_only, restart, security_opt (+3 more)
 
 ### Community 233 - "track_actions_sheet.dart"
-Cohesion: 0.06
+Cohesion: 0.12
 Nodes (15): artist, build, cover, disabledMessage, id, _item, onAddToPlaylist, onAddToQueue (+7 more)
 
 ### Community 234 - "Redes Docker"
@@ -1583,16 +1570,16 @@ Cohesion: 0.20
 Nodes (10): command, container_name, depends_on, env_file, image, labels, networks, restart (+2 more)
 
 ### Community 238 - "go_pkg_fmt"
-Cohesion: 0.14
-Nodes (8): Dataset, HostCfg, Job, Plan, Repository, Retention, SMTPCfg, Storage
+Cohesion: 0.09
+Nodes (13): sendSMTP(), decodeKey(), generateKeys(), newOpener(), Dataset, HostCfg, Job, Opener (+5 more)
 
 ### Community 239 - "db"
 Cohesion: 0.18
 Nodes (11): container_name, environment, image, labels, networks, restart, volumes, POSTGRES_DB (+3 more)
 
 ### Community 240 - "Bergastream — subir no servidor"
-Cohesion: 0.18
-Nodes (11): 0. Antes de começar, 1. Código e pastas, 2. `.env`, 3. Subir, 4. Usuários, 5. Testar, 6. Atualizar o servidor depois, 7. Qualidade: Deezer Premium e FLAC pela Usenet (Lidarr) (+3 more)
+Cohesion: 0.20
+Nodes (10): 0. Antes de começar, 1. Código e pastas, 2. `.env`, 3. Subir, 4. Usuários, 5. Testar, 6. Atualizar o servidor depois, 7. Qualidade: Deezer Premium e FLAC pela Usenet (Lidarr) (+2 more)
 
 ### Community 241 - "utils/format.dart"
 Cohesion: 0.20
@@ -1639,8 +1626,8 @@ Cohesion: 0.20
 Nodes (10): x-env, TRANSCRIPTOR_AUDIO_DAYS, TRANSCRIPTOR_DATABASE_URL, TRANSCRIPTOR_DEFAULT_MODEL, TRANSCRIPTOR_MAX_DURATION_MINUTES, TRANSCRIPTOR_MAX_UPLOAD_MB, TRANSCRIPTOR_MODELS, TRANSCRIPTOR_PUBLIC_URL (+2 more)
 
 ### Community 253 - "authentik — Provedor de identidade (IdP) e SSO self-hosted que centraliza autenticacao e fornece ForwardAuth ao Traefik"
-Cohesion: 0.11
-Nodes (18): worker(), Serviços, 3. Identidade & SSO — Authentik, authentik — Provedor de identidade (IdP) e SSO self-hosted que centraliza autenticacao e fornece ForwardAuth ao Traefik, 🧩 Dependencias internas (Bergatrix), 🌐 Dominios / Roteamento, 🔌 Endpoints / API, 🗂️ Estrutura de codigo (+10 more)
+Cohesion: 0.07
+Nodes (28): worker(), 1. No Authentik, 2. No servidor, API, Armazenamento, Modelos, Segurança, Serviços (+20 more)
 
 ### Community 254 - "Padrão de acesso (Traefik + Authentik)"
 Cohesion: 0.20
@@ -1731,12 +1718,12 @@ Cohesion: 0.22
 Nodes (9): REDISCLI_AUTH, command, container_name, environment, image, networks, restart, security_opt (+1 more)
 
 ### Community 277 - "system_unix.go"
-Cohesion: 0.29
+Cohesion: 0.26
 Nodes (11): autostartEnabled(), autostartFile(), clearUserEnv(), environmentD(), getUserEnv(), profileFiles(), refreshSessionEnv(), rewriteProfile() (+3 more)
 
 ### Community 278 - "sync/engine.py"
-Cohesion: 0.11
-Nodes (16): list_for_user(), _apply(), _check_refs(), _ok(), Op, pull(), push(), Reject (+8 more)
+Cohesion: 0.24
+Nodes (9): _apply(), _check_refs(), cleanup(), _ok(), Op, push(), Reject, _rejected() (+1 more)
 
 ### Community 279 - "1. O que está migrado (no repositório)"
 Cohesion: 0.22
@@ -1771,12 +1758,12 @@ Cohesion: 0.15
 Nodes (14): depends_on, migrate, redis, condition, condition, worker, build, command (+6 more)
 
 ### Community 288 - "11. Passos de implementação"
-Cohesion: 0.13
-Nodes (15): 11. Passos de implementação, Passo 0: Reconhecimento (sem código de app), Passo 10: Início e Ajustes completos, Passo 11: Offline-first e sincronização, Passo 12: Web (base), Passo 13: Release Android e preparação Windows/Linux, Passo 1: Projeto, tema e componentes, Passo 2: Navegação e shell, com dados fake (+7 more)
+Cohesion: 0.04
+Nodes (47): 0. Regras de trabalho (LEIA ANTES DE QUALQUER CÓDIGO), 11. Passos de implementação, 12. Checklist final de aceite, 13. Fora do escopo agora (não implementar), 1. Visão geral e decisões fixas, 2.1 Matriz de acesso, 2.2 Tela de login (todas as plataformas), 2.3 Estados de sessão (máquina de estados) (+39 more)
 
-### Community 289 - "spaces_screen.dart"
-Cohesion: 0.10
-Nodes (26): InvitePreview, Space, build, SettingsScreen, _accept, AcceptInviteScreen, _AcceptInviteScreenState, build (+18 more)
+### Community 289 - "../../app_harness.dart"
+Cohesion: 0.09
+Nodes (7): main, open, repo, main, main, openSettings, main
 
 ### Community 290 - "backend/tests/test_units.py"
 Cohesion: 0.09
@@ -1798,9 +1785,9 @@ Nodes (8): container_name, image, labels, networks, restart, volumes, services, 
 Cohesion: 0.13
 Nodes (16): condition, container_name, depends_on, image, labels, networks, restart, security_opt (+8 more)
 
-### Community 296 - "playerProvider"
-Cohesion: 0.03
-Nodes (79): _onResume, ArtistScreen, _ArtistScreenState, DeviceInfo, devicesProvider, active, alone, build (+71 more)
+### Community 296 - "devices_sheet.dart"
+Cohesion: 0.04
+Nodes (49): _onResume, ac, bg, card, copyWith, dark, gr, lerp (+41 more)
 
 ### Community 297 - "cron"
 Cohesion: 0.25
@@ -1811,8 +1798,8 @@ Cohesion: 0.07
 Nodes (29): apiVersion, contactPoints, name, orgId, receivers, policies, group_by, group_interval (+21 more)
 
 ### Community 299 - "sync/routes.py"
-Cohesion: 0.10
-Nodes (10): channel(), data_changed(), members_of(), _publish(), protocol(), pull(), PullIn, push() (+2 more)
+Cohesion: 0.05
+Nodes (16): _file(), image(), app_version(), health(), lifespan(), _maintenance(), channel(), data_changed() (+8 more)
 
 ### Community 300 - "Documentação da Infraestrutura: Edge Node L4 & Homelab"
 Cohesion: 0.25
@@ -1826,9 +1813,9 @@ Nodes (7): interval, retries, start_period, test, timeout, healthcheck, healthch
 Cohesion: 0.29
 Nodes (7): command, container_name, image, networks, restart, volumes, redis
 
-### Community 303 - "clear_stuck"
-Cohesion: 0.18
-Nodes (5): _messages(), stalled_reason(), stuck_reason(), clear_stuck(), stream()
+### Community 303 - "lidarr.py"
+Cohesion: 0.12
+Nodes (12): local_path(), _messages(), names_match(), normalize(), pick_album(), pick_medley(), pick_parts(), pick_track() (+4 more)
 
 ### Community 304 - "lidarr"
 Cohesion: 0.29
@@ -1894,9 +1881,9 @@ Nodes (8): entryPoints, metrics, web, address, trustedIPs, address, proxyProtoco
 Cohesion: 0.33
 Nodes (5): description, name, whitelist, expression, reason
 
-### Community 321 - "sessionProvider"
-Cohesion: 0.04
-Nodes (52): build, createState, dispose, initState, _login, LoginScreen, _LoginScreenState, _server (+44 more)
+### Community 321 - "today_screen.dart"
+Cohesion: 0.10
+Nodes (21): AgendaItem, agendaProvider, agendaSourcesProvider, build, createState, date, _day, _greeting (+13 more)
 
 ### Community 322 - "services"
 Cohesion: 0.33
@@ -1904,11 +1891,11 @@ Nodes (5): ports, services, api, web, ports
 
 ### Community 323 - "gerar.ts"
 Cohesion: 0.08
-Nodes (16): dashboards, GATEWAY, grupos, pasta, Regra, regras, ROTULOS_ACESSO, binario (+8 more)
+Nodes (15): dashboards, GATEWAY, grupos, pasta, Regra, regras, ROTULOS_ACESSO, binario (+7 more)
 
-### Community 324 - "sources.py"
-Cohesion: 0.13
-Nodes (10): _seed_data(), _source(), _warm_tags(), _deezer_artist_id(), deezer_radio(), _lastfm(), lastfm_artist(), lastfm_similar_tracks() (+2 more)
+### Community 324 - "radio/service.py"
+Cohesion: 0.07
+Nodes (30): _fold(), key(), norm_artist(), norm_title(), plainness(), versions(), Batch, build() (+22 more)
 
 ### Community 325 - "bergastream/frontend/analysis_options.yaml"
 Cohesion: 0.33
@@ -1939,24 +1926,24 @@ Cohesion: 0.33
 Nodes (6): windows, shell, needs, runs-on, steps, timeout-minutes
 
 ### Community 333 - "Cue"
-Cohesion: 0.14
-Nodes (16): parse_ts(), shift_ts(), align_by_ordinal_map(), alignment_confidence(), alignment_metrics(), build_ordinal_time_map(), Cue, format_timestamp() (+8 more)
+Cohesion: 0.16
+Nodes (14): parse_ts(), shift_ts(), align_by_ordinal_map(), alignment_confidence(), alignment_metrics(), build_ordinal_time_map(), Cue, format_timestamp() (+6 more)
 
-### Community 334 - "radio_test.dart"
-Cohesion: 0.07
-Nodes (19): batches, container, controller, engine, fail, gate, main, next (+11 more)
+### Community 334 - "search_test.dart"
+Cohesion: 0.09
+Nodes (13): main, openDetail, tracks, main, search, calls, _FailingSearch, main (+5 more)
 
 ### Community 335 - "entryPoint"
 Cohesion: 0.40
 Nodes (5): scheme, to, redirections, entryPoint, http
 
 ### Community 336 - "bergastream/backend/app/auth/service.py"
-Cohesion: 0.13
-Nodes (18): peek_reset(), TokenPair, get_refresh_token(), insert_refresh_token(), revoke_family(), revoke_refresh_token(), hash_refresh_token(), new_refresh_token() (+10 more)
+Cohesion: 0.16
+Nodes (16): peek_reset(), TokenPair, get_refresh_token(), revoke_family(), hash_refresh_token(), new_refresh_token(), verify_password(), AccountDisabled (+8 more)
 
-### Community 337 - "web_version_watcher.dart"
-Cohesion: 0.12
-Nodes (17): build, _check, child, createState, dio, dispose, initState, interval (+9 more)
+### Community 337 - "../../core/widgets/widgets.dart"
+Cohesion: 0.06
+Nodes (33): build, _buildPage, _chips, createState, _dark, _row, _shuffle, _source (+25 more)
 
 ### Community 338 - "depends_on"
 Cohesion: 0.40
@@ -1986,13 +1973,13 @@ Nodes (4): needs, runs-on, timeout-minutes, android
 Cohesion: 0.50
 Nodes (4): test, runs-on, steps, timeout-minutes
 
-### Community 349 - "manage.dart"
-Cohesion: 0.08
-Nodes (21): action, api, bottomPadding, chosen, count, created, _FolderHeader, _FolderOption (+13 more)
+### Community 349 - "resolve.py"
+Cohesion: 0.19
+Nodes (12): clean_description(), _follow_redirects(), LinkNotFound, parse_link(), ParsedLink, resolve(), _resolve_deezer(), get() (+4 more)
 
-### Community 350 - "feeds_tabs.dart"
-Cohesion: 0.07
-Nodes (31): _AddFeedDialog, _AddFeedDialogState, build, _busy, _chooseFolder, createState, dispose, _error (+23 more)
+### Community 350 - "manage.dart"
+Cohesion: 0.03
+Nodes (66): apiProvider, _AddFeedDialog, _AddFeedDialogState, build, _busy, _chooseFolder, createState, dispose (+58 more)
 
 ### Community 356 - "app"
 Cohesion: 0.14
@@ -2000,7 +1987,7 @@ Nodes (14): build, cap_drop, container_name, labels, mem_limit, networks, ports,
 
 ### Community 360 - "lib.ts"
 Cohesion: 0.08
-Nodes (22): alertas(), Alvo, ATENCAO, Campo, coluna(), CRITICO, dashboard(), GRAVE (+14 more)
+Nodes (24): alertas(), Alvo, ATENCAO, Campo, CRITICO, dashboard(), GRAVE, juntar() (+16 more)
 
 ### Community 361 - "features_test.go"
 Cohesion: 0.13
@@ -2011,20 +1998,20 @@ Cohesion: 0.09
 Nodes (14): _apiKey, _appId, isConfigured, _listenersInstalled, markPingSeen, _projectId, PushNotifications, register (+6 more)
 
 ### Community 379 - "notices.py"
-Cohesion: 0.09
-Nodes (30): _app(), custom(), disabled(), email_changed_new(), email_changed_old(), enabled(), _hello(), invite() (+22 more)
+Cohesion: 0.11
+Nodes (26): _app(), custom(), disabled(), email_changed_new(), email_changed_old(), enabled(), _hello(), invite() (+18 more)
 
 ### Community 380 - "migrate"
 Cohesion: 0.17
 Nodes (12): condition, db, DATABASE_URL, command, container_name, depends_on, environment, image (+4 more)
 
 ### Community 381 - "artist_tracks_pager.dart"
-Cohesion: 0.04
-Nodes (45): ApiErrorKind, ApiException, detail, fromDio, isHostNotFound, isTransient, kind, message (+37 more)
+Cohesion: 0.06
+Nodes (37): ApiException, _albums, _allTracks, ArtistScreen, _ArtistScreenState, ArtistTab, _BackLink, build (+29 more)
 
-### Community 382 - "failures_screen.dart"
-Cohesion: 0.10
-Nodes (21): DownloadFailure, failuresRepositoryProvider, _actions, build, _closeEnough, createState, dispose, failure (+13 more)
+### Community 382 - "berganews/backend/app/auth/models.py"
+Cohesion: 0.14
+Nodes (10): AuthConfig, OIDCExchange, RefreshRequest, TokenPair, UserOut, AuthConfig, OIDCExchange, RefreshRequest (+2 more)
 
 ### Community 383 - "x-env"
 Cohesion: 0.11
@@ -2043,8 +2030,8 @@ Cohesion: 0.17
 Nodes (14): arun(), cleanup(), fake_dz(), fake_lf_artist(), fake_lf_tracks(), fake_resolve(), fake_yt(), flush() (+6 more)
 
 ### Community 387 - "projects.go"
-Cohesion: 0.17
-Nodes (13): projectMap, copyFileMissing(), copyMissing(), isSyncedSettings(), migrateClaudeDir(), baseName(), encodeProjectDir(), foldName() (+5 more)
+Cohesion: 0.10
+Nodes (15): asSlice(), projectMap, Settings, copyFileMissing(), copyMissing(), isSyncedSettings(), migrateClaudeDir(), baseName() (+7 more)
 
 ### Community 388 - "services"
 Cohesion: 0.20
@@ -2054,17 +2041,17 @@ Nodes (9): internal, name, external, external, networks, bergakup-internal, berg
 Cohesion: 0.25
 Nodes (8): container_name, image, labels, networks, restart, security_opt, volumes, db
 
-### Community 390 - "berga_colors.dart"
+### Community 390 - "local_playlists.dart"
 Cohesion: 0.10
-Nodes (15): ac, BergaColors, bg, card, copyWith, dark, gr, lerp (+7 more)
+Nodes (19): build, copyWith, coverPath, create, delete, _deleteCover, fromJson, id (+11 more)
 
 ### Community 391 - "claude-sync"
 Cohesion: 0.25
 Nodes (8): Arquivos, claude-sync, Como funciona, Compilar, Etiqueta do PC, Pasta no Nextcloud, Segurança, Usar
 
-### Community 392 - "http.dart"
-Cohesion: 0.05
-Nodes (40): absoluteUrl, AuthInterceptor, base, createDio, describeError, dio, normalizeServer, null (+32 more)
+### Community 392 - "berganews/frontend/lib/core/http.dart"
+Cohesion: 0.11
+Nodes (17): absoluteUrl, AuthInterceptor, base, createDio, describeError, dio, normalizeServer, null (+9 more)
 
 ### Community 393 - "mail.py"
 Cohesion: 0.13
@@ -2078,9 +2065,9 @@ Nodes (6): healthcheck, interval, retries, start_period, test, timeout
 Cohesion: 0.40
 Nodes (5): environment, POSTGRES_DB, POSTGRES_PASSWORD, POSTGRES_USER, TZ
 
-### Community 396 - "media_notification.dart"
-Cohesion: 0.06
-Nodes (27): audioEngineProvider, CarLibrary, BergaAudioHandler, getChildren, idle, initMediaNotification, library, mediaNotificationProvider (+19 more)
+### Community 396 - "car_library.dart"
+Cohesion: 0.04
+Nodes (41): _absolute, CarLibrary, carLibraryProvider, children, _found, _grid, handler, library (+33 more)
 
 ### Community 397 - "environment"
 Cohesion: 0.40
@@ -2091,12 +2078,12 @@ Cohesion: 0.09
 Nodes (22): ChangeNotifierMixin, SqliteLocalStore, LocalStore, MemoryLocalStore, _again, api, deviceId, _loop (+14 more)
 
 ### Community 399 - "app_toast.dart"
-Cohesion: 0.12
-Nodes (14): AppToast, build, colors, createState, _current, dispose, _fade, initState (+6 more)
+Cohesion: 0.10
+Nodes (15): BergaColors, AppToast, build, colors, createState, _current, dispose, _fade (+7 more)
 
 ### Community 400 - "cover.dart"
-Cohesion: 0.11
-Nodes (17): build, circle, Cover, gradientFor, hueFor, image, initialOf, initialSize (+9 more)
+Cohesion: 0.08
+Nodes (23): build, circle, Cover, gradientFor, hueFor, image, initialOf, initialSize (+15 more)
 
 ### Community 405 - "api"
 Cohesion: 0.18
@@ -2110,9 +2097,9 @@ Nodes (14): activeTab(), addFiles(), addOutItem(), deliver(), renderFileList(), 
 Cohesion: 0.38
 Nodes (13): acceptSwap(), canSwap(), commitSwap(), declineSwap(), finishSwap(), onFrame(), onSwap(), renderSwap() (+5 more)
 
-### Community 409 - "Berganews"
-Cohesion: 0.09
-Nodes (20): short(), Agrupamento em histórias, API, Berganews: arquitetura, Coleta, Decisões, Fases, IA: quando roda o quê (+12 more)
+### Community 409 - "downloads/__init__.py"
+Cohesion: 0.16
+Nodes (5): file_matches(), normalize_title(), read_title(), titles_match(), main()
 
 ### Community 410 - "playlists/service.py"
 Cohesion: 0.15
@@ -2122,40 +2109,40 @@ Nodes (16): access(), cover_url(), delete(), detail(), list_for(), Member, Perso
 Cohesion: 0.11
 Nodes (14): accessToken, _appAuth, AuthSession, instance, isConfigured, message, oidcClientId, oidcIssuer (+6 more)
 
-### Community 415 - "upgrader.py"
-Cohesion: 0.04
-Nodes (27): pop_error(), current_rank(), deemix_into(), deezer_id_for(), _do_download_deezer(), _do_download_spotify(), _do_download_youtube_fallback(), _fallback_after_deemix() (+19 more)
+### Community 415 - "asyncio"
+Cohesion: 0.03
+Nodes (51): backfill(), measure(), measure_and_store(), measure_later(), current_rank(), deemix_into(), deezer_id_for(), _do_download_deezer() (+43 more)
 
 ### Community 416 - "db"
 Cohesion: 0.15
 Nodes (13): container_name, environment, image, labels, networks, restart, security_opt, volumes (+5 more)
 
 ### Community 417 - "lib/auth/oidc_launcher.dart"
-Cohesion: 0.09
-Nodes (19): cancel, clearInitialCode, initialCode, OidcLauncher, oidcLauncherProvider, open, redirect, cancel (+11 more)
+Cohesion: 0.13
+Nodes (12): cancel, clearInitialCode, initialCode, OidcLauncher, oidcLauncherProvider, open, redirect, cancel (+4 more)
 
 ### Community 418 - "re"
 Cohesion: 0.17
 Nodes (16): agenda(), agora(), carregar(), duracao(), enviar_email(), fmt(), Handler, horario_de_hoje() (+8 more)
 
 ### Community 419 - "sync_test.go"
-Cohesion: 0.14
-Nodes (33): fakeNextcloud, pc, newApp(), newEngine(), TestMoveRemoteFolderOtherPCsFollow(), TestSettingsSyncCarriesNoTagHook(), conflictCopies(), msg() (+25 more)
+Cohesion: 0.15
+Nodes (30): fakeNextcloud, pc, TestMoveRemoteFolderOtherPCsFollow(), TestSettingsSyncCarriesNoTagHook(), conflictCopies(), msg(), serverSession(), TestDivergedPCsConverge() (+22 more)
 
 ### Community 420 - "fetcher"
 Cohesion: 0.17
 Nodes (12): build, cap_drop, command, container_name, mem_limit, networks, read_only, restart (+4 more)
 
 ### Community 421 - "backend/tests/test_units.py"
-Cohesion: 0.07
-Nodes (14): translate_target(), stale_since(), fix_future(), publish_dates(), _cand(), test_decide(), test_extract_amp_images(), test_extract_full_text() (+6 more)
+Cohesion: 0.06
+Nodes (15): translate_target(), stale_since(), fix_future(), publish_dates(), save_entries(), _cand(), test_decide(), test_extract_amp_images() (+7 more)
 
 ### Community 423 - "routes.dart"
 Cohesion: 0.11
 Nodes (17): adminFailures, adminUsers, albumOf, AppRoutes, artistOf, gallery, home, importedLink (+9 more)
 
 ### Community 425 - "output_devices.dart"
-Cohesion: 0.11
+Cohesion: 0.12
 Nodes (17): build, connect, connecting, data, devices, discover, host, id (+9 more)
 
 ### Community 426 - "bergalink/backend/tests/test_auth.py"
@@ -2174,12 +2161,12 @@ Nodes (11): build, cap_drop, command, container_name, mem_limit, networks, read_
 Cohesion: 0.20
 Nodes (10): condition, db, command, container_name, depends_on, image, networks, restart (+2 more)
 
-### Community 430 - "httpx"
-Cohesion: 0.09
-Nodes (9): _file(), image(), allowed(), fetch_allowed_image(), image(), ImageError, live(), ok() (+1 more)
+### Community 430 - "PlayerController"
+Cohesion: 0.11
+Nodes (18): audioEngineProvider, mediaNotificationProvider, build, _fadeTo, _loudnessOf, _maybeFadeOut, _maybePrefetch, _onPosition (+10 more)
 
 ### Community 432 - "output_platform_io.dart"
-Cohesion: 0.10
+Cohesion: 0.09
 Nodes (10): OutputPlatform, _android, _cast, connect, createOutputPlatform, discover, IoOutputPlatform, _multicast (+2 more)
 
 ### Community 433 - "services"
@@ -2195,36 +2182,36 @@ Cohesion: 0.50
 Nodes (8): healthcheck, healthcheck, interval, retries, start_period, test, timeout, healthcheck
 
 ### Community 436 - "Bergalink — Segurança e privacidade"
-Cohesion: 0.14
-Nodes (8): Autenticação e sessões, Bergalink — Segurança e privacidade, Critérios antes de beta, Localização e bateria, Operação, Princípios, 8. Autenticação, GenericGF()
+Cohesion: 0.15
+Nodes (7): Autenticação e sessões, Bergalink — Segurança e privacidade, Critérios antes de beta, Localização e bateria, Operação, Princípios, GenericGF()
 
 ### Community 437 - "doberga/backend/app/core/db.py"
-Cohesion: 0.13
-Nodes (12): create_pool(), get_pool(), add(), Connection, open_rooms(), remove(), room(), Room (+4 more)
+Cohesion: 0.18
+Nodes (5): create_pool(), get_pool(), create_pool(), get_pool(), _init()
 
 ### Community 438 - "lang.py"
 Cohesion: 0.38
 Nodes (3): detect(), _detector(), normalize()
 
-### Community 439 - "../core/http.dart"
-Cohesion: 0.16
-Nodes (8): main, session, storage, store, main, session, storage, store
+### Community 439 - "refine_scenario.py"
+Cohesion: 0.13
+Nodes (10): clean_text(), _normalize(), build(), release_offset(), _tag(), UnrelatedEmbedder, test_clean_text_removes_sdh_tags_and_speakers(), find() (+2 more)
 
-### Community 440 - "radio/service.py"
-Cohesion: 0.15
-Nodes (10): Batch, build(), vote(), _cached_tags(), Candidate, _recent_history(), _resolve(), _spawn() (+2 more)
+### Community 440 - "berganews/backend/tests/integration_pgserver.py"
+Cohesion: 0.12
+Nodes (4): FakeRedis, embed(), rss(), vec()
 
 ### Community 448 - "berganews/backend/app/prefs/routes.py"
-Cohesion: 0.11
-Nodes (10): health(), lifespan(), get_prefs(), load(), merge(), Prefs, PrefsIn, put_prefs() (+2 more)
+Cohesion: 0.21
+Nodes (8): get_prefs(), load(), merge(), Prefs, PrefsIn, put_prefs(), Tab, test_prefs_merge()
 
-### Community 449 - "lib/home/home_screen.dart"
-Cohesion: 0.08
-Nodes (22): BerganewsApp, _BerganewsAppState, build, createState, initState, prefsProvider, _allKey, build (+14 more)
+### Community 449 - "doberga/frontend/lib/core/http.dart"
+Cohesion: 0.13
+Nodes (14): absoluteUrl, base, createDio, describeError, dio, normalizeServer, null, onError (+6 more)
 
 ### Community 450 - "_yt"
-Cohesion: 0.22
-Nodes (8): _yt_artist_raw(), ytmusic_artist(), load(), ytmusic_radio(), thumbnail(), track_from(), watch_track_from(), _yt()
+Cohesion: 0.15
+Nodes (9): ytmusic_radio(), search(), _is_valid_video_id(), search_full(), _search_ytdlp(), thumbnail(), track_from(), watch_track_from() (+1 more)
 
 ### Community 451 - "sync_engine_test.dart"
 Cohesion: 0.08
@@ -2235,12 +2222,12 @@ Cohesion: 0.19
 Nodes (8): _close(), client_address(), other(), Peer, relay(), Room, same_origin(), websocket_endpoint()
 
 ### Community 453 - "Device"
-Cohesion: 0.12
-Nodes (7): check(), Device, FakeRedis, main(), writer(), new_id(), op()
+Cohesion: 0.10
+Nodes (9): register(), Table, check(), Device, FakeRedis, main(), writer(), new_id() (+1 more)
 
-### Community 454 - "match.py"
-Cohesion: 0.20
-Nodes (9): _fold(), key(), norm_artist(), norm_title(), plainness(), versions(), add(), resolve() (+1 more)
+### Community 454 - "_get"
+Cohesion: 0.19
+Nodes (9): _get(), get_movie_original_language(), get_series_original_language(), get_series_runtime(), movie_has_tag(), radarr_tag_id(), series_has_tag(), sonarr_tag_id() (+1 more)
 
 ### Community 455 - "main"
 Cohesion: 0.13
@@ -2283,8 +2270,8 @@ Cohesion: 0.12
 Nodes (14): _base, BergaText, body, button, chip, chipActive, fontFamily, h1 (+6 more)
 
 ### Community 466 - "Doberga: arquitetura"
-Cohesion: 0.10
-Nodes (18): API, Colunas de toda tabela sincronizada, Decisões, Doberga: arquitetura, Fases, Hoje e Semana, Notificações, Núcleo (+10 more)
+Cohesion: 0.08
+Nodes (23): fixed(), API, Calendário, Colunas de toda tabela sincronizada, Decisões, Doberga: arquitetura, Fases, Hoje e Semana (+15 more)
 
 ### Community 467 - "berganews/frontend/web/manifest.json"
 Cohesion: 0.18
@@ -2311,12 +2298,12 @@ Cohesion: 0.22
 Nodes (9): defaults, run, release, defaults, if, needs, runs-on, timeout-minutes (+1 more)
 
 ### Community 473 - "berganews/frontend/lib/auth/oidc_launcher_io.dart"
-Cohesion: 0.07
-Nodes (26): _AppLinkLauncher, cancel, clearInitialCode, _codeOf, createOidcLauncher, initialCode, _links, _LoopbackLauncher (+18 more)
+Cohesion: 0.15
+Nodes (11): cancel, clearInitialCode, _codeOf, createOidcLauncher, initialCode, _links, open, redirect (+3 more)
 
-### Community 475 - "../core/widgets.dart"
-Cohesion: 0.14
-Nodes (10): build, createState, dispose, _field, openSearch, _query, build, SyncBadge (+2 more)
+### Community 475 - "app/auth.py"
+Cohesion: 0.20
+Nodes (4): admin_identity(), current_identity(), Identity, OIDCVerifier
 
 ### Community 476 - "berganews/frontend/analysis_options.yaml"
 Cohesion: 0.33
@@ -2350,17 +2337,13 @@ Nodes (4): needs, runs-on, timeout-minutes, android
 Cohesion: 0.50
 Nodes (4): test, runs-on, steps, timeout-minutes
 
-### Community 485 - "request_lidarr"
-Cohesion: 0.16
-Nodes (4): pick_release_group(), studio_album(), Budget, request_lidarr()
+### Community 486 - "static const"
+Cohesion: 0.04
+Nodes (45): build, currentIndex, goToTab, miniPlayerBottom, navigationShell, onTap, tabs, albumPathOf (+37 more)
 
-### Community 486 - "in_playlists.dart"
-Cohesion: 0.17
-Nodes (13): beforeOpen, build, byTrack, _dio, FakeInPlaylistsLookup, find, HttpInPlaylistsLookup, InPlaylistsLabel (+5 more)
-
-### Community 488 - "doberga/backend/app/main.py"
-Cohesion: 0.12
-Nodes (5): app_version(), health(), lifespan(), _maintenance(), cleanup()
+### Community 488 - "history/routes.py"
+Cohesion: 0.25
+Nodes (8): Play, PlayBatch, record(), StatAlbum, StatArtist, Stats, stats(), StatTrack
 
 ### Community 489 - "locate"
 Cohesion: 0.28
@@ -2398,6 +2381,10 @@ Nodes (8): steps, steps, id, name, run, uses, working-directory, steps
 Cohesion: 0.25
 Nodes (8): API_URL, KEY_ALIAS, KEY_PASSWORD, KEYSTORE_BASE64, KEYSTORE_PASSWORD, OIDC_CLIENT_ID, OIDC_ISSUER, env
 
+### Community 499 - "doberga/frontend/lib/auth/oidc_launcher_io.dart"
+Cohesion: 0.15
+Nodes (11): cancel, clearInitialCode, _codeOf, createOidcLauncher, initialCode, _links, open, redirect (+3 more)
+
 ### Community 500 - "healthcheck"
 Cohesion: 0.48
 Nodes (7): healthcheck, healthcheck, interval, retries, start_period, test, timeout
@@ -2415,7 +2402,7 @@ Cohesion: 0.17
 Nodes (5): main(), Worker, emit(), scenario(), scenario()
 
 ### Community 504 - "openuiweb — Open WebUI (interface estilo ChatGPT) auto-hospedada como "Bergatrix AI", conectada ao LiteLLM e a um Ollama local com GPU NVIDIA, exposta em chat.${DOMAIN} mas restrita a LAN"
-Cohesion: 0.12
+Cohesion: 0.13
 Nodes (15): 🧩 Dependencias internas (Bergatrix), 🌐 Dominios / Roteamento, 🔌 Endpoints / API, 🗂️ Estrutura de codigo, 🎯 Finalidade, 🛡️ Gestao de segredos, 🔗 Integracoes externas, 🗄️ Modelo de dados (+7 more)
 
 ### Community 505 - "depends_on"
@@ -2426,6 +2413,10 @@ Nodes (6): depends_on, condition, db, migrate, condition, depends_on
 Cohesion: 0.33
 Nodes (6): environment, AVATAR_DIR, DATABASE_URL, FCM_CREDENTIALS_FILE, PGSSLMODE, environment
 
+### Community 507 - "._run_audio_check"
+Cohesion: 0.15
+Nodes (6): find_movie_by_path(), list_movies(), list_series(), list_series_episode_files(), _load_audio_verified(), _save_audio_verified()
+
 ### Community 508 - "environment"
 Cohesion: 0.40
 Nodes (5): environment, POSTGRES_DB, POSTGRES_PASSWORD, POSTGRES_USER, TZ
@@ -2435,8 +2426,8 @@ Cohesion: 0.23
 Nodes (4): check_url(), client(), FetchError, get()
 
 ### Community 511 - "features/auth/oidc_launcher_web.dart"
-Cohesion: 0.11
-Nodes (14): cancel, clearInitialCode, createOidcLauncher, initialCode, open, redirect, reloadPage, cancel (+6 more)
+Cohesion: 0.12
+Nodes (13): cancel, clearInitialCode, createOidcLauncher, initialCode, open, redirect, cancel, clearInitialCode (+5 more)
 
 ### Community 512 - "Matrix"
 Cohesion: 0.40
@@ -2450,9 +2441,9 @@ Nodes (14): 🧩 Dependencias internas (Bergatrix), 🌐 Dominios / Roteamento, 
 Cohesion: 0.50
 Nodes (4): release, needs, runs-on, timeout-minutes
 
-### Community 522 - "update_test.dart"
-Cohesion: 0.24
-Nodes (6): UpdateAvailable, UpdateCheck, UpdateCheckFailed, UpToDate, gh, main
+### Community 522 - "bool get"
+Cohesion: 0.17
+Nodes (10): ApiErrorKind, detail, fromDio, isHostNotFound, isTransient, kind, message, serverMessage (+2 more)
 
 ### Community 523 - "opml.py"
 Cohesion: 0.21
@@ -2462,29 +2453,29 @@ Nodes (7): build(), OpmlError, OpmlFeed, parse(), walk(), test_opml_rejects_enti
 Cohesion: 0.12
 Nodes (17): batches, count, _dio, exclude, FakeRadioRepository, HttpRadioRepository, lastArtist, next (+9 more)
 
-### Community 525 - "TrackPage"
+### Community 525 - "registry.py"
 Cohesion: 0.24
-Nodes (7): TrackPage, artist_tracks(), dedupe(), deezer_artist_tracks(), page_of(), spotify_artist_tracks(), ytmusic_artist_tracks()
+Nodes (4): coerce(), Col, Invalid, _range()
 
 ### Community 526 - "html"
-Cohesion: 0.10
-Nodes (9): page(), add_embeds(), card(), embeds(), globo_thumbs_to_cards(), meta(), page_video(), page() (+1 more)
+Cohesion: 0.12
+Nodes (8): page(), add_embeds(), card(), embeds(), globo_thumbs_to_cards(), meta(), page_video(), page()
 
 ### Community 527 - "doberga/backend/app/users/routes.py"
 Cohesion: 0.16
 Nodes (6): AdminUser, _iso(), list_users(), logout_user(), patch_user(), UserPatch
 
 ### Community 528 - "now"
-Cohesion: 0.17
-Nodes (5): by_name(), LidarrError, _each(), now(), search_interval()
+Cohesion: 0.12
+Nodes (8): by_name(), LidarrError, clear_stuck(), _each(), now(), run_once(), search_interval(), stream()
 
 ### Community 529 - "doberga/frontend/linux/runner/my_application.cc"
 Cohesion: 0.15
 Nodes (11): my_application_dispose(), my_application_dispose(), main(), my_application_activate(), my_application_dispose(), my_application_init(), my_application_new(), my_application_startup() (+3 more)
 
 ### Community 530 - "spaces/repository.py"
-Cohesion: 0.27
-Nodes (5): create_group(), create_invite(), find_invite(), hash_token(), membership()
+Cohesion: 0.15
+Nodes (9): create_group(), create_invite(), find_invite(), hash_token(), list_for_user(), membership(), list_spaces(), preview_invite() (+1 more)
 
 ### Community 531 - "environment"
 Cohesion: 0.12
@@ -2494,9 +2485,9 @@ Nodes (16): environment, APP_DOWNLOAD_URL, APP_LATEST_VERSION, APP_MIN_VERSION, 
 Cohesion: 0.22
 Nodes (6): cleanup(), main(), ok(), recv(), setup(), t()
 
-### Community 537 - "preferences.dart"
-Cohesion: 0.02
-Nodes (128): appPlatformProvider, keyValueStoreProvider, build, copyWith, coverPath, create, delete, _deleteCover (+120 more)
+### Community 537 - "library_providers.dart"
+Cohesion: 0.05
+Nodes (38): cached, _cacheKey, formatListening, fromJson, key, online, playRecorderServiceProvider, store (+30 more)
 
 ### Community 539 - "doberga/backend/app/auth/repository.py"
 Cohesion: 0.22
@@ -2510,10 +2501,6 @@ Nodes (11): saveFile, anchor, blob, saveFile, url, data, image, main (+3 more)
 Cohesion: 0.12
 Nodes (15): fail_if_not_ssl, follow_redirects, method, preferred_ip_protocol, valid_status_codes, http, prober, timeout (+7 more)
 
-### Community 543 - "Source"
-Cohesion: 0.21
-Nodes (3): Source, SourceDown, breaker()
-
 ### Community 544 - "api"
 Cohesion: 0.13
 Nodes (15): build, cap_drop, container_name, depends_on, mem_limit, networks, read_only, restart (+7 more)
@@ -2522,13 +2509,13 @@ Nodes (15): build, cap_drop, container_name, depends_on, mem_limit, networks, re
 Cohesion: 0.13
 Nodes (15): command, container_name, environment, image, network_mode, restart, user, volumes (+7 more)
 
-### Community 547 - "Modelos de Labels do Traefik — Bergatrix"
-Cohesion: 0.17
-Nodes (12): Bloquear navegador no bypass, ⚠️ Bugs que já nos morderam, Checklist ao adicionar um serviço novo, 📌 Dispositivos de confiança, Modelo A — Público, só navegador, Modelo B — Público, com app/API própria, Modelo C2 — Rede local inteira, Modelo C — Só dispositivos de confiança (+4 more)
+### Community 547 - "test_real_episode_other_release"
+Cohesion: 0.18
+Nodes (7): OllamaEmbedder, read_subtitle(), RefineError, _embedder(), _ollama_ready(), test_real_embeddings_follow_other_release(), test_real_episode_other_release()
 
 ### Community 548 - "berganews/backend/app/auth/dependencies.py"
-Cohesion: 0.19
-Nodes (6): admin_user(), current_user(), CurrentUser, admin_user(), current_user(), CurrentUser
+Cohesion: 0.38
+Nodes (3): admin_user(), current_user(), CurrentUser
 
 ### Community 549 - "datasources"
 Cohesion: 0.14
@@ -2539,8 +2526,8 @@ Cohesion: 0.14
 Nodes (13): external, external, external, name, internal, name, networks, bergatrix-auth (+5 more)
 
 ### Community 553 - "sessions/routes.py"
-Cohesion: 0.15
-Nodes (16): action(), create(), decline(), end(), get(), _http(), invite(), InviteBody (+8 more)
+Cohesion: 0.14
+Nodes (17): action(), create(), decline(), end(), get(), _http(), invite(), InviteBody (+9 more)
 
 ### Community 555 - "alloy"
 Cohesion: 0.14
@@ -2551,8 +2538,8 @@ Cohesion: 0.14
 Nodes (14): 0. Tirar o Wazuh do servidor, 1. Authentik, 2. Proxmox, 3. OMV, 4. OPNsense, 5. VPS, 6. Servidor, 7. Conferir (+6 more)
 
 ### Community 557 - "OIDCClient"
-Cohesion: 0.24
-Nodes (5): client(), finish_login(), Identity, LoginError, OIDCClient
+Cohesion: 0.28
+Nodes (3): Identity, LoginError, OIDCClient
 
 ### Community 559 - "db"
 Cohesion: 0.15
@@ -2560,15 +2547,15 @@ Nodes (13): container_name, environment, image, labels, networks, restart, secur
 
 ### Community 560 - "Segment"
 Cohesion: 0.26
-Nodes (11): paragraphs(), Segment, timestamp(), to_json(), to_srt(), to_text(), to_vtt(), segments() (+3 more)
+Nodes (11): paragraphs(), Segment, timestamp(), to_json(), to_srt(), to_text(), to_vtt(), finish() (+3 more)
 
 ### Community 561 - "pve-exporter"
 Cohesion: 0.15
 Nodes (13): condition, config, depends_on, command, container_name, depends_on, extra_hosts, image (+5 more)
 
-### Community 562 - "system_windows.go"
-Cohesion: 0.29
-Nodes (9): autostartEnabled(), broadcastEnvironment(), clearUserEnv(), getUserEnv(), hiddenCommand(), openBrowser(), regQuery(), setAutostart() (+1 more)
+### Community 562 - "fake_catalog.dart"
+Cohesion: 0.18
+Nodes (7): FakeCatalog, mostPlayed, playlists, recentSearches, topAlbums, topArtists, tracks
 
 ### Community 563 - "networks"
 Cohesion: 0.17
@@ -2598,9 +2585,9 @@ Nodes (11): apiVersion, path, providers, allowUiUpdates, disableDeletion, folder
 Cohesion: 0.18
 Nodes (10): background_color, description, display, icons, name, orientation, prefer_related_applications, short_name (+2 more)
 
-### Community 570 - "bool get"
-Cohesion: 0.18
-Nodes (9): app, desktop, detect, isApp, isDesktop, isWeb, simulated, simulatedAndroid (+1 more)
+### Community 570 - "List"
+Cohesion: 0.13
+Nodes (19): app, AppPlatform, appPlatformProvider, desktop, detect, isApp, isDesktop, isWeb (+11 more)
 
 ### Community 571 - "blackbox"
 Cohesion: 0.18
@@ -2642,9 +2629,13 @@ Nodes (10): command, container_name, extra_hosts, image, networks, restart, secu
 Cohesion: 0.22
 Nodes (9): accessLog, fields, filePath, format, headers, defaultMode, names, Referer (+1 more)
 
-### Community 581 - "Módulos"
-Cohesion: 0.22
-Nodes (9): fixed(), Calendário, Lista de compras, Módulos, Notas, Recorrentes, l(), logs() (+1 more)
+### Community 581 - "logs"
+Cohesion: 0.50
+Nodes (4): Lista de compras, l(), logs(), Mapa atual por stack
+
+### Community 582 - "TranslationQueue"
+Cohesion: 0.20
+Nodes (4): TranslationQueue, Legendarr-worker (legenda + validação), Optimizer (reencode), 📐 Regras de negocio
 
 ### Community 583 - "base"
 Cohesion: 0.33
@@ -2661,6 +2652,10 @@ Nodes (9): command, container_name, image, networks, restart, security_opt, user
 ### Community 586 - "node-exporter"
 Cohesion: 0.22
 Nodes (9): command, container_name, image, network_mode, pid, restart, security_opt, volumes (+1 more)
+
+### Community 587 - "Engine"
+Cohesion: 0.16
+Nodes (5): Engine, Result, test_worker_pipeline(), scenario(), transcribe()
 
 ### Community 588 - "healthcheck"
 Cohesion: 0.50
@@ -2682,9 +2677,9 @@ Nodes (8): command, container_name, image, networks, restart, user, volumes, geo
 Cohesion: 0.27
 Nodes (6): completePendingOidc, loginWithOidc, SessionController, completePendingOidc, loginWithOidc, SessionController
 
-### Community 593 - "Transcriptor"
-Cohesion: 0.20
-Nodes (10): 1. No Authentik, 2. No servidor, API, Armazenamento, Modelos, Segurança, Subir, Testes (+2 more)
+### Community 593 - "hub.py"
+Cohesion: 0.42
+Nodes (7): add(), Connection, open_rooms(), remove(), room(), Room, socket()
 
 ### Community 594 - "prometheus"
 Cohesion: 0.33
@@ -2702,97 +2697,65 @@ Nodes (3): first_frame_cb(), first_frame_cb(), first_frame_cb()
 Cohesion: 0.50
 Nodes (3): my_application_class_init(), my_application_class_init(), my_application_class_init()
 
-### Community 598 - "fake_oidc.dart"
-Cohesion: 0.18
-Nodes (9): cancel, cancelled, clearInitialCode, code, initial, initialCode, open, opened (+1 more)
-
-### Community 599 - "Point"
-Cohesion: 0.50
-Nodes (3): Point, x, y
-
-### Community 600 - "Bergastream: Guia de Implementação do App Flutter"
+### Community 598 - "dart:math"
 Cohesion: 0.22
-Nodes (8): 0. Regras de trabalho (LEIA ANTES DE QUALQUER CÓDIGO), 12. Checklist final de aceite, 13. Fora do escopo agora (não implementar), 1. Visão geral e decisões fixas, 3. Stack, 4. Estrutura de pastas, 9. Contrato da API (CONFIRMAR NO BACKEND NO PASSO 0), Bergastream: Guia de Implementação do App Flutter
+Nodes (6): PlayQueue, list, main, q, t, titles
+
+### Community 599 - "Bergastream — O que já foi implementado"
+Cohesion: 0.25
+Nodes (8): 2.1 Estrutura (Passos 1 a 3), 2.2 Design System (Seção 5), 2.3 Status da verificação (Passo 1), 2. Frontend Flutter, 4. Pendências conhecidas, 5. Como rodar (desenvolvimento), 6. Código antigo, Bergastream — O que já foi implementado
+
+### Community 600 - "doberga/frontend/lib/auth/oidc_launcher.dart"
+Cohesion: 0.25
+Nodes (7): cancel, clearInitialCode, initialCode, OidcLauncher, oidcLauncherProvider, open, redirect
 
 ### Community 602 - "depends_on"
 Cohesion: 0.67
 Nodes (3): depends_on, migrate, condition
 
 ### Community 603 - "Jellyfin só pelo Authentik"
-Cohesion: 0.12
-Nodes (14): latest(), Containers, 1. Authentik, 2. Plugin, 3. Rede (*Painel → Rede*), 4. Contas locais, Como funciona, Configuração (uma vez) (+6 more)
+Cohesion: 0.07
+Nodes (26): latest(), Acesso (Traefik e autenticação), Bloco base, Checklist de stack nova, Containers, Dívidas conhecidas, Estrutura do repositório, No compose (+18 more)
 
-### Community 620 - "6. Telas (especificação detalhada)"
-Cohesion: 0.22
-Nodes (9): 6.1 Estrutura geral (shell), 6.2 Início, 6.3 Buscar, 6.4 Biblioteca, 6.5 Ajustes, 6.6 Player, 6.7 Artista e Álbum (não estão no protótipo; seguir o mesmo design), 6.8 Layout de navegador (web a partir de 900 px) (+1 more)
+### Community 620 - "doberga/frontend/lib/auth/oidc_launcher_web.dart"
+Cohesion: 0.25
+Nodes (7): cancel, clearInitialCode, createOidcLauncher, initialCode, open, redirect, _WebLauncher
 
 ### Community 621 - "backend/app/db.py"
 Cohesion: 0.29
 Nodes (4): get_pool(), require_membership(), upsert_user(), public()
 
-### Community 622 - "🍊 Bergatrix — Visão Geral"
-Cohesion: 0.22
-Nodes (9): 🍊 Bergatrix — Visão Geral, Camadas (ordem de dependência 00 → 04), Como operar (essencial), Fluxo de tráfego e dependências, Mapa de documentos, Maturidade, O que é, Stack tecnológica recorrente (+1 more)
+### Community 622 - "Bergastream — versões dos apps (Android, Windows, Linux)"
+Cohesion: 0.33
+Nodes (5): Assinatura do Android (uma vez), Bergastream — versões dos apps (Android, Windows, Linux), Build local, Publicar uma versão, Requisitos para quem instala
 
 ### Community 623 - "🔑 Bergatrix — Guia do `.env` (como construir, o que ter e como manipular)"
 Cohesion: 0.22
 Nodes (9): 1. Modelo mental — o `.env` tem papel DUPLO, 2. Como construir um `.env` (passo a passo), 3. O que todo `.env` costuma ter (variáveis comuns), 4. Como gerar segredos fortes, 5. Como manipular / manter o `.env`, 6. Armadilhas reais encontradas no repo, 7. Conformidade & segurança (obrigatório), 8. Template canônico de `.env.example` (para padronizar / criar os que faltam) (+1 more)
 
 ### Community 624 - "rate_limit.py"
-Cohesion: 0.36
-Nodes (4): _key(), register_failure(), reset(), seconds_blocked()
-
-### Community 625 - "Infraestrutura"
-Cohesion: 0.25
-Nodes (8): Caminho do tráfego, Dependências entre stacks, Infraestrutura, Máquinas e discos, Ordem de subida, Redes Docker, Repositórios, Stacks
+Cohesion: 0.20
+Nodes (7): _client_ip(), Forgot, forgot_password(), _key(), register_failure(), reset(), seconds_blocked()
 
 ### Community 627 - "berga_theme.dart"
-Cohesion: 0.09
-Nodes (15): brandBlue, buildTheme, readerWidth, scheme, themeModeOf, wideLayout, BergaTheme, _build (+7 more)
+Cohesion: 0.06
+Nodes (16): brandBlue, buildTheme, readerWidth, scheme, themeModeOf, wideLayout, main, BergaTheme (+8 more)
 
 ### Community 628 - "Exception"
-Cohesion: 0.29
-Nodes (6): ApiException, AuthException, LocationException, _LoginError, _LoginError, SyncUpgradeRequired
+Cohesion: 0.25
+Nodes (7): ApiException, AuthException, LocationException, _LoginError, LyricsError, _LoginError, SyncUpgradeRequired
 
-### Community 629 - "files_io.dart"
-Cohesion: 0.29
-Nodes (4): file, folder, saveFile, writeAsBytes
+### Community 629 - "track_menu.dart"
+Cohesion: 0.08
+Nodes (19): file, folder, saveFile, writeAsBytes, actions, choice, context, external (+11 more)
 
 ### Community 630 - "bergastream/backend/app/__init__.py"
 Cohesion: 0.38
 Nodes (3): _activate_pydeps(), _folder_version(), version_tuple()
 
-### Community 631 - "8. Modo offline e downloads locais (MUITO IMPORTANTE)"
-Cohesion: 0.29
-Nodes (7): 8.1 O que é salvo no aparelho, por faixa, 8.2 Estados, 8.3 Regra de permanência local (espelha a do servidor), 8.5 Gerenciador de downloads, 8.6 Uso offline, 8.7 Dados locais e sincronização (PROPOSTA, validar antes de implementar), 8. Modo offline e downloads locais (MUITO IMPORTANTE)
-
-### Community 632 - "SessionController"
-Cohesion: 0.29
-Nodes (7): authRepositoryProvider, oidcLauncherProvider, completePendingOidc, initialSessionProvider, SessionController, SessionState, sessionStorageProvider
-
-### Community 638 - "test_worker_pipeline"
-Cohesion: 0.33
-Nodes (4): Result, test_worker_pipeline(), scenario(), transcribe()
-
-### Community 640 - "🍊 BERGATRIX"
-Cohesion: 0.33
-Nodes (6): 📦 Apps (03-apps), 📂 Arquitetura da Matrix, 🍊 BERGATRIX, 🚀 Como Iniciar, 🛡️ Pilares do Projeto, 👤 Sobre o Autor
-
-### Community 643 - "2. Plataformas e regras de acesso (AUTENTICAÇÃO)"
+### Community 631 - "RemoteRenderer"
 Cohesion: 0.40
-Nodes (5): 2.1 Matriz de acesso, 2.2 Tela de login (todas as plataformas), 2.3 Estados de sessão (máquina de estados), 2.4 Comportamento das telas quando não há servidor/login, 2. Plataformas e regras de acesso (AUTENTICAÇÃO)
-
-### Community 644 - "5. Design system (EXATO)"
-Cohesion: 0.40
-Nodes (5): 5.1 Cores, 5.2 Tipografia (Bricolage Grotesque), 5.3 Medidas e formas, 5.4 Componentes compartilhados (`core/widgets`), 5. Design system (EXATO)
-
-### Community 645 - "7. Lógica do player e da fila"
-Cohesion: 0.40
-Nodes (5): 7.1 Duas filas, 7.2 Regra de "próxima", 7.3 Fonte do áudio (nesta ordem), 7.4 Plataforma, 7. Lógica do player e da fila
-
-### Community 647 - "Ligar e desligar tudo"
-Cohesion: 0.40
-Nodes (5): A ordem, Como se comportam, Depois de reiniciar o servidor, Ligar e desligar tudo, Stack nova, removida ou renomeada
+Nodes (5): CastEngine, DlnaEngine, RemoteRenderer, WebCastEngine, FakeRenderer
 
 ### Community 648 - "FakeSessionRepository"
 Cohesion: 0.67
@@ -2803,24 +2766,24 @@ Cohesion: 0.67
 Nodes (3): FakeSessionSocket, SessionSocket, WebSessionSocket
 
 ## Knowledge Gaps
-- **3928 isolated node(s):** `_lifecycle`, `createState`, `dispose`, `SessionEntry`, `SessionPlayback` (+3923 more)
-  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 8091 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
-- **116 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **3937 isolated node(s):** `_lifecycle`, `createState`, `dispose`, `_ref`, `playlists` (+3932 more)
+  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 8099 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
+- **115 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `id_token()` connect `asyncio` to `Transcriptor`, `test_integration.py`, `Bergalink — Segurança e privacidade`, `httpx`?**
+- **Why does `jellyfin — Centro de mídia self-hosted (Jellyfin + suite *arr) com automação própria de legendas PT-BR por IA, validação de áudio e reencode HEVC/NVENC` connect `jellyfin — Centro de mídia self-hosted (Jellyfin + suite *arr) com automação própria de legendas PT-BR por IA, validação de áudio e reencode HEVC/NVENC` to `TranslationQueue`, `worker/core/scanner.py`?**
   _High betweenness centrality (0.026) - this node is a cross-community bridge._
 - **What connects `_lifecycle`, `createState`, `dispose` to the rest of the system?**
-  _3928 weakly-connected nodes found - possible documentation gaps or missing edges._
+  _3937 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `player_controller.dart` be split into smaller, more focused modules?**
-  _Cohesion score 0.01068319000053416 - nodes in this community are weakly interconnected._
-- **Why does `SearchResult` connect `SearchResult` to `_yt`, `sources.py`, `guard.py`, `radio/service.py`, `TrackPage`, `api/routes.py`, `playlists/service.py`, `failures.py`, `Bergastream — Mapa da API (API_MAP.md)`, `SearchResult`?**
-  _High betweenness centrality (0.022) - this node is a cross-community bridge._
+  _Cohesion score 0.010752688172043012 - nodes in this community are weakly interconnected._
+- **Why does `🚧 Notas de evolucao / pendencias` connect `worker/core/scanner.py` to `jellyfin — Centro de mídia self-hosted (Jellyfin + suite *arr) com automação própria de legendas PT-BR por IA, validação de áudio e reencode HEVC/NVENC`, `sessions/service.py`?**
+  _High betweenness centrality (0.024) - this node is a cross-community bridge._
 - **Should `database.dart` be split into smaller, more focused modules?**
   _Cohesion score 0.017857142857142856 - nodes in this community are weakly interconnected._
-- **Why does `owner` connect `codigo/main.go` to `Doberga: arquitetura`, `playlists/service.py`, `SearchResult`?**
-  _High betweenness centrality (0.014) - this node is a cross-community bridge._
-- **Should `test_subtitle_refine.py` be split into smaller, more focused modules?**
-  _Cohesion score 0.09387755102040816 - nodes in this community are weakly interconnected._
+- **Why does `id_token()` connect `asyncio` to `3. Passos 6 a 13`, `test_integration.py`, `ops.py`, `worker/core/scanner.py`, `authentik — Provedor de identidade (IdP) e SSO self-hosted que centraliza autenticacao e fornece ForwardAuth ao Traefik`, `Bergastream — login pelo Authentik`?**
+  _High betweenness centrality (0.023) - this node is a cross-community bridge._
+- **Should `pathlib` be split into smaller, more focused modules?**
+  _Cohesion score 0.03343313373253493 - nodes in this community are weakly interconnected._

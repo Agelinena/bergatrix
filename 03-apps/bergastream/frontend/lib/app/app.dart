@@ -19,7 +19,6 @@ import '../features/update/update_prompt.dart';
 import 'app_frame.dart';
 import 'router.dart';
 import '../features/update/web_version_watcher.dart';
-import '../features/player/car_library.dart';
 
 class BergastreamApp extends ConsumerStatefulWidget {
   const BergastreamApp({super.key});
@@ -46,8 +45,6 @@ class _BergastreamAppState extends ConsumerState<BergastreamApp> {
       await session.completePendingOidc();
       await session.validate();
     });
-    // Android Auto: liga a biblioteca do carro ao serviço de mídia.
-    Future.microtask(() => ref.read(carLibraryProvider));
     // Retoma downloads que ficaram pela metade (Seção 8.5).
     Future.microtask(() => ref.read(downloadManagerProvider.notifier).start());
     // Detecção do servidor e sincronização ao reconectar (Passo 11).

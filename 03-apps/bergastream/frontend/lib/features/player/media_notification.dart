@@ -36,6 +36,13 @@ class BergaAudioHandler extends BaseAudioHandler with SeekHandler {
   Future<void> skipToQueueItem(int index) async =>
       library?.skipToQueueItem(index);
 
+  /// Lupa do Android Auto (busca digitada ou falada na tela de busca).
+  @override
+  Future<List<MediaItem>> search(
+    String query, [
+    Map<String, dynamic>? extras,
+  ]) async => await library?.searchItems(query) ?? const [];
+
   @override
   Future<void> play() async => onCommand?.call('play');
 
@@ -130,6 +137,12 @@ Future<BergaAudioHandler?> initMediaNotification() async {
         // Silhueta branca: o ícone colorido do app vira um quadrado branco
         // na barra de status.
         androidNotificationIcon: 'drawable/ic_stat_bergastream',
+        // Android Auto: mostra a lupa de busca e as playlists em grade.
+        androidBrowsableRootExtras: {
+          'android.media.browse.SEARCH_SUPPORTED': true,
+          'android.media.browse.CONTENT_STYLE_BROWSABLE_HINT': 2,
+          'android.media.browse.CONTENT_STYLE_PLAYABLE_HINT': 1,
+        },
       ),
     );
   } on Object catch (e) {

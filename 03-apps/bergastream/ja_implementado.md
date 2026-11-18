@@ -406,6 +406,14 @@ Rodado na imagem `ghcr.io/cirruslabs/flutter:stable` (Flutter 3.44.0 / Dart 3.12
 - Testes: `test_quality` 61, `test_upgrade_flow` 10 (novo; banco real e Lidarr falso). Validado
   contra o MusicBrainz e um Lidarr local (ISRC → álbum de estúdio → `album/lookup` por MBID).
 
+### Versão 0.8.1 — Android Auto mais completo
+- A biblioteca do carro fica pronta ao abrir o app, antes da tela (o Android Auto pode abrir o
+  app em segundo plano; antes, nesse caso, o carro recebia a lista vazia).
+- No carro: abas **Playlists** (em grade) e **Mais ouvidas**, e a **lupa de busca** (tocar uma
+  música achada começa a rádio dela), além da busca por voz e da fila.
+- Apps instalados fora da Play Store só aparecem no Android Auto com "Fontes desconhecidas"
+  ligado nas configurações de desenvolvedor do Android Auto.
+
 ### Versão 0.8.0 — jam só controle, Chromecast, DLNA e Android Auto
 - **Jam "só controle"** (Ouvir junto → Onde toca: "Só no de quem criou"): só o aparelho de quem
   criou toca (a caixa da festa, a TV); os outros mostram a sessão sem som ("Tocando no aparelho

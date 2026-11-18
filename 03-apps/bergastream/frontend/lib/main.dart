@@ -9,6 +9,7 @@ import 'core/platform/app_platform.dart';
 import 'core/storage/key_value_store.dart';
 import 'features/auth/session.dart';
 import 'features/downloads/file_fetcher.dart';
+import 'features/player/car_library.dart';
 import 'features/player/media_notification.dart';
 
 Future<void> main() async {
@@ -31,15 +32,22 @@ Future<void> main() async {
   final mediaNotification = await initMediaNotification();
   configureDownloadNotifications();
 
+  final container = ProviderContainer(
+    overrides: [
+      appPlatformProvider.overrideWithValue(platform),
+      keyValueStoreProvider.overrideWithValue(store),
+      sessionStorageProvider.overrideWithValue(storage),
+      initialSessionProvider.overrideWithValue(session),
+      mediaNotificationProvider.overrideWithValue(mediaNotification),
+    ],
+  );
+  // Android Auto: a biblioteca do carro fica pronta antes da tela. O carro
+  // pode abrir o app em segundo plano, sem a interface do celular.
+  container.read(carLibraryProvider);
+
   runApp(
-    ProviderScope(
-      overrides: [
-        appPlatformProvider.overrideWithValue(platform),
-        keyValueStoreProvider.overrideWithValue(store),
-        sessionStorageProvider.overrideWithValue(storage),
-        initialSessionProvider.overrideWithValue(session),
-        mediaNotificationProvider.overrideWithValue(mediaNotification),
-      ],
+    UncontrolledProviderScope(
+      container: container,
       child: const BergastreamApp(),
     ),
   );

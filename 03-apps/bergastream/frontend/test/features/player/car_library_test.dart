@@ -3,6 +3,8 @@ import 'package:bergastream/core/platform/app_platform.dart';
 import 'package:bergastream/core/storage/key_value_store.dart';
 import 'package:bergastream/data/local/database.dart';
 import 'package:bergastream/data/models/playlist_models.dart';
+import 'package:bergastream/data/models/stats.dart';
+import 'package:bergastream/features/home/home_providers.dart';
 import 'package:bergastream/data/repositories/playback_repository.dart';
 import 'package:bergastream/data/repositories/radio_repository.dart';
 import 'package:bergastream/data/repositories/search_repository.dart';
@@ -72,6 +74,15 @@ void main() {
           ],
         ),
         playlistDetailProvider.overrideWith((ref, id) async => rock),
+        homeStatsProvider.overrideWith(
+          (ref) async => ListeningStats(
+            month: '2026-11',
+            topTracks: [
+              StatTrack(track: song('Top1'), plays: 9),
+              StatTrack(track: song('Top2'), plays: 5),
+            ],
+          ),
+        ),
       ],
     );
     addTearDown(container.dispose);
@@ -82,8 +93,13 @@ void main() {
 
   test('no carro: Playlists → playlists com capa → músicas', () async {
     final root = await car().children(AudioService.browsableRootId);
-    expect(root.single.title, 'Playlists');
-    expect(root.single.playable, isFalse);
+    expect(root.map((r) => r.title), ['Playlists', 'Mais ouvidas']);
+    expect(root.first.playable, isFalse);
+    expect(
+      root.first.extras?['android.media.browse.CONTENT_STYLE_BROWSABLE_HINT'],
+      2,
+      reason: 'playlists em grade',
+    );
 
     final lists = await car().children(CarLibrary.playlists);
     expect(lists.single.title, 'Rock in Metal');
@@ -121,5 +137,23 @@ void main() {
     expect(queue.map((q) => q.title), ['B', 'C']);
     await car().skipToQueueItem(1);
     expect(container.read(playerProvider).current!.track.title, 'C');
+  });
+
+  test('mais ouvidas: tocar uma toca a lista a partir dela', () async {
+    final items = await car().children(CarLibrary.top);
+    expect(items.map((i) => i.title), ['Top1', 'Top2']);
+    await car().play(items[1].id);
+    final state = container.read(playerProvider);
+    expect(state.current!.track.title, 'Top2');
+    expect(state.context, 'Mais ouvidas');
+  });
+
+  test('lupa do carro: mostra as músicas e tocar começa a rádio', () async {
+    final found = await car().searchItems('queen');
+    expect(found, isNotEmpty);
+    await car().play(found.first.id);
+    final state = container.read(playerProvider);
+    expect(state.current!.track.title, found.first.title);
+    expect(state.context, startsWith('Rádio de '));
   });
 }
