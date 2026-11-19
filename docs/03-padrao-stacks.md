@@ -32,6 +32,7 @@ Os apps próprios estão saindo para um repositório cada (públicos, sem dados 
 - O compose do app funciona sozinho. O que é só deste servidor (redes `bergatrix-*`, rótulos do Traefik, rótulo de backup do Bergakup) fica num arquivo ao lado da pasta, no Bergatrix: `03-apps/<stack>.bergatrix.yml`.
 - O `.env` da stack no servidor ativa os dois: `COMPOSE_FILE=docker-compose.yml:../<stack>.bergatrix.yml`.
 - Clonar já com os submódulos: `git clone --recurse-submodules …`. Num clone existente, depois de cada `git pull`: `git submodule update --init`. Para deixar automático: `git config submodule.recurse true`.
+- **Primeira vez no servidor** (as pastas ainda têm o código antigo, rastreado pelo Bergatrix): `./00-infrastructure/migrar-submodulos.sh`. Ele guarda os `.env` fora, para as stacks, troca as pastas pelos submódulos, devolve os `.env` com o `COMPOSE_FILE` e sobe de novo. Os dados ficam fora das pastas e não são tocados.
 - Mudança no app vai no repositório dele; aqui só se atualiza o ponteiro do submódulo (`git -C 03-apps/<stack> pull`, depois `git add 03-apps/<stack>` e commit).
 
 ## Variáveis (`.env`)
