@@ -229,37 +229,6 @@ services:
     networks:
       - bergatrix-media
 
-  legendarr-web:
-    build: ./app/web
-    container_name: legendarr-web
-    restart: unless-stopped
-    dns:
-      - 8.8.8.8
-      - 1.1.1.1
-    environment:
-      - PUID=${PUID}
-      - PGID=${PGID}
-      - BAZARR_URL=${BAZARR_URL:-http://bazarr:6767}
-      - BAZARR_API_KEY=${BAZARR_API_KEY}
-      - BAZARR_LANGUAGE=${BAZARR_LANGUAGE:-pb}
-    volumes:
-      - ${MEDIA_PATH:?}/filmes:/media/filmes
-      - ${MEDIA_PATH:?}/series:/media/series
-      - ${APPDATA_PATH:?}/jellyfin/legendarr/jobs:/app/jobs
-      - ${APPDATA_PATH:?}/jellyfin/legendarr/stats:/app/stats
-    networks:
-      - bergatrix-proxy
-      - bergatrix-media
-    labels:
-      # Forward-auth: só entra quem passou pelo Authentik (docs/05-acesso.md)
-      - "traefik.enable=true"
-      - "traefik.docker.network=bergatrix-proxy"
-      - "traefik.http.routers.legendarr.rule=Host(`legendarr.${DOMAIN}`)"
-      - "traefik.http.routers.legendarr.entrypoints=websecure"
-      - "traefik.http.routers.legendarr.tls=true"
-      - "traefik.http.routers.legendarr.service=legendarr"
-      - "traefik.http.routers.legendarr.middlewares=crowdsec-bouncer@file,authentik@file"
-      - "traefik.http.services.legendarr.loadbalancer.server.port=8000"
   # --- SERVIÇOS DE BACKGROUND (Sem labels de Traefik) ---
   recyclarr:
     image: ghcr.io/recyclarr/recyclarr:8
@@ -276,114 +245,6 @@ services:
     networks:
       - bergatrix-media
 
-  legendarr-worker:
-    build: ./app/worker
-    container_name: legendarr-worker
-    restart: unless-stopped
-    dns:
-      - 8.8.8.8
-      - 1.1.1.1
-    volumes:
-      - ${MEDIA_PATH:?}/filmes:/media/filmes
-      - ${MEDIA_PATH:?}/series:/media/series
-      - ${APPDATA_PATH:?}/jellyfin/legendarr/jobs:/app/jobs
-      - ${APPDATA_PATH:?}/jellyfin/legendarr/stats:/app/stats
-    environment:
-      # Tradução 100% LOCAL via Ollama (stack 03-apps/ollama, sem APIs externas).
-      # O worker e o ollama compartilham a rede bergatrix-ai → http://ollama:11434
-      - LOCAL_AI_URL=${LOCAL_AI_URL:-http://ollama:11434}
-      - TRANSLATOR_MODEL=${TRANSLATOR_MODEL:-translategemma:4b}
-      - OLLAMA_NUM_CTX=${OLLAMA_NUM_CTX:-8192}
-      - OLLAMA_TIMEOUT=${OLLAMA_TIMEOUT:-600}
-      - TRANSLATOR_TEMPERATURE=${TRANSLATOR_TEMPERATURE:-0.2}
-      - BLOCK_RETRANSLATE_ROUNDS=${BLOCK_RETRANSLATE_ROUNDS:-3}
-      - TRANSLATE_BATCH_BLOCKS=${TRANSLATE_BATCH_BLOCKS:-60}
-      - TRANSLATION_MIN_BLOCK_COVERAGE=${TRANSLATION_MIN_BLOCK_COVERAGE:-0.90}
-      # Rótulo da faixa no Jellyfin para legendas geradas por IA (ex.: "Português - AI").
-      # Legendas do Bazarr não recebem rótulo. Evite "IA" (colide com Interlingua); vazio = desliga.
-      - AI_SUBTITLE_LABEL=${AI_SUBTITLE_LABEL:-AI}
-      # Refino de sincronia por conteúdo (embeddings bge-m3): off | audit | fix
-      - SUBTITLE_REFINE=${SUBTITLE_REFINE:-audit}
-      - REFINE_EMBED_MODEL=${REFINE_EMBED_MODEL:-bge-m3}
-      - REFINE_EMBED_KEEP_ALIVE=${REFINE_EMBED_KEEP_ALIVE:-2m}
-      - REFINE_WINDOW_SECONDS=${REFINE_WINDOW_SECONDS:-12}
-      - REFINE_TOLERANCE_SECONDS=${REFINE_TOLERANCE_SECONDS:-0.25}
-      - REFINE_MIN_MATCH=${REFINE_MIN_MATCH:-0.6}
-      - REFINE_MAX_CPS=${REFINE_MAX_CPS:-17}
-      - SCAN_INTERVAL=${SCAN_INTERVAL:-3600}
-      # Espera (s) sem alterações antes de processar uma legenda PT recém-criada
-      - SUBTITLE_WATCH_DEBOUNCE=${SUBTITLE_WATCH_DEBOUNCE:-3}
-      # Limites (s) do mapa temporal do sync antes de rejeitá-lo
-      - ALIGNMENT_MAX_AVERAGE_DELTA=${ALIGNMENT_MAX_AVERAGE_DELTA:-8}
-      - ALIGNMENT_MAX_DELTA=${ALIGNMENT_MAX_DELTA:-60}
-      # Cooldown progressivo de legendas: revisita a cada RETRY_INTERVAL_HOURS;
-      # após MAX_FAST_RETRIES falhas, recua para COOLDOWN_HOURS (3 dias)
-      - RETRY_INTERVAL_HOURS=${RETRY_INTERVAL_HOURS:-1}
-      - MAX_FAST_RETRIES=${MAX_FAST_RETRIES:-6}
-      - COOLDOWN_HOURS=${COOLDOWN_HOURS:-72}
-      - BAZARR_URL=${BAZARR_URL:-http://bazarr:6767}
-      - BAZARR_API_KEY=${BAZARR_API_KEY}
-      - BAZARR_LANGUAGE=${BAZARR_LANGUAGE:-pb}
-      - BAZARR_WAIT_SECONDS=${BAZARR_WAIT_SECONDS:-120}
-      # Acompanhamento do job assíncrono de sincronização do Bazarr
-      - BAZARR_SYNC_TIMEOUT=${BAZARR_SYNC_TIMEOUT:-900}
-      - BAZARR_SYNC_POLL_SECONDS=${BAZARR_SYNC_POLL_SECONDS:-10}
-      - BAZARR_SYNC_DISCOVERY_SECONDS=${BAZARR_SYNC_DISCOVERY_SECONDS:-20}
-      # Verificador de áudio (idioma original) — deleta+rebaixa via Radarr/Sonarr
-      - RADARR_URL=${RADARR_URL:-http://radarr:7878}
-      - RADARR_API_KEY=${RADARR_API_KEY}
-      - SONARR_URL=${SONARR_URL:-http://sonarr:8989}
-      - SONARR_API_KEY=${SONARR_API_KEY}
-      - AUDIO_CHECK_STRICT=${AUDIO_CHECK_STRICT:-false}
-      - MAX_REDOWNLOAD_ATTEMPTS=${MAX_REDOWNLOAD_ATTEMPTS:-5}
-      - AUDIO_KEEP_TAG=${AUDIO_KEEP_TAG:-keep-audio}
-      # Duração mínima (% do runtime do Arr) para o arquivo não ser tratado como cortado
-      - MIN_DURATION_PERCENT=${MIN_DURATION_PERCENT:-80}
-      # Auditoria de legendas: cobertura mínima (último timestamp ÷ duração) p/ não ser incompleta
-      - SUBTITLE_MIN_COVERAGE=${SUBTITLE_MIN_COVERAGE:-0.85}
-      # Remove downloads travados (stalled) no Radarr/Sonarr após N minutos e rebaixa
-      - STALLED_TIMEOUT_MINUTES=${STALLED_TIMEOUT_MINUTES:-20}
-      - STALLED_CHECK_INTERVAL=${STALLED_CHECK_INTERVAL:-60}
-      - PUID=${PUID}
-      - PGID=${PGID}
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [ gpu ]
-    networks:
-      - bergatrix-media
-      - bergatrix-ai
-
-  optimizer:
-    build: ./app/optimizer
-    container_name: optimizer
-    restart: unless-stopped
-    dns:
-      - 8.8.8.8
-      - 1.1.1.1
-    volumes:
-      - ${MEDIA_PATH:?}/filmes:/media/filmes
-      - ${MEDIA_PATH:?}/series:/media/series
-      - ${APPDATA_PATH:?}/jellyfin/legendarr/stats:/app/stats
-      - ${CACHE_PATH:?}/jellyfin/optimizer:/app/temp
-    environment:
-      - NVIDIA_VISIBLE_DEVICES=all
-      - NVIDIA_DRIVER_CAPABILITIES=all
-      - PUID=${PUID}
-      - PGID=${PGID}
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [ gpu ]
-    networks:
-      - bergatrix-media
-    
   # Sem rota no Traefik: indexador consultado pelo Prowlarr, pela bergatrix-media.
   torrent-indexer-br:
     image: ghcr.io/felipemarinho97/torrent-indexer:0.15.3
@@ -438,6 +299,4 @@ networks:
   bergatrix-proxy:
     external: true
   bergatrix-media:
-    external: true
-  bergatrix-ai:
     external: true

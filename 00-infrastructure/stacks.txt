@@ -20,6 +20,8 @@
 # bergastream (o Lidarr usa o SABnzbd e o Prowlarr)
 03-apps/ollama
 03-apps/jellyfin
+# Depois do Ollama e do Jellyfin (Bazarr, Radarr, Sonarr)
+03-apps/legendarr
 03-apps/bergastream
 03-apps/immich
 03-apps/nextcloud

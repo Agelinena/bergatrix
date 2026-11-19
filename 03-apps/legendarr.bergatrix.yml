@@ -1,0 +1,50 @@
+# Legendarr no Bergatrix: o que é só deste servidor, por cima do
+# docker-compose.yml do repositório do app (submódulo em 03-apps/legendarr).
+#
+# Ativado pelo .env do Legendarr no servidor:
+#   COMPOSE_FILE=docker-compose.yml:../legendarr.bergatrix.yml
+#
+# Sobe depois do Ollama e do Jellyfin (Bazarr, Radarr, Sonarr), pela
+# bergatrix-media e pela bergatrix-ai. Acesso (docs/05-acesso.md): o painel
+# não tem login, então fica atrás do forward-auth do Authentik.
+# Precisa do Docker Compose 2.24+ (!reset/!override).
+services:
+  web:
+    # Sem porta no host: o tráfego chega pelo Traefik.
+    ports: !reset []
+    dns: [8.8.8.8, 1.1.1.1]
+    networks: !override
+      - bergatrix-proxy
+      # Bazarr (e o webhook dos *arr chega aqui, entre containers).
+      - bergatrix-media
+    labels:
+      # Forward-auth: só entra quem passou pelo Authentik (docs/05-acesso.md)
+      - "traefik.enable=true"
+      - "traefik.docker.network=bergatrix-proxy"
+      - "traefik.http.routers.legendarr.rule=Host(`legendarr.${DOMAIN}`)"
+      - "traefik.http.routers.legendarr.entrypoints=websecure"
+      - "traefik.http.routers.legendarr.tls=true"
+      - "traefik.http.routers.legendarr.service=legendarr"
+      - "traefik.http.routers.legendarr.middlewares=crowdsec-bouncer@file,authentik@file"
+      - "traefik.http.services.legendarr.loadbalancer.server.port=8000"
+
+  worker:
+    dns: [8.8.8.8, 1.1.1.1]
+    networks: !override
+      # Bazarr, Radarr e Sonarr.
+      - bergatrix-media
+      # Ollama (stack 03-apps/ollama): http://ollama:11434
+      - bergatrix-ai
+
+  optimizer:
+    dns: [8.8.8.8, 1.1.1.1]
+    networks: !override
+      - bergatrix-media
+
+networks:
+  bergatrix-proxy:
+    external: true
+  bergatrix-media:
+    external: true
+  bergatrix-ai:
+    external: true

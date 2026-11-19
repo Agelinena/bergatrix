@@ -85,7 +85,8 @@ Como em `APPDATA_PATH`, cada stack tem a sua pasta, com o nome da stack. Só ent
 | drop | – | – | – | – |
 | homeassistant | `config` | – | – | – |
 | immich | `postgres` | `thumbs`, `encoded-video`, `model-cache`, `redis` | – | `immich` (`library`, `upload`, `profile`, `backups`) |
-| jellyfin | `jellyfin`, `catalogo`, `qbittorrent`, `sonarr`, `radarr`, `prowlarr`, `bazarr`, `sabnzbd`, `recyclarr`, `legendarr/jobs`, `legendarr/stats` | `jellyfin` (transcodes), `optimizer`, `incomplete` | raiz inteira (Jellyfin), `filmes`, `series`, `downloads` | – |
+| jellyfin | `jellyfin`, `catalogo`, `qbittorrent`, `sonarr`, `radarr`, `prowlarr`, `bazarr`, `sabnzbd`, `recyclarr` | `jellyfin` (transcodes), `incomplete` | raiz inteira (Jellyfin), `filmes`, `series`, `downloads` | – |
+| legendarr | `jobs`, `stats` | `optimizer` | `filmes`, `series` | – |
 | nextcloud | `html` (código, `config`, `custom_apps`), `postgres` | – | – | `nextcloud` (`data`: arquivos, versões, lixeira e miniaturas) |
 | ollama | – | `models` | – | – |
 | transcriptor | `postgres` | `models`, `work` (uploads e áudio para ouvir) | – | – |

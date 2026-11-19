@@ -55,7 +55,8 @@ Rede local ───────────────────────
 | 03 | drop | Texto e arquivos (até 25 MiB) cifrados no navegador, sem disco; rede isolada `bergatrix-drop`. Submódulo ([Agelinena/drop](https://github.com/Agelinena/drop)) + `03-apps/drop.bergatrix.yml` | `drop` | – |
 | 03 | homeassistant | Home Assistant | `ha` | appdata |
 | 03 | immich | Fotos e vídeos: server, machine learning (GPU), Postgres (VectorChord), Valkey | `fotos` | appdata, cache, userdata |
-| 03 | jellyfin | Jellyfin, Seerr, qBittorrent, Sonarr, Radarr, Prowlarr, Bazarr, SABnzbd, FlareSolverr, indexador BR, Recyclarr, Legendarr (web, worker, optimizer) | `jellyflix`, `catalogo`, `legendarr` e um por serviço *arr | appdata, cache, media |
+| 03 | jellyfin | Jellyfin, Seerr, qBittorrent, Sonarr, Radarr, Prowlarr, Bazarr, SABnzbd, FlareSolverr, indexador BR, Recyclarr | `jellyflix`, `catalogo` e um por serviço *arr | appdata, cache, media |
+| 03 | legendarr | Legendas (Bazarr + tradução local pelo Ollama), verificação de áudio, optimizer (HEVC). Submódulo ([Agelinena/legendarr](https://github.com/Agelinena/legendarr)) + `03-apps/legendarr.bergatrix.yml` | `legendarr` | appdata, cache, media |
 | 03 | nextcloud | Arquivos, agenda e contatos: Nextcloud (Apache), cron, Postgres, Redis | `storange` | appdata, userdata |
 | 03 | ollama | Ollama (GPU), sem rota | – | cache |
 | 03 | transcriptor | Transcrição com faster-whisper (GPU): API, worker, Postgres, proxy de saída. Submódulo ([Agelinena/transcriptor](https://github.com/Agelinena/transcriptor)) + `03-apps/transcriptor.bergatrix.yml` | `transcriptor` | appdata, cache |
