@@ -11,7 +11,7 @@ O servidor roda **Proxmox VE** com duas VMs: um **OpenMediaVault** (NAS, HD de 4
 
 | Ordem | Gomo (Pasta) | Descrição |
 | :--- | :--- | :--- |
-| **`00`** | **Infrastructure** | **CloudBeaver** e os scripts que sobem e derrubam tudo na ordem certa. |
+| **`00`** | **Infrastructure** | **Bergakup** (backup com restic), **CloudBeaver** e os scripts que sobem, derrubam e atualizam tudo na ordem certa. |
 | **`01`** | **Network** | Entrada de tráfego com **Traefik** (TLS curinga, roteamento por labels) e as redes compartilhadas. |
 | **`02`** | **Security** | **Authentik** (SSO/IdP), **Vaultwarden** (senhas) e **CrowdSec** (bloqueio de IPs). |
 | **`03`** | **Apps** | Aplicações próprias, mídia, IA local e automação residencial. |
@@ -23,14 +23,21 @@ O servidor roda **Proxmox VE** com duas VMs: um **OpenMediaVault** (NAS, HD de 4
 
 ## 📦 Apps (03-apps)
 
-| App | Descrição |
-| :--- | :--- |
-| **Bergastream** | Streaming de música próprio (Flutter + FastAPI), com Deemix, YouTube e Lidarr. |
-| **Drop** | Transferência de arquivos cifrada de ponta a ponta. |
-| **Home Assistant** | Automação residencial (dispositivos, automações e app Companion). |
-| **Jellyfin** | Servidor de mídia com *arr, Seerr e o **Legendarr**: legendas pelo Bazarr, tradução local por IA (Ollama) e otimização de vídeo. |
-| **Ollama** | Modelos de IA locais na GPU, usados pelo Legendarr. |
-| **Transcriptor** | Transcrição de áudio/vídeo com Faster-Whisper + GPU, desenvolvido internamente. |
+Os apps próprios têm repositório próprio e entram aqui como submódulo, com um arquivo `<app>.bergatrix.yml` ao lado para o que é só deste servidor ([padrão](docs/03-padrao-stacks.md#apps-com-repositório-próprio-submódulo)).
+
+| App | Descrição | Código |
+| :--- | :--- | :--- |
+| **Bergastream** | Streaming de música (Flutter + FastAPI), com Deemix, YouTube, Lidarr, Chromecast e Android Auto. | [próprio](https://github.com/Agelinena/bergastream) |
+| **Berganews** | Leitor de notícias (RSS) da família, com tradução e agrupamento por IA local. | [próprio](https://github.com/Agelinena/berganews) |
+| **Doberga** | Utilidades do dia a dia (compras, recorrentes, calendário, notas), offline nos apps. | [próprio](https://github.com/Agelinena/doberga) |
+| **Drop** | Texto e arquivos entre dois navegadores, cifrados de ponta a ponta, sem conta e sem disco. | [próprio](https://github.com/Agelinena/drop) |
+| **Transcriptor** | Transcrição de áudio e vídeo com Whisper na GPU. | [próprio](https://github.com/Agelinena/transcriptor) |
+| **Legendarr** | Legendas em português: Bazarr, tradução local por IA (Ollama), sincronia, áudio original e otimização de vídeo. | [próprio](https://github.com/Agelinena/legendarr) |
+| **Jellyfin** | Servidor de mídia com *arr, Seerr e login pelo Authentik (Bergafin). | terceiros + Bergafin |
+| **Immich** | Fotos e vídeos, com login pelo Authentik. | terceiros |
+| **Nextcloud** | Arquivos, agenda e contatos, com o Collabora para documentos. | terceiros |
+| **Ollama** | Modelos de IA locais na GPU (Legendarr, Berganews). | terceiros |
+| **Home Assistant** | Automação residencial (dispositivos, automações e app Companion). | terceiros |
 
 ---
 
@@ -44,11 +51,19 @@ O servidor roda **Proxmox VE** com duas VMs: um **OpenMediaVault** (NAS, HD de 4
 
 ## 🚀 Como Iniciar
 
-Para subir tudo na ordem certa (redes primeiro, depois as stacks do [`stacks.txt`](00-infrastructure/stacks.txt)):
+Clone já com os apps (submódulos):
+
+```bash
+git clone --recurse-submodules https://github.com/Agelinena/bergatrix.git
+git -C bergatrix config submodule.recurse true
+```
+
+Para subir tudo na ordem certa (redes primeiro, depois as stacks do [`stacks.txt`](00-infrastructure/stacks.txt)) e, depois, atualizar só o que mudou:
 
 ```bash
 ./00-infrastructure/subir-tudo.sh
 ./00-infrastructure/derrubar-tudo.sh
+./00-infrastructure/atualizar.sh
 ```
 
 Para subir uma stack específica, entre na pasta dela, crie o `.env` a partir do `.env.example` e execute:

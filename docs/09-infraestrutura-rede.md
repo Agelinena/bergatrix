@@ -43,7 +43,7 @@ Toda a inteligência de aplicação, dados e processamento ficam retidos na rede
 
 ## 4. Fluxo de Roteamento (Passo a Passo)
 
-1. **Cliente no Brasil** acessa `https://drop.daberga.com`.
+1. **Cliente no Brasil** acessa `https://drop.example.com`.
 2. O DNS aponta para o IP público da **VPS Hostinger (SP)**.
 3. O pacote chega na interface `eth0` da VPS. O **`nftables`** verifica o IP de origem. Sendo do Brasil, o pacote é aceito.
 4. O tráfego entra no **HAProxy**. O HAProxy empacota a conexão original (adicionando o IP real do cliente via *Proxy Protocol*) e encaminha para o backend `192.168.10.11:443` usando o modo TCP.
