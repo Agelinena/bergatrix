@@ -10,3 +10,6 @@
 [submodule "03-apps/transcriptor"]
 	path = 03-apps/transcriptor
 	url = https://github.com/Agelinena/transcriptor.git
+[submodule "03-apps/drop"]
+	path = 03-apps/drop
+	url = https://github.com/Agelinena/drop.git

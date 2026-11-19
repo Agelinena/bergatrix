@@ -97,7 +97,7 @@ Feito: `bergatrix-proxy` só com quem tem rota, mais `bergatrix-media` e `bergat
 Feito: base no Authentik, redes, painel do Traefik, *arr, Lidarr, Legendarr, Seerr, Vaultwarden e CloudBeaver. O Wazuh saiu (nov/2026); o monitoramento agora é a stack `monitor`.
 
 1. **Jellyfin:** subir com o CrowdSec e acompanhar os bans nos primeiros dias.
-2. **Drop:** subir a versão 2 (rede `bergatrix-drop`, CrowdSec e rate limit). Ver o [README](../03-apps/drop/README.md#subir).
+2. **Drop:** subir a versão 2 (rede `bergatrix-drop`, CrowdSec e rate limit). Ver o [README](https://github.com/Agelinena/drop#subir) e o `03-apps/drop.bergatrix.yml`.
 3. **Transcriptor:** subir a versão nova (OIDC, Postgres, worker isolado). Ver o [README](https://github.com/Agelinena/transcriptor#subir).
 4. **Home Assistant → OIDC** (`hass-oidc-auth`), com uma rota pública só. Tira a rota `-direct`, a `-bypass` e o `public-auth`.
 5. **`dynamic.yml`:** remover `public-auth` e `api-access-bypass` quando os itens 3 e 4 estiverem no ar.

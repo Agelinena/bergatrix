@@ -1,34 +1,18 @@
-# Drop: texto e arquivos (até 25 MiB) entre dois navegadores, cifrados de ponta
-# a ponta. Sem conta e sem disco. Público por natureza (docs/05-acesso.md).
+# Drop no Bergatrix: o que é só deste servidor, por cima do docker-compose.yml
+# do repositório do app (submódulo em 03-apps/drop).
 #
-# Isolado: fica só na rede bergatrix-drop (01-network/redes), interna e sem
-# internet. Daqui não se alcança nenhum outro container, a rede de casa
-# nem a internet; só o Traefik chega até ele.
+# Ativado pelo .env do Drop no servidor:
+#   COMPOSE_FILE=docker-compose.yml:../drop.bergatrix.yml
+#
+# Público por natureza (docs/05-acesso.md). Isolado: fica só na rede
+# bergatrix-drop (01-network/redes), interna e sem internet. Daqui não se
+# alcança nenhum outro container, a rede de casa nem a internet; só o Traefik
+# chega até ele. Precisa do Docker Compose 2.24+ (!reset/!override).
 services:
   drop:
-    build:
-      context: .
-    container_name: drop
-    restart: unless-stopped
-    read_only: true
-    security_opt:
-      - no-new-privileges:true
-    cap_drop:
-      - ALL
-    tmpfs:
-      - /tmp:rw,noexec,nosuid,nodev,size=1m
-    pids_limit: 64
-    mem_limit: 256m
-    memswap_limit: 256m
-    cpus: 1.0
-    ulimits:
-      nofile: 2048
-    logging:
-      driver: json-file
-      options:
-        max-size: 10m
-        max-file: "3"
-    networks:
+    # Sem porta no host: o tráfego chega pelo Traefik.
+    ports: !reset []
+    networks: !override
       - bergatrix-drop
     labels:
       - "traefik.enable=true"

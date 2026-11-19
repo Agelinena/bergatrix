@@ -52,7 +52,7 @@ Rede local ───────────────────────
 | 03 | berganews | Notícias (RSS) com IA local: API, coleta, IA (Ollama), proxy de saída, Postgres (pgvector), Redis. Submódulo ([Agelinena/berganews](https://github.com/Agelinena/berganews)) + `03-apps/berganews.bergatrix.yml` | `news` | appdata, cache |
 | 03 | bergastream | Streaming de música próprio: API, worker, web, Postgres, Redis, Deemix, Lidarr, PO Token. Submódulo ([Agelinena/bergastream](https://github.com/Agelinena/bergastream)) + `03-apps/bergastream.bergatrix.yml` | `bergastream`, `lidarr` | appdata, cache, media |
 | 03 | doberga | Utilidades do dia a dia (compras, recorrentes, calendário, notas), offline nos apps: API, web, Postgres, Redis. Submódulo ([Agelinena/doberga](https://github.com/Agelinena/doberga)) + `03-apps/doberga.bergatrix.yml` | `doberga` | appdata |
-| 03 | drop | Texto e arquivos (até 25 MiB) cifrados no navegador, sem disco; rede isolada `bergatrix-drop` | `drop` | – |
+| 03 | drop | Texto e arquivos (até 25 MiB) cifrados no navegador, sem disco; rede isolada `bergatrix-drop`. Submódulo ([Agelinena/drop](https://github.com/Agelinena/drop)) + `03-apps/drop.bergatrix.yml` | `drop` | – |
 | 03 | homeassistant | Home Assistant | `ha` | appdata |
 | 03 | immich | Fotos e vídeos: server, machine learning (GPU), Postgres (VectorChord), Valkey | `fotos` | appdata, cache, userdata |
 | 03 | jellyfin | Jellyfin, Seerr, qBittorrent, Sonarr, Radarr, Prowlarr, Bazarr, SABnzbd, FlareSolverr, indexador BR, Recyclarr, Legendarr (web, worker, optimizer) | `jellyflix`, `catalogo`, `legendarr` e um por serviço *arr | appdata, cache, media |
