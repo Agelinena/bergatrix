@@ -33,7 +33,14 @@ O Jellyfin é recriado no passo 5 com as versões fixas novas das imagens (sonar
 
 **Conferir:** `docker inspect crowdsec --format '{{.Config.Image}}'` mostra `crowdsecurity/crowdsec:v1.8.2` (ou mais nova).
 
-Depois da migração acima, uma vez: `./00-infrastructure/atualizar.sh --tudo`. Ele baixa as versões fixas de todas as stacks e recria o que mudou.
+Depois da migração acima, uma vez: `./00-infrastructure/atualizar.sh --tudo`. Ele baixa as versões fixas de todas as stacks e recria o que mudou. **Atenção:** o `--tudo` recria toda stack que tem `.env`, inclusive o Transcriptor e o Drop. Configure os dois antes (seção abaixo), ou passe a lista de stacks sem eles.
+
+## Transcriptor e Drop nas versões novas (nov/2026)
+
+**Conferir:** `cd ~/bergatrix/03-apps/transcriptor && docker compose ps` mostra `transcriptor-db`, `transcriptor-api`, `transcriptor-worker` e `transcriptor-egress` no ar, e o login em `transcriptor.${DOMAIN}` passa pelo Authentik. O Drop abre em `drop.${DOMAIN}` e o container `drop` está só na rede `bergatrix-drop`.
+
+- **Transcriptor:** a versão nova tem Postgres, login OIDC e worker isolado. O `.env` antigo não serve. Siga o [README](https://github.com/Agelinena/transcriptor#subir): aplicação no Authentik, `.env` com `POSTGRES_*` e `TRANSCRIPTOR_OIDC_ISSUER`, `TRANSCRIPTOR_SSO_CLIENT_ID` e `TRANSCRIPTOR_SSO_CLIENT_SECRET`, pastas com dono 1000. Mantenha a linha `COMPOSE_FILE`. As variáveis `TRANSCRIPTOR_API_KEY`, `TRANSCRIPTOR_SECRET_KEY` e `HF_TOKEN` não são mais usadas. O histórico antigo (`${APPDATA_PATH}/transcriptor/data`) não é migrado.
+- **Drop:** só precisa do `DOMAIN` e do `COMPOSE_FILE` no `.env` e da rede `bergatrix-drop` (`cd ~/bergatrix/01-network/redes && docker compose run --rm redes`).
 
 ## Redes segmentadas (out/2026)
 

@@ -107,8 +107,26 @@ for stack in "${alvo[@]}"; do
   fi
 done
 
+# "up" com sucesso não quer dizer que ficou no ar: um container pode cair logo
+# depois (variável faltando no .env, banco sem senha). Espera um pouco e
+# confere quem está reiniciando ou saiu com erro.
+if [ ${#feitas[@]} -gt 0 ]; then
+  echo "==> Conferindo os containers (20 s)"
+  sleep 20
+  for stack in "${feitas[@]}"; do
+    ruins=$(cd "$stack" && docker compose ps -a --format '{{.Name}} {{.State}} {{.ExitCode}}' |
+      awk '$2=="restarting" || ($2=="exited" && $3!="0") {print "    " $1 " (" $2 ", código " $3 ")"}')
+    if [ -n "$ruins" ]; then
+      echo "!!  $stack:"
+      echo "$ruins"
+      echo "    veja: cd $stack && docker compose logs --tail 50"
+      falhas+=("$stack")
+    fi
+  done
+fi
+
 # Só as imagens sem nome (as versões antigas que acabaram de ser trocadas).
-docker image prune -f >/dev/null
+docker image prune -f >/dev/null 2>&1 || echo "(limpeza de imagens pulada: o Docker já estava limpando)"
 
 echo
 [ ${#feitas[@]} -gt 0 ] && echo "Recriadas: ${feitas[*]}"
