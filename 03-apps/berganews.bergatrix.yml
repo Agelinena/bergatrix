@@ -1,0 +1,56 @@
+# Berganews no Bergatrix: o que é só deste servidor, por cima do
+# docker-compose.yml do repositório do app (submódulo em 03-apps/berganews).
+#
+# Ativado pelo .env do Berganews no servidor:
+#   COMPOSE_FILE=docker-compose.yml:../berganews.bergatrix.yml
+#
+# Acesso (docs/05-acesso.md): uma rota pública só (news.${DOMAIN}), com
+# CrowdSec e sem forward-auth; o login é pelo Authentik (OIDC) dentro do app.
+# Redes: docs/06-redes.md. Precisa do Docker Compose 2.24+ (!reset/!override).
+services:
+  db:
+    labels:
+      # Backup pelo Bergakup (pg_dump antes da cópia do servidor).
+      - "bergatrix.backup.dump=postgres"
+
+  api:
+    environment:
+      OIDC_REDIRECT_URI: https://news.${DOMAIN}/api/auth/oidc/callback
+      # O servidor fala com o Authentik direto, sem passar pelo Traefik.
+      OIDC_INTERNAL_URL: http://authentik-server:9000
+    # Sem internet: o Authentik pela bergatrix-auth, o resto pelo `egress`.
+    networks: !override
+      - berganews-internal
+      - bergatrix-auth
+
+  web:
+    # Sem porta no host: o tráfego chega pelo Traefik.
+    ports: !reset []
+    networks: !override
+      - berganews-internal
+      - bergatrix-proxy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=bergatrix-proxy"
+      # OIDC no app: uma rota, sem forward-auth. A API exige o token dela em
+      # toda chamada; /api/img vale só com a assinatura do servidor.
+      - "traefik.http.routers.berganews.rule=Host(`news.${DOMAIN}`)"
+      - "traefik.http.routers.berganews.entrypoints=websecure"
+      - "traefik.http.routers.berganews.tls=true"
+      - "traefik.http.routers.berganews.service=berganews"
+      - "traefik.http.routers.berganews.middlewares=crowdsec-bouncer@file"
+      - "traefik.http.services.berganews.loadbalancer.server.port=80"
+
+  ai:
+    networks:
+      - berganews-internal
+      # Ollama da stack ollama (o perfil "ollama" do app fica desligado aqui).
+      - bergatrix-ai
+
+networks:
+  bergatrix-proxy:
+    external: true
+  bergatrix-auth:
+    external: true
+  bergatrix-ai:
+    external: true

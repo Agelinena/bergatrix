@@ -1,3 +1,6 @@
 [submodule "03-apps/bergastream"]
 	path = 03-apps/bergastream
 	url = https://github.com/Agelinena/bergastream.git
+[submodule "03-apps/berganews"]
+	path = 03-apps/berganews
+	url = https://github.com/Agelinena/berganews.git
