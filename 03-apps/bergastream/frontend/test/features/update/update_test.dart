@@ -58,6 +58,16 @@ void main() {
       );
     });
 
+    test('repositório próprio: tags vX.Y.Z também valem', () {
+      final latest = AppRelease.latestOf([
+        gh('bergastream-v0.8.2'),
+        gh('v0.9.0'),
+        gh('vXYZ'),
+      ])!;
+      expect(latest.version, const AppVersion(0, 9, 0));
+      expect(latest.tag, 'v0.9.0');
+    });
+
     test('nenhuma versão do Bergastream', () {
       expect(AppRelease.latestOf([gh('n8n-v1.0.0')]), isNull);
       expect(AppRelease.latestOf(const []), isNull);

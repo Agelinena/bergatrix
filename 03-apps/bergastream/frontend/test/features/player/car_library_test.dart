@@ -73,7 +73,12 @@ void main() {
             ),
           ],
         ),
-        playlistDetailProvider.overrideWith((ref, id) async => rock),
+        // Demora como o servidor: o provider se descarta sozinho se ninguém
+        // ouvir (era o que deixava a playlist vazia no carro).
+        playlistDetailProvider.overrideWith((ref, id) async {
+          await Future<void>.delayed(const Duration(milliseconds: 50));
+          return rock;
+        }),
         homeStatsProvider.overrideWith(
           (ref) async => ListeningStats(
             month: '2026-11',

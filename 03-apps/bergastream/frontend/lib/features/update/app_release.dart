@@ -8,11 +8,14 @@ class AppRelease {
     required this.assets,
   });
 
-  /// Repositório onde o CI publica as versões (público).
-  static const repository = 'Agelinena/bergatrix';
+  /// Repositórios onde o CI publica as versões, do atual para o antigo. O
+  /// app olha todos e fica com a mais nova: as versões até a 0.8.x saíram no
+  /// monorepo (tags `bergastream-vX.Y.Z`); daí em diante, no repositório
+  /// próprio (tags `vX.Y.Z`).
+  static const repositories = ['Agelinena/bergastream', 'Agelinena/bergatrix'];
 
-  /// Prefixo das tags do Bergastream (o repositório tem outros apps).
-  static const tagPrefix = 'bergastream-v';
+  /// Prefixos das tags do Bergastream (o monorepo tem outros apps).
+  static const tagPrefixes = ['bergastream-v', 'v'];
 
   /// Arquivo de cada plataforma na release (o CI usa os mesmos nomes).
   static const androidAsset = 'bergastream-android.apk';
@@ -33,9 +36,11 @@ class AppRelease {
   /// publicada do Bergastream (outro app, rascunho, pré-lançamento).
   static AppRelease? fromGitHub(Map<String, dynamic> json) {
     final tag = json['tag_name'];
-    if (tag is! String || !tag.startsWith(tagPrefix)) return null;
+    if (tag is! String) return null;
+    final prefix = tagPrefixes.where(tag.startsWith).firstOrNull;
+    if (prefix == null) return null;
     if (json['draft'] == true || json['prerelease'] == true) return null;
-    final version = AppVersion.tryParse(tag.substring(tagPrefix.length));
+    final version = AppVersion.tryParse(tag.substring(prefix.length));
     if (version == null) return null;
     return AppRelease(
       version: version,

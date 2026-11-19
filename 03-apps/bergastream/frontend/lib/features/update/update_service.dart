@@ -75,13 +75,30 @@ class GitHubUpdateRepository implements UpdateRepository {
     return AppVersion.tryParse(info.version) ?? const AppVersion(0, 0, 0);
   }
 
+  /// A mais nova entre os repositórios ([AppRelease.repositories]). Um que
+  /// não responda (privado, fora do ar) é pulado; erro só se nenhum responder.
   @override
   Future<AppRelease?> latest() async {
-    final response = await _dio.get<List<dynamic>>(
-      'https://api.github.com/repos/${AppRelease.repository}/releases',
-      queryParameters: {'per_page': 30},
-    );
-    return AppRelease.latestOf(response.data ?? const []);
+    AppRelease? best;
+    Object? lastError;
+    var answered = false;
+    for (final repo in AppRelease.repositories) {
+      try {
+        final response = await _dio.get<List<dynamic>>(
+          'https://api.github.com/repos/$repo/releases',
+          queryParameters: {'per_page': 30},
+        );
+        answered = true;
+        final found = AppRelease.latestOf(response.data ?? const []);
+        if (found != null && (best == null || found.version > best.version)) {
+          best = found;
+        }
+      } on Object catch (e) {
+        lastError = e;
+      }
+    }
+    if (!answered && lastError != null) throw lastError;
+    return best;
   }
 
   @override

@@ -39,6 +39,18 @@ class CarLibrary {
   /// Ordem da fila mostrada no carro (índice → uid do player).
   List<int> _queueUids = const [];
 
+  /// Espera um provider que se descarta sozinho sem ninguém ouvindo (o
+  /// detalhe da playlist): com `read`, ele era descartado no meio da busca no
+  /// servidor e o carro recebia a playlist vazia.
+  Future<T> _hold<T>(ProviderListenable<Future<T>> provider) async {
+    final sub = _ref.listen<Future<T>>(provider, (_, _) {});
+    try {
+      return await sub.read();
+    } finally {
+      sub.close();
+    }
+  }
+
   Future<List<MediaItem>> children(String parentId) async {
     try {
       if (parentId == AudioService.browsableRootId) {
@@ -67,7 +79,7 @@ class CarLibrary {
       }
       if (parentId.startsWith(_playlistPrefix)) {
         final id = parentId.substring(_playlistPrefix.length);
-        final detail = await _ref.read(playlistDetailProvider(id).future);
+        final detail = await _hold(playlistDetailProvider(id).future);
         return [
           for (final (i, t) in detail.tracks.indexed)
             _trackItem(t.asResult, '$_trackPrefix$id:$i'),
@@ -151,7 +163,7 @@ class CarLibrary {
       playlistId = mediaId.substring(_playlistPrefix.length);
     }
     if (playlistId == null) return;
-    final detail = await _ref.read(playlistDetailProvider(playlistId).future);
+    final detail = await _hold(playlistDetailProvider(playlistId).future);
     if (detail.tracks.isEmpty) return;
     await player.playList(
       [for (final t in detail.tracks) t.asResult],
@@ -172,7 +184,7 @@ class CarLibrary {
     try {
       final found = await _ref
           .read(searchRepositoryProvider)
-          .search(query.trim(), SearchSource.deezer);
+          .search(query.trim(), SearchSource.spotify);
       if (found.tracks.isNotEmpty) await player.startRadio(found.tracks.first);
     } on Object catch (e) {
       debugPrint('Busca do carro: $e');
@@ -186,7 +198,7 @@ class CarLibrary {
     try {
       final found = await _ref
           .read(searchRepositoryProvider)
-          .search(query.trim(), SearchSource.deezer);
+          .search(query.trim(), SearchSource.spotify);
       _found = found.tracks.take(20).toList();
       return [
         for (final (i, t) in _found.indexed) _trackItem(t, '$_searchPrefix$i'),
