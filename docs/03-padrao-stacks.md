@@ -27,7 +27,7 @@ Se uma stack existente foge de alguma regra, ela está listada em [Dívidas conh
 
 ### Apps com repositório próprio (submódulo)
 
-Os apps próprios estão saindo para um repositório cada (públicos, sem dados deste servidor); o Bergatrix só os agrega como **submódulo git** no mesmo caminho da stack. Hoje: `03-apps/bergastream` ([Agelinena/bergastream](https://github.com/Agelinena/bergastream)) e `03-apps/berganews` ([Agelinena/berganews](https://github.com/Agelinena/berganews)).
+Os apps próprios estão saindo para um repositório cada (públicos, sem dados deste servidor); o Bergatrix só os agrega como **submódulo git** no mesmo caminho da stack. Hoje: `03-apps/bergastream` ([Agelinena/bergastream](https://github.com/Agelinena/bergastream)), `03-apps/berganews` ([Agelinena/berganews](https://github.com/Agelinena/berganews)) e `03-apps/doberga` ([Agelinena/doberga](https://github.com/Agelinena/doberga)).
 
 - O compose do app funciona sozinho. O que é só deste servidor (redes `bergatrix-*`, rótulos do Traefik, rótulo de backup do Bergakup) fica num arquivo ao lado da pasta, no Bergatrix: `03-apps/<stack>.bergatrix.yml`.
 - O `.env` da stack no servidor ativa os dois: `COMPOSE_FILE=docker-compose.yml:../<stack>.bergatrix.yml`.

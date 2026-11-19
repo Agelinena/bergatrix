@@ -1,0 +1,48 @@
+# Doberga no Bergatrix: o que é só deste servidor, por cima do
+# docker-compose.yml do repositório do app (submódulo em 03-apps/doberga).
+#
+# Ativado pelo .env do Doberga no servidor:
+#   COMPOSE_FILE=docker-compose.yml:../doberga.bergatrix.yml
+#
+# Acesso (docs/05-acesso.md): uma rota pública só (doberga.${DOMAIN}), com
+# CrowdSec e sem forward-auth; o login é pelo Authentik (OIDC) dentro do app.
+# Redes: docs/06-redes.md. Precisa do Docker Compose 2.24+ (!reset/!override).
+services:
+  db:
+    labels:
+      # Backup pelo Bergakup (pg_dump antes da cópia do servidor).
+      - "bergatrix.backup.dump=postgres"
+
+  api:
+    environment:
+      OIDC_REDIRECT_URI: https://doberga.${DOMAIN}/api/auth/oidc/callback
+      # O servidor fala com o Authentik direto, sem passar pelo Traefik.
+      OIDC_INTERNAL_URL: http://authentik-server:9000
+    # Sem internet: só o banco, o Redis e o Authentik (bergatrix-auth).
+    networks: !override
+      - doberga-internal
+      - bergatrix-auth
+
+  web:
+    # Sem porta no host: o tráfego chega pelo Traefik.
+    ports: !reset []
+    networks: !override
+      - doberga-internal
+      - bergatrix-proxy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=bergatrix-proxy"
+      # OIDC no app: uma rota, sem forward-auth. A API exige o token dela em
+      # toda chamada (os convites também: abrir o link pede login).
+      - "traefik.http.routers.doberga.rule=Host(`doberga.${DOMAIN}`)"
+      - "traefik.http.routers.doberga.entrypoints=websecure"
+      - "traefik.http.routers.doberga.tls=true"
+      - "traefik.http.routers.doberga.service=doberga"
+      - "traefik.http.routers.doberga.middlewares=crowdsec-bouncer@file"
+      - "traefik.http.services.doberga.loadbalancer.server.port=80"
+
+networks:
+  bergatrix-proxy:
+    external: true
+  bergatrix-auth:
+    external: true
