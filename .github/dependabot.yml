@@ -13,3 +13,34 @@ updates:
     commit-message:
       prefix: "Submódulo"
     labels: []
+
+  # Imagens de terceiros (versões fixas nos composes). Um PR por semana com
+  # as atualizações menores juntas; versão maior vem em PR separado, para ler
+  # as notas antes. Aprovado o PR, no servidor: ./00-infrastructure/atualizar.sh
+  - package-ecosystem: docker-compose
+    directories:
+      - "/00-infrastructure/bergakup"
+      - "/00-infrastructure/cloudbeaver"
+      - "/01-network/redes"
+      - "/01-network/traefik"
+      - "/02-security/authentik"
+      - "/02-security/bitwarden"
+      - "/02-security/crowdsec"
+      - "/03-apps/homeassistant"
+      - "/03-apps/immich"
+      - "/03-apps/jellyfin"
+      - "/03-apps/nextcloud"
+      - "/03-apps/ollama"
+      - "/03-apps/transcriptor"
+      - "/04-monitoring/monitor"
+    schedule:
+      interval: weekly
+      day: saturday
+      time: "06:00"
+      timezone: America/Sao_Paulo
+    groups:
+      imagens:
+        update-types: [minor, patch]
+    commit-message:
+      prefix: "Imagens"
+    labels: []

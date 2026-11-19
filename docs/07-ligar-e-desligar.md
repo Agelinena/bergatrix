@@ -22,6 +22,25 @@ cd ~/bergatrix
 - **O `derrubar-tudo.sh` usa só o nome do projeto** (`docker compose -p <pasta> down`). Funciona mesmo sem o `.env` ou com o compose já alterado.
 - **Nenhum dos dois apaga dados.** Volumes, pastas em `/srv` e no NAS, imagens e redes continuam lá.
 
+## Atualizar
+
+[`atualizar.sh`](../00-infrastructure/atualizar.sh) puxa o Bergatrix e os submódulos (apps com repositório próprio) e recria **só as stacks que mudaram**: pasta da stack, ponteiro do submódulo ou ajuste `03-apps/<stack>.bergatrix.yml`. Se a pasta das redes mudou, recria as redes antes.
+
+```bash
+cd ~/bergatrix
+./00-infrastructure/atualizar.sh --ver      # mostra o que faria, sem mexer
+./00-infrastructure/atualizar.sh            # pull e recria o que mudou
+./00-infrastructure/atualizar.sh --tudo     # pull e up em todas as stacks
+./00-infrastructure/atualizar.sh 03-apps/jellyfin   # só essa stack
+```
+
+De onde vêm as mudanças:
+
+- **Imagens de terceiros**: versões fixas nos composes. O Dependabot abre um PR por semana (sábado) com as versões menores juntas, e um PR separado para cada versão maior. Aprovado o PR, rode o `atualizar.sh`.
+- **Apps próprios** (submódulos): o Dependabot abre um PR por dia quando o repositório do app tem commit novo.
+
+Uma stack que falha não para as outras; no fim aparece a lista. Depois de recriar, o script apaga só as imagens sem nome (as versões trocadas).
+
 ## Stack nova, removida ou renomeada
 
 **O `stacks.txt` precisa acompanhar o repositório.** Toda mudança de stack atualiza a lista no mesmo commit:

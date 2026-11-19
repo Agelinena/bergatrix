@@ -1,6 +1,6 @@
 services:
   cloudbeaver:
-    image: dbeaver/cloudbeaver:latest
+    image: dbeaver/cloudbeaver:26.2.5
     container_name: cloudbeaver
     restart: unless-stopped
     volumes:

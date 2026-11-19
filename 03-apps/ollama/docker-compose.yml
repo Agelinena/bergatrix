@@ -3,7 +3,7 @@
 # (hoje: o worker do Legendarr, na stack jellyfin).
 services:
   ollama:
-    image: ollama/ollama:latest
+    image: ollama/ollama:0.40.16
     container_name: ollama
     restart: unless-stopped
     volumes:

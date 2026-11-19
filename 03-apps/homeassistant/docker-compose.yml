@@ -2,7 +2,7 @@ services:
   # --- Modelo B: Authentik de fora, direto p/ dispositivos de confiança,
   # bypass /api-access-bypass p/ o app Companion. Ver docs/legado/stacks/homeassistant.md
   homeassistant:
-    image: ghcr.io/home-assistant/home-assistant:stable
+    image: ghcr.io/home-assistant/home-assistant:2026.11.2
     container_name: homeassistant
     restart: unless-stopped
     security_opt:
