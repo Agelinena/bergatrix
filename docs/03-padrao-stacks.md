@@ -32,31 +32,8 @@ Os apps próprios estão saindo para um repositório cada (públicos, sem dados 
 - O compose do app funciona sozinho. O que é só deste servidor (redes `bergatrix-*`, rótulos do Traefik, rótulo de backup do Bergakup) fica num arquivo ao lado da pasta, no Bergatrix: `03-apps/<stack>.bergatrix.yml`.
 - O `.env` da stack no servidor ativa os dois: `COMPOSE_FILE=docker-compose.yml:../<stack>.bergatrix.yml`.
 - Clonar já com os submódulos: `git clone --recurse-submodules …`. Num clone existente, depois de cada `git pull`: `git submodule update --init`. Para deixar automático: `git config submodule.recurse true`.
-- **Primeira vez no servidor** (as pastas ainda têm o código antigo, rastreado pelo Bergatrix): `./00-infrastructure/migrar-submodulos.sh`. Ele guarda os `.env` fora, para as stacks, troca as pastas pelos submódulos, devolve os `.env` com o `COMPOSE_FILE` e sobe de novo. Os dados ficam fora das pastas e não são tocados.
+- **Primeira vez no servidor:** veja [migracoes.md](migracoes.md#apps-em-repositório-próprio-e-legendarr-fora-do-jellyfin-nov2026).
 - Mudança no app vai no repositório dele; aqui só se atualiza o ponteiro do submódulo (`git -C 03-apps/<stack> pull`, depois `git add 03-apps/<stack>` e commit).
-
-#### Legendarr: de dentro do Jellyfin para stack própria (uma vez, nov/2026)
-
-O Legendarr (web, worker e optimizer) vivia em `03-apps/jellyfin/app` e agora é a stack `03-apps/legendarr`. Os containers mantêm o nome (o webhook dos *arr continua chegando em `legendarr-web`), mas mudam de projeto, e as pastas seguem o nome da stack. A ordem importa: os containers antigos precisam sair antes de os novos subirem.
-
-```bash
-cd ~/bergatrix && git pull && git submodule update --init
-
-# 1. Jellyfin sem o Legendarr (o --remove-orphans derruba os três containers antigos)
-cd ~/bergatrix/03-apps/jellyfin && docker compose up -d --remove-orphans
-
-# 2. Pastas com o nome da stack nova
-sudo mv /srv/appdata/jellyfin/legendarr /srv/appdata/legendarr
-sudo mkdir -p /srv/cache/legendarr && sudo mv /srv/cache/jellyfin/optimizer /srv/cache/legendarr/optimizer
-
-# 3. .env: o do Jellyfin já tem todas as variáveis (as que sobram são ignoradas)
-cd ~/bergatrix/03-apps/legendarr
-cp ../jellyfin/.env .env
-printf '\nCOMPOSE_FILE=docker-compose.yml:../legendarr.bergatrix.yml\n' >> .env
-docker compose config --quiet && docker compose up -d --build
-```
-
-Depois, as variáveis do Legendarr podem sair do `.env` do Jellyfin. Conferir: `docker ps --filter name=legendarr --format '{{.Names}} {{.Label "com.docker.compose.project"}}'` mostra o projeto `legendarr`, e o painel abre em `legendarr.${DOMAIN}`.
 
 ## Variáveis (`.env`)
 

@@ -77,4 +77,4 @@ cd ~/bergatrix
 ./00-infrastructure/atualizar.sh         # pull e recria só o que mudou
 ```
 
-Detalhes em [07-ligar-e-desligar.md](07-ligar-e-desligar.md#atualizar). Migração que precisa de passo manual (mover pasta, ordem de containers) fica escrita no documento da área, e não se roda o `atualizar.sh` antes dela.
+Detalhes em [07-ligar-e-desligar.md](07-ligar-e-desligar.md#atualizar). Mudança que precisa de passo manual no servidor (mover pasta, ordem de containers, rede nova) vai escrita em [migracoes.md](migracoes.md), com um jeito de conferir se já foi aplicada, e o `atualizar.sh` só roda depois dela.
