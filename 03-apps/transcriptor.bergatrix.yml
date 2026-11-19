@@ -1,0 +1,44 @@
+# Transcriptor no Bergatrix: o que é só deste servidor, por cima do
+# docker-compose.yml do repositório do app (submódulo em 03-apps/transcriptor).
+#
+# Ativado pelo .env do Transcriptor no servidor:
+#   COMPOSE_FILE=docker-compose.yml:../transcriptor.bergatrix.yml
+#
+# Acesso (docs/05-acesso.md): modelo A, uma rota (transcriptor.${DOMAIN}) com
+# CrowdSec e sem forward-auth; o login é pelo Authentik (OIDC) dentro do app.
+# Redes: docs/06-redes.md. Precisa do Docker Compose 2.24+ (!reset/!override).
+services:
+  db:
+    labels:
+      # Backup pelo Bergakup (pg_dump antes da cópia do servidor).
+      - "bergatrix.backup.dump=postgres"
+
+  api:
+    environment:
+      TRANSCRIPTOR_PUBLIC_URL: https://transcriptor.${DOMAIN}
+      # O servidor fala com o Authentik direto, sem passar pelo Traefik.
+      TRANSCRIPTOR_OIDC_INTERNAL_URL: http://authentik-server:9000
+    # Sem porta no host: o tráfego chega pelo Traefik.
+    ports: !reset []
+    # Sem internet: o Authentik pela bergatrix-auth.
+    networks: !override
+      - transcriptor-internal
+      - bergatrix-proxy
+      - bergatrix-auth
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=bergatrix-proxy"
+      # Modelo A (OIDC no app): uma rota, sem forward-auth. A interface exige
+      # o login pelo Authentik; a API exige a sessão ou um token pessoal.
+      - "traefik.http.routers.transcriptor.rule=Host(`transcriptor.${DOMAIN}`)"
+      - "traefik.http.routers.transcriptor.entrypoints=websecure"
+      - "traefik.http.routers.transcriptor.tls=true"
+      - "traefik.http.routers.transcriptor.service=transcriptor"
+      - "traefik.http.routers.transcriptor.middlewares=crowdsec-bouncer@file"
+      - "traefik.http.services.transcriptor.loadbalancer.server.port=8000"
+
+networks:
+  bergatrix-proxy:
+    external: true
+  bergatrix-auth:
+    external: true

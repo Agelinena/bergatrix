@@ -58,7 +58,7 @@ Rede local ───────────────────────
 | 03 | jellyfin | Jellyfin, Seerr, qBittorrent, Sonarr, Radarr, Prowlarr, Bazarr, SABnzbd, FlareSolverr, indexador BR, Recyclarr, Legendarr (web, worker, optimizer) | `jellyflix`, `catalogo`, `legendarr` e um por serviço *arr | appdata, cache, media |
 | 03 | nextcloud | Arquivos, agenda e contatos: Nextcloud (Apache), cron, Postgres, Redis | `storange` | appdata, userdata |
 | 03 | ollama | Ollama (GPU), sem rota | – | cache |
-| 03 | transcriptor | Transcrição com faster-whisper (GPU): API, worker, Postgres, proxy de saída | `transcriptor` | appdata, cache |
+| 03 | transcriptor | Transcrição com faster-whisper (GPU): API, worker, Postgres, proxy de saída. Submódulo ([Agelinena/transcriptor](https://github.com/Agelinena/transcriptor)) + `03-apps/transcriptor.bergatrix.yml` | `transcriptor` | appdata, cache |
 | 04 | monitor | Grafana (painéis e alertas por e-mail), Prometheus, Loki, Alloy e exporters (servidor, containers, GPU, Proxmox, OPNsense, sites) | `grafana` (+ portas 5140 e 5141/tcp para o syslog do OPNsense e da VPS) | appdata, cache |
 
 ### Ordem de subida

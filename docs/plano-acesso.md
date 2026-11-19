@@ -98,7 +98,7 @@ Feito: base no Authentik, redes, painel do Traefik, *arr, Lidarr, Legendarr, See
 
 1. **Jellyfin:** subir com o CrowdSec e acompanhar os bans nos primeiros dias.
 2. **Drop:** subir a versão 2 (rede `bergatrix-drop`, CrowdSec e rate limit). Ver o [README](../03-apps/drop/README.md#subir).
-3. **Transcriptor:** subir a versão nova (OIDC, Postgres, worker isolado). Ver o [README](../03-apps/transcriptor/README.md#subir).
+3. **Transcriptor:** subir a versão nova (OIDC, Postgres, worker isolado). Ver o [README](https://github.com/Agelinena/transcriptor#subir).
 4. **Home Assistant → OIDC** (`hass-oidc-auth`), com uma rota pública só. Tira a rota `-direct`, a `-bypass` e o `public-auth`.
 5. **`dynamic.yml`:** remover `public-auth` e `api-access-bypass` quando os itens 3 e 4 estiverem no ar.
 6. **Monitor:** subir a stack (Grafana com OIDC). Ver o [README](../04-monitoring/monitor/README.md).

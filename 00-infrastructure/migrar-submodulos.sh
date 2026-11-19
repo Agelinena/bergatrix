@@ -14,7 +14,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-APPS=(03-apps/bergastream 03-apps/berganews 03-apps/doberga)
+APPS=(03-apps/bergastream 03-apps/berganews 03-apps/doberga 03-apps/transcriptor)
 BACKUP="$HOME/.bergatrix-migracao-env"
 mkdir -p "$BACKUP"
 chmod 700 "$BACKUP"

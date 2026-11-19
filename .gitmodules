@@ -7,3 +7,6 @@
 [submodule "03-apps/doberga"]
 	path = 03-apps/doberga
 	url = https://github.com/Agelinena/doberga.git
+[submodule "03-apps/transcriptor"]
+	path = 03-apps/transcriptor
+	url = https://github.com/Agelinena/transcriptor.git

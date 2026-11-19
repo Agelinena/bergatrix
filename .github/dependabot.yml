@@ -31,7 +31,6 @@ updates:
       - "/03-apps/jellyfin"
       - "/03-apps/nextcloud"
       - "/03-apps/ollama"
-      - "/03-apps/transcriptor"
       - "/04-monitoring/monitor"
     schedule:
       interval: weekly
