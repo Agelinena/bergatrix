@@ -42,8 +42,8 @@ class CarLibrary {
   /// Espera um provider que se descarta sozinho sem ninguém ouvindo (o
   /// detalhe da playlist): com `read`, ele era descartado no meio da busca no
   /// servidor e o carro recebia a playlist vazia.
-  Future<T> _hold<T>(ProviderListenable<Future<T>> provider) async {
-    final sub = _ref.listen<Future<T>>(provider, (_, _) {});
+  Future<PlaylistDetail> _detail(String id) async {
+    final sub = _ref.listen(playlistDetailProvider(id).future, (_, _) {});
     try {
       return await sub.read();
     } finally {
@@ -79,7 +79,7 @@ class CarLibrary {
       }
       if (parentId.startsWith(_playlistPrefix)) {
         final id = parentId.substring(_playlistPrefix.length);
-        final detail = await _hold(playlistDetailProvider(id).future);
+        final detail = await _detail(id);
         return [
           for (final (i, t) in detail.tracks.indexed)
             _trackItem(t.asResult, '$_trackPrefix$id:$i'),
@@ -163,7 +163,7 @@ class CarLibrary {
       playlistId = mediaId.substring(_playlistPrefix.length);
     }
     if (playlistId == null) return;
-    final detail = await _hold(playlistDetailProvider(playlistId).future);
+    final detail = await _detail(playlistId);
     if (detail.tracks.isEmpty) return;
     await player.playList(
       [for (final t in detail.tracks) t.asResult],

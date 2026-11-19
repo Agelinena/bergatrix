@@ -406,7 +406,8 @@ Rodado na imagem `ghcr.io/cirruslabs/flutter:stable` (Flutter 3.44.0 / Dart 3.12
 - Testes: `test_quality` 61, `test_upgrade_flow` 10 (novo; banco real e Lidarr falso). Validado
   contra o MusicBrainz e um Lidarr local (ISRC → álbum de estúdio → `album/lookup` por MBID).
 
-### Versão 0.8.2 — playlists no Android Auto e repositório próprio
+### Versão 0.8.3 — playlists no Android Auto e repositório próprio
+(A 0.8.2 não saiu: o CI barrou um erro de análise.)
 - **Android Auto:** a playlist abria vazia no carro. O detalhe da playlist se descarta sozinho
   quando ninguém o observa, e o carro só lia: ele sumia no meio da busca no servidor. Agora o
   carro mantém a consulta até a resposta chegar. A busca do carro usa a mesma origem da busca do
