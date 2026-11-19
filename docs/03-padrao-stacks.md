@@ -83,21 +83,21 @@ Depois do bloco base, uma seção por assunto (`# ── Banco ──`, `# ─�
 
 ### No compose
 
-- **Raízes sempre com `:?`:** `${APPDATA_PATH:?}/minhastack/postgres`. Se a variável não estiver no `.env`, o compose para com erro, em vez de montar `/minhastack/postgres` na raiz do sistema.
+- **Raízes sempre com `:?`:** `${APPDATA_PATH:?}/minhastack/postgres`. Se a variável não estiver no `.env`, o compose para com erro, em vez de montar `/minhastack/postgres` na raiz do sistema. Exceção: o compose genérico dos apps com repositório próprio usa `${APPDATA_PATH:-./data}` (veja [02-armazenamento.md](02-armazenamento.md#o-docker-só-sobe-depois-dos-discos)).
 - **Segredos sem valor padrão:** `${MINHAAPP_SECRET_KEY}`.
 - **Ajustes com valor padrão** igual ao do código: `${SCAN_INTERVAL:-3600}`. Assim o `.env` só precisa ter o que muda.
 - **Toda variável lida pelo app precisa ser repassada pelo compose** (em `environment:` ou `env_file:`). Se estiver só no `.env.example`, ela não chega ao container.
 
 ### Valores no repositório
 
-O repositório é público. Nos `.env.example` e na documentação:
+Os repositórios dos apps são públicos, e o Bergatrix também, até virar privado. Em todos, nos `.env.example`, nos composes e na documentação:
 
 - domínio: `example.com`;
 - IPs: `<ip-do-nas>`, `192.168.x.x`;
 - segredos: vazios, com o comando para gerar ao lado (`openssl rand -hex 32`);
 - e-mails e usuários: genéricos.
 
-Valores reais (domínio, IPs, contas, passo a passo de configuração com dados) ficam no repositório privado.
+Valores reais (domínio, IPs, contas) ficam só nos `.env` do servidor.
 
 ## Volumes
 
@@ -118,7 +118,7 @@ volumes:
 
 Regras completas e como criar uma rede em [06-redes.md](06-redes.md). Em resumo:
 
-- Redes compartilhadas (`bergatrix-proxy`, `bergatrix-media`, `bergatrix-ai`) ficam em `01-network/redes` e entram na stack com `external: true`.
+- Redes compartilhadas (`bergatrix-*`, lista em [06-redes.md](06-redes.md#as-redes)) ficam em `01-network/redes` e entram na stack com `external: true`. Nos apps com repositório próprio, elas entram só pelo arquivo de ajuste (`03-apps/submodulos/<app>.bergatrix.yml`).
 - A `bergatrix-proxy` é só para serviços com rota no Traefik.
 - Banco e serviços internos ficam na `<stack>-internal` (`internal: true`). O banco nunca entra numa rede compartilhada.
 
@@ -165,11 +165,12 @@ Stacks existentes que ainda não seguem o padrão. Nenhuma delas impede a migra�
 
 | Stack | Fora do padrão |
 |---|---|
-| várias | Imagens sem versão fixa: Jellyfin, *arr, SABnzbd, Deemix, Lidarr, CrowdSec, CloudBeaver, Ollama, FlareSolverr |
+| jellyfin | `ghcr.io/agelinena/bergafin:latest`: imagem própria, sem versão fixa (o Bergafin-web publica a cada versão do Jellyfin) |
+| bergastream | Deemix e Lidarr em `latest`, no compose do repositório do app (que ainda não tem Dependabot) |
 | várias | `container_name` antigos (`bitwarden`, `ollama`, `sonarr`…). Mantidos porque outras stacks os usam como endereço; mudam junto com a revisão de acesso. |
 | homeassistant | Rotas antigas com IPs fixos, bypass e `public-auth`. Saem conforme o [plano de acesso](plano-acesso.md). |
 | legendarr | Web, worker e optimizer rodam como root. O optimizer guarda `requires_redownload.txt` fora de volume. |
 | bitwarden | O nome da pasta é `bitwarden`, mas o app é o Vaultwarden. |
 | nextcloud | As miniaturas (`appdata_*/preview`) ficam no NAS, dentro da pasta de dados: o Nextcloud não tem opção para separá-las. O backup pode excluir essa pasta. |
 | cloudbeaver | Ficou sem banco para acessar desde que o Postgres global saiu: cada stack tem o seu, em rede interna. |
-| quase todas | Sem `README.md` próprio (só bergastream, bergakup e monitor têm). |
+| várias | Sem `README.md` próprio: traefik, redes, crowdsec, authentik, bitwarden, cloudbeaver, ollama, jellyfin e homeassistant. Os apps com repositório próprio, o Bergakup, o Immich, o Nextcloud e o monitor têm. |

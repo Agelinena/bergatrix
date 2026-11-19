@@ -21,15 +21,9 @@ secrets/
 00-infrastructure/bergakup/agent/bergakup-agent
 00-infrastructure/bergakup/web/node_modules/
 00-infrastructure/bergakup/web/dist/
-
-# claude-sync: mudou para Agelinena/claude-sync. Cópia local antiga, até mover o executável.
-ferramentas/claude-sync/
-
-# graphify: só o grafo (graph.json, GRAPH_REPORT.md, manifest.json) vai para o git.
-# Cache, visualização e estado local (tem o caminho desta máquina) ficam fora.
-graphify-out/cache/
-graphify-out/graph.html
-graphify-out/.graphify_*
+# graphify: o grafo é local de cada PC (o nome graphify-out é fixo na ferramenta).
+# O hook de commit (graphify hook install) o mantém atualizado.
+graphify-out/
 
 # Backups locais nunca vão pro git (ex.: acme.json.bak, *.bak.<timestamp>)
 *.bak

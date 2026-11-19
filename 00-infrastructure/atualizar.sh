@@ -99,6 +99,11 @@ for stack in "${alvo[@]}"; do
     continue
   fi
   echo "==> $stack"
+  # Apps com repositório próprio usam ./data como padrão: se o .env não tiver
+  # as raízes (APPDATA_PATH...), os dados caem dentro da pasta do código.
+  if [ -d "$stack/data" ]; then
+    echo "!!  $stack/data existe: falta APPDATA_PATH (ou CACHE_PATH) no .env? Os dados estão indo para dentro da pasta do app."
+  fi
   if (cd "$stack" &&
       docker compose pull --ignore-buildable --quiet &&
       docker compose up -d --build); then

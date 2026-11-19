@@ -13,7 +13,7 @@ Toda stack usa só estas quatro raízes. Nenhum compose aponta para um caminho a
 | `MEDIA_PATH` | NAS (NFS) | `/mnt/nas/media` | Mídia que pode ser baixada de novo: filmes, séries, músicas, downloads concluídos | Não |
 | `USERDATA_PATH` | NAS (NFS) | `/mnt/nas/userdata` | Acervos pessoais que **não** podem ser baixados de novo: fotos (Immich), arquivos (Nextcloud) | **Sim** |
 
-`USERDATA_PATH` guarda acervos que só existem aqui. Hoje, o Immich usa essa raiz.
+`USERDATA_PATH` guarda acervos que só existem aqui. Hoje, o Immich e o Nextcloud usam essa raiz.
 
 ### Como decidir onde um volume vai
 
@@ -147,6 +147,7 @@ Se o Docker iniciar antes do NAS, os containers gravam dentro da pasta de montag
    ```
 
 3. **Nos composes:** toda raiz é usada como `${APPDATA_PATH:?}`. Se a variável faltar no `.env`, o `docker compose` para com erro, em vez de criar pastas em `/`.
+   - **Exceção: apps com repositório próprio** (submódulos). O compose deles é genérico e usa `${APPDATA_PATH:-./data}`, para funcionar sozinho em qualquer máquina. No servidor, o `.env` de cada um **precisa** ter as raízes; se faltar, os dados vão parar em `03-apps/<app>/data`, dentro da pasta do código. O `atualizar.sh` avisa quando encontra essa pasta.
 
 ### Permissões
 
@@ -169,6 +170,8 @@ Se o Docker iniciar antes do NAS, os containers gravam dentro da pasta de montag
 | `MEDIA_PATH` | Nunca. Perder o disco do NAS significa baixar de novo. |
 | `USERDATA_PATH` | Obrigatório quando houver dados: outro disco (ou RAID) e uma cópia fora de casa. |
 
+> **Ainda não está no ar:** o Bergakup não foi instalado no servidor, então hoje não há backup automático.
+>
 > **Implementação:** o [Bergakup](../00-infrastructure/bergakup/README.md) (restic + Backblaze B2 com Object Lock). Três
 > conjuntos: `userdata` (NAS), `docker` (repositório, composes e `.env`) e `servidor` (`APPDATA_PATH`, com os bancos por
 > dump). Todo banco precisa da label `bergatrix.backup.dump` no compose: sem ela, a pasta dele fica de fora (ela é excluída

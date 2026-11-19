@@ -1,6 +1,6 @@
 # Infraestrutura
 
-Visão geral do servidor: as máquinas, os discos, as stacks e o que depende do quê. Valores reais (domínio, IPs, hardware exato) ficam no repositório privado.
+Visão geral do servidor: as máquinas, os discos, as stacks e o que depende do quê. Sem valores reais (domínio, IPs): eles ficam só nos `.env` do servidor.
 
 ## Máquinas e discos
 
@@ -37,21 +37,22 @@ Rede local ───────────────────────
 
 - O **Traefik** termina o TLS com um certificado curinga `*.${DOMAIN}` (Let's Encrypt, desafio DNS no deSEC) e roteia pelos labels dos containers.
 - O **CrowdSec** lê o `access.log` do Traefik e bloqueia IPs pelo plugin bouncer.
-- O **Authentik** é o provedor de identidade. Hoje protege a maioria dos apps por forward-auth no Traefik; o destino é login OIDC dentro de cada app (ver [03-padrao-stacks.md](03-padrao-stacks.md#acesso-traefik-e-autenticação)).
+- O **Authentik** é o provedor de identidade: login OIDC dentro dos apps que sabem falar com ele, e forward-auth no Traefik para os que não sabem (os *arr, o painel do Traefik, o Legendarr). Regras em [05-acesso.md](05-acesso.md).
+- O "proxy externo" é uma VPS com filtro por país e um túnel WireGuard até o servidor: [08-trafego-externo.md](08-trafego-externo.md).
 
 ## Stacks
 
 | Camada | Stack | O que roda | Endereços (`*.${DOMAIN}`) | Raízes |
 |---|---|---|---|---|
 | 00 | cloudbeaver | CloudBeaver | `db` | appdata |
-| 00 | bergakup | Backup (restic + Backblaze B2): interface e API, Postgres. Quem executa é o `bergakup-agent`, no host (systemd) | `bergakup` (só rede local/VPN) | appdata |
+| 00 | bergakup | Backup (restic + Backblaze B2): interface e API, Postgres. Quem executa é o `bergakup-agent`, no host (systemd). **Ainda não instalado no servidor** | `bergakup` (só rede local/VPN) | appdata |
 | 01 | traefik | Traefik + plugin CrowdSec | `traefik` (painel) | appdata |
 | 02 | authentik | Authentik (server, worker), Postgres, Redis | `authentik`, `auth` | appdata |
 | 02 | bitwarden | Vaultwarden | `bitwarden` | appdata |
 | 02 | crowdsec | CrowdSec | – | appdata |
 | 03 | berganews | Notícias (RSS) com IA local: API, coleta, IA (Ollama), proxy de saída, Postgres (pgvector), Redis. Submódulo ([Agelinena/berganews](https://github.com/Agelinena/berganews)) + `03-apps/submodulos/berganews.bergatrix.yml` | `news` | appdata, cache |
 | 03 | bergastream | Streaming de música próprio: API, worker, web, Postgres, Redis, Deemix, Lidarr, PO Token. Submódulo ([Agelinena/bergastream](https://github.com/Agelinena/bergastream)) + `03-apps/submodulos/bergastream.bergatrix.yml` | `bergastream`, `lidarr` | appdata, cache, media |
-| 03 | doberga | Utilidades do dia a dia (compras, recorrentes, calendário, notas), offline nos apps: API, web, Postgres, Redis. Submódulo ([Agelinena/doberga](https://github.com/Agelinena/doberga)) + `03-apps/submodulos/doberga.bergatrix.yml` | `doberga` | appdata |
+| 03 | doberga | Utilidades do dia a dia (compras, recorrentes, calendário, notas), offline nos apps: API, web, Postgres, Redis. **Ainda não instalado no servidor**. Submódulo ([Agelinena/doberga](https://github.com/Agelinena/doberga)) + `03-apps/submodulos/doberga.bergatrix.yml` | `doberga` | appdata |
 | 03 | drop | Texto e arquivos (até 25 MiB) cifrados no navegador, sem disco; rede isolada `bergatrix-drop`. Submódulo ([Agelinena/drop](https://github.com/Agelinena/drop)) + `03-apps/submodulos/drop.bergatrix.yml` | `drop` | – |
 | 03 | homeassistant | Home Assistant | `ha` | appdata |
 | 03 | immich | Fotos e vídeos: server, machine learning (GPU), Postgres (VectorChord), Valkey | `fotos` | appdata, cache, userdata |
@@ -90,5 +91,11 @@ Redes compartilhadas, redes de cada stack e as regras: [06-redes.md](06-redes.md
 
 ## Repositórios
 
-- **Este repositório (público):** stacks, código dos apps próprios e documentação de padrão, sem valores reais.
-- **Repositório privado (planejado):** complemento com domínios, IPs, configuração do Authentik, Proxmox e OMV, e o passo a passo com dados reais.
+| Repositório | O quê | Visibilidade |
+|---|---|---|
+| `Agelinena/bergatrix` (este) | Stacks de terceiros, os ajustes deste servidor (`03-apps/submodulos/`), scripts e documentação. Agrega os outros como submódulo | Público por enquanto; vai ficar privado |
+| `Agelinena/bergastream`, `berganews`, `doberga`, `transcriptor`, `drop`, `legendarr` | Um app próprio cada, com compose genérico. Submódulos em `03-apps/<app>` | Públicos |
+| `Agelinena/Bergafin-auth`, `Bergafin-web`, `Bergafin-android` | Jellyfin com login pelo Authentik (geram imagem e APK). Submódulos sem checkout em `03-apps/jellyfin/repos/` | Públicos |
+| `Agelinena/claude-sync` | App dos PCs: conversas do Claude Code no Nextcloud. Fora do Bergatrix | Público |
+
+Valores reais (domínio, IPs, contas) só no `.env` de cada stack no servidor, nunca no git.

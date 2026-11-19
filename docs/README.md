@@ -11,15 +11,14 @@ Ponto de partida para entender o servidor e criar ou alterar qualquer stack.
 | [05-acesso.md](05-acesso.md) | O padrão de acesso: Authentik na frente de tudo (OIDC ou forward-auth) e as labels do Traefik para cada caso |
 | [06-redes.md](06-redes.md) | As redes Docker: quais existem, quem entra em cada uma e como criar uma nova |
 | [07-ligar-e-desligar.md](07-ligar-e-desligar.md) | Subir, derrubar e atualizar tudo na ordem certa (`subir-tudo.sh`, `derrubar-tudo.sh`, `atualizar.sh`) e manter o `stacks.txt` em dia |
+| [08-trafego-externo.md](08-trafego-externo.md) | Caminho do tráfego de fora: VPS, filtro por país e túnel até o Traefik |
+| [migracoes.md](migracoes.md) | Passos manuais de uma vez no servidor (pasta movida, rede nova), cada um com como conferir se já foi aplicado |
 | [plano-acesso.md](plano-acesso.md) | Andamento do modelo de acesso serviço por serviço (o que já está com OIDC ou forward-auth e o que falta) |
 | [guias/jellyfin-authentik.md](guias/jellyfin-authentik.md) | Jellyfin só pelo Authentik (plugin Bergafin Auth), Quick Connect, contas locais e Seerr |
-| [claude-sync](https://github.com/Agelinena/claude-sync) | App de desktop: conversas do Claude Code no Nextcloud, para continuar de qualquer PC |
 | [templates/](templates/) | `docker-compose.yml` e `.env.example` modelo |
-| [migracoes.md](migracoes.md) | Passos manuais de uma vez no servidor (pasta movida, rede nova), cada um com como conferir se já foi aplicado |
-| [09-infraestrutura-rede.md](09-infraestrutura-rede.md) | Caminho do tráfego de fora: VPS, filtro GeoIP e túnel até o servidor |
 
 ## Regras desta documentação
 
 - **O código é a fonte da verdade.** Se um documento e um compose discordarem, vale o compose, e o documento precisa ser corrigido.
-- **Repositório público:** sem domínio, IPs, e-mails ou segredos reais. Use `example.com` e `<ip-do-nas>`. Os valores reais ficam no repositório privado.
+- **Sem valores reais:** nada de domínio, IPs, e-mails ou segredos reais. Use `example.com` e `<ip-do-nas>`. Os valores reais ficam só nos `.env` do servidor.
 - Ao criar, remover ou mudar uma stack, atualize no mesmo commit: o [`stacks.txt`](../00-infrastructure/stacks.txt), o [mapa de armazenamento](02-armazenamento.md#mapa-atual-por-stack) e a [tabela de stacks](01-infraestrutura.md#stacks).

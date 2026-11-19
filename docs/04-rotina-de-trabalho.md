@@ -14,7 +14,7 @@ O que fazer antes, durante e depois de qualquer mudança no Bergatrix ou num app
    | Máquina | Tem | Não tem |
    |---|---|---|
    | Notebook (Linux) | Docker, Flutter (pelo Docker), graphify | – |
-   | PC do trabalho (Windows) | git, gh, Git Bash | Docker, Python, Go, Flutter, graphify |
+   | PC do trabalho (Windows) | git, gh, Git Bash, VS Code | Docker, Go, Flutter; o antivírus bloqueia o Python (e com ele o graphify) |
    | Servidor | Docker, as stacks de verdade | – (não é lugar de teste) |
 
    Teste que precisa de Docker é no notebook. No PC do trabalho só dá para editar, revisar e publicar.
@@ -95,7 +95,7 @@ APPDATA_PATH=~/.cache/bergatrix-teste/berganews WEB_PORT=18080 \
    Ele derruba os projetos `teste-*` com volumes, redes e imagens, apaga `~/.cache/bergatrix-teste` e as imagens sem nome, e avisa se sobrou algum container com mount em `/tmp/claude-*`.
 2. **Conferir que nada ficou:** `docker ps -a` não mostra nada `teste-*`.
 3. **Atualizar os docs** que a mudança deixou errados, no mesmo commit.
-4. **Atualizar o grafo** (onde houver graphify): `graphify update .`.
+4. **Grafo do graphify:** nada a fazer, se o PC tiver o hook (`graphify hook install`, uma vez por máquina): ele reconstrói o grafo a cada commit. O grafo (`graphify-out/`) é local e fica fora do git.
 5. **Dizer o que foi e o que não foi testado.** Se um teste não rodou (máquina sem Docker, por exemplo), isso aparece no resumo, junto com o que falta aplicar no servidor.
 
 ## Aplicar no servidor

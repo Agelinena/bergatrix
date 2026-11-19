@@ -82,15 +82,15 @@ Feito: `bergatrix-proxy` só com quem tem rota, mais `bergatrix-media`, `bergatr
 | `internal-only` (3 IPs fixos) | ✓ Removido. O painel admin do Authentik usa o `lan-only` (a sub-rede). |
 | `authentik` (forward-auth) | Manter (modelo C). Testar sem `Authorization` em `authResponseHeaders`, que já atrapalhou o login do Bergastream. |
 | `public-auth` | Só o Home Assistant usa. Remover depois dele. |
-| `proxyProtocol` e `forwardedHeaders` (`10.100.0.1`) | Revisar junto com o caminho do tráfego externo |
+| `proxyProtocol` e `forwardedHeaders` (`10.100.0.1`) | Manter: é a VPS no túnel ([08-trafego-externo.md](08-trafego-externo.md)) |
 
 ## Decisões em aberto
 
 1. ~~Qual VPN~~ → Tailscale gerenciado no firewall.
-2. **Caminho do tráfego externo:** a configuração ainda espera um proxy em `10.100.0.1`, mas a VM nova não tem túnel. Confirmar como o tráfego de fora chega hoje.
+2. ~~Caminho do tráfego externo~~ → VPS com HAProxy e túnel WireGuard; o `10.100.0.1` é a VPS no túnel ([08-trafego-externo.md](08-trafego-externo.md)).
 3. **Apps de celular dos *arr:** se você usa algum, as rotas dos *arr precisariam de uma exceção por chave de API, o que traz de volta parte do bypass.
 4. **CloudBeaver:** remover ou dar uma função para ele.
-5. **Host `auth`:** confirmar se algum app ainda usa `auth.<domínio>` antes de remover a rota.
+5. **Host `auth`:** o plugin do Jellyfin (Bergafin Auth) usa `auth.<domínio>` ([01-infraestrutura.md](01-infraestrutura.md#dependências-entre-stacks)). Para remover a rota, troque antes o endereço no plugin para `authentik.<domínio>`.
 
 ## O que falta
 
@@ -100,4 +100,4 @@ Feito (conferido no servidor em nov/2026): base no Authentik, redes, painel do T
 2. **Collabora:** confirmar que está só na rede `bergatrix-office` ([migracoes.md](migracoes.md#rede-bergatrix-office-out2026)).
 3. **Home Assistant → OIDC** (`hass-oidc-auth`), com uma rota pública só. Tira a rota `-direct`, a `-bypass` e o `public-auth`.
 4. **`dynamic.yml`:** remover `public-auth` e `api-access-bypass` depois do item 3.
-5. **Decisões em aberto** acima (caminho do tráfego externo, CloudBeaver, host `auth`).
+5. **Decisões em aberto** acima (apps de celular dos *arr, CloudBeaver, host `auth`).

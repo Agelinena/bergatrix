@@ -32,6 +32,8 @@ Não se usa mais:
 
 Sempre uma rota principal, com o nome do serviço. `<app>` é o nome do serviço, e o subdomínio fica escrito na regra.
 
+Nos apps com repositório próprio, as labels não vão no compose do app (que é genérico): ficam no arquivo de ajuste `03-apps/submodulos/<app>.bergatrix.yml`, junto com `ports: !reset []` e as redes `bergatrix-*`.
+
 ### OIDC
 
 ```yaml
