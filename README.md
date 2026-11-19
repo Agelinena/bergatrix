@@ -23,7 +23,7 @@ O servidor roda **Proxmox VE** com duas VMs: um **OpenMediaVault** (NAS, HD de 4
 
 ## 📦 Apps (03-apps)
 
-Os apps próprios têm repositório próprio e entram aqui como submódulo, com um arquivo `<app>.bergatrix.yml` ao lado para o que é só deste servidor ([padrão](docs/03-padrao-stacks.md#apps-com-repositório-próprio-submódulo)).
+Os apps próprios têm repositório próprio e entram aqui como submódulo, e o que é só deste servidor fica em `03-apps/submodulos/<app>.bergatrix.yml` ([padrão](docs/03-padrao-stacks.md#apps-com-repositório-próprio-submódulo)).
 
 | App | Descrição | Código |
 | :--- | :--- | :--- |

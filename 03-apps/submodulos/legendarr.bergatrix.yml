@@ -1,8 +1,8 @@
 # Legendarr no Bergatrix: o que é só deste servidor, por cima do
-# docker-compose.yml do repositório do app (submódulo em 03-apps/legendarr).
+# docker-compose.yml do repositório do app (submódulo em 03-apps/legendarr; este arquivo fica em 03-apps/submodulos).
 #
 # Ativado pelo .env do Legendarr no servidor:
-#   COMPOSE_FILE=docker-compose.yml:../legendarr.bergatrix.yml
+#   COMPOSE_FILE=docker-compose.yml:../submodulos/legendarr.bergatrix.yml
 #
 # Sobe depois do Ollama e do Jellyfin (Bazarr, Radarr, Sonarr), pela
 # bergatrix-media e pela bergatrix-ai. Acesso (docs/05-acesso.md): o painel

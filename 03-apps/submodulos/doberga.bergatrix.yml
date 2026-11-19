@@ -1,8 +1,8 @@
 # Doberga no Bergatrix: o que é só deste servidor, por cima do
-# docker-compose.yml do repositório do app (submódulo em 03-apps/doberga).
+# docker-compose.yml do repositório do app (submódulo em 03-apps/doberga; este arquivo fica em 03-apps/submodulos).
 #
 # Ativado pelo .env do Doberga no servidor:
-#   COMPOSE_FILE=docker-compose.yml:../doberga.bergatrix.yml
+#   COMPOSE_FILE=docker-compose.yml:../submodulos/doberga.bergatrix.yml
 #
 # Acesso (docs/05-acesso.md): uma rota pública só (doberga.${DOMAIN}), com
 # CrowdSec e sem forward-auth; o login é pelo Authentik (OIDC) dentro do app.

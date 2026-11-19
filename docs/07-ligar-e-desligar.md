@@ -24,7 +24,7 @@ cd ~/bergatrix
 
 ## Atualizar
 
-[`atualizar.sh`](../00-infrastructure/atualizar.sh) puxa o Bergatrix e os submódulos (apps com repositório próprio) e recria **só as stacks que mudaram**: pasta da stack, ponteiro do submódulo ou ajuste `03-apps/<stack>.bergatrix.yml`. Se a pasta das redes mudou, recria as redes antes.
+[`atualizar.sh`](../00-infrastructure/atualizar.sh) puxa o Bergatrix e os submódulos (apps com repositório próprio) e recria **só as stacks que mudaram**: pasta da stack, ponteiro do submódulo ou ajuste `03-apps/submodulos/<stack>.bergatrix.yml`. Se a pasta das redes mudou, recria as redes antes.
 
 ```bash
 cd ~/bergatrix

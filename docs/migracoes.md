@@ -4,43 +4,25 @@ Mudanças que precisam de passo manual **uma vez** no servidor (mover pasta, ord
 
 Depois de aplicada e conferida, a migração pode sair deste arquivo (fica no histórico do git).
 
-## Apps em repositório próprio e Legendarr fora do Jellyfin (nov/2026)
+## Ajustes dos apps em `03-apps/submodulos` (nov/2026)
 
-**Conferir se já foi aplicada:** `git -C ~/bergatrix submodule status` lista os seis apps sem `-` na frente, e `docker ps --filter name=legendarr-web --format '{{.Label "com.docker.compose.project"}}'` mostra `legendarr`.
+**Conferir se já foi aplicada:** `grep COMPOSE_FILE ~/bergatrix/03-apps/*/.env` mostra `../submodulos/<app>.bergatrix.yml` em todos.
 
-O Bergastream, o Berganews, o Doberga, o Transcriptor, o Drop e o Legendarr agora são submódulos (veja [03-padrao-stacks.md](03-padrao-stacks.md#apps-com-repositório-próprio-submódulo)). No servidor, as pastas ainda têm o código antigo, e o `.env` mora dentro delas, então um `git pull` simples deixa o submódulo sem conseguir baixar. O script faz tudo na ordem, e confere antes de mexer:
+Os arquivos `<app>.bergatrix.yml` saíram da raiz de `03-apps` e foram para `03-apps/submodulos/`. As pastas dos apps não mudaram. Só a linha `COMPOSE_FILE` do `.env` de cada app precisa acompanhar; os containers não são recriados.
+
+Rode `git pull` (não o `atualizar.sh`, que tentaria recriar os apps com o caminho antigo) e logo depois:
 
 ```bash
-# Enquanto os repositórios dos apps forem privados, o servidor precisa entrar no GitHub:
-gh auth login && gh auth setup-git
-
-cd ~/bergatrix && git fetch
-git show origin/main:00-infrastructure/migrar-submodulos.sh > /tmp/migrar.sh
-bash /tmp/migrar.sh
+cd ~/bergatrix
+for a in bergastream berganews doberga transcriptor drop legendarr; do
+  f=03-apps/$a/.env
+  [ -f "$f" ] || continue
+  sed -i "s#^COMPOSE_FILE=docker-compose.yml:../$a.bergatrix.yml#COMPOSE_FILE=docker-compose.yml:../submodulos/$a.bergatrix.yml#" "$f"
+  (cd 03-apps/$a && docker compose config --quiet && echo "$a: ok")
+done
 ```
 
-O que ele faz:
-
-1. **Confere** que não há mudança local, que o pull é possível e que o servidor alcança os seis repositórios. Se algo falhar, para sem mexer em nada.
-2. **Guarda os `.env`** em `~/.bergatrix-migracao-env`.
-3. **Bergastream, Berganews e Doberga:** para, troca a pasta pelo submódulo, devolve o `.env` com `COMPOSE_FILE=docker-compose.yml:../<app>.bergatrix.yml` e sobe de novo.
-4. **Transcriptor e Drop:** só troca a pasta e devolve o `.env`. As versões novas pedem um `.env` novo (README de cada um), então os containers antigos ficam no ar até você subir os novos.
-5. **Legendarr:** derruba os três containers antigos da stack do Jellyfin (`--remove-orphans`), move `${APPDATA_PATH}/jellyfin/legendarr` para `${APPDATA_PATH}/legendarr` e `${CACHE_PATH}/jellyfin/optimizer` para `${CACHE_PATH}/legendarr/optimizer` (pede `sudo`), copia o `.env` do Jellyfin para `03-apps/legendarr` e sobe.
-
-O Jellyfin é recriado no passo 5 com as versões fixas novas das imagens (sonarr, radarr, prowlarr, bazarr, sabnzbd, flaresolverr, torrent-indexer). Depois de conferir os apps, apague `~/.bergatrix-migracao-env` e, se quiser, as variáveis do Legendarr do `.env` do Jellyfin. A partir daí, o dia a dia é o `./00-infrastructure/atualizar.sh` ([07-ligar-e-desligar.md](07-ligar-e-desligar.md#atualizar)).
-
-## Versões fixas das imagens (nov/2026)
-
-**Conferir:** `docker inspect crowdsec --format '{{.Config.Image}}'` mostra `crowdsecurity/crowdsec:v1.8.2` (ou mais nova).
-
-Depois da migração acima, uma vez: `./00-infrastructure/atualizar.sh --tudo`. Ele baixa as versões fixas de todas as stacks e recria o que mudou. **Atenção:** o `--tudo` recria toda stack que tem `.env`, inclusive o Transcriptor e o Drop. Configure os dois antes (seção abaixo), ou passe a lista de stacks sem eles.
-
-## Transcriptor e Drop nas versões novas (nov/2026)
-
-**Conferir:** `cd ~/bergatrix/03-apps/transcriptor && docker compose ps` mostra `transcriptor-db`, `transcriptor-api`, `transcriptor-worker` e `transcriptor-egress` no ar, e o login em `transcriptor.${DOMAIN}` passa pelo Authentik. O Drop abre em `drop.${DOMAIN}` e o container `drop` está só na rede `bergatrix-drop`.
-
-- **Transcriptor:** a versão nova tem Postgres, login OIDC e worker isolado. O `.env` antigo não serve. Siga o [README](https://github.com/Agelinena/transcriptor#subir): aplicação no Authentik, `.env` com `POSTGRES_*` e `TRANSCRIPTOR_OIDC_ISSUER`, `TRANSCRIPTOR_SSO_CLIENT_ID` e `TRANSCRIPTOR_SSO_CLIENT_SECRET`, pastas com dono 1000. Mantenha a linha `COMPOSE_FILE`. As variáveis `TRANSCRIPTOR_API_KEY`, `TRANSCRIPTOR_SECRET_KEY` e `HF_TOKEN` não são mais usadas. O histórico antigo (`${APPDATA_PATH}/transcriptor/data`) não é migrado.
-- **Drop:** só precisa do `DOMAIN` e do `COMPOSE_FILE` no `.env` e da rede `bergatrix-drop` (`cd ~/bergatrix/01-network/redes && docker compose run --rm redes`).
+Cada app instalado deve responder `ok`. Se algum der erro de arquivo não encontrado, a linha `COMPOSE_FILE` dele está diferente: corrija à mão.
 
 ## Redes segmentadas (out/2026)
 

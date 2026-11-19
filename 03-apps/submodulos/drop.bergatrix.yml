@@ -1,8 +1,8 @@
 # Drop no Bergatrix: o que é só deste servidor, por cima do docker-compose.yml
-# do repositório do app (submódulo em 03-apps/drop).
+# do repositório do app (submódulo em 03-apps/drop; este arquivo fica em 03-apps/submodulos).
 #
 # Ativado pelo .env do Drop no servidor:
-#   COMPOSE_FILE=docker-compose.yml:../drop.bergatrix.yml
+#   COMPOSE_FILE=docker-compose.yml:../submodulos/drop.bergatrix.yml
 #
 # Público por natureza (docs/05-acesso.md). Isolado: fica só na rede
 # bergatrix-drop (01-network/redes), interna e sem internet. Daqui não se

@@ -48,9 +48,9 @@ O caminho seguido pelo Bergastream, Berganews, Doberga, Transcriptor, Drop e Leg
    - `CLAUDE.md` com as regras de conversa (copie o de outro app e troque o nome);
    - `.github/workflows/ci.yml` com os testes (e `release.yml`, se o app tiver binário ou APK).
 2. **No Bergatrix:**
-   - `03-apps/<app>.bergatrix.yml` com o que é só deste servidor: `ports: !reset []`, `networks: !override` com as redes `bergatrix-*`, rótulos do Traefik, `bergatrix.backup.dump` no banco, endereços internos (`authentik-server:9000`);
+   - `03-apps/submodulos/<app>.bergatrix.yml` com o que é só deste servidor: `ports: !reset []`, `networks: !override` com as redes `bergatrix-*`, rótulos do Traefik, `bergatrix.backup.dump` no banco, endereços internos (`authentik-server:9000`);
    - `git submodule add https://github.com/Agelinena/<app>.git 03-apps/<app>`;
-   - no `.env` do servidor: `COMPOSE_FILE=docker-compose.yml:../<app>.bergatrix.yml`;
+   - no `.env` do servidor: `COMPOSE_FILE=docker-compose.yml:../submodulos/<app>.bergatrix.yml`;
    - o [checklist de stack nova](03-padrao-stacks.md#checklist-de-stack-nova) a partir do item 5 (acesso, redes, `stacks.txt`, docs, README).
 3. **Conferir** com `docker compose config` (as duas camadas juntas) num teste `teste-<app>` e só então subir no servidor.
 

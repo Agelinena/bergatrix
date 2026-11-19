@@ -29,10 +29,9 @@ Se uma stack existente foge de alguma regra, ela está listada em [Dívidas conh
 
 Os apps próprios estão saindo para um repositório cada (públicos, sem dados deste servidor); o Bergatrix só os agrega como **submódulo git** no mesmo caminho da stack. Hoje: `03-apps/bergastream` ([Agelinena/bergastream](https://github.com/Agelinena/bergastream)), `03-apps/berganews` ([Agelinena/berganews](https://github.com/Agelinena/berganews)), `03-apps/doberga` ([Agelinena/doberga](https://github.com/Agelinena/doberga)), `03-apps/transcriptor` ([Agelinena/transcriptor](https://github.com/Agelinena/transcriptor)), `03-apps/drop` ([Agelinena/drop](https://github.com/Agelinena/drop)) e `03-apps/legendarr` ([Agelinena/legendarr](https://github.com/Agelinena/legendarr)).
 
-- O compose do app funciona sozinho. O que é só deste servidor (redes `bergatrix-*`, rótulos do Traefik, rótulo de backup do Bergakup) fica num arquivo ao lado da pasta, no Bergatrix: `03-apps/<stack>.bergatrix.yml`.
-- O `.env` da stack no servidor ativa os dois: `COMPOSE_FILE=docker-compose.yml:../<stack>.bergatrix.yml`.
+- O compose do app funciona sozinho. O que é só deste servidor (redes `bergatrix-*`, rótulos do Traefik, rótulo de backup do Bergakup) fica num arquivo do Bergatrix, todos juntos em `03-apps/submodulos/<stack>.bergatrix.yml`.
+- O `.env` da stack no servidor ativa os dois: `COMPOSE_FILE=docker-compose.yml:../submodulos/<stack>.bergatrix.yml`.
 - Clonar já com os submódulos: `git clone --recurse-submodules …`. Num clone existente, depois de cada `git pull`: `git submodule update --init`. Para deixar automático: `git config submodule.recurse true`.
-- **Primeira vez no servidor:** veja [migracoes.md](migracoes.md#apps-em-repositório-próprio-e-legendarr-fora-do-jellyfin-nov2026).
 - Mudança no app vai no repositório dele; aqui só se atualiza o ponteiro do submódulo (`git -C 03-apps/<stack> pull`, depois `git add 03-apps/<stack>` e commit).
 - Novo app com repositório próprio: o passo a passo está em [04-rotina-de-trabalho.md](04-rotina-de-trabalho.md#app-novo-com-repositório-próprio).
 

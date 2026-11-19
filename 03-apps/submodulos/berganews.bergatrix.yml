@@ -1,8 +1,8 @@
 # Berganews no Bergatrix: o que é só deste servidor, por cima do
-# docker-compose.yml do repositório do app (submódulo em 03-apps/berganews).
+# docker-compose.yml do repositório do app (submódulo em 03-apps/berganews; este arquivo fica em 03-apps/submodulos).
 #
 # Ativado pelo .env do Berganews no servidor:
-#   COMPOSE_FILE=docker-compose.yml:../berganews.bergatrix.yml
+#   COMPOSE_FILE=docker-compose.yml:../submodulos/berganews.bergatrix.yml
 #
 # Acesso (docs/05-acesso.md): uma rota pública só (news.${DOMAIN}), com
 # CrowdSec e sem forward-auth; o login é pelo Authentik (OIDC) dentro do app.

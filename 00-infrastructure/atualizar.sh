@@ -9,7 +9,7 @@
 # Guia: docs/07-ligar-e-desligar.md
 #
 # Uma stack "mudou" quando o commit novo mexe na pasta dela, no ponteiro do
-# submódulo ou no ajuste do servidor (03-apps/<stack>.bergatrix.yml). As
+# submódulo ou no ajuste do servidor (03-apps/submodulos/<stack>.bergatrix.yml). As
 # versões das imagens são fixas nos composes: imagem nova chega por commit
 # (PR do Dependabot), nunca sozinha.
 set -uo pipefail
@@ -58,7 +58,8 @@ if [ ${#escolhidas[@]} -gt 0 ]; then
   alvo=("${escolhidas[@]}")
 else
   for stack in "${STACKS[@]}"; do
-    if [ "$modo" = tudo ] || grep -qE "^($stack(/|$)|$stack\.bergatrix\.yml$)" <<<"$mudados"; then
+    ajuste="$(dirname "$stack")/submodulos/$(basename "$stack").bergatrix.yml"
+    if [ "$modo" = tudo ] || grep -qE "^($stack(/|$)|$ajuste$)" <<<"$mudados"; then
       alvo+=("$stack")
     fi
   done
