@@ -1,0 +1,15 @@
+# Dependabot: abre um pull request quando um app com repositório próprio
+# (submódulo, ver docs/03-padrao-stacks.md) tem commit novo no main. Aprovar o
+# PR avança o ponteiro; o servidor recebe no próximo `git pull` com
+# `git submodule update --init` (ou `submodule.recurse true`).
+version: 2
+updates:
+  - package-ecosystem: gitsubmodule
+    directory: "/"
+    schedule:
+      interval: daily
+      time: "06:00"
+      timezone: America/Sao_Paulo
+    commit-message:
+      prefix: "Submódulo"
+    labels: []
