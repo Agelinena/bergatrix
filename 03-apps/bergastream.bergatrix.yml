@@ -1,0 +1,68 @@
+# Bergastream no Bergatrix: o que é só deste servidor, por cima do
+# docker-compose.yml do repositório do app (submódulo em 03-apps/bergastream).
+#
+# Ativado pelo .env do Bergastream no servidor:
+#   COMPOSE_FILE=docker-compose.yml:../bergastream.bergatrix.yml
+#
+# Acesso (docs/05-acesso.md): uma rota pública só, com CrowdSec e sem
+# forward-auth; o login é pelo Authentik (OIDC) dentro do app. Redes:
+# docs/06-redes.md. Precisa do Docker Compose 2.24+ (por causa do !reset).
+services:
+  db:
+    labels:
+      # Backup pelo Bergakup (pg_dump antes da cópia do servidor).
+      - "bergatrix.backup.dump=postgres"
+
+  api:
+    networks:
+      - bergastream-internal
+      - bergastream-egress
+      # Fala com o Authentik direto (OIDC_INTERNAL_URL=http://authentik-server:9000),
+      # sem passar pelo Traefik. Sem rota: o caminho até a API é pelo `web`.
+      - bergatrix-auth
+
+  web:
+    # Sem porta no host: o tráfego chega pelo Traefik.
+    ports: !reset []
+    networks:
+      - bergastream-internal
+      - bergatrix-proxy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=bergatrix-proxy"
+      # App web e API (uma rota só). Sem forward-auth: o Authentik entra pelo
+      # login OIDC do próprio app; a API exige o token dela em toda chamada.
+      - "traefik.http.routers.bergastream-router.rule=Host(`bergastream.${DOMAIN}`)"
+      - "traefik.http.routers.bergastream-router.entrypoints=websecure"
+      - "traefik.http.routers.bergastream-router.tls=true"
+      - "traefik.http.routers.bergastream-router.service=bergastream-service"
+      - "traefik.http.routers.bergastream-router.middlewares=crowdsec-bouncer@file"
+      - "traefik.http.services.bergastream-service.loadbalancer.server.port=80"
+
+  # Sempre ligado aqui (no app é o perfil opcional "lidarr"). Usa o SABnzbd e
+  # o Prowlarr do stack jellyfin pela bergatrix-media e tem interface em
+  # lidarr.${DOMAIN}, atrás do forward-auth do Authentik.
+  lidarr:
+    profiles: !reset []
+    networks:
+      - bergastream-internal
+      - bergastream-egress
+      - bergatrix-proxy
+      - bergatrix-media
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=bergatrix-proxy"
+      - "traefik.http.routers.bergastream-lidarr.rule=Host(`lidarr.${DOMAIN}`)"
+      - "traefik.http.routers.bergastream-lidarr.entrypoints=websecure"
+      - "traefik.http.routers.bergastream-lidarr.tls=true"
+      - "traefik.http.routers.bergastream-lidarr.service=bergastream-lidarr"
+      - "traefik.http.routers.bergastream-lidarr.middlewares=crowdsec-bouncer@file,authentik@file"
+      - "traefik.http.services.bergastream-lidarr.loadbalancer.server.port=8686"
+
+networks:
+  bergatrix-proxy:
+    external: true
+  bergatrix-auth:
+    external: true
+  bergatrix-media:
+    external: true

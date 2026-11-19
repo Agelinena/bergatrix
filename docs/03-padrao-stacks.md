@@ -25,6 +25,15 @@ Se uma stack existente foge de alguma regra, ela está listada em [Dívidas conh
 
 **O nome da stack é o nome da pasta.** É o nome usado em `${APPDATA_PATH}/<stack>` e `${CACHE_PATH}/<stack>`. Renomear a pasta obriga a renomear essas pastas no servidor.
 
+### Apps com repositório próprio (submódulo)
+
+Os apps próprios estão saindo para um repositório cada (públicos, sem dados deste servidor); o Bergatrix só os agrega como **submódulo git** no mesmo caminho da stack. Hoje: `03-apps/bergastream` ([Agelinena/bergastream](https://github.com/Agelinena/bergastream)).
+
+- O compose do app funciona sozinho. O que é só deste servidor (redes `bergatrix-*`, rótulos do Traefik, rótulo de backup do Bergakup) fica num arquivo ao lado da pasta, no Bergatrix: `03-apps/<stack>.bergatrix.yml`.
+- O `.env` da stack no servidor ativa os dois: `COMPOSE_FILE=docker-compose.yml:../<stack>.bergatrix.yml`.
+- Clonar já com os submódulos: `git clone --recurse-submodules …`. Num clone existente, depois de cada `git pull`: `git submodule update --init`. Para deixar automático: `git config submodule.recurse true`.
+- Mudança no app vai no repositório dele; aqui só se atualiza o ponteiro do submódulo (`git -C 03-apps/<stack> pull`, depois `git add 03-apps/<stack>` e commit).
+
 ## Variáveis (`.env`)
 
 Cada stack tem seu próprio `.env`, copiado do `.env.example`. O `.env` nunca vai para o git.
