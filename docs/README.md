@@ -13,7 +13,7 @@ Ponto de partida para entender o servidor e criar ou alterar qualquer stack.
 | [07-ligar-e-desligar.md](07-ligar-e-desligar.md) | Subir, derrubar e atualizar tudo na ordem certa (`subir-tudo.sh`, `derrubar-tudo.sh`, `atualizar.sh`) e manter o `stacks.txt` em dia |
 | [plano-acesso.md](plano-acesso.md) | Andamento do modelo de acesso serviço por serviço (o que já está com OIDC ou forward-auth e o que falta) |
 | [guias/jellyfin-authentik.md](guias/jellyfin-authentik.md) | Jellyfin só pelo Authentik (plugin Bergafin Auth), Quick Connect, contas locais e Seerr |
-| [claude-sync](../ferramentas/claude-sync/README.md) | App de desktop: conversas do Claude Code no Nextcloud, para continuar de qualquer PC |
+| [claude-sync](https://github.com/Agelinena/claude-sync) | App de desktop: conversas do Claude Code no Nextcloud, para continuar de qualquer PC |
 | [templates/](templates/) | `docker-compose.yml` e `.env.example` modelo |
 | [migracoes.md](migracoes.md) | Passos manuais de uma vez no servidor (pasta movida, rede nova), cada um com como conferir se já foi aplicado |
 | [09-infraestrutura-rede.md](09-infraestrutura-rede.md) | Caminho do tráfego de fora: VPS, filtro GeoIP e túnel até o servidor |

@@ -23,6 +23,37 @@ O que fazer antes, durante e depois de qualquer mudança no Bergatrix ou num app
    - **O que é só deste servidor** (rotas, redes, rótulos, versões de imagem de terceiros, docs): vai no Bergatrix.
 4. **Ler o que já existe:** o documento da área em `docs/` e o compose da stack. O compose vale mais que o documento.
 
+## Montar algo novo
+
+Antes de escrever código, decida com quem pediu **o que** vai ser feito e **onde** (o desenho, as decisões em aberto). Depois, conforme o caso:
+
+### Funcionalidade num app que já existe
+
+1. No repositório do app (`Documentos\Repos\<app>` ou a pasta do submódulo), seguindo o `CLAUDE.md` de lá.
+2. Testes do app passando (e `flutter analyze`, nos apps Flutter) antes de dizer que está pronto.
+3. Commit e push no app; no Bergatrix, o ponteiro do submódulo (o Dependabot também abre o PR sozinho).
+4. Se a mudança pede algo novo no servidor (variável no `.env`, rede, pasta), escreva no README do app e, se for passo de uma vez, em [migracoes.md](migracoes.md).
+
+### Stack de terceiros (imagem pronta)
+
+Siga o [checklist de stack nova](03-padrao-stacks.md#checklist-de-stack-nova): pasta na camada certa, `.env.example`, volumes nas raízes, versão fixa + Dependabot, acesso ([05-acesso.md](05-acesso.md)), redes ([06-redes.md](06-redes.md)), `stacks.txt` e docs.
+
+### App novo com repositório próprio
+
+O caminho seguido pelo Bergastream, Berganews, Doberga, Transcriptor, Drop e Legendarr:
+
+1. **Repositório** `Agelinena/<app>` (privado até a primeira revisão; depois público), em `Documentos\Repos\<app>`, com:
+   - `docker-compose.yml` **genérico**: funciona sozinho, com uma porta (`WEB_PORT`, 8080), dados em `./data` (`${APPDATA_PATH:-./data}`), redes próprias (`<app>-internal` com `internal: true`, `<app>-egress` se precisar de internet), nada de `bergatrix-*`, Traefik ou domínio. Sem `:?` em variável que o ajuste do servidor troca (a interpolação roda antes da junção dos arquivos);
+   - `.env.example` sem valores reais, `README.md` (o que é, o que precisa, subir, atualizar, testes), `LICENSE` (AGPL-3.0), `.gitignore` (`.env`, `/data/`), `.gitattributes` (`* text=auto eol=lf`);
+   - `CLAUDE.md` com as regras de conversa (copie o de outro app e troque o nome);
+   - `.github/workflows/ci.yml` com os testes (e `release.yml`, se o app tiver binário ou APK).
+2. **No Bergatrix:**
+   - `03-apps/<app>.bergatrix.yml` com o que é só deste servidor: `ports: !reset []`, `networks: !override` com as redes `bergatrix-*`, rótulos do Traefik, `bergatrix.backup.dump` no banco, endereços internos (`authentik-server:9000`);
+   - `git submodule add https://github.com/Agelinena/<app>.git 03-apps/<app>`;
+   - no `.env` do servidor: `COMPOSE_FILE=docker-compose.yml:../<app>.bergatrix.yml`;
+   - o [checklist de stack nova](03-padrao-stacks.md#checklist-de-stack-nova) a partir do item 5 (acesso, redes, `stacks.txt`, docs, README).
+3. **Conferir** com `docker compose config` (as duas camadas juntas) num teste `teste-<app>` e só então subir no servidor.
+
 ## Durante
 
 ### Testes com Docker

@@ -16,12 +16,12 @@ Se uma stack existente foge de alguma regra, ela está listada em [Dívidas conh
 
 | Camada | Para quê |
 |---|---|
-| `00-infrastructure` | Ferramentas de base (CloudBeaver), a ordem das stacks e os scripts de subir e derrubar tudo |
+| `00-infrastructure` | Ferramentas de base (CloudBeaver, Bergakup), a ordem das stacks (`stacks.txt`) e os scripts: subir, derrubar, atualizar, limpar testes |
 | `01-network` | Entrada de tráfego (Traefik) e redes compartilhadas |
 | `02-security` | Identidade, segredos e proteção (Authentik, Vaultwarden, CrowdSec) |
 | `03-apps` | Aplicações |
 | `04-monitoring` | Observabilidade: métricas, logs, painéis e alertas ([monitor](../04-monitoring/monitor/README.md)) |
-| `ferramentas` | Não é stack. Apps que rodam nos PCs ([claude-sync](../ferramentas/claude-sync/README.md)) |
+| `ferramentas` | Saiu: o [claude-sync](https://github.com/Agelinena/claude-sync), app dos PCs, tem repositório próprio e os executáveis nas releases |
 
 **O nome da stack é o nome da pasta.** É o nome usado em `${APPDATA_PATH}/<stack>` e `${CACHE_PATH}/<stack>`. Renomear a pasta obriga a renomear essas pastas no servidor.
 
@@ -34,6 +34,13 @@ Os apps próprios estão saindo para um repositório cada (públicos, sem dados 
 - Clonar já com os submódulos: `git clone --recurse-submodules …`. Num clone existente, depois de cada `git pull`: `git submodule update --init`. Para deixar automático: `git config submodule.recurse true`.
 - **Primeira vez no servidor:** veja [migracoes.md](migracoes.md#apps-em-repositório-próprio-e-legendarr-fora-do-jellyfin-nov2026).
 - Mudança no app vai no repositório dele; aqui só se atualiza o ponteiro do submódulo (`git -C 03-apps/<stack> pull`, depois `git add 03-apps/<stack>` e commit).
+- Novo app com repositório próprio: o passo a passo está em [04-rotina-de-trabalho.md](04-rotina-de-trabalho.md#app-novo-com-repositório-próprio).
+
+### Código que vira imagem (submódulo sem checkout)
+
+Repositórios que só geram uma imagem publicada (o servidor usa a imagem, não o código) também são submódulos, mas com `update = none` no `.gitmodules`: o `git submodule update --init` não os baixa, então o servidor não perde espaço com eles. Hoje: o Bergafin (`03-apps/jellyfin/repos/Bergafin-auth`, `Bergafin-web` e `Bergafin-android`).
+
+Para trabalhar num deles num PC: `git submodule update --init --checkout 03-apps/jellyfin/repos/Bergafin-web`.
 
 ## Variáveis (`.env`)
 
@@ -143,14 +150,15 @@ Regra e labels em [05-acesso.md](05-acesso.md). Em resumo:
 1. Pasta em `<camada>/<stack>/`, partindo dos [templates](templates/).
 2. `.env.example` com o bloco base e todas as variáveis, sem valores reais.
 3. Cada volume na raiz certa ([como decidir](02-armazenamento.md#como-decidir-onde-um-volume-vai)), com `:?`.
-4. Imagens com versão fixa; banco com healthcheck e rede interna.
+4. Imagens com versão fixa (nunca `latest`), e a pasta da stack na lista `docker-compose` do [`.github/dependabot.yml`](../.github/dependabot.yml); banco com healthcheck e rede interna.
 5. Acesso conforme [05-acesso.md](05-acesso.md): aplicação e grupo no Authentik, e rota no padrão certo.
 6. Validar: `docker compose --env-file .env.example config --quiet`.
 7. Redes conforme [06-redes.md](06-redes.md): rede compartilhada nova só no `01-network/redes`.
 8. **Acrescentar a stack ao [`00-infrastructure/stacks.txt`](../00-infrastructure/stacks.txt)**, depois das stacks de que ela depende ([07-ligar-e-desligar.md](07-ligar-e-desligar.md)).
 9. Criar as pastas no servidor com o dono certo antes do primeiro `up`.
-9b. Banco com a label `bergatrix.backup.dump` e, se a stack usa SQLite em uso constante, a política dela em Bergakup → Stacks e bancos.
-10. Atualizar o [mapa por stack](02-armazenamento.md#mapa-atual-por-stack) e a tabela de stacks em [01-infraestrutura.md](01-infraestrutura.md).
+10. Banco com a label `bergatrix.backup.dump` e, se a stack usa SQLite em uso constante, a política dela em Bergakup → Stacks e bancos.
+11. Atualizar o [mapa por stack](02-armazenamento.md#mapa-atual-por-stack), a tabela de stacks em [01-infraestrutura.md](01-infraestrutura.md) e a tabela de apps do [README](../README.md).
+12. Passo manual de uma vez no servidor (pasta, rede nova, ordem)? Escreva em [migracoes.md](migracoes.md), com como conferir.
 
 ## Dívidas conhecidas
 

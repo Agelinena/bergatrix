@@ -16,3 +16,15 @@
 [submodule "03-apps/legendarr"]
 	path = 03-apps/legendarr
 	url = https://github.com/Agelinena/legendarr.git
+[submodule "03-apps/jellyfin/repos/Bergafin-auth"]
+	path = 03-apps/jellyfin/repos/Bergafin-auth
+	url = https://github.com/Agelinena/Bergafin-auth.git
+	update = none
+[submodule "03-apps/jellyfin/repos/Bergafin-web"]
+	path = 03-apps/jellyfin/repos/Bergafin-web
+	url = https://github.com/Agelinena/Bergafin-web.git
+	update = none
+[submodule "03-apps/jellyfin/repos/Bergafin-android"]
+	path = 03-apps/jellyfin/repos/Bergafin-android
+	url = https://github.com/Agelinena/Bergafin-android.git
+	update = none

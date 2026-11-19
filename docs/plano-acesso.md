@@ -36,29 +36,29 @@ Para quem usa, A, B e C dão o mesmo resultado: a tela do Authentik, o mesmo 2FA
 
 | Stack | Serviço | Endereço | Hoje | Destino | Observações | Estado |
 |---|---|---|---|---|---|---|
-| bergastream | web/api | `bergastream` | 3 rotas + JWT próprio | **A** (OIDC) | Em desenvolvimento. Até lá: E (uma rota, sem forward-auth nem bypass). | Em andamento |
-| transcriptor | api | `transcriptor` | Forward-auth + IP | **A** (OIDC, código próprio) | Reescrito: login OIDC no app, uma rota com `crowdsec-bouncer`, tokens pessoais no lugar da `X-API-Key`. | No repositório (falta subir) |
-| jellyfin | legendarr-web | `legendarr` | D | **C** | Forward-auth (decisão de out/2026, no lugar do OIDC). O webhook dos *arr é chamado entre containers e não passa pelo Traefik. | ✓ |
+| bergastream | web/api | `bergastream` | 3 rotas + JWT próprio | **A** (OIDC) | Login pelo Authentik no app; a API fica na `bergatrix-auth`, sem rota própria. | ✓ |
+| transcriptor | api | `transcriptor` | Forward-auth + IP | **A** (OIDC, código próprio) | Reescrito: login OIDC no app, uma rota com `crowdsec-bouncer`, tokens pessoais no lugar da `X-API-Key`. | ✓ |
+| legendarr | web | `legendarr` | D | **C** | Forward-auth (decisão de out/2026, no lugar do OIDC). O webhook dos *arr é chamado entre containers e não passa pelo Traefik. | ✓ |
 | bitwarden | vaultwarden | `bitwarden` | 3 rotas + rotas de WebSocket | **A** (OIDC) | As extensões e os apps precisam da API sem forward-auth, então a rota é pública e o SSO fica dentro do app (`SSO_ENABLED`, `SSO_AUTHORITY`, `SSO_CLIENT_ID`, `SSO_CLIENT_SECRET`). A senha mestra **continua obrigatória**: ela cifra o cofre e nunca passa pelo Authentik. Deixe `SSO_ONLY` desligado no começo. `/admin` com o token desligado. Revisar as rotas `-ws-*` para a porta 3012, que deve estar obsoleta. | ✓ |
-| monitor | grafana | `grafana` | – | **A** (OIDC) | Stack nova (nov/2026), no lugar do Wazuh. Admins do Authentik viram Admin no Grafana; o resto, Viewer. | No repositório (falta subir) |
+| monitor | grafana | `grafana` | – | **A** (OIDC) | Stack nova (nov/2026), no lugar do Wazuh. Admins do Authentik viram Admin no Grafana; o resto, Viewer. | ✓ |
 | traefik | painel | `traefik` | D + basic auth | **C** | Substitui o basic auth | ✓ |
 | jellyfin | sonarr, radarr, prowlarr, bazarr, sabnzbd, qbittorrent | um por serviço | D | **C** | Desligar o login próprio (`External` nos *arr) para não ter login duplo. Apps de celular para os *arr (nzb360, LunaSea) param de funcionar de fora. Corrigir as labels incompletas do radarr. | ✓ |
 | bergastream | lidarr | `lidarr` | D | **C** | Idem *arr | ✓ |
 | cloudbeaver | cloudbeaver | `db` | 3 rotas | **C**, ou remover | A edição gratuita não tem SSO. Hoje não alcança nenhum banco. | ✓ |
 | jellyfin | jellyfin | `jellyflix` | E, sem CrowdSec | **A** (plugin Bergafin Auth) | Login só pelo Authentik; contas locais `sala` e admin só na rede de casa ([guia](guias/jellyfin-authentik.md)). `crowdsec-bouncer` com exceção para imagens e streaming (`02-security/crowdsec/whitelists`). | No repositório (falta subir) |
 | jellyfin | catalogo (Seerr) | `catalogo` | Forward-auth + IP | **E** | Login por Quick Connect, aprovado pelo Authentik em `/Bergafin/QuickConnect` (Seerr 3.5.2). Login local do Seerr desligado em *Settings → Users*. Observar bans do CrowdSec por pôsteres com 404. | ✓ |
-| immich | immich-server | `fotos` | – (stack nova) | **A** (OIDC) | Uma rota, sem forward-auth, porque o app do celular fala direto com a API. Redirect URIs `app.immich:///oauth-callback`, `/auth/login` e `/user-settings`; grupo `immich_users`. Login por senha desligado depois do teste (`immich-admin enable-password-login` em emergência). O client secret fica no banco do Immich, não no `.env`. Precisa do `readTimeout` de 600 s no Traefik. | No repositório (falta subir) |
-| nextcloud | app | `storange` | – (stack nova) | **A** (OIDC) | Uma rota, sem forward-auth: os clientes de desktop e de celular entram pelo navegador (Login Flow v2) e o WebDAV, o CalDAV e o CardDAV usam senha de app. App `user_oidc`, grupo `nextcloud_users`, grupos do Nextcloud pelos *entitlements* (`admin` é o de administradores). Admin local desativado depois do teste (`occ user:enable` em emergência). CrowdSec com o parser `crowdsecurity/nextcloud-whitelist`. | No repositório (falta subir) |
+| immich | immich-server | `fotos` | – (stack nova) | **A** (OIDC) | Uma rota, sem forward-auth, porque o app do celular fala direto com a API. Redirect URIs `app.immich:///oauth-callback`, `/auth/login` e `/user-settings`; grupo `immich_users`. Login por senha desligado depois do teste (`immich-admin enable-password-login` em emergência). O client secret fica no banco do Immich, não no `.env`. Precisa do `readTimeout` de 600 s no Traefik. | ✓ |
+| nextcloud | app | `storange` | – (stack nova) | **A** (OIDC) | Uma rota, sem forward-auth: os clientes de desktop e de celular entram pelo navegador (Login Flow v2) e o WebDAV, o CalDAV e o CardDAV usam senha de app. App `user_oidc`, grupo `nextcloud_users`, grupos do Nextcloud pelos *entitlements* (`admin` é o de administradores). Admin local desativado depois do teste (`occ user:enable` em emergência). CrowdSec com o parser `crowdsecurity/nextcloud-whitelist`. | ✓ |
 | nextcloud | collabora | `office` | – (novo) | **E** | Editor de documentos (app `richdocuments`, Collabora CODE). O login do usuário continua sendo o OIDC no Nextcloud; o Collabora só aceita chamadas com token WOPI, vindas do host em `aliasgroup1`. Sem forward-auth: quebraria o iframe e os WebSockets. Console de admin desligado, sem `allow_local_remote_servers`, `wopi_url` público. Rede isolada `bergatrix-office` ([06-redes.md](06-redes.md)). | Funcionando; rede `bergatrix-office` no repositório (falta aplicar) |
 | homeassistant | homeassistant | `ha` | 3 rotas (bypass para o Companion) | **A** (OIDC) | Sem OIDC nativo: usa a integração da comunidade `hass-oidc-auth` (HACS). A rota fica pública, sem forward-auth, porque o app Companion fala direto com a API. Manter um usuário local com MFA como acesso de emergência. Configurar `trusted_proxies`. | – |
-| drop | drop | `drop` | E | **E** | Público por decisão. Uma rota com `crowdsec-bouncer` e rate limit, rede isolada `bergatrix-drop`. | No repositório (falta subir) |
+| drop | drop | `drop` | E | **E** | Público por decisão. Uma rota com `crowdsec-bouncer` e rate limit, rede isolada `bergatrix-drop`. | ✓ |
 | authentik | server | `authentik` | Público; `/if/admin` em D | **E**, com 2FA obrigatório para admins | É a porta de entrada de tudo, então o 2FA e as atualizações são inegociáveis. `/if/admin` pode continuar em D. | ✓ |
 | authentik | server | `auth` | Público | **Remover** | Host duplicado, provável sobra da migração de domínio | – |
 | *infra* | Proxmox | IP local | Login local | **D** (VPN) | OIDC nativo é opcional; o acesso de fora é só pela VPN | – |
 | *infra* | OpenMediaVault | IP local | Login local | **D** (VPN) | Interface em PHP: manter sempre atualizado | – |
 | *infra* | Ubuntu (VM Docker) | IP local | SSH | **D** (VPN) | SSH só pela rede local e pela VPN, com chave | – |
 | monitor | alloy (syslog) | portas 5140 e 5141/tcp | – | Publicadas | Recebem o syslog do OPNsense e da VPS. Restringir no OPNsense quem chega a elas (README da stack). | – |
-| vários | worker do Authentik, ollama, flaresolverr, torrent-indexer, worker do Legendarr, bancos | – | Vários na `bergatrix-proxy`; flaresolverr e torrent-indexer com rota | **F** | Sem rota e fora da `bergatrix-proxy`, cada um na rede do assunto ([06-redes.md](06-redes.md)) | No repositório (falta subir) |
+| vários | worker do Authentik, ollama, flaresolverr, torrent-indexer, worker do Legendarr, bancos | – | Vários na `bergatrix-proxy`; flaresolverr e torrent-indexer com rota | **F** | Sem rota e fora da `bergatrix-proxy`, cada um na rede do assunto ([06-redes.md](06-redes.md)) | ✓ |
 
 ## O que precisa existir no Authentik
 
@@ -71,7 +71,7 @@ Para quem usa, A, B e C dão o mesmo resultado: a tela do Authentik, o mesmo 2FA
 
 ## Redes
 
-Feito: `bergatrix-proxy` só com quem tem rota, mais `bergatrix-media` e `bergatrix-ai`, todas em `01-network/redes`. A `bergatrix-office` (Traefik e Collabora) está no repositório e falta aplicar no servidor. Detalhes em [06-redes.md](06-redes.md).
+Feito: `bergatrix-proxy` só com quem tem rota, mais `bergatrix-media`, `bergatrix-ai`, `bergatrix-auth`, `bergatrix-drop` e `bergatrix-monitor`, todas em `01-network/redes`. A `bergatrix-office` (Traefik e Collabora) falta confirmar no servidor. Detalhes em [06-redes.md](06-redes.md).
 
 ## Traefik (`dynamic.yml`)
 
@@ -94,15 +94,10 @@ Feito: `bergatrix-proxy` só com quem tem rota, mais `bergatrix-media` e `bergat
 
 ## O que falta
 
-Feito: base no Authentik, redes, painel do Traefik, *arr, Lidarr, Legendarr, Seerr, Vaultwarden e CloudBeaver. O Wazuh saiu (nov/2026); o monitoramento agora é a stack `monitor`.
+Feito (conferido no servidor em nov/2026): base no Authentik, redes, painel do Traefik, *arr, Lidarr, Legendarr, Seerr, Vaultwarden, CloudBeaver, Bergastream, Transcriptor, Drop, Immich, Nextcloud e o monitor. O Wazuh saiu; o monitoramento é a stack `monitor`.
 
-1. **Jellyfin:** subir com o CrowdSec e acompanhar os bans nos primeiros dias.
-2. **Drop:** subir a versão 2 (rede `bergatrix-drop`, CrowdSec e rate limit). Ver o [README](https://github.com/Agelinena/drop#subir) e o `03-apps/drop.bergatrix.yml`.
-3. **Transcriptor:** subir a versão nova (OIDC, Postgres, worker isolado). Ver o [README](https://github.com/Agelinena/transcriptor#subir).
-4. **Home Assistant → OIDC** (`hass-oidc-auth`), com uma rota pública só. Tira a rota `-direct`, a `-bypass` e o `public-auth`.
-5. **`dynamic.yml`:** remover `public-auth` e `api-access-bypass` quando os itens 3 e 4 estiverem no ar.
-6. **Monitor:** subir a stack (Grafana com OIDC). Ver o [README](../04-monitoring/monitor/README.md).
-7. **Bergastream:** OIDC no código, seguindo o Bergalink.
-8. **Immich:** subir com o OIDC e o timeout novo do Traefik. Ver o [README](../03-apps/immich/README.md#subir). Fotos de verdade só depois do backup do `USERDATA_PATH`.
-9. **Nextcloud:** subir com o OIDC e o parser novo do CrowdSec. Ver o [README](../03-apps/nextcloud/README.md#1-authentik). Arquivos de verdade só depois do backup do `USERDATA_PATH`.
-10. **Collabora:** aplicar a rede `bergatrix-office` (alias do Traefik e Collabora fora da `bergatrix-proxy`). Ver [06-redes.md](06-redes.md#migração-para-a-bergatrix-office-uma-vez-out2026).
+1. **Jellyfin:** confirmar que o login só pelo Authentik (Bergafin Auth) e o CrowdSec estão no ar, e acompanhar os bans nos primeiros dias.
+2. **Collabora:** confirmar que está só na rede `bergatrix-office` ([migracoes.md](migracoes.md#rede-bergatrix-office-out2026)).
+3. **Home Assistant → OIDC** (`hass-oidc-auth`), com uma rota pública só. Tira a rota `-direct`, a `-bypass` e o `public-auth`.
+4. **`dynamic.yml`:** remover `public-auth` e `api-access-bypass` depois do item 3.
+5. **Decisões em aberto** acima (caminho do tráfego externo, CloudBeaver, host `auth`).

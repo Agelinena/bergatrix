@@ -22,8 +22,8 @@ secrets/
 00-infrastructure/bergakup/web/node_modules/
 00-infrastructure/bergakup/web/dist/
 
-# claude-sync: o build renomeia o executável em uso para .exe~ (Windows)
-ferramentas/claude-sync/*~
+# claude-sync: mudou para Agelinena/claude-sync. Cópia local antiga, até mover o executável.
+ferramentas/claude-sync/
 
 # graphify: só o grafo (graph.json, GRAPH_REPORT.md, manifest.json) vai para o git.
 # Cache, visualização e estado local (tem o caminho desta máquina) ficam fora.
@@ -83,5 +83,3 @@ dist/
 build/
 
 
-# Repositórios de código das stacks (repos.txt): cada um tem o próprio git
-03-apps/*/repos/
