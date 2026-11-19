@@ -27,7 +27,7 @@ Declaradas no compose da stack e usadas só por ela.
 | `<stack>-internal` | Banco, Redis e serviços internos | `name: <stack>-internal` e `internal: true` |
 | `<stack>-egress` | Serviço interno que precisa de internet, mas não do Traefik | `name: <stack>-egress` |
 
-Hoje existem: `authentik-internal`, `berganews-internal`, `berganews-egress`, `bergastream-internal`, `bergastream-egress`, `bergalink-internal`, `doberga-internal`, `transcriptor-internal`, `transcriptor-egress`, `immich-internal`, `immich-egress`, `nextcloud-internal`, `nextcloud-egress`, `monitor-internal` e `monitor-egress`.
+Hoje existem: `authentik-internal`, `berganews-internal`, `berganews-egress`, `bergastream-internal`, `bergastream-egress`, `doberga-internal`, `transcriptor-internal`, `transcriptor-egress`, `immich-internal`, `immich-egress`, `nextcloud-internal`, `nextcloud-egress`, `monitor-internal` e `monitor-egress`.
 
 No Transcriptor, o worker (que baixa links enviados pelas pessoas) fica só na `transcriptor-internal` e sai para a internet por um proxy (smokescreen) que recusa destinos em redes privadas. É o modelo para qualquer serviço que busque URLs vindas de usuários, e o Berganews o segue (feeds, páginas e imagens cadastrados pelas pessoas).
 

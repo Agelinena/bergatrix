@@ -25,7 +25,6 @@ O servidor roda **Proxmox VE** com duas VMs: um **OpenMediaVault** (NAS, HD de 4
 
 | App | Descrição |
 | :--- | :--- |
-| **Bergalink** | App próprio de localização em família (Flutter + FastAPI, login pelo Authentik). |
 | **Bergastream** | Streaming de música próprio (Flutter + FastAPI), com Deemix, YouTube e Lidarr. |
 | **Drop** | Transferência de arquivos cifrada de ponta a ponta. |
 | **Home Assistant** | Automação residencial (dispositivos, automações e app Companion). |

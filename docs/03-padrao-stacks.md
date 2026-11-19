@@ -117,7 +117,7 @@ Regras completas e como criar uma rede em [06-redes.md](06-redes.md). Em resumo:
 
 ## Containers
 
-- **`container_name`:** `<stack>-<serviço>` (`bergastream-api`, `bergalink-db`), ou só `<stack>` quando a stack tem um serviço. Esse nome é o endereço DNS na rede.
+- **`container_name`:** `<stack>-<serviço>` (`bergastream-api`, `berganews-db`), ou só `<stack>` quando a stack tem um serviço. Esse nome é o endereço DNS na rede.
 - **`restart: unless-stopped`**, exceto jobs de uma vez (migrações): `restart: "no"`.
 - **`security_opt: [no-new-privileges:true]`**, e rodar como usuário não-root quando a imagem permitir.
 - **Imagem com versão fixa** (`postgres:16-alpine`, `traefik:v3.6.2`), nunca `latest` ou sem tag.
@@ -164,4 +164,4 @@ Stacks existentes que ainda não seguem o padrão. Nenhuma delas impede a migra�
 | bitwarden | O nome da pasta é `bitwarden`, mas o app é o Vaultwarden. |
 | nextcloud | As miniaturas (`appdata_*/preview`) ficam no NAS, dentro da pasta de dados: o Nextcloud não tem opção para separá-las. O backup pode excluir essa pasta. |
 | cloudbeaver | Ficou sem banco para acessar desde que o Postgres global saiu: cada stack tem o seu, em rede interna. |
-| quase todas | Sem `README.md` próprio (só bergastream, bergalink, bergakup e monitor têm). |
+| quase todas | Sem `README.md` próprio (só bergastream, bergakup e monitor têm). |

@@ -5,7 +5,7 @@ Plano para trocar o modelo atual de três rotas (forward-auth do Authentik, aces
 ## Decisões tomadas (outubro de 2026)
 
 - **Login único pelo Authentik**, com 2FA, para todos os serviços com interface:
-  - **OIDC no app:** Bergalink, Bergastream, Transcriptor, Vaultwarden, Immich, Nextcloud e Home Assistant;
+  - **OIDC no app:** Bergastream, Transcriptor, Vaultwarden, Immich, Nextcloud e Home Assistant;
   - **forward-auth:** CloudBeaver, os *arr, o painel do Traefik e o Legendarr.
 - **Sem Authentik na frente, por desenho:** o Drop e o Collabora (`office`, o editor do Nextcloud). O Collabora só responde a quem tem token WOPI emitido pelo Nextcloud, e fica em rede isolada.
 - **Só pela VPN:** Proxmox, OMV e o Ubuntu (SSH e o host Docker). A VPN é o Tailscale, gerenciado no firewall, fora da VM do Docker.
@@ -36,7 +36,6 @@ Para quem usa, A, B e C dão o mesmo resultado: a tela do Authentik, o mesmo 2FA
 
 | Stack | Serviço | Endereço | Hoje | Destino | Observações | Estado |
 |---|---|---|---|---|---|---|
-| bergalink | api | `bergalink` | A | **A** (OIDC) | Modelo de referência | ✓ |
 | bergastream | web/api | `bergastream` | 3 rotas + JWT próprio | **A** (OIDC) | Em desenvolvimento. Até lá: E (uma rota, sem forward-auth nem bypass). | Em andamento |
 | transcriptor | api | `transcriptor` | Forward-auth + IP | **A** (OIDC, código próprio) | Reescrito: login OIDC no app, uma rota com `crowdsec-bouncer`, tokens pessoais no lugar da `X-API-Key`. | No repositório (falta subir) |
 | jellyfin | legendarr-web | `legendarr` | D | **C** | Forward-auth (decisão de out/2026, no lugar do OIDC). O webhook dos *arr é chamado entre containers e não passa pelo Traefik. | ✓ |
