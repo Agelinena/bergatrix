@@ -40,7 +40,7 @@ services:
       - authentik-internal
 
   server:
-    image: ghcr.io/goauthentik/server:2025.10.2
+    image: ghcr.io/goauthentik/server:2026.8.6
     container_name: authentik-server
     restart: unless-stopped
     command: server
@@ -101,7 +101,7 @@ services:
       - "traefik.http.routers.dominio-raiz.middlewares=redirect-raiz"
 
   worker:
-    image: ghcr.io/goauthentik/server:2025.10.2
+    image: ghcr.io/goauthentik/server:2026.8.6
     container_name: authentik-worker
     restart: unless-stopped
     command: worker
