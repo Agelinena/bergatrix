@@ -13,11 +13,19 @@ $host = parse_url($url, PHP_URL_HOST);
 $loja = App\Models\Store::all()->first(fn ($s) => $s->hasDomain($host));
 if (! $loja) { echo "Nenhuma loja cadastrada para {$host}.\n"; return; }
 echo "Loja: {$loja->name} (scraper: {$loja->scraper_service}, cookies: " . ($loja->cookies ? "sim" : "não") . ")\n";
-$r = App\Services\ScrapeUrl::new($url)->setMaxAttempts(1)->scrape(["use_cache" => false]);
+if ($loja->cookies && (str_contains($loja->cookies, "\n") || str_contains($loja->cookies, "\t"))) {
+    echo "Os cookies estão em várias linhas (arquivo cookies.txt colado inteiro). Grave com ./lojas/cookies-loja.sh.\n";
+}
+try {
+    $r = App\Services\ScrapeUrl::new($url)->setMaxAttempts(1)->scrape(["use_cache" => false]);
+} catch (Throwable $e) {
+    echo "Erro: " . $e->getMessage() . "\n"; return;
+}
+foreach ((array) ($r["errors"] ?? []) as $erro) { echo "Erro do scraper: " . (is_string($erro) ? $erro : json_encode($erro)) . "\n"; }
 $corpo = (string) ($r["body"] ?? "");
 echo "Título: " . (trim((string) ($r["title"] ?? "")) ?: "(vazio)") . "\n";
 echo "Preço:  " . (($r["price"] ?? null) ?: "(vazio)") . "\n";
 if (str_contains($corpo, "account-verification") || str_contains($corpo, "suspicious") || str_contains($corpo, "requires JavaScript")) {
     echo "A loja pediu verificação de robô: os cookies estão faltando, vencidos ou não foram aceitos.\n";
 }
-' 2>&1 | grep -v '^\[20'
+' 2>&1 | grep -v DEPRECATED

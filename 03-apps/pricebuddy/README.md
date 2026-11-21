@@ -179,9 +179,19 @@ O ML recusa robô sem login: a página do produto vira uma verificação ("tráf
 sem preço. A loja já está cadastrada; falta a sua sessão:
 
 1. No navegador, entre no [mercadolivre.com.br](https://www.mercadolivre.com.br) com a sua conta e abra um produto.
-2. Abra as ferramentas do desenvolvedor (F12) → **Rede** → recarregue → clique no primeiro pedido
-   (`www.mercadolivre.com.br`) → em **Cabeçalhos da requisição**, copie o valor inteiro de **Cookie**.
-3. No PriceBuddy: **Stores → Mercado Livre → Cookies**, cole e salve.
+2. Exporte os cookies para um arquivo no servidor, de um destes jeitos:
+   - uma extensão como *Get cookies.txt LOCALLY* → exportar `cookies.txt` (formato Netscape, uma linha por cookie);
+   - ou F12 → **Rede** → recarregue → clique no primeiro pedido (`www.mercadolivre.com.br`) → em **Cabeçalhos da
+     requisição**, copie o valor inteiro de **Cookie** para um arquivo.
+3. Grave na loja e apague o arquivo:
+
+   ```bash
+   ./lojas/cookies-loja.sh ~/cookies.txt && rm ~/cookies.txt
+   ```
+
+   O script converte para a linha única `nome=valor; nome2=valor2`, que é o que o PriceBuddy manda no cabeçalho
+   `Cookie`. Ele também descarta os cookies vencidos e os de outros sites. **Não cole o `cookies.txt` inteiro no campo
+   Cookies da tela:** com várias linhas, o pedido ao scraper quebra e não vem nem título.
 4. Se o ML amarrar a sessão ao navegador, em **Scraper service settings** da loja ponha
    `user-agent=<o User-Agent do mesmo navegador>` (aparece nos mesmos cabeçalhos).
 5. Teste com um produto:
