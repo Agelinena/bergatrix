@@ -89,17 +89,17 @@ services:
       - no-new-privileges:true
     # O /start-app.sh da imagem roda `printenv`, o que mandaria a senha do banco
     # e a APP_KEY para o log (e para o Loki). Roda o mesmo script sem essa linha.
-    # Antes, troca o id fixo do aviso "Search job already in progress" por um uuid:
-    # o Filament procura o id na coluna uuid de notifications, e o Postgres dá 500
-    # com 'searchJobAlreadyInProgress'. Sem efeito se uma versão nova já corrigir.
+    # Antes, troca os ids fixos dos avisos (Notification::make('searchJobDispatched'),
+    # 'url_updated'...) por uuids gerados: o Filament procura o id na coluna uuid de
+    # notifications, e o Postgres dá 500 com texto. Nenhum id é usado em outro lugar.
+    # Sem efeito se uma versão nova já corrigir.
     command:
       - bash
       - -c
       - >-
-        sed -i "s/Notification::make('searchJobAlreadyInProgress')/Notification::make()/"
-        /app/app/Filament/Resources/ProductResource/Widgets/CreateViaSearchForm.php
-        /app/app/Filament/Resources/ProductSourceResource/Pages/SearchProductSource.php
-        && sed '/^printenv/d' /start-app.sh > /tmp/start-app.sh && exec bash /tmp/start-app.sh
+        grep -rlE "Notification::make\('[A-Za-z_]+'\)" /app/app
+        | xargs -r sed -i -E "s/Notification::make\('[A-Za-z_]+'\)/Notification::make()/g"
+        ; sed '/^printenv/d' /start-app.sh > /tmp/start-app.sh && exec bash /tmp/start-app.sh
     environment: *app-env
     volumes:
       - ${APPDATA_PATH:?}/pricebuddy/storage:/app/storage
