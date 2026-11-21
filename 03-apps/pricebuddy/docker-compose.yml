@@ -1,0 +1,165 @@
+# PriceBuddy — acompanha o preço de produtos em lojas online e avisa quando cai.
+# Endereço: baratinho.${DOMAIN}. Padrão: docs/03-padrao-stacks.md. Guia: README.md.
+#
+#   app      PriceBuddy (Laravel + Filament): interface, agendador e fila no mesmo
+#            container (supervisord). Busca as páginas das lojas pelo egress.
+#   scraper  Navegador sem tela (SeleniumBase) para lojas que exigem JavaScript.
+#   egress   Proxy de saída (smokescreen): recusa destinos em redes privadas, então
+#            um link de produto não alcança o NAS, o roteador nem outros containers.
+#   db       Postgres: usuários, produtos, histórico de preços, fila e sessões.
+#
+# Acesso: forward-auth (o PriceBuddy não fala OIDC). O Authentik deixa passar só
+# o grupo pricebuddy_users, e depois cada pessoa entra com a conta dela no app.
+#
+# Dados: banco em ${APPDATA_PATH}/pricebuddy/postgres (backup por dump) e o
+# storage do Laravel (logs, imagens enviadas) em ${APPDATA_PATH}/pricebuddy/storage.
+
+# Toda saída HTTP do app e do scraper passa pelo egress. Em minúsculas também:
+# o libcurl só lê http_proxy assim, e é ele que leva o http:// do Apache ao proxy.
+x-proxy: &proxy
+  HTTP_PROXY: http://pricebuddy-egress:4750
+  HTTPS_PROXY: http://pricebuddy-egress:4750
+  http_proxy: http://pricebuddy-egress:4750
+  https_proxy: http://pricebuddy-egress:4750
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: pricebuddy-db
+    restart: unless-stopped
+    labels:
+      # Backup pelo Bergakup (pg_dump antes da cópia do servidor).
+      - "bergatrix.backup.dump=postgres"
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      TZ: ${TZ}
+    volumes:
+      - ${APPDATA_PATH:?}/pricebuddy/postgres:/var/lib/postgresql/data
+    networks:
+      - pricebuddy-internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
+  app:
+    image: jez500/pricebuddy:v1.0.57
+    container_name: pricebuddy
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    # O /start-app.sh da imagem roda `printenv`, o que mandaria a senha do banco
+    # e a APP_KEY para o log (e para o Loki). Roda o mesmo script sem essa linha.
+    command: ["bash", "-c", "sed '/^printenv/d' /start-app.sh > /tmp/start-app.sh && exec bash /tmp/start-app.sh"]
+    environment:
+      <<: *proxy
+      # O app chama o scraper direto, na rede interna.
+      NO_PROXY: scraper,localhost,127.0.0.1
+      no_proxy: scraper,localhost,127.0.0.1
+      TZ: ${TZ}
+      APP_NAME: Baratinho
+      APP_ENV: production
+      APP_KEY: ${PRICEBUDDY_APP_KEY}
+      APP_URL: https://baratinho.${DOMAIN}
+      ASSET_URL: https://baratinho.${DOMAIN}
+      APP_TIMEZONE: ${TZ}
+      # Faixa fixa das redes Docker, onde fica o Traefik.
+      TRUSTED_PROXIES: 172.16.0.0/12
+      SESSION_SECURE_COOKIE: "true"
+      DB_CONNECTION: pgsql
+      DB_HOST: db
+      DB_PORT: "5432"
+      DB_DATABASE: ${POSTGRES_DB}
+      DB_USERNAME: ${POSTGRES_USER}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      SCRAPER_BASE_URL: http://scraper:3000
+      # Lojas pré-cadastradas no primeiro início (a imagem só tem "usa" e "australia").
+      DEFAULT_STORES_COUNTRY: ${PRICEBUDDY_STORES_COUNTRY:-all}
+      # Ligado, troca links da Amazon (EUA/Austrália) e do eBay pelos de afiliado do autor.
+      AFFILIATE_ENABLED: ${PRICEBUDDY_AFFILIATE_ENABLED:-false}
+      # O primeiro usuário é criado à mão (README): APP_USER_PASSWORD iria para o log.
+    volumes:
+      - ${APPDATA_PATH:?}/pricebuddy/storage:/app/storage
+    networks:
+      # Banco, scraper e proxy de saída.
+      - pricebuddy-internal
+      # Só o Traefik e este app, sem internet (docs/06-redes.md). A internet,
+      # só pelo egress.
+      - bergatrix-pricebuddy
+    depends_on:
+      db:
+        condition: service_healthy
+      egress:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://localhost/up"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      # O início roda as migrações e monta os caches.
+      start_period: 2m
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=bergatrix-pricebuddy"
+      # Forward-auth: o Authentik exige o login (grupo pricebuddy_users) antes de
+      # chegar ao app. Uma rota só.
+      - "traefik.http.routers.pricebuddy.rule=Host(`baratinho.${DOMAIN}`)"
+      - "traefik.http.routers.pricebuddy.entrypoints=websecure"
+      - "traefik.http.routers.pricebuddy.tls=true"
+      - "traefik.http.routers.pricebuddy.service=pricebuddy"
+      - "traefik.http.routers.pricebuddy.middlewares=crowdsec-bouncer@file,authentik@file"
+      - "traefik.http.services.pricebuddy.loadbalancer.server.port=80"
+
+  scraper:
+    image: jez500/seleniumbase-scrapper:v1.0.1
+    container_name: pricebuddy-scraper
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    # O Chrome usa /dev/shm; os 64 MB padrão derrubam abas pesadas.
+    shm_size: 1g
+    mem_limit: 2g
+    environment:
+      <<: *proxy
+      # Só o chromedriver local fica fora do proxy.
+      NO_PROXY: localhost,127.0.0.1
+      no_proxy: localhost,127.0.0.1
+      TZ: ${TZ}
+    networks:
+      # Só a rede interna: o app chama aqui, e a internet é pelo egress.
+      - pricebuddy-internal
+    depends_on:
+      egress:
+        condition: service_started
+
+  egress:
+    build:
+      context: egress
+    container_name: pricebuddy-egress
+    restart: unless-stopped
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    mem_limit: 128m
+    networks:
+      - pricebuddy-internal
+      - pricebuddy-egress
+
+networks:
+  # Banco, app, scraper e proxy. Sem saída para a internet.
+  pricebuddy-internal:
+    name: pricebuddy-internal
+    internal: true
+  # Só o proxy de saída usa a internet.
+  pricebuddy-egress:
+    name: pricebuddy-egress
+  bergatrix-pricebuddy:
+    external: true

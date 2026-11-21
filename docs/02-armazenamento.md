@@ -88,6 +88,7 @@ Como em `APPDATA_PATH`, cada stack tem a sua pasta, com o nome da stack. Só ent
 | jellyfin | `jellyfin`, `catalogo`, `qbittorrent`, `sonarr`, `radarr`, `prowlarr`, `bazarr`, `sabnzbd`, `recyclarr` | `jellyfin` (transcodes), `incomplete` | raiz inteira (Jellyfin), `filmes`, `series`, `downloads` | – |
 | legendarr | `jobs`, `stats` | `optimizer` | `filmes`, `series` | – |
 | nextcloud | `html` (código, `config`, `custom_apps`), `postgres` | – | – | `nextcloud` (`data`: arquivos, versões, lixeira e miniaturas) |
+| pricebuddy | `postgres`, `storage` (logs e imagens do Laravel) | – | – | – |
 | ollama | – | `models` | – | – |
 | transcriptor | `postgres` | `models`, `work` (uploads e áudio para ouvir) | – | – |
 | monitor | `grafana` | `prometheus`, `loki`, `alloy`, `gerado` (sites e token do Proxmox) | – | – |

@@ -173,4 +173,5 @@ Stacks existentes que ainda não seguem o padrão. Nenhuma delas impede a migra�
 | bitwarden | O nome da pasta é `bitwarden`, mas o app é o Vaultwarden. |
 | nextcloud | As miniaturas (`appdata_*/preview`) ficam no NAS, dentro da pasta de dados: o Nextcloud não tem opção para separá-las. O backup pode excluir essa pasta. |
 | cloudbeaver | Ficou sem banco para acessar desde que o Postgres global saiu: cada stack tem o seu, em rede interna. |
-| várias | Sem `README.md` próprio: traefik, redes, crowdsec, authentik, bitwarden, cloudbeaver, ollama, jellyfin e homeassistant. Os apps com repositório próprio, o Bergakup, o Immich, o Nextcloud e o monitor têm. |
+| pricebuddy | O app roda como root (Apache e supervisord da imagem) e tem login duplo: forward-auth e a conta local, porque o PriceBuddy não fala OIDC. O compose troca o comando para tirar o `printenv` do script de início. |
+| várias | Sem `README.md` próprio: traefik, redes, crowdsec, authentik, bitwarden, cloudbeaver, ollama, jellyfin e homeassistant. Os apps com repositório próprio, o Bergakup, o Immich, o Nextcloud, o monitor e o PriceBuddy têm. |

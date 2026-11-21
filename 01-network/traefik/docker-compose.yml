@@ -20,6 +20,8 @@ services:
           - storange.${DOMAIN}
       # Métricas lidas pelo Prometheus (stack monitor), porta 8082
       bergatrix-monitor: {}
+      # Rede isolada do PriceBuddy (docs/06-redes.md)
+      bergatrix-pricebuddy: {}
     ports:
       - 80:80
       - 443:443
@@ -57,4 +59,6 @@ networks:
   bergatrix-office:
     external: true
   bergatrix-monitor:
+    external: true
+  bergatrix-pricebuddy:
     external: true

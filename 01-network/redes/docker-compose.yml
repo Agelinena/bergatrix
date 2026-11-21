@@ -23,6 +23,7 @@ services:
       - bergatrix-office
       - bergatrix-monitor
       - bergatrix-auth
+      - bergatrix-pricebuddy
 
 networks:
   # Traefik e os serviços com rota. Também o CrowdSec, que o bouncer do
@@ -68,4 +69,11 @@ networks:
   # não na bergatrix-proxy.
   bergatrix-auth:
     name: bergatrix-auth
+    internal: true
+
+  # Só o Traefik e o PriceBuddy (baratinho), que busca as páginas que as
+  # pessoas cadastram. Sem internet: o app sai só pelo proxy de saída da stack,
+  # que recusa redes privadas, e não alcança nenhum outro serviço daqui.
+  bergatrix-pricebuddy:
+    name: bergatrix-pricebuddy
     internal: true

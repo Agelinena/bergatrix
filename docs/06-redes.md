@@ -16,6 +16,7 @@ Ficam em [`01-network/redes/docker-compose.yml`](../01-network/redes/docker-comp
 | `bergatrix-drop` | Só o Traefik e o Drop. O Drop é público, então fica fora da `bergatrix-proxy`: não alcança nenhum outro container | Não |
 | `bergatrix-office` | Só o Traefik e o Collabora (editor de documentos do Nextcloud). O Traefik tem nela o alias `storange.${DOMAIN}`, que é como o Collabora chega ao Nextcloud | Não |
 | `bergatrix-monitor` | O Prometheus (stack monitor) e quem ele lê em outras stacks: Traefik (métricas na 8082) e CrowdSec (6060) | Não |
+| `bergatrix-pricebuddy` | Só o Traefik e o app do PriceBuddy (`baratinho`), que busca as páginas cadastradas pelas pessoas. Ele sai para a internet só pelo proxy de saída da stack | Não |
 | `bergatrix-auth` | O `authentik-server` e os apps com login OIDC que falam com ele direto: Bergastream, Berganews, Doberga, Transcriptor, Bergakup e Grafana | Não |
 
 ### Da própria stack
@@ -30,6 +31,8 @@ Declaradas no compose da stack e usadas só por ela.
 Para ver as que existem: `docker network ls --format '{{.Name}}' | grep -E -- '-(internal|egress|web)$'`. Os apps com repositório próprio também declaram `<app>-web` (a rede da porta publicada, no compose genérico); no servidor, o arquivo de ajuste tira a porta e põe a rota do Traefik no lugar.
 
 No Transcriptor, o worker (que baixa links enviados pelas pessoas) fica só na `transcriptor-internal` e sai para a internet por um proxy (smokescreen) que recusa destinos em redes privadas. É o modelo para qualquer serviço que busque URLs vindas de usuários, e o Berganews o segue (feeds, páginas e imagens cadastrados pelas pessoas).
+
+O PriceBuddy também, mas a interface e a busca rodam no mesmo container. Por isso o app não entra na `bergatrix-proxy`: ele divide com o Traefik só a `bergatrix-pricebuddy` (sem internet) e sai pelo proxy `pricebuddy-egress`, com `HTTP_PROXY`/`HTTPS_PROXY` também em minúsculas, para o libcurl do Apache obedecer ([README](../03-apps/pricebuddy/README.md)).
 
 ### Collabora (editor de documentos do Nextcloud)
 
@@ -61,6 +64,7 @@ networks:
 - **Rede que só uma stack usa fica na stack**, com o nome `<stack>-internal` ou `<stack>-egress`.
 - **Serviço público sem conta tem rede própria com o Traefik** (`bergatrix-drop`), e não entra na `bergatrix-proxy`.
 - **Serviço que processa arquivos enviados pelas pessoas** (hoje, o Collabora) também tem rede própria com o Traefik (`bergatrix-office`), sem internet.
+- **Serviço com rota que busca URLs das pessoas no mesmo processo** (hoje, o PriceBuddy) também tem rede própria com o Traefik (`bergatrix-pricebuddy`), sem internet, e sai pelo proxy de saída da stack.
 - **`bergatrix-proxy` é só para quem tem rota no Traefik.** Um serviço sem labels do Traefik não entra nela. Para falar com outra stack, use a rede do assunto (`bergatrix-media`, `bergatrix-ai`…).
 - **Login OIDC pela `bergatrix-auth`.** O app que troca o código, lê as chaves ou o userinfo no `authentik-server:9000` entra na `bergatrix-auth`, mesmo que já esteja na `bergatrix-proxy` por ter rota. Uma API sem rota entra só nela: na `bergatrix-proxy`, alcançaria direto os serviços que ficam atrás do forward-auth, sem passar pelo login.
 - **O banco nunca fica numa rede compartilhada.** Ele fica só na `<stack>-internal`.

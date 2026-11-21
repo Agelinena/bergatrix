@@ -37,6 +37,7 @@ Os apps próprios têm repositório próprio e entram aqui como submódulo, e o 
 | **Immich** | Fotos e vídeos, com login pelo Authentik. | terceiros |
 | **Nextcloud** | Arquivos, agenda e contatos, com o Collabora para documentos. | terceiros |
 | **Ollama** | Modelos de IA locais na GPU (Legendarr, Berganews). | terceiros |
+| **PriceBuddy** | Preço de produtos em lojas online, com avisos de queda, uma conta por pessoa (`baratinho`). | terceiros |
 | **Home Assistant** | Automação residencial (dispositivos, automações e app Companion). | terceiros |
 
 ---

@@ -31,6 +31,7 @@ updates:
       - "/03-apps/jellyfin"
       - "/03-apps/nextcloud"
       - "/03-apps/ollama"
+      - "/03-apps/pricebuddy"
       - "/04-monitoring/monitor"
     schedule:
       interval: weekly

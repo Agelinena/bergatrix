@@ -31,6 +31,7 @@
 03-apps/doberga
 03-apps/drop
 03-apps/homeassistant
+03-apps/pricebuddy
 
 # Monitoramento
 04-monitoring/monitor
