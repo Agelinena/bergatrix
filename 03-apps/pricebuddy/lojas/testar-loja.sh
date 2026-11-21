@@ -25,7 +25,26 @@ foreach ((array) ($r["errors"] ?? []) as $erro) { echo "Erro do scraper: " . (is
 $corpo = (string) ($r["body"] ?? "");
 echo "Título: " . (trim((string) ($r["title"] ?? "")) ?: "(vazio)") . "\n";
 echo "Preço:  " . (($r["price"] ?? null) ?: "(vazio)") . "\n";
-if (str_contains($corpo, "account-verification") || str_contains($corpo, "suspicious") || str_contains($corpo, "requires JavaScript")) {
-    echo "A loja pediu verificação de robô: os cookies estão faltando, vencidos ou não foram aceitos.\n";
+$trecho = fn ($i, $n = 60) => preg_replace("/\s+/", " ", substr($corpo, max(0, $i - $n), 2 * $n));
+foreach (["account-verification", "suspicious", "requires JavaScript"] as $marca) {
+    if (($i = strpos($corpo, $marca)) !== false) {
+        echo "Sinal de verificação de robô (\"{$marca}\"): …" . $trecho($i) . "…\n";
+    }
+}
+// Sem preço: mostra onde a página tem preço, para escolher a regra certa da loja.
+if (! ($r["price"] ?? null)) {
+    echo "\nPágina: " . strlen($corpo) . " bytes. Onde aparece preço:\n";
+    $padroes = [
+        "meta itemprop=price"      => "~<meta[^>]+itemprop=.?price.?[^>]*>~i",
+        "meta product:price"       => "~<meta[^>]+product:price:amount[^>]*>~i",
+        "JSON \"price\""            => "~\"price\"\s*:\s*\"?[\d.,]+~",
+        "andes-money-amount"       => "~andes-money-amount__fraction[^>]*>[^<]+~",
+        "R$ no texto"              => "~R\\$\s*[\d.]+(,\d{2})?~",
+    ];
+    foreach ($padroes as $nome => $re) {
+        preg_match_all($re, $corpo, $m);
+        $achados = array_slice(array_unique($m[0]), 0, 3);
+        echo "  {$nome}: " . ($achados ? implode("  |  ", array_map(fn ($a) => substr($a, 0, 120), $achados)) : "nada") . "\n";
+    }
 }
 ' 2>&1 | grep -v DEPRECATED
