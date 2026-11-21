@@ -15,7 +15,7 @@ services:
   app:
     # Atualize uma versão major por vez (34 → 35 → 36), sempre a partir do
     # último patch da atual. Downgrade não existe: o container se recusa a subir.
-    image: nextcloud:34.0.5-apache
+    image: nextcloud:35.0.0-apache
     container_name: nextcloud-app
     restart: unless-stopped
     security_opt:
@@ -82,7 +82,7 @@ services:
   # Tarefas em segundo plano (occ background:cron), a cada 5 minutos. Mesma
   # imagem, mesmas variáveis e mesmos volumes do app.
   cron:
-    image: nextcloud:34.0.5-apache
+    image: nextcloud:35.0.0-apache
     container_name: nextcloud-cron
     restart: unless-stopped
     security_opt:
