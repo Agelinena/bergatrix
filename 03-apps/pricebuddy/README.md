@@ -224,6 +224,10 @@ tempo), repita os passos. Quando a aplicação oficial sair (falando com o supor
   (procure `_bergatrix` e `Bergatrix:`), montada por cima da original. Ao atualizar a imagem, veja se o original já
   corrigiu; se não, copie o novo (`docker run --rm --entrypoint cat jez500/seleniumbase-scrapper:<versão>
   /SeleniumBase/api/endpoints/article.py`) e reaplique os trechos.
+- **Aviso "Search job already in progress":** o app cria esse aviso com o id fixo `searchJobAlreadyInProgress`, e o
+  Filament procura o id na coluna `uuid` de `notifications`: no Postgres, a página dá 500. O `command` do compose troca
+  por um id gerado (`sed` na subida; sem efeito se a versão nova já corrigir). Uma pesquisa presa em "em andamento"
+  sai com `docker exec pricebuddy php artisan cache:clear`.
 - **Afiliados:** `PRICEBUDDY_AFFILIATE_ENABLED=true` troca links da Amazon (EUA/Austrália) e do eBay pelos do autor do
   projeto, para apoiá-lo. Fica desligado por padrão.
 - **Backup:** o banco tem a label `bergatrix.backup.dump=postgres`. O `storage` (logs e imagens) entra na cópia do
