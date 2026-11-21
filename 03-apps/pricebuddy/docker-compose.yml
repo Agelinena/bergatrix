@@ -6,6 +6,8 @@
 #   scraper  Navegador sem tela (SeleniumBase) para lojas que exigem JavaScript.
 #   egress   Proxy de saída (smokescreen): recusa destinos em redes privadas, então
 #            um link de produto não alcança o NAS, o roteador nem outros containers.
+#   searxng  Metabuscador (busca na internet), só na rede interna.
+#   buscador Procura o mesmo produto nas outras lojas, sozinho (buscador/).
 #   smtp     Relay de e-mail (Postfix): o app entrega aqui e ele repassa ao SMTP do .env.
 #   db       Postgres: usuários, produtos, histórico de preços, fila e sessões.
 #
@@ -22,6 +24,36 @@ x-proxy: &proxy
   HTTPS_PROXY: http://pricebuddy-egress:4750
   http_proxy: http://pricebuddy-egress:4750
   https_proxy: http://pricebuddy-egress:4750
+
+# Variáveis do app, usadas também pelo buscador (mesma imagem, mesmo banco).
+x-app-env: &app-env
+  <<: *proxy
+  # O scraper e o SearXNG ficam na rede interna, fora do proxy.
+  NO_PROXY: scraper,searxng,localhost,127.0.0.1
+  no_proxy: scraper,searxng,localhost,127.0.0.1
+  TZ: ${TZ}
+  APP_NAME: Baratinho
+  APP_ENV: production
+  APP_KEY: ${PRICEBUDDY_APP_KEY}
+  APP_URL: https://baratinho.${DOMAIN}
+  ASSET_URL: https://baratinho.${DOMAIN}
+  APP_TIMEZONE: ${TZ}
+  # Faixa fixa das redes Docker, onde fica o Traefik.
+  TRUSTED_PROXIES: 172.16.0.0/12
+  SESSION_SECURE_COOKIE: "true"
+  DB_CONNECTION: pgsql
+  DB_HOST: db
+  DB_PORT: "5432"
+  DB_DATABASE: ${POSTGRES_DB}
+  DB_USERNAME: ${POSTGRES_USER}
+  DB_PASSWORD: ${POSTGRES_PASSWORD}
+  SCRAPER_BASE_URL: http://scraper:3000
+  # Lojas pré-cadastradas no primeiro início (lojas/brasil.php; a imagem só
+  # traz "usa" e "australia"). Para uma instalação existente: lojas/trocar-lojas.sh.
+  DEFAULT_STORES_COUNTRY: ${PRICEBUDDY_STORES_COUNTRY:-brasil}
+  # Ligado, troca links da Amazon (EUA/Austrália) e do eBay pelos de afiliado do autor.
+  AFFILIATE_ENABLED: ${PRICEBUDDY_AFFILIATE_ENABLED:-false}
+  # O primeiro usuário é criado à mão (README): APP_USER_PASSWORD iria para o log.
 
 services:
   db:
@@ -58,34 +90,7 @@ services:
     # O /start-app.sh da imagem roda `printenv`, o que mandaria a senha do banco
     # e a APP_KEY para o log (e para o Loki). Roda o mesmo script sem essa linha.
     command: ["bash", "-c", "sed '/^printenv/d' /start-app.sh > /tmp/start-app.sh && exec bash /tmp/start-app.sh"]
-    environment:
-      <<: *proxy
-      # O app chama o scraper direto, na rede interna.
-      NO_PROXY: scraper,localhost,127.0.0.1
-      no_proxy: scraper,localhost,127.0.0.1
-      TZ: ${TZ}
-      APP_NAME: Baratinho
-      APP_ENV: production
-      APP_KEY: ${PRICEBUDDY_APP_KEY}
-      APP_URL: https://baratinho.${DOMAIN}
-      ASSET_URL: https://baratinho.${DOMAIN}
-      APP_TIMEZONE: ${TZ}
-      # Faixa fixa das redes Docker, onde fica o Traefik.
-      TRUSTED_PROXIES: 172.16.0.0/12
-      SESSION_SECURE_COOKIE: "true"
-      DB_CONNECTION: pgsql
-      DB_HOST: db
-      DB_PORT: "5432"
-      DB_DATABASE: ${POSTGRES_DB}
-      DB_USERNAME: ${POSTGRES_USER}
-      DB_PASSWORD: ${POSTGRES_PASSWORD}
-      SCRAPER_BASE_URL: http://scraper:3000
-      # Lojas pré-cadastradas no primeiro início (lojas/brasil.php; a imagem só
-      # traz "usa" e "australia"). Para uma instalação existente: lojas/trocar-lojas.sh.
-      DEFAULT_STORES_COUNTRY: ${PRICEBUDDY_STORES_COUNTRY:-brasil}
-      # Ligado, troca links da Amazon (EUA/Austrália) e do eBay pelos de afiliado do autor.
-      AFFILIATE_ENABLED: ${PRICEBUDDY_AFFILIATE_ENABLED:-false}
-      # O primeiro usuário é criado à mão (README): APP_USER_PASSWORD iria para o log.
+    environment: *app-env
     volumes:
       - ${APPDATA_PATH:?}/pricebuddy/storage:/app/storage
       # Lojas brasileiras e AliExpress, no formato dos seeders da imagem.
@@ -166,6 +171,56 @@ services:
       - pricebuddy-internal
       # Internet só para falar com o SMTP_HOST.
       - pricebuddy-egress
+
+  # Busca na internet (metabuscador), usada pela tela "criar por busca" do app e
+  # pelo buscador. Só na rede interna; sai pelo proxy de saída (searxng/settings.yml).
+  searxng:
+    image: searxng/searxng:2026.10.30-ffa88e3ba
+    container_name: pricebuddy-searxng
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 512m
+    environment:
+      TZ: ${TZ}
+      SEARXNG_SECRET: ${SEARXNG_SECRET}
+      SEARXNG_BASE_URL: http://searxng:8080/
+    volumes:
+      - ./searxng/settings.yml:/etc/searxng/settings.yml:ro
+    networks:
+      - pricebuddy-internal
+    depends_on:
+      egress:
+        condition: service_started
+
+  # Buscador automático (buscador/BaratinhoBuscar.php): para cada produto novo,
+  # procura o mesmo item nas outras lojas cadastradas e acrescenta as que baterem
+  # (ISBN nos livros; modelo, capacidade e preço nos outros). Mesma imagem do app.
+  buscador:
+    image: jez500/pricebuddy:v1.0.57
+    container_name: pricebuddy-buscador
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 512m
+    entrypoint: ["sh", "/buscador/rodar.sh"]
+    environment:
+      <<: *app-env
+      PRICEBUDDY_BUSCA_INTERVALO: ${PRICEBUDDY_BUSCA_INTERVALO:-600}
+      PRICEBUDDY_BUSCA_POR_RODADA: ${PRICEBUDDY_BUSCA_POR_RODADA:-5}
+      PRICEBUDDY_BUSCA_REFAZER_DIAS: ${PRICEBUDDY_BUSCA_REFAZER_DIAS:-30}
+      PRICEBUDDY_BUSCA_MAX_LOJAS: ${PRICEBUDDY_BUSCA_MAX_LOJAS:-8}
+    volumes:
+      - ./buscador:/buscador:ro
+      - ./buscador/BaratinhoBuscar.php:/app/app/Console/Commands/BaratinhoBuscar.php:ro
+    networks:
+      # Banco, scraper, SearXNG e proxy de saída. Sem internet direta.
+      - pricebuddy-internal
+    depends_on:
+      app:
+        condition: service_healthy
+      searxng:
+        condition: service_started
 
   egress:
     build:

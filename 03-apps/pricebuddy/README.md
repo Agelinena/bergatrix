@@ -10,6 +10,8 @@ Projeto: [jez500/pricebuddy](https://github.com/jez500/pricebuddy) · documenta�
 | `app` | Interface (Filament), agendador e fila no mesmo container | `pricebuddy-internal`, `bergatrix-pricebuddy` (Traefik) |
 | `scraper` | Chrome sem tela (SeleniumBase), para lojas que exigem JavaScript | só `pricebuddy-internal` |
 | `egress` | Proxy de saída (smokescreen): recusa redes privadas | `pricebuddy-internal`, `pricebuddy-egress` |
+| `searxng` | Metabuscador (busca na internet), usado pelo buscador e pela tela de busca do app | `pricebuddy-internal` |
+| `buscador` | Procura o mesmo produto nas outras lojas, sozinho ([Busca automática](#busca-automática-nas-outras-lojas)) | `pricebuddy-internal` |
 | `smtp` | Relay de e-mail (Postfix): recebe do app e repassa só ao SMTP do `.env` | `pricebuddy-internal`, `pricebuddy-egress` |
 | `db` | Postgres 16 | `pricebuddy-internal` |
 
@@ -64,7 +66,8 @@ Ponha no grupo `pricebuddy_users` quem vai usar, inclusive você.
 
    O Postgres corrige o dono da pasta dele. O app roda como root e libera o `storage` sozinho (`chmod 777` no início).
 
-4. **`.env`:** `cp .env.example .env` e preencha a senha do banco e a `PRICEBUDDY_APP_KEY` (os comandos estão no arquivo).
+4. **`.env`:** `cp .env.example .env` e preencha a senha do banco, a `PRICEBUDDY_APP_KEY`, o `SEARXNG_SECRET` e o `SMTP_*`
+   (os comandos estão no arquivo).
    **Não troque a `APP_KEY` depois:** as sessões caem e o que foi cifrado no banco fica ilegível.
 5. `docker compose up -d --build`. A primeira subida cria o banco e as lojas. Os erros `relation "cache" does not
    exist` dessa primeira vez são normais, porque aparecem antes das migrações.
@@ -94,7 +97,7 @@ Ponha no grupo `pricebuddy_users` quem vai usar, inclusive você.
 
 ## Lojas brasileiras
 
-A imagem só traz lojas dos EUA e da Austrália. O [`lojas/brasil.php`](lojas/brasil.php) tem 36 lojas brasileiras,
+A imagem só traz lojas dos EUA e da Austrália. O [`lojas/brasil.php`](lojas/brasil.php) tem 52 lojas brasileiras (51 testadas e o Mercado Livre),
 montado na imagem. Numa instalação nova, ele já é o padrão (`PRICEBUDDY_STORES_COUNTRY=brasil`). Numa que já existe:
 
 ```bash
@@ -107,9 +110,10 @@ Austrália com produto cadastrado fica, com um aviso.
 
 | Grupo | Lojas |
 |---|---|
-| Gerais | Amazon Brasil, Magazine Luiza, Casas Bahia, Americanas, Carrefour |
+| Gerais | Amazon Brasil, Mercado Livre (com a sua conta), Magazine Luiza, Casas Bahia, Americanas, Carrefour |
 | Tecnologia e escritório | KaBuM!, Pichau, Terabyte, Fast Shop, Samsung Brasil, Kalunga |
-| Livros | Estante Virtual, Livraria Leitura, Livraria da Travessa, Martins Fontes Paulista, Livraria Vozes |
+| Livros | Estante Virtual, Leitura, Travessa, Martins Fontes Paulista, Vozes, Livraria da Vila, Livrarias Curitiba, Loyola, Traça (sebo) |
+| Editoras e quadrinhos | Companhia das Letras, Record, Rocco, Sextante, Aleph, Ubu, DarkSide, Paulus, Paulinas, Pipoca & Nanquim, Panini |
 | Jogos | Bravo Jogos, Galápagos Jogos (tabuleiro); Nuuvem, Steam (PC) |
 | Casa e ferramentas | Leroy Merlin, Tok&Stok, Mobly, MadeiraMadeira, Casa&Video, Loja do Mecânico |
 | Esporte | Decathlon |
@@ -120,13 +124,78 @@ Cada loja foi testada em nov/2026 com um produto real, pelo proxy de saída, e o
 configuração usa os dados estruturados da página (`schema_org`) sempre que possível, porque eles mudam menos que o
 visual. Treze lojas precisam do Chrome (`api`), por causa de JavaScript ou de bloqueio a robô.
 
-**Ficaram de fora** (bloqueiam robô, testado): Mercado Livre (pede login/verificação), AliExpress (captcha de
+O **Mercado Livre** está na lista, mas só funciona com a sua conta ([Mercado Livre](#mercado-livre-com-a-sua-conta)).
+
+**Ficaram de fora** (bloqueiam robô, testado): AliExpress (captcha de
 arrastar, mesmo pelo Chrome), Shopee, Netshoes (Access Denied), Ponto e Extra (página de erro). Shoptime e Submarino
-redirecionam para a Americanas. Lojas de moda (Renner, Riachuelo, Dafiti, Zattini) não foram testadas.
+redirecionam para a Americanas. Intrínseca, Editora 34 e Todavia não mostram preço na página do livro (mandam para
+parceiras); Livraria Cultura e Nobel não responderam direito. Lojas de moda (Renner, Riachuelo, Dafiti, Zattini) não foram testadas.
 
 **Outras lojas:** ao cadastrar um produto de uma loja que não está na lista, o PriceBuddy tenta detectar a configuração
 sozinho. Se uma loja parar de funcionar (o site mudou), troque o *scraper service* dela para `api` em **Stores**, ou
 ajuste o `brasil.php` e rode o script de novo.
+
+## Busca automática nas outras lojas
+
+Cadastrou um produto (de qualquer loja)? Em até ~10 minutos o **buscador** procura o mesmo item nas outras lojas
+cadastradas e acrescenta ao produto as que baterem, sem nada a fazer. Ele roda num container próprio
+(`pricebuddy-buscador`, mesma imagem do app) com o comando [`buscador/BaratinhoBuscar.php`](buscador/BaratinhoBuscar.php).
+
+Como decide:
+
+1. Lê a página da primeira URL do produto. Se for livro, tira o **ISBN** (dos dados estruturados ou do texto).
+2. Procura no **SearXNG** pelo ISBN (livros) ou pelo título.
+3. Fica só com resultados de **lojas cadastradas** que o produto ainda não tem. URLs que você tirou do produto não
+   voltam.
+4. Lê cada candidata com a configuração da loja e só aceita se for **o mesmo item**:
+   - livros: a página tem o mesmo ISBN;
+   - outros: título parecido (60% das palavras, pelo menos 3 em comum), os mesmos números de modelo (RTX **5060**,
+     **SA400S37**) e as mesmas medidas (**240 GB**, **55"**, **127 V**);
+   - em todos: preço entre 0,3× e 3× o do produto (corta acessório e kit).
+5. Acrescenta com o mesmo caminho da tela do app (`Url::createFromUrl`).
+
+Testado em nov/2026: um livro da Amazon (*1984*) ganhou KaBuM, Magalu, Travessa e Martins Fontes pelo ISBN; um SSD
+de 240 GB ganhou Pichau, Terabyte, KaBuM e Leroy Merlin; 240×480 GB, 55×65", RTX 5060×5070, 127×220 V e uma capinha
+de R$ 39 para um Echo Dot de R$ 399 foram recusados.
+
+O que já foi procurado fica na tabela `baratinho_buscas` do banco. Depois de `PRICEBUDDY_BUSCA_REFAZER_DIAS` (30), o
+produto é procurado de novo, para achar lojas novas. Ajustes no `.env`: intervalo, produtos por rodada e máximo de
+lojas por produto.
+
+```bash
+docker logs -f pricebuddy-buscador                                        # o que ele decidiu, loja por loja
+docker exec pricebuddy-buscador php artisan baratinho:buscar --produto=12 --simular -v   # um produto, sem gravar
+docker exec pricebuddy-buscador php artisan baratinho:buscar --produto=12               # procura de novo agora
+```
+
+**SearXNG** (`pricebuddy-searxng`): metabuscador próprio, só na rede interna, saindo pelo proxy. Motores em
+[`searxng/settings.yml`](searxng/settings.yml): Bing, DuckDuckGo, Mojeek e Startpage (Google, Brave e Qwant recusam
+um IP doméstico). O buscador liga o SearXNG nas configurações do app sozinho, então a tela **Criar produto → buscar na
+web** também passa a funcionar.
+
+## Mercado Livre (com a sua conta)
+
+O ML recusa robô sem login: a página do produto vira uma verificação ("tráfego suspeito") ou uma tela "Continuar"
+sem preço. A loja já está cadastrada; falta a sua sessão:
+
+1. No navegador, entre no [mercadolivre.com.br](https://www.mercadolivre.com.br) com a sua conta e abra um produto.
+2. Abra as ferramentas do desenvolvedor (F12) → **Rede** → recarregue → clique no primeiro pedido
+   (`www.mercadolivre.com.br`) → em **Cabeçalhos da requisição**, copie o valor inteiro de **Cookie**.
+3. No PriceBuddy: **Stores → Mercado Livre → Cookies**, cole e salve.
+4. Se o ML amarrar a sessão ao navegador, em **Scraper service settings** da loja ponha
+   `user-agent=<o User-Agent do mesmo navegador>` (aparece nos mesmos cabeçalhos).
+5. Teste com um produto:
+
+   ```bash
+   ./lojas/testar-loja.sh 'https://www.mercadolivre.com.br/.../p/MLB...'
+   ```
+
+   Título e preço preenchidos: pronto, o ML passa a valer para os produtos e para o buscador. Título sem preço: troque
+   o preço da loja para `schema_org` em **Stores**. "Verificação de robô": os cookies não foram aceitos ou venceram.
+
+**Cuidado:** esses cookies são a sua sessão do ML. Ficam no banco do PriceBuddy (e no backup), e qualquer admin do
+PriceBuddy os vê na tela da loja. Quando o ML encerrar a sessão (troca de senha, "sair de todos os dispositivos" ou o
+tempo), repita os passos. Quando a aplicação oficial sair (falando com o suporte do ML), dá para trocar por ela.
 
 ## Particularidades
 

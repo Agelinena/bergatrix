@@ -1,0 +1,52 @@
+# SearXNG do PriceBuddy: só a rede interna da stack o alcança (o app e o buscador),
+# e ele sai para a internet pelo proxy de saída. Sem rota no Traefik.
+use_default_settings: true
+
+general:
+  instance_name: "baratinho-busca"
+
+search:
+  safe_search: 0
+  default_lang: "pt-BR"
+  # O PriceBuddy e o buscador pedem os resultados em JSON.
+  formats:
+    - html
+    - json
+
+server:
+  # A chave vem do .env (SEARXNG_SECRET), pelo docker-compose.yml.
+  secret_key: "trocada-pela-variavel-de-ambiente"
+  # O limitador é para instância pública; aqui só a stack chega.
+  limiter: false
+  image_proxy: false
+
+outgoing:
+  request_timeout: 6.0
+  max_request_timeout: 12.0
+  proxies:
+    all://:
+      - http://pricebuddy-egress:4750
+
+# Motores: os que respondem bem a buscas de produto em português e não pedem
+# captcha a um IP doméstico. O resto fica desligado.
+engines:
+  - name: google
+    disabled: true
+  - name: bing
+    disabled: false
+  - name: duckduckgo
+    disabled: false
+  # Brave e Qwant recusam um IP doméstico com poucos pedidos (testado).
+  - name: brave
+    disabled: true
+  - name: mojeek
+    disabled: false
+  - name: qwant
+    disabled: true
+  # Fora do assunto, e tentam DNS direto na inicialização (sem o proxy).
+  - name: wikidata
+    disabled: true
+  - name: radio browser
+    disabled: true
+  - name: startpage
+    disabled: false

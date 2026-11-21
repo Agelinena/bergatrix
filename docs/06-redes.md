@@ -32,7 +32,7 @@ Para ver as que existem: `docker network ls --format '{{.Name}}' | grep -E -- '-
 
 No Transcriptor, o worker (que baixa links enviados pelas pessoas) fica só na `transcriptor-internal` e sai para a internet por um proxy (smokescreen) que recusa destinos em redes privadas. É o modelo para qualquer serviço que busque URLs vindas de usuários, e o Berganews o segue (feeds, páginas e imagens cadastrados pelas pessoas).
 
-O PriceBuddy também, mas a interface e a busca rodam no mesmo container. Por isso o app não entra na `bergatrix-proxy`: ele divide com o Traefik só a `bergatrix-pricebuddy` (sem internet) e sai pelo proxy `pricebuddy-egress` (o e-mail, pelo relay `pricebuddy-smtp`, que só fala com o `SMTP_HOST`), com `HTTP_PROXY`/`HTTPS_PROXY` também em minúsculas, para o libcurl do Apache obedecer ([README](../03-apps/pricebuddy/README.md)).
+O PriceBuddy também, mas a interface e a busca rodam no mesmo container. Por isso o app não entra na `bergatrix-proxy`: ele divide com o Traefik só a `bergatrix-pricebuddy` (sem internet) e sai pelo proxy `pricebuddy-egress` (o e-mail, pelo relay `pricebuddy-smtp`, que só fala com o `SMTP_HOST`; o SearXNG e o buscador ficam só na `pricebuddy-internal` e também saem pelo proxy), com `HTTP_PROXY`/`HTTPS_PROXY` também em minúsculas, para o libcurl do Apache obedecer ([README](../03-apps/pricebuddy/README.md)).
 
 ### Collabora (editor de documentos do Nextcloud)
 

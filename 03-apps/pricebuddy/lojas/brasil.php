@@ -178,6 +178,31 @@ return [
             ],
         ],
     ],
+    // Mercado Livre: bloqueia robô sem login. Funciona com os cookies da sua conta,
+    // colados em Stores → Mercado Livre → Cookies (README: Mercado Livre). Os cookies
+    // ficam só no banco, nunca aqui; o trocar-lojas.sh não mexe neles.
+    [
+        'name' => 'Mercado Livre',
+        'slug' => 'mercado-livre',
+        'domains' => [
+            ['domain' => 'www.mercadolivre.com.br'],
+            ['domain' => 'mercadolivre.com.br'],
+            ['domain' => 'produto.mercadolivre.com.br'],
+            ['domain' => 'lista.mercadolivre.com.br'],
+        ],
+        'scrape_strategy' => [
+            'title' => ['type' => 'selector', 'value' => 'meta[property=og:title]|content'],
+            // Não testado com login (o ML recusa a página sem sessão): se o testar-loja.sh
+            // mostrar o título mas não o preço, troque por "schema_org" em Stores.
+            'price' => ['type' => 'selector', 'value' => 'meta[itemprop=price]|content'],
+            'image' => ['type' => 'selector', 'value' => 'meta[property=og:image]|content'],
+        ],
+        'settings' => [
+            'scraper_service' => 'api',
+            'scraper_service_settings' => '',
+            'locale_settings' => ['locale' => 'pt_BR', 'currency' => 'BRL'],
+        ],
+    ],
     // ── Tecnologia e escritório ──
     [
         'name' => 'KaBuM!',
@@ -532,6 +557,514 @@ return [
             ],
             [
                 'domain' => 'livrariavozes.com.br',
+            ],
+        ],
+        'scrape_strategy' => [
+            'title' => [
+                'type' => 'schema_org',
+                'value' => null,
+            ],
+            'price' => [
+                'type' => 'schema_org',
+                'value' => null,
+            ],
+            'image' => [
+                'type' => 'schema_org',
+                'value' => null,
+            ],
+        ],
+        'settings' => [
+            'scraper_service' => 'http',
+            'scraper_service_settings' => '',
+            'locale_settings' => [
+                'locale' => 'pt_BR',
+                'currency' => 'BRL',
+            ],
+        ],
+    ],
+    // ── Livros: mais livrarias, sebos, editoras e quadrinhos ──
+    [
+        'name' => 'Livraria da Vila',
+        'slug' => 'livraria-da-vila',
+        'domains' => [
+            [
+                'domain' => 'www.livrariadavila.com.br',
+            ],
+            [
+                'domain' => 'livrariadavila.com.br',
+            ],
+        ],
+        'scrape_strategy' => [
+            'title' => [
+                'type' => 'schema_org',
+                'value' => null,
+            ],
+            'price' => [
+                'type' => 'schema_org',
+                'value' => null,
+            ],
+            'image' => [
+                'type' => 'schema_org',
+                'value' => null,
+            ],
+        ],
+        'settings' => [
+            'scraper_service' => 'api',
+            'scraper_service_settings' => '',
+            'locale_settings' => [
+                'locale' => 'pt_BR',
+                'currency' => 'BRL',
+            ],
+        ],
+    ],
+    [
+        'name' => 'Livrarias Curitiba',
+        'slug' => 'livrarias-curitiba',
+        'domains' => [
+            [
+                'domain' => 'www.livrariascuritiba.com.br',
+            ],
+            [
+                'domain' => 'livrariascuritiba.com.br',
+            ],
+        ],
+        'scrape_strategy' => [
+            'title' => [
+                'type' => 'schema_org',
+                'value' => null,
+            ],
+            'price' => [
+                'type' => 'schema_org',
+                'value' => null,
+            ],
+            'image' => [
+                'type' => 'schema_org',
+                'value' => null,
+            ],
+        ],
+        'settings' => [
+            'scraper_service' => 'http',
+            'scraper_service_settings' => '',
+            'locale_settings' => [
+                'locale' => 'pt_BR',
+                'currency' => 'BRL',
+            ],
+        ],
+    ],
+    [
+        'name' => 'Livraria Loyola',
+        'slug' => 'livraria-loyola',
+        'domains' => [
+            [
+                'domain' => 'www.livrarialoyola.com.br',
+            ],
+            [
+                'domain' => 'livrarialoyola.com.br',
+            ],
+        ],
+        'scrape_strategy' => [
+            'title' => [
+                'type' => 'schema_org',
+                'value' => null,
+            ],
+            'price' => [
+                'type' => 'schema_org',
+                'value' => null,
+            ],
+            'image' => [
+                'type' => 'schema_org',
+                'value' => null,
+            ],
+        ],
+        'settings' => [
+            'scraper_service' => 'http',
+            'scraper_service_settings' => '',
+            'locale_settings' => [
+                'locale' => 'pt_BR',
+                'currency' => 'BRL',
+            ],
+        ],
+    ],
+    [
+        'name' => 'Traça Livraria e Sebo',
+        'slug' => 'traca',
+        'domains' => [
+            [
+                'domain' => 'www.traca.com.br',
+            ],
+            [
+                'domain' => 'traca.com.br',
+            ],
+        ],
+        'scrape_strategy' => [
+            'title' => [
+                'type' => 'schema_org',
+                'value' => null,
+            ],
+            'price' => [
+                'type' => 'schema_org',
+                'value' => null,
+            ],
+            'image' => [
+                'type' => 'schema_org',
+                'value' => null,
+            ],
+        ],
+        'settings' => [
+            'scraper_service' => 'api',
+            'scraper_service_settings' => '',
+            'locale_settings' => [
+                'locale' => 'pt_BR',
+                'currency' => 'BRL',
+            ],
+        ],
+    ],
+    [
+        'name' => 'Companhia das Letras',
+        'slug' => 'companhia-das-letras',
+        'domains' => [
+            [
+                'domain' => 'www.companhiadasletras.com.br',
+            ],
+            [
+                'domain' => 'companhiadasletras.com.br',
+            ],
+        ],
+        'scrape_strategy' => [
+            'title' => [
+                'type' => 'schema_org',
+                'value' => null,
+            ],
+            'price' => [
+                'type' => 'schema_org',
+                'value' => null,
+            ],
+            'image' => [
+                'type' => 'schema_org',
+                'value' => null,
+            ],
+        ],
+        'settings' => [
+            'scraper_service' => 'http',
+            'scraper_service_settings' => '',
+            'locale_settings' => [
+                'locale' => 'pt_BR',
+                'currency' => 'BRL',
+            ],
+        ],
+    ],
+    [
+        'name' => 'Grupo Editorial Record',
+        'slug' => 'record',
+        'domains' => [
+            [
+                'domain' => 'www.record.com.br',
+            ],
+            [
+                'domain' => 'record.com.br',
+            ],
+        ],
+        'scrape_strategy' => [
+            'title' => [
+                'type' => 'schema_org',
+                'value' => null,
+            ],
+            'price' => [
+                'type' => 'schema_org',
+                'value' => null,
+            ],
+            'image' => [
+                'type' => 'schema_org',
+                'value' => null,
+            ],
+        ],
+        'settings' => [
+            'scraper_service' => 'api',
+            'scraper_service_settings' => '',
+            'locale_settings' => [
+                'locale' => 'pt_BR',
+                'currency' => 'BRL',
+            ],
+        ],
+    ],
+    [
+        'name' => 'Editora Rocco',
+        'slug' => 'rocco',
+        'domains' => [
+            [
+                'domain' => 'rocco.com.br',
+            ],
+            [
+                'domain' => 'www.rocco.com.br',
+            ],
+        ],
+        'scrape_strategy' => [
+            'title' => [
+                'type' => 'selector',
+                'value' => 'title',
+            ],
+            'price' => [
+                'type' => 'regex',
+                'value' => '~"price":"([\\d.]+)"~',
+            ],
+            'image' => [
+                'type' => 'selector',
+                'value' => 'meta[property=og:image]|content',
+            ],
+        ],
+        'settings' => [
+            'scraper_service' => 'http',
+            'scraper_service_settings' => '',
+            'locale_settings' => [
+                'locale' => 'pt_BR',
+                'currency' => 'BRL',
+            ],
+        ],
+    ],
+    [
+        'name' => 'Editora Sextante',
+        'slug' => 'sextante',
+        'domains' => [
+            [
+                'domain' => 'www.sextante.com.br',
+            ],
+            [
+                'domain' => 'sextante.com.br',
+            ],
+        ],
+        'scrape_strategy' => [
+            'title' => [
+                'type' => 'schema_org',
+                'value' => null,
+            ],
+            'price' => [
+                'type' => 'schema_org',
+                'value' => null,
+            ],
+            'image' => [
+                'type' => 'schema_org',
+                'value' => null,
+            ],
+        ],
+        'settings' => [
+            'scraper_service' => 'api',
+            'scraper_service_settings' => '',
+            'locale_settings' => [
+                'locale' => 'pt_BR',
+                'currency' => 'BRL',
+            ],
+        ],
+    ],
+    [
+        'name' => 'Editora Aleph',
+        'slug' => 'aleph',
+        'domains' => [
+            [
+                'domain' => 'www.editoraaleph.com.br',
+            ],
+            [
+                'domain' => 'editoraaleph.com.br',
+            ],
+        ],
+        'scrape_strategy' => [
+            'title' => [
+                'type' => 'schema_org',
+                'value' => null,
+            ],
+            'price' => [
+                'type' => 'schema_org',
+                'value' => null,
+            ],
+            'image' => [
+                'type' => 'schema_org',
+                'value' => null,
+            ],
+        ],
+        'settings' => [
+            'scraper_service' => 'api',
+            'scraper_service_settings' => '',
+            'locale_settings' => [
+                'locale' => 'pt_BR',
+                'currency' => 'BRL',
+            ],
+        ],
+    ],
+    [
+        'name' => 'Ubu Editora',
+        'slug' => 'ubu',
+        'domains' => [
+            [
+                'domain' => 'www.ubueditora.com.br',
+            ],
+            [
+                'domain' => 'ubueditora.com.br',
+            ],
+        ],
+        'scrape_strategy' => [
+            'title' => [
+                'type' => 'schema_org',
+                'value' => null,
+            ],
+            'price' => [
+                'type' => 'schema_org',
+                'value' => null,
+            ],
+            'image' => [
+                'type' => 'schema_org',
+                'value' => null,
+            ],
+        ],
+        'settings' => [
+            'scraper_service' => 'http',
+            'scraper_service_settings' => '',
+            'locale_settings' => [
+                'locale' => 'pt_BR',
+                'currency' => 'BRL',
+            ],
+        ],
+    ],
+    [
+        'name' => 'DarkSide Books',
+        'slug' => 'darkside',
+        'domains' => [
+            [
+                'domain' => 'www.darksidebooks.com.br',
+            ],
+            [
+                'domain' => 'darksidebooks.com.br',
+            ],
+        ],
+        'scrape_strategy' => [
+            'title' => [
+                'type' => 'schema_org',
+                'value' => null,
+            ],
+            'price' => [
+                'type' => 'schema_org',
+                'value' => null,
+            ],
+            'image' => [
+                'type' => 'schema_org',
+                'value' => null,
+            ],
+        ],
+        'settings' => [
+            'scraper_service' => 'http',
+            'scraper_service_settings' => '',
+            'locale_settings' => [
+                'locale' => 'pt_BR',
+                'currency' => 'BRL',
+            ],
+        ],
+    ],
+    [
+        'name' => 'Paulus',
+        'slug' => 'paulus',
+        'domains' => [
+            [
+                'domain' => 'loja.paulus.com.br',
+            ],
+        ],
+        'scrape_strategy' => [
+            'title' => [
+                'type' => 'schema_org',
+                'value' => null,
+            ],
+            'price' => [
+                'type' => 'schema_org',
+                'value' => null,
+            ],
+            'image' => [
+                'type' => 'schema_org',
+                'value' => null,
+            ],
+        ],
+        'settings' => [
+            'scraper_service' => 'http',
+            'scraper_service_settings' => '',
+            'locale_settings' => [
+                'locale' => 'pt_BR',
+                'currency' => 'BRL',
+            ],
+        ],
+    ],
+    [
+        'name' => 'Paulinas',
+        'slug' => 'paulinas',
+        'domains' => [
+            [
+                'domain' => 'www.paulinas.com.br',
+            ],
+            [
+                'domain' => 'paulinas.com.br',
+            ],
+        ],
+        'scrape_strategy' => [
+            'title' => [
+                'type' => 'schema_org',
+                'value' => null,
+            ],
+            'price' => [
+                'type' => 'schema_org',
+                'value' => null,
+            ],
+            'image' => [
+                'type' => 'schema_org',
+                'value' => null,
+            ],
+        ],
+        'settings' => [
+            'scraper_service' => 'api',
+            'scraper_service_settings' => '',
+            'locale_settings' => [
+                'locale' => 'pt_BR',
+                'currency' => 'BRL',
+            ],
+        ],
+    ],
+    [
+        'name' => 'Pipoca & Nanquim',
+        'slug' => 'pipoca-e-nanquim',
+        'domains' => [
+            [
+                'domain' => 'pipocaenanquim.com.br',
+            ],
+            [
+                'domain' => 'www.pipocaenanquim.com.br',
+            ],
+        ],
+        'scrape_strategy' => [
+            'title' => [
+                'type' => 'schema_org',
+                'value' => null,
+            ],
+            'price' => [
+                'type' => 'schema_org',
+                'value' => null,
+            ],
+            'image' => [
+                'type' => 'schema_org',
+                'value' => null,
+            ],
+        ],
+        'settings' => [
+            'scraper_service' => 'http',
+            'scraper_service_settings' => '',
+            'locale_settings' => [
+                'locale' => 'pt_BR',
+                'currency' => 'BRL',
+            ],
+        ],
+    ],
+    [
+        'name' => 'Panini',
+        'slug' => 'panini',
+        'domains' => [
+            [
+                'domain' => 'panini.com.br',
+            ],
+            [
+                'domain' => 'www.panini.com.br',
             ],
         ],
         'scrape_strategy' => [
