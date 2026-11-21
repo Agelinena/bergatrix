@@ -59,7 +59,7 @@ Rede local ───────────────────────
 | 03 | jellyfin | Jellyfin, Seerr, qBittorrent, Sonarr, Radarr, Prowlarr, Bazarr, SABnzbd, FlareSolverr, indexador BR, Recyclarr | `jellyflix`, `catalogo` e um por serviço *arr | appdata, cache, media |
 | 03 | legendarr | Legendas (Bazarr + tradução local pelo Ollama), verificação de áudio, optimizer (HEVC). Submódulo ([Agelinena/legendarr](https://github.com/Agelinena/legendarr)) + `03-apps/submodulos/legendarr.bergatrix.yml` | `legendarr` | appdata, cache, media |
 | 03 | nextcloud | Arquivos, agenda e contatos: Nextcloud (Apache), cron, Postgres, Redis | `storange` | appdata, userdata |
-| 03 | pricebuddy | PriceBuddy: preço de produtos com avisos de queda (app, scraper com Chrome, proxy de saída, Postgres); rede isolada `bergatrix-pricebuddy` | `baratinho` | appdata |
+| 03 | pricebuddy | PriceBuddy: preço de produtos com avisos de queda (app, scraper com Chrome, proxy de saída, relay de e-mail, Postgres); rede isolada `bergatrix-pricebuddy` | `baratinho` | appdata |
 | 03 | ollama | Ollama (GPU), sem rota | – | cache |
 | 03 | transcriptor | Transcrição com faster-whisper (GPU): API, worker, Postgres, proxy de saída. Submódulo ([Agelinena/transcriptor](https://github.com/Agelinena/transcriptor)) + `03-apps/submodulos/transcriptor.bergatrix.yml` | `transcriptor` | appdata, cache |
 | 04 | monitor | Grafana (painéis e alertas por e-mail), Prometheus, Loki, Alloy e exporters (servidor, containers, GPU, Proxmox, OPNsense, sites) | `grafana` (+ portas 5140 e 5141/tcp para o syslog do OPNsense e da VPS) | appdata, cache |

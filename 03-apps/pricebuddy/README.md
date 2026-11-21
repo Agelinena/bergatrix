@@ -10,6 +10,7 @@ Projeto: [jez500/pricebuddy](https://github.com/jez500/pricebuddy) · documenta�
 | `app` | Interface (Filament), agendador e fila no mesmo container | `pricebuddy-internal`, `bergatrix-pricebuddy` (Traefik) |
 | `scraper` | Chrome sem tela (SeleniumBase), para lojas que exigem JavaScript | só `pricebuddy-internal` |
 | `egress` | Proxy de saída (smokescreen): recusa redes privadas | `pricebuddy-internal`, `pricebuddy-egress` |
+| `smtp` | Relay de e-mail (Postfix): recebe do app e repassa só ao SMTP do `.env` | `pricebuddy-internal`, `pricebuddy-egress` |
 | `db` | Postgres 16 | `pricebuddy-internal` |
 
 Endereço: `baratinho.${DOMAIN}`.
@@ -27,8 +28,9 @@ faria o servidor buscar coisas da rede de casa. Por isso, seguindo o modelo do T
 Testado (v1.0.57): página pública responde 200 tanto pela linha de comando quanto pelo Apache e pelo Chrome do scraper.
 `https://192.168.0.1` é recusado (`Deny: Private Range`).
 
-**Consequência:** o app não alcança SMTP. Avisos por e-mail não funcionam. Use os avisos por HTTPS (ntfy, Telegram,
-Discord, Gotify, Pushover), que passam pelo proxy.
+**E-mail:** o app não alcança a internet, e o proxy de saída só fala HTTP. Por isso o e-mail passa pelo serviço `smtp`
+(Postfix): o app entrega a ele, na rede interna, e ele repassa só ao `SMTP_HOST` do `.env` (pode ser a mesma conta do
+Authentik e do monitor), com TLS e login. Testado: o relay recebe do app e abre TLS com o provedor.
 
 ## Acesso
 
@@ -73,8 +75,11 @@ Ponha no grupo `pricebuddy_users` quem vai usar, inclusive você.
    docker exec -it pricebuddy php artisan user:assign-role <seu-email> admin
    ```
 
-7. Entre em `https://baratinho.<domínio>` e, em **Settings**, ajuste o locale `pt_BR` e a moeda `BRL`. Sem isso, as lojas
-   novas vêm com USD.
+7. Entre em `https://baratinho.<domínio>` e, em **Settings**:
+   - locale `pt_BR` e moeda `BRL`;
+   - **e-mail** (em *Notifications → Email*): host `smtp`, porta `25`, sem criptografia, sem usuário e senha, e o
+     remetente aceito pelo seu provedor (o mesmo `From` do Authentik). Quem fala com o provedor é o relay, com o login
+     do `.env`.
 
 ## Usuários
 
@@ -89,9 +94,39 @@ Ponha no grupo `pricebuddy_users` quem vai usar, inclusive você.
 
 ## Lojas brasileiras
 
-A imagem só traz lojas pré-cadastradas dos EUA e da Austrália. Lojas brasileiras são reconhecidas na hora de
-cadastrar o primeiro produto delas (testado com Kabum e Amazon.com.br). Se uma loja não funcionar com o modo `http`,
-troque o *scraper service* dela para o `api` (o Chrome do `scraper`).
+A imagem só traz lojas dos EUA e da Austrália. O [`lojas/brasil.php`](lojas/brasil.php) tem 36 lojas brasileiras,
+montado na imagem. Numa instalação nova, ele já é o padrão (`PRICEBUDDY_STORES_COUNTRY=brasil`). Numa que já existe:
+
+```bash
+./lojas/trocar-lojas.sh --ver   # o que faria
+./lojas/trocar-lojas.sh         # remove as dos EUA e da Austrália sem produto e cria/atualiza as brasileiras
+```
+
+O script pode rodar de novo depois de mudar o `brasil.php`: ele atualiza as lojas que já existem. Loja dos EUA ou da
+Austrália com produto cadastrado fica, com um aviso.
+
+| Grupo | Lojas |
+|---|---|
+| Gerais | Amazon Brasil, Magazine Luiza, Casas Bahia, Americanas, Carrefour |
+| Tecnologia e escritório | KaBuM!, Pichau, Terabyte, Fast Shop, Samsung Brasil, Kalunga |
+| Livros | Estante Virtual, Livraria Leitura, Livraria da Travessa, Martins Fontes Paulista, Livraria Vozes |
+| Jogos | Bravo Jogos, Galápagos Jogos (tabuleiro); Nuuvem, Steam (PC) |
+| Casa e ferramentas | Leroy Merlin, Tok&Stok, Mobly, MadeiraMadeira, Casa&Video, Loja do Mecânico |
+| Esporte | Decathlon |
+| Farmácia e beleza | Drogasil, Droga Raia, Época Cosméticos, O Boticário, Sephora |
+| Pet e brinquedos | Petz, Cobasi, Ri Happy, PBKids |
+
+Cada loja foi testada em nov/2026 com um produto real, pelo proxy de saída, e o preço gravado conferido. A
+configuração usa os dados estruturados da página (`schema_org`) sempre que possível, porque eles mudam menos que o
+visual. Treze lojas precisam do Chrome (`api`), por causa de JavaScript ou de bloqueio a robô.
+
+**Ficaram de fora** (bloqueiam robô, testado): Mercado Livre (pede login/verificação), AliExpress (captcha de
+arrastar, mesmo pelo Chrome), Shopee, Netshoes (Access Denied), Ponto e Extra (página de erro). Shoptime e Submarino
+redirecionam para a Americanas. Lojas de moda (Renner, Riachuelo, Dafiti, Zattini) não foram testadas.
+
+**Outras lojas:** ao cadastrar um produto de uma loja que não está na lista, o PriceBuddy tenta detectar a configuração
+sozinho. Se uma loja parar de funcionar (o site mudou), troque o *scraper service* dela para `api` em **Stores**, ou
+ajuste o `brasil.php` e rode o script de novo.
 
 ## Particularidades
 

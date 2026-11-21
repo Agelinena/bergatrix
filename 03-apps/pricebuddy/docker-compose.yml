@@ -6,6 +6,7 @@
 #   scraper  Navegador sem tela (SeleniumBase) para lojas que exigem JavaScript.
 #   egress   Proxy de saída (smokescreen): recusa destinos em redes privadas, então
 #            um link de produto não alcança o NAS, o roteador nem outros containers.
+#   smtp     Relay de e-mail (Postfix): o app entrega aqui e ele repassa ao SMTP do .env.
 #   db       Postgres: usuários, produtos, histórico de preços, fila e sessões.
 #
 # Acesso: forward-auth (o PriceBuddy não fala OIDC). O Authentik deixa passar só
@@ -79,13 +80,16 @@ services:
       DB_USERNAME: ${POSTGRES_USER}
       DB_PASSWORD: ${POSTGRES_PASSWORD}
       SCRAPER_BASE_URL: http://scraper:3000
-      # Lojas pré-cadastradas no primeiro início (a imagem só tem "usa" e "australia").
-      DEFAULT_STORES_COUNTRY: ${PRICEBUDDY_STORES_COUNTRY:-all}
+      # Lojas pré-cadastradas no primeiro início (lojas/brasil.php; a imagem só
+      # traz "usa" e "australia"). Para uma instalação existente: lojas/trocar-lojas.sh.
+      DEFAULT_STORES_COUNTRY: ${PRICEBUDDY_STORES_COUNTRY:-brasil}
       # Ligado, troca links da Amazon (EUA/Austrália) e do eBay pelos de afiliado do autor.
       AFFILIATE_ENABLED: ${PRICEBUDDY_AFFILIATE_ENABLED:-false}
       # O primeiro usuário é criado à mão (README): APP_USER_PASSWORD iria para o log.
     volumes:
       - ${APPDATA_PATH:?}/pricebuddy/storage:/app/storage
+      # Lojas brasileiras e AliExpress, no formato dos seeders da imagem.
+      - ./lojas/brasil.php:/app/database/seeders/Stores/brasil.php:ro
     networks:
       # Banco, scraper e proxy de saída.
       - pricebuddy-internal
@@ -137,6 +141,31 @@ services:
     depends_on:
       egress:
         condition: service_started
+
+  # Relay de e-mail. O app não tem internet e o proxy de saída só fala HTTP, então
+  # o e-mail sai por aqui: o app entrega em smtp:25, sem senha, e o relay repassa
+  # só para o SMTP do .env (o mesmo do Authentik e do monitor), com TLS e login.
+  smtp:
+    image: boky/postfix:5.2.1-alpine
+    container_name: pricebuddy-smtp
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 128m
+    environment:
+      TZ: ${TZ}
+      RELAYHOST: "[${SMTP_HOST}]:${SMTP_PORT:-587}"
+      RELAYHOST_USERNAME: ${SMTP_USERNAME}
+      RELAYHOST_PASSWORD: ${SMTP_PASSWORD}
+      # Só o app alcança o relay (rede interna), então qualquer remetente passa;
+      # o provedor confere o remetente do lado dele.
+      ALLOW_EMPTY_SENDER_DOMAINS: "true"
+      POSTFIX_smtp_tls_security_level: encrypt
+      POSTFIX_myhostname: pricebuddy-smtp
+    networks:
+      - pricebuddy-internal
+      # Internet só para falar com o SMTP_HOST.
+      - pricebuddy-egress
 
   egress:
     build:
