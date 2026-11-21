@@ -413,22 +413,40 @@ class BaratinhoBuscar extends Command
         });
     }
 
-    /** Liga o SearXNG nas configurações do app (tela "criar por busca"), se ainda não estiver ligado. */
+    /**
+     * Liga o SearXNG nas configurações do app (tela "criar por busca"), se ainda não
+     * estiver ligado, e completa os campos vazios com os padrões do app. Um
+     * max_pages nulo (salvo pela tela de Settings) derruba a pesquisa com
+     * "getMaxPages(): Return value must be of type int, null returned".
+     */
     protected function configurarSearxng(): void
     {
         try {
             $settings = AppSettings::new();
-            $servicos = $settings->integrated_services;
-            if (data_get($servicos, 'searxng.url')) {
+            $servicos = (array) $settings->integrated_services;
+            $atual = (array) data_get($servicos, 'searxng', []);
+            $novo = $atual;
+            if (! data_get($atual, 'url')) {
+                $novo['url'] = self::SEARXNG;
+                $novo['enabled'] = true;
+            }
+            $padroes = [
+                'max_pages' => \App\Services\SearchService::DEFAULT_MAX_PAGES,
+                'max_priced_results' => \App\Services\SearchService::DEFAULT_MAX_PRICED_RESULTS,
+                'prune_days' => \App\Models\UrlResearch::DEFAULT_PRUNE_DAYS,
+            ];
+            foreach ($padroes as $campo => $padrao) {
+                if (! is_numeric($novo[$campo] ?? null)) {
+                    $novo[$campo] = $padrao;
+                }
+            }
+            if ($novo == $atual) {
                 return;
             }
-            $servicos['searxng'] = array_merge((array) data_get($servicos, 'searxng', []), [
-                'enabled' => true,
-                'url' => self::SEARXNG,
-            ]);
+            $servicos['searxng'] = $novo;
             $settings->integrated_services = $servicos;
             $settings->save();
-            $this->line('SearXNG ligado nas configurações do app ('.self::SEARXNG.').');
+            $this->line('Configuração do SearXNG no app completada ('.$novo['url'].').');
         } catch (Throwable $e) {
             $this->warn('Não deu para ligar o SearXNG nas configurações: '.$e->getMessage());
         }
