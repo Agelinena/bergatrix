@@ -192,8 +192,14 @@ sem preço. A loja já está cadastrada; falta a sua sessão:
    O script converte para a linha única `nome=valor; nome2=valor2`, que é o que o PriceBuddy manda no cabeçalho
    `Cookie`. Ele também descarta os cookies vencidos e os de outros sites. **Não cole o `cookies.txt` inteiro no campo
    Cookies da tela:** com várias linhas, o pedido ao scraper quebra e não vem nem título.
-4. Se o ML amarrar a sessão ao navegador, em **Scraper service settings** da loja ponha
-   `user-agent=<o User-Agent do mesmo navegador>` (aparece nos mesmos cabeçalhos).
+4. Em **Stores → Mercado Livre → Scraper service settings**, ponha o User-Agent do mesmo navegador (o ML amarra a
+   sessão a ele; aparece em F12 → Rede → **Cabeçalhos da requisição** → `User-Agent`, ou em
+   `navigator.userAgent` no Console), e uma espera para o JavaScript da página:
+
+   ```
+   user-agent=Mozilla/5.0 (...) Chrome/... Safari/537.36
+   sleep=3000
+   ```
 5. Teste com um produto:
 
    ```bash
@@ -212,6 +218,12 @@ tempo), repita os passos. Quando a aplicação oficial sair (falando com o supor
 - **Log:** o `/start-app.sh` da imagem roda `printenv`. O compose roda o mesmo script sem essa linha, para a senha do
   banco e a `APP_KEY` não irem para o Loki. Ao atualizar a imagem, confira se o script mudou
   (`docker run --rm --entrypoint cat jez500/pricebuddy:<versão> /start-app.sh`).
+- **Scraper com cookies:** o endpoint `/api/article` da imagem `seleniumbase-scrapper` lê `extra-http-headers` (por
+  onde o PriceBuddy manda os cookies da loja) e `user-agent`, mas não aplica nenhum dos dois ao Chrome, e o cache dele
+  não distingue cookies. [`scraper/article.py`](scraper/article.py) é a cópia da v1.0.1 com as duas correções
+  (procure `_bergatrix` e `Bergatrix:`), montada por cima da original. Ao atualizar a imagem, veja se o original já
+  corrigiu; se não, copie o novo (`docker run --rm --entrypoint cat jez500/seleniumbase-scrapper:<versão>
+  /SeleniumBase/api/endpoints/article.py`) e reaplique os trechos.
 - **Afiliados:** `PRICEBUDDY_AFFILIATE_ENABLED=true` troca links da Amazon (EUA/Austrália) e do eBay pelos do autor do
   projeto, para apoiá-lo. Fica desligado por padrão.
 - **Backup:** o banco tem a label `bergatrix.backup.dump=postgres`. O `storage` (logs e imagens) entra na cópia do

@@ -140,6 +140,11 @@ services:
       NO_PROXY: localhost,127.0.0.1
       no_proxy: localhost,127.0.0.1
       TZ: ${TZ}
+    volumes:
+      # Cópia do endpoint da v1.0.1 que aplica de fato os cookies e o User-Agent
+      # da loja (o original os lê e ignora). Ao trocar a versão da imagem, refaça
+      # a cópia: veja o README.
+      - ./scraper/article.py:/SeleniumBase/api/endpoints/article.py:ro
     networks:
       # Só a rede interna: o app chama aqui, e a internet é pelo egress.
       - pricebuddy-internal
