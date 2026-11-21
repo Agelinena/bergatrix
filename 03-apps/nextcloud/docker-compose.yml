@@ -166,7 +166,7 @@ services:
 
   # Só cache e locks: sem persistência e sem volume (se refaz sozinho).
   redis:
-    image: redis:7-alpine
+    image: redis:8-alpine
     container_name: nextcloud-redis
     restart: unless-stopped
     security_opt:
