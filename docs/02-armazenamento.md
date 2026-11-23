@@ -83,6 +83,7 @@ Como em `APPDATA_PATH`, cada stack tem a sua pasta, com o nome da stack. Só ent
 | bergastream | `postgres`, `redis`, `deemix`, `lidarr`, `youtube` | `pydeps` | `musica/bergastream`, `musica/lidarr`, `downloads` | – |
 | doberga | `postgres`, `redis` | – | – | – |
 | drop | – | – | – | – |
+| tarantec | – | – | – | – |
 | homeassistant | `config` | – | – | – |
 | immich | `postgres` | `thumbs`, `encoded-video`, `model-cache`, `redis` | – | `immich` (`library`, `upload`, `profile`, `backups`) |
 | jellyfin | `jellyfin`, `catalogo`, `qbittorrent`, `sonarr`, `radarr`, `prowlarr`, `bazarr`, `sabnzbd`, `recyclarr` | `jellyfin` (transcodes), `incomplete` | raiz inteira (Jellyfin), `filmes`, `series`, `downloads` | – |

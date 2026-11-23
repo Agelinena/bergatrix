@@ -38,6 +38,7 @@ De onde vêm as mudanças:
 
 - **Imagens de terceiros**: versões fixas nos composes. O Dependabot abre um PR por semana (sábado) com as versões menores juntas, e um PR separado para cada versão maior. Aprovado o PR, rode o `atualizar.sh`.
 - **Apps próprios** (submódulos): o Dependabot abre um PR por dia quando o repositório do app tem commit novo.
+- **Tarantec** (portfólio): a imagem vem pronta do GHCR e o servidor a puxa sozinho a cada 5 minutos ([auto-deploy](../00-infrastructure/auto-deploy/README.md)). O submódulo só traz mudanças no compose.
 
 Uma stack que falha não para as outras; no fim aparece a lista. Depois de recriar, o script apaga só as imagens sem nome (as versões trocadas).
 

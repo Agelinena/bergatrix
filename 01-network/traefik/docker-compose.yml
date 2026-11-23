@@ -11,6 +11,7 @@ services:
     networks:
       bergatrix-proxy: {}
       bergatrix-drop: {}
+      bergatrix-tarantec: {}
       # Rede isolada do Collabora (docs/06-redes.md). O alias é como o Collabora
       # chega ao Nextcloud sem sair da rede: ele resolve storange.${DOMAIN} para
       # este Traefik, que encaminha ao Nextcloud pela rota normal (com CrowdSec).
@@ -55,6 +56,8 @@ networks:
     name: bergatrix-proxy
     external: true
   bergatrix-drop:
+    external: true
+  bergatrix-tarantec:
     external: true
   bergatrix-office:
     external: true

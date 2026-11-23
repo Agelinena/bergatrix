@@ -14,6 +14,7 @@ Ficam em [`01-network/redes/docker-compose.yml`](../01-network/redes/docker-comp
 | `bergatrix-media` | Jellyfin, Seerr, *arr, SABnzbd, qBittorrent, indexadores, Legendarr e o Lidarr do bergastream | Sim |
 | `bergatrix-ai` | O Ollama e quem usa ele (worker do Legendarr, worker `ai` do Berganews) | Sim |
 | `bergatrix-drop` | Só o Traefik e o Drop. O Drop é público, então fica fora da `bergatrix-proxy`: não alcança nenhum outro container | Não |
+| `bergatrix-tarantec` | Só o Traefik e o Tarantec (portfólio, público). Separada da do Drop: um público não alcança o outro | Não |
 | `bergatrix-office` | Só o Traefik e o Collabora (editor de documentos do Nextcloud). O Traefik tem nela o alias `storange.${DOMAIN}`, que é como o Collabora chega ao Nextcloud | Não |
 | `bergatrix-monitor` | O Prometheus (stack monitor) e quem ele lê em outras stacks: Traefik (métricas na 8082) e CrowdSec (6060) | Não |
 | `bergatrix-pricebuddy` | Só o Traefik e o app do PriceBuddy (`baratinho`), que busca as páginas cadastradas pelas pessoas. Ele sai para a internet só pelo proxy de saída da stack | Não |
@@ -62,7 +63,7 @@ networks:
 
 - **Rede compartilhada só no arquivo de redes.** A stack usa a rede com `external: true` e nunca a cria.
 - **Rede que só uma stack usa fica na stack**, com o nome `<stack>-internal` ou `<stack>-egress`.
-- **Serviço público sem conta tem rede própria com o Traefik** (`bergatrix-drop`), e não entra na `bergatrix-proxy`.
+- **Serviço público sem conta tem rede própria com o Traefik** (`bergatrix-drop`, `bergatrix-tarantec`), e não entra na `bergatrix-proxy`.
 - **Serviço que processa arquivos enviados pelas pessoas** (hoje, o Collabora) também tem rede própria com o Traefik (`bergatrix-office`), sem internet.
 - **Serviço com rota que busca URLs das pessoas no mesmo processo** (hoje, o PriceBuddy) também tem rede própria com o Traefik (`bergatrix-pricebuddy`), sem internet, e sai pelo proxy de saída da stack.
 - **`bergatrix-proxy` é só para quem tem rota no Traefik.** Um serviço sem labels do Traefik não entra nela. Para falar com outra stack, use a rede do assunto (`bergatrix-media`, `bergatrix-ai`…).

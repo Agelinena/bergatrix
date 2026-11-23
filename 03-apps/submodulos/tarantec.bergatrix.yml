@@ -1,0 +1,34 @@
+# Tarantec (portfólio) no Bergatrix: o que é só deste servidor, por cima do
+# docker-compose.yml do repositório do app (submódulo em 03-apps/tarantec;
+# este arquivo fica em 03-apps/submodulos).
+#
+# Ativado pelo .env do Tarantec no servidor:
+#   COMPOSE_FILE=docker-compose.yml:../submodulos/tarantec.bergatrix.yml
+#
+# Público por natureza (docs/05-acesso.md). Isolado como o Drop: só na rede
+# bergatrix-tarantec (01-network/redes), interna e sem internet; só o Traefik
+# chega até ele. A imagem vem pronta do GHCR e o servidor a atualiza sozinho
+# (00-infrastructure/auto-deploy). Precisa do Docker Compose 2.24+ (!reset/!override).
+services:
+  tarantec:
+    # Sem porta no host: o tráfego chega pelo Traefik.
+    ports: !reset []
+    networks: !override
+      - bergatrix-tarantec
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=bergatrix-tarantec"
+      - "traefik.http.routers.tarantec.rule=Host(`tarantec.${DOMAIN}`)"
+      - "traefik.http.routers.tarantec.entrypoints=websecure"
+      - "traefik.http.routers.tarantec.tls=true"
+      - "traefik.http.routers.tarantec.service=tarantec"
+      - "traefik.http.routers.tarantec.middlewares=crowdsec-bouncer@file,tarantec-ratelimit"
+      # Por IP de origem. Abrir a página faz ~15 pedidos (HTML, CSS, JS, fontes, imagens).
+      - "traefik.http.middlewares.tarantec-ratelimit.ratelimit.average=120"
+      - "traefik.http.middlewares.tarantec-ratelimit.ratelimit.period=1m"
+      - "traefik.http.middlewares.tarantec-ratelimit.ratelimit.burst=40"
+      - "traefik.http.services.tarantec.loadbalancer.server.port=8080"
+
+networks:
+  bergatrix-tarantec:
+    external: true

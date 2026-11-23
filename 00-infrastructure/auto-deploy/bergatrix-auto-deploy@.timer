@@ -1,0 +1,11 @@
+[Unit]
+Description=Bergatrix: confere a imagem do app %i a cada 5 minutos
+
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=5min
+RandomizedDelaySec=30
+Persistent=false
+
+[Install]
+WantedBy=timers.target

@@ -11,7 +11,8 @@
 # Uma stack "mudou" quando o commit novo mexe na pasta dela, no ponteiro do
 # submódulo ou no ajuste do servidor (03-apps/submodulos/<stack>.bergatrix.yml). As
 # versões das imagens são fixas nos composes: imagem nova chega por commit
-# (PR do Dependabot), nunca sozinha.
+# (PR do Dependabot), nunca sozinha. Exceção: o Tarantec, que o
+# 00-infrastructure/auto-deploy atualiza pelo GHCR.
 set -uo pipefail
 
 RAIZ=$(cd "$(dirname "$0")/.." && pwd)

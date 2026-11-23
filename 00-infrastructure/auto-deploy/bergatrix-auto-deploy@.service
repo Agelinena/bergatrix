@@ -1,0 +1,19 @@
+# Modelo: o instalar.sh troca @DONO@ e @SCRIPT@ e copia para /etc/systemd/system.
+[Unit]
+Description=Bergatrix: atualiza o app %i pela imagem do registro
+After=docker.service network-online.target
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=oneshot
+User=@DONO@
+ExecStart=@SCRIPT@ %i
+TimeoutStartSec=10min
+# Só precisa do Docker (pelo socket) e da pasta do repositório.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true

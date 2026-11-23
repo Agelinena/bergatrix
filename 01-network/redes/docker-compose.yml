@@ -20,6 +20,7 @@ services:
       - bergatrix-media
       - bergatrix-ai
       - bergatrix-drop
+      - bergatrix-tarantec
       - bergatrix-office
       - bergatrix-monitor
       - bergatrix-auth
@@ -46,6 +47,13 @@ networks:
   # nenhum outro serviço: um Drop invadido não alcança mais nada.
   bergatrix-drop:
     name: bergatrix-drop
+    internal: true
+
+  # Só o Traefik e o Tarantec (portfólio, site estático público). Mesmo
+  # isolamento do Drop: sem internet e sem nenhum outro serviço; e separada
+  # dela, para um não alcançar o outro.
+  bergatrix-tarantec:
+    name: bergatrix-tarantec
     internal: true
 
   # Só o Traefik e o Collabora (editor de documentos do Nextcloud). Sem

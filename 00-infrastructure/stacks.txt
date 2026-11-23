@@ -30,6 +30,7 @@
 03-apps/berganews
 03-apps/doberga
 03-apps/drop
+03-apps/tarantec
 03-apps/homeassistant
 03-apps/pricebuddy
 

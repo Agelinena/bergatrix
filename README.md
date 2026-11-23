@@ -31,6 +31,7 @@ Os apps próprios têm repositório próprio e entram aqui como submódulo, e o 
 | **Berganews** | Leitor de notícias (RSS) da família, com tradução e agrupamento por IA local. | [próprio](https://github.com/Agelinena/berganews) |
 | **Doberga** | Utilidades do dia a dia (compras, recorrentes, calendário, notas), offline nos apps. | [próprio](https://github.com/Agelinena/doberga) |
 | **Drop** | Texto e arquivos entre dois navegadores, cifrados de ponta a ponta, sem conta e sem disco. | [próprio](https://github.com/Agelinena/drop) |
+| **Tarantec** | Meu portfólio: site estático com CI/CD (GitHub Actions → GHCR → atualização automática no servidor). | [próprio](https://github.com/Agelinena/tarantec) |
 | **Transcriptor** | Transcrição de áudio e vídeo com Whisper na GPU. | [próprio](https://github.com/Agelinena/transcriptor) |
 | **Legendarr** | Legendas em português: Bazarr, tradução local por IA (Ollama), sincronia, áudio original e otimização de vídeo. | [próprio](https://github.com/Agelinena/legendarr) |
 | **Jellyfin** | Servidor de mídia com *arr, Seerr e login pelo Authentik (Bergafin). | terceiros + Bergafin |

@@ -27,7 +27,7 @@ Se uma stack existente foge de alguma regra, ela está listada em [Dívidas conh
 
 ### Apps com repositório próprio (submódulo)
 
-Os apps próprios estão saindo para um repositório cada (públicos, sem dados deste servidor); o Bergatrix só os agrega como **submódulo git** no mesmo caminho da stack. Hoje: `03-apps/bergastream` ([Agelinena/bergastream](https://github.com/Agelinena/bergastream)), `03-apps/berganews` ([Agelinena/berganews](https://github.com/Agelinena/berganews)), `03-apps/doberga` ([Agelinena/doberga](https://github.com/Agelinena/doberga)), `03-apps/transcriptor` ([Agelinena/transcriptor](https://github.com/Agelinena/transcriptor)), `03-apps/drop` ([Agelinena/drop](https://github.com/Agelinena/drop)) e `03-apps/legendarr` ([Agelinena/legendarr](https://github.com/Agelinena/legendarr)).
+Os apps próprios estão saindo para um repositório cada (públicos, sem dados deste servidor); o Bergatrix só os agrega como **submódulo git** no mesmo caminho da stack. Hoje: `03-apps/bergastream` ([Agelinena/bergastream](https://github.com/Agelinena/bergastream)), `03-apps/berganews` ([Agelinena/berganews](https://github.com/Agelinena/berganews)), `03-apps/doberga` ([Agelinena/doberga](https://github.com/Agelinena/doberga)), `03-apps/transcriptor` ([Agelinena/transcriptor](https://github.com/Agelinena/transcriptor)), `03-apps/drop` ([Agelinena/drop](https://github.com/Agelinena/drop)), `03-apps/legendarr` ([Agelinena/legendarr](https://github.com/Agelinena/legendarr)) e `03-apps/tarantec` ([Agelinena/tarantec](https://github.com/Agelinena/tarantec)).
 
 - O compose do app funciona sozinho. O que é só deste servidor (redes `bergatrix-*`, rótulos do Traefik, rótulo de backup do Bergakup) fica num arquivo do Bergatrix, todos juntos em `03-apps/submodulos/<stack>.bergatrix.yml`.
 - O `.env` da stack no servidor ativa os dois: `COMPOSE_FILE=docker-compose.yml:../submodulos/<stack>.bergatrix.yml`.
@@ -166,6 +166,7 @@ Stacks existentes que ainda não seguem o padrão. Nenhuma delas impede a migra�
 | Stack | Fora do padrão |
 |---|---|
 | jellyfin | `ghcr.io/agelinena/bergafin:latest`: imagem própria, sem versão fixa (o Bergafin-web publica a cada versão do Jellyfin) |
+| tarantec | `ghcr.io/agelinena/tarantec:latest` de propósito: o CI do repositório publica a cada push e o servidor puxa sozinho ([auto-deploy](../00-infrastructure/auto-deploy/README.md)). Para segurar uma versão, `TARANTEC_TAG=sha-<commit>` no `.env` |
 | bergastream | Deemix e Lidarr em `latest`, no compose do repositório do app (que ainda não tem Dependabot) |
 | várias | `container_name` antigos (`bitwarden`, `ollama`, `sonarr`…). Mantidos porque outras stacks os usam como endereço; mudam junto com a revisão de acesso. |
 | homeassistant | Rotas antigas com IPs fixos, bypass e `public-auth`. Saem conforme o [plano de acesso](plano-acesso.md). |

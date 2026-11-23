@@ -4,6 +4,29 @@ Mudanças que precisam de passo manual **uma vez** no servidor (mover pasta, ord
 
 Depois de aplicada e conferida, a migração pode sair deste arquivo (fica no histórico do git).
 
+## Tarantec, o portfólio (nov/2026)
+
+**Conferir se já foi aplicada:** `systemctl list-timers 'bergatrix-auto-deploy@*'` mostra o `tarantec` e `docker ps --filter name=tarantec` mostra o container `healthy`.
+
+App novo com rede nova (`bergatrix-tarantec`), que o Traefik precisa enxergar, e atualização automática pelo GHCR. A imagem precisa estar pública (ou faça `docker login ghcr.io` com um token só de `read:packages`).
+
+```bash
+cd ~/bergatrix
+git pull && git submodule update --init 03-apps/tarantec
+(cd 01-network/redes && docker compose run --rm redes)   # cria a bergatrix-tarantec
+(cd 01-network/traefik && docker compose up -d)          # Traefik entra na rede nova
+cat > 03-apps/tarantec/.env <<'EOF'
+COMPOSE_FILE=docker-compose.yml:../submodulos/tarantec.bergatrix.yml
+DOMAIN=<o mesmo DOMAIN do servidor>
+TARANTEC_TAG=latest
+EOF
+(cd 03-apps/tarantec && docker compose up -d)
+sudo ./00-infrastructure/auto-deploy/instalar.sh tarantec
+(cd 04-monitoring/monitor && docker compose up -d --force-recreate config)   # sondagem do site novo
+```
+
+DNS: `tarantec` no mesmo lugar dos outros subdomínios (o certificado curinga já cobre).
+
 ## Ajustes dos apps em `03-apps/submodulos` (nov/2026)
 
 **Conferir se já foi aplicada:** `grep COMPOSE_FILE ~/bergatrix/03-apps/*/.env` mostra `../submodulos/<app>.bergatrix.yml` em todos.

@@ -28,3 +28,6 @@
 	path = 03-apps/jellyfin/repos/Bergafin-android
 	url = https://github.com/Agelinena/Bergafin-android.git
 	update = none
+[submodule "03-apps/tarantec"]
+	path = 03-apps/tarantec
+	url = https://github.com/Agelinena/tarantec.git
