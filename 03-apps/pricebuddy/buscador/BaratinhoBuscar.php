@@ -213,7 +213,7 @@ class BaratinhoBuscar extends Command
                 break;
             }
 
-            [$ok, $motivo] = $this->avaliar($orig, $c);
+            [$ok, $motivo, $tituloC] = $this->avaliar($orig, $c);
             $this->line(sprintf('  %s %s: %s', $ok ? '+' : '-', $c['loja']->name, $motivo));
             if ($this->getOutput()->isVerbose()) {
                 $this->line('      '.$c['url']);
@@ -222,7 +222,7 @@ class BaratinhoBuscar extends Command
                 continue;
             }
 
-            if ($this->acrescentar($produto, $c['url'])) {
+            if ($this->acrescentar($produto, $c['url'], $orig['titulo'], $tituloC)) {
                 $adicionadas[] = $c['url'];
             }
         }
@@ -259,14 +259,54 @@ class BaratinhoBuscar extends Command
         ];
     }
 
-    /** Acrescenta a URL ao produto (simulando, só finge). */
-    protected function acrescentar(Product $produto, string $url): bool
+    /**
+     * Acrescenta a URL ao produto (simulando, só finge). Kit com outra
+     * quantidade: liga o preço por unidade no produto e grava a quantidade como
+     * fator da URL, para o PriceBuddy comparar o preço de cada unidade.
+     */
+    protected function acrescentar(Product $produto, string $url, string $tituloOrig, string $tituloCand): bool
     {
         if ($this->option('simular')) {
             return true;
         }
+        $qa = Texto::quantidade($tituloOrig);
+        $qb = Texto::quantidade($tituloCand);
+        $fator = 1;
+        if ($qa !== $qb || $produto->unit_of_measure === 'un') {
+            if ($produto->unit_of_measure && $produto->unit_of_measure !== 'un') {
+                // Unidade posta à mão (kg, L...): não mistura com contagem de unidades.
+                $this->line("    fica de fora: o produto usa a unidade \"{$produto->unit_of_measure}\"");
 
-        return (bool) Url::createFromUrl($url, $produto->getKey(), $produto->user_id, false);
+                return false;
+            }
+            $this->usarPrecoPorUnidade($produto, $qa);
+            $fator = $qb;
+        }
+
+        return (bool) Url::createFromUrl($url, $produto->getKey(), $produto->user_id, false, $fator);
+    }
+
+    /**
+     * Liga o preço por unidade ("un") no produto: as URLs que já tem (todas com a
+     * quantidade do original, que é o que o buscador aceitava) ganham esse fator,
+     * e os preços guardados são recalculados.
+     */
+    protected function usarPrecoPorUnidade(Product $produto, int $qa): void
+    {
+        if ($produto->unit_of_measure === 'un') {
+            return;
+        }
+        foreach ($produto->urls as $u) {
+            if (($u->price_factor ?: 1) == 1 && $qa > 1) {
+                $u->price_factor = $qa;
+                $u->save();
+                $u->syncStoredPricesForCurrentFactor();
+            }
+        }
+        $produto->unit_of_measure = 'un';
+        $produto->save();
+        $produto->updatePriceCache();
+        $this->line("    preço por unidade ligado no produto {$produto->getKey()}".($qa > 1 ? " (original: {$qa} unidades)" : ''));
     }
 
     /**
@@ -284,9 +324,10 @@ class BaratinhoBuscar extends Command
             || $produto->urls()->where('store_id', $loja->getKey())->exists()) {
             return;
         }
-        [$ok, $motivo] = $this->avaliar($this->dadosOriginal($produto), ['url' => $url, 'loja' => $loja]);
+        $orig = $this->dadosOriginal($produto);
+        [$ok, $motivo, $tituloC] = $this->avaliar($orig, ['url' => $url, 'loja' => $loja]);
         $this->line(sprintf('  %s %s no produto %d: %s', $ok ? '+' : '-', $loja->name, $produtoId, $motivo));
-        if ($ok && $this->acrescentar($produto, $url) && ! $this->option('simular')) {
+        if ($ok && $this->acrescentar($produto, $url, $orig['titulo'], $tituloC) && ! $this->option('simular')) {
             $this->registrarAdicionada($produto, $url);
         }
     }
@@ -294,7 +335,7 @@ class BaratinhoBuscar extends Command
     /**
      * Lê a candidata com a configuração da loja e compara com o original.
      *
-     * @return array{0: bool, 1: string}
+     * @return array{0: bool, 1: string, 2: string} aceita, motivo e o título da candidata
      */
     protected function avaliar(array $orig, array $c): array
     {
@@ -314,15 +355,15 @@ class BaratinhoBuscar extends Command
 
         [$decisao, $motivo] = Comparador::decidir($orig, $cand);
         if ($decisao !== 'duvida') {
-            return [$decisao === 'sim', $motivo];
+            return [$decisao === 'sim', $motivo, $cand['titulo']];
         }
 
         $ia = $this->ia->mesmoProduto($orig + ['loja' => 'original'], $cand);
         if ($ia === null) {
-            return [false, $motivo.'; sem IA, fica de fora'];
+            return [false, $motivo.'; sem IA, fica de fora', $cand['titulo']];
         }
 
-        return [$ia['mesmo'], sprintf('%s; IA: %s (%s)', $motivo, $ia['mesmo'] ? 'mesmo produto' : 'outro produto', Str::limit($ia['motivo'], 120))];
+        return [$ia['mesmo'], sprintf('%s; IA: %s (%s)', $motivo, $ia['mesmo'] ? 'mesmo produto' : 'outro produto', Str::limit($ia['motivo'], 120)), $cand['titulo']];
     }
 
     /**

@@ -154,11 +154,13 @@ Como decide:
    para classificar (abaixo).
 4. Lê cada candidata com a configuração da loja e compara ([`Comparador.php`](buscador/Baratinho/Comparador.php)):
    - **identificador**: mesmo ISBN ou mesmo EAN, aceita; ISBN ou EAN diferente, recusa;
-   - **recusa certa**: preço fora de 0,3×–3× o do produto (acessório, kit), usado/recondicionado/vitrine, outra
-     quantidade (kit com 2 × unidade), outro número de modelo (RTX **5060** × **5070**; `AFN-40-BI` e `AFN40BI` contam como o mesmo), outra medida (**240** ×
+   - **recusa certa**: preço por unidade fora de 0,3×–3× o do produto (acessório), usado/recondicionado/vitrine,
+     outro número de modelo (RTX **5060** × **5070**; `AFN-40-BI` e `AFN40BI` contam como o mesmo), outra medida (**240** ×
      **480 GB**, **127** × **220 V**; 110 e 127 V contam como iguais);
    - **mesmo código do fabricante** sem conflito, aceita;
    - **título** com 60% das palavras e pelo menos 3 em comum, aceita;
+   - **kit com outra quantidade** do mesmo item ("kit com 2" × unidade, 6 × 12 latas) é o mesmo produto: entra com a
+     quantidade como fator da URL, e o produto passa a usar **preço por unidade** (abaixo);
    - **dúvida** (título parecido, mas não o bastante, ou sem o número do modelo): pergunta à **IA local**. Sem IA,
      fica de fora.
 5. Acrescenta com o mesmo caminho da tela do app (`Url::createFromUrl`).
@@ -166,7 +168,7 @@ Como decide:
 Testado em nov/2026, com a stack inteira e o `gemma3:4b`: o *1984* da Amazon ganhou Companhia das Letras, Martins
 Fontes, Magalu, Mercado Livre, Travessa e KaBuM (as duas últimas pelo ISBN); o SSD A400 240 GB ganhou KaBuM e Magalu,
 e a IA recusou um SSD "240 GB Kingston" sem o modelo. As regras (veredito de página, comparador, quantidade, EAN,
-listagens) têm 64 casos de teste ([`buscador/testes/`](buscador/testes/), `./buscador/testes/rodar.sh`).
+listagens) têm 75 casos de teste ([`buscador/testes/`](buscador/testes/), `./buscador/testes/rodar.sh`).
 
 O que já foi procurado fica na tabela `baratinho_buscas`. Depois de `PRICEBUDDY_BUSCA_REFAZER_DIAS` (30), o produto
 é procurado de novo, para achar lojas novas.
@@ -239,7 +241,37 @@ KingstonStore, Smarteletron, maiscorreios), 4 já entraram no SSD e a Mondial na
 (preço mudando entre as leituras); um site japonês ficou de fora pela moeda; uma loja com a regra de preço quebrada de
 propósito foi desativada no terceiro dia, com a URL tirada do produto.
 
-### Resumo semanal
+### Comparação de preços e ofertas
+
+O PriceBuddy já faz muito disso na página de cada produto: nota da oferta ("Great time to buy"... "Wait"),
+percentis, quedas, comparativo entre lojas e sazonalidade. E os **alertas** também são dele, por produto
+(**Notifications**): preço-alvo, queda em %, qualquer mudança e volta ao estoque. O Baratinho completa:
+
+- **Preço por unidade automático.** Quando o buscador aceita um kit com outra quantidade, o produto passa a usar a
+  unidade "un", cada URL ganha a sua quantidade como fator (as que já existiam, a do original) e os preços guardados
+  são recalculados. O menor preço do produto passa a ser o da unidade mais barata. Produto com unidade posta à mão (kg,
+  L...) não recebe kits.
+- **Desconto de fachada** ([`Ofertas.php`](buscador/Baratinho/Ofertas.php)), pela série diária do menor preço que o
+  PriceBuddy guarda:
+  - **menor preço em 90 dias**: o de hoje é o menor da janela (com 14 dias de histórico ou mais);
+  - **caiu de verdade**: 5% ou mais em 7 dias, abaixo da mediana de 90 dias;
+  - **desconto de fachada**: caiu 5% ou mais em 7 dias, mas continua na mediana de 90 dias ou acima (subiu antes
+    para "cair" depois, o clássico da Black Friday).
+- **E-mail de ofertas para cada pessoa**, com os produtos dela: menor preço em 90 dias, o que caiu de verdade, o que
+  é desconto de fachada e as lojas novas que entraram. A cada `PRICEBUDDY_OFERTAS_DIAS` (7); **1 para receber todo
+  dia** (semana de Black Friday). Quem não tem nada a contar não recebe. Precisa do e-mail ligado em **Settings →
+  Notifications → Email**.
+
+```bash
+docker exec pricebuddy-buscador php artisan baratinho:ofertas                          # prévia de cada pessoa
+docker exec pricebuddy-buscador php artisan baratinho:ofertas --usuario=voce@example.com --enviar   # envia agora
+```
+
+Testado em nov/2026: um SSD com histórico de R$ 300, que subiu para R$ 450 e "caiu" para R$ 330, saiu como desconto de
+fachada ("-27%", mediana R$ 300); uma queda de R$ 200 para R$ 160 saiu como menor preço em 90 dias, -20% na semana; um
+kit com 2 entrou com fator 2 e virou o menor preço por unidade do produto.
+
+### Resumo semanal (admins)
 
 Uma vez por semana, os admins do PriceBuddy recebem por e-mail (o mesmo SMTP de **Settings → Notifications → Email**)
 as lojas criadas, desativadas e recusadas, e quantos sites foram classificados. Sem e-mail ligado no app, não envia.

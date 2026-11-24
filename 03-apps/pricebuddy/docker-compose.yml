@@ -236,6 +236,8 @@ services:
       # testadas por rodada (cada uma, uma vez por dia).
       PRICEBUDDY_LOJAS_NOVAS_POR_RODADA: ${PRICEBUDDY_LOJAS_NOVAS_POR_RODADA:-3}
       PRICEBUDDY_LOJAS_VERIFICAR_POR_RODADA: ${PRICEBUDDY_LOJAS_VERIFICAR_POR_RODADA:-5}
+      # E-mail de ofertas de cada pessoa a cada N dias (1 = diário, para a Black Friday).
+      PRICEBUDDY_OFERTAS_DIAS: ${PRICEBUDDY_OFERTAS_DIAS:-7}
       # IA local (Ollama) pela ponte "ia". Vazio desliga: os casos de dúvida
       # ficam de fora em vez de irem para a IA.
       PRICEBUDDY_IA_URL: ${PRICEBUDDY_IA_URL-http://ia:11434}
@@ -248,6 +250,7 @@ services:
       - ./buscador/BaratinhoDominio.php:/app/app/Console/Commands/BaratinhoDominio.php:ro
       - ./buscador/BaratinhoLojas.php:/app/app/Console/Commands/BaratinhoLojas.php:ro
       - ./buscador/BaratinhoResumo.php:/app/app/Console/Commands/BaratinhoResumo.php:ro
+      - ./buscador/BaratinhoOfertas.php:/app/app/Console/Commands/BaratinhoOfertas.php:ro
     healthcheck:
       test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://localhost:8081/saude"]
       interval: 30s

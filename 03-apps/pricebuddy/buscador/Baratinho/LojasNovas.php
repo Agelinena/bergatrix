@@ -202,8 +202,13 @@ class LojasNovas
      */
     public static function nome(Pagina $p, string $host): string
     {
+        // Pula subdomínios genéricos: secure.livrariaunesp.com.br → livrariaunesp.
         $partes = explode('.', Listas::normalizarHost($host));
-        $rotulo = $partes[0] === 'loja' && isset($partes[1]) ? $partes[1] : $partes[0];
+        $genericos = ['loja', 'lojas', 'secure', 'seguro', 'shop', 'store', 'm', 'mobile', 'compra', 'compras', 'checkout', 'app', 'site', 'br'];
+        while (count($partes) > 2 && in_array($partes[0], $genericos, true)) {
+            array_shift($partes);
+        }
+        $rotulo = $partes[0];
         $compacto = fn (string $s) => preg_replace('/[^a-z0-9]/', '', strtolower(Str::ascii($s)));
 
         $nome = trim((string) $p->meta('og:site_name'));

@@ -105,7 +105,7 @@ class Ia
     {
         $prompt = "Os dois anúncios abaixo, de lojas diferentes, vendem exatamente o mesmo produto?\n"
             ."Responda mesmo=true só se for o mesmo item: mesmo fabricante, modelo, versão, capacidade, tamanho, voltagem e quantidade.\n"
-            ."Cor diferente conta como o mesmo produto. Kit com outra quantidade, acessório, peça de reposição, outra edição de livro, usado ou recondicionado: mesmo=false.\n"
+            ."Cor diferente conta como o mesmo produto, e kit com outra quantidade do MESMO item também (o preço é comparado por unidade). Acessório, peça de reposição, outra edição de livro, usado ou recondicionado: mesmo=false.\n"
             ."Na dúvida, mesmo=false.\n\n"
             .'A: '.json_encode($this->resumoAnuncio($a), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)."\n"
             .'B: '.json_encode($this->resumoAnuncio($b), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);

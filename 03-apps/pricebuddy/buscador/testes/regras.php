@@ -54,7 +54,12 @@ $o = ['titulo' => 'SSD Kingston A400 240GB SATA', 'preco' => 189.9, 'gtins' => [
 $c = fn($t, $p, $x = []) => array_merge(['titulo' => $t, 'preco' => $p, 'loja' => 'Loja', 'gtins' => [], 'mpn' => null], $x);
 eq('cmp igual', Comparador::decidir($o, $c('SSD 240 GB Kingston A400, SATA III', 199))[0], 'sim');
 eq('cmp 480', Comparador::decidir($o, $c('SSD Kingston A400 480GB SATA', 299))[0], 'nao');
-eq('cmp kit 2', Comparador::decidir($o, $c('Kit 2 SSD Kingston A400 240GB', 379))[0], 'nao');
+// Kit com outra quantidade: mesmo produto, comparado por unidade.
+eq('cmp kit 2 por unidade', Comparador::decidir($o, $c('Kit 2 SSD Kingston A400 240GB SATA', 379))[0], 'sim');
+eq('cmp kit 2 motivo', str_contains(Comparador::decidir($o, $c('Kit 2 SSD Kingston A400 240GB SATA', 379))[1], '1 x 2 unidades'), true);
+eq('cmp kit caro por unidade', Comparador::decidir($o, $c('Kit 2 SSD Kingston A400 240GB SATA', 1300))[0], 'nao');
+eq('cmp 6 x 12 latas', Comparador::decidir(['titulo' => 'Cerveja Heineken Lata 350ml 12 unidades', 'preco' => 60], $c('Cerveja Heineken Lata 350ml 6 unidades', 31))[0], 'sim');
+eq('cmp lata x long neck', Comparador::decidir(['titulo' => 'Cerveja Heineken Lata 350ml 12 unidades', 'preco' => 60], $c('Cerveja Heineken Long Neck 330ml 12 unidades', 70))[0], 'nao');
 eq('cmp usado', Comparador::decidir($o, $c('SSD Kingston A400 240GB usado', 120, ['nao_novo' => true]))[0], 'nao');
 eq('cmp ean igual', Comparador::decidir(array_merge($o, ['gtins' => ['1']]), $c('Qualquer coisa', 190, ['gtins' => ['1']]))[0], 'sim');
 eq('cmp ean diferente', Comparador::decidir(array_merge($o, ['gtins' => ['1']]), $c('SSD Kingston A400 240GB', 190, ['gtins' => ['2']]))[0], 'nao');
@@ -76,8 +81,34 @@ eq('nome og:site_name', App\Baratinho\LojasNovas::nome($pg('SSD | Loja', 'Lognet
 eq('nome fim do título', App\Baratinho\LojasNovas::nome($pg('SSD 240GB KINGSTON | Medina Distribuidora'), 'medinadistribuidora.com.br'), 'Medina Distribuidora');
 eq('nome fim do título curto', App\Baratinho\LojasNovas::nome($pg('Memória SSD Kingston 240GB | Microtec'), 'www.microtecpapelaria.com.br'), 'Microtec');
 eq('nome sem relação', App\Baratinho\LojasNovas::nome($pg('SSD 240GB - Kingston'), 'zema.com'), 'Zema');
+eq('nome subdomínio genérico', App\Baratinho\LojasNovas::nome($pg('Livro X'), 'secure.livrariaunesp.com.br'), 'Livrariaunesp');
+eq('nome subdomínio genérico com título', App\Baratinho\LojasNovas::nome($pg('Livro X | Livraria Unesp'), 'secure.livrariaunesp.com.br'), 'Livraria Unesp');
 eq('nome loja.x', App\Baratinho\LojasNovas::nome($pg('Produto'), 'loja.exemplo.com.br'), 'Exemplo');
 eq('texto com UTF-8 inválido', is_string((new Pagina('u', "<p>caf\xe9 R\$ 10</p>"))->texto()), true);
+
+// Ofertas: série diária do menor preço.
+use App\Baratinho\Ofertas;
+$hoje = Illuminate\Support\Carbon::parse('2026-11-27');
+$serie = function (array $trechos) use ($hoje) {
+    // [[dias atrás (início), dias atrás (fim), preço], ...]
+    $s = [];
+    foreach ($trechos as [$de, $ate, $p]) {
+        for ($d = $de; $d >= $ate; $d--) {
+            $s[$hoje->copy()->subDays($d)->format('Y-m-d')] = $p;
+        }
+    }
+    return $s;
+};
+$fach = Ofertas::analisarSerie($serie([[80, 15, 100], [14, 7, 150], [6, 0, 110]]), $hoje);
+eq('ofertas: fachada (subiu e "caiu")', [$fach['fachada'], $fach['caiu'], $fach['minimo']], [true, false, false]);
+$real = Ofertas::analisarSerie($serie([[80, 7, 100], [6, 0, 85]]), $hoje);
+eq('ofertas: queda de verdade e mínimo', [$real['fachada'], $real['caiu'], $real['minimo']], [false, true, true]);
+$novo = Ofertas::analisarSerie($serie([[6, 0, 100]]), $hoje);
+eq('ofertas: histórico curto não é mínimo', [$novo['minimo'], $novo['caiu']], [false, false]);
+$estavel = Ofertas::analisarSerie($serie([[60, 0, 100]]), $hoje);
+eq('ofertas: preço parado não é mínimo', $estavel['minimo'], false);
+$antigo = Ofertas::analisarSerie($serie([[200, 120, 50], [100, 0, 100]]), $hoje);
+eq('ofertas: janela de 90 dias', $antigo['min90'], 100.0);
 
 echo $falhas ? "\n$falhas falha(s)\n" : "\ntudo certo\n";
 exit($falhas ? 1 : 0);

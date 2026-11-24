@@ -3,7 +3,8 @@
 #   - filtro da pesquisa do app (filtro.php) em http://buscador:8081/search,
 #     reiniciado se cair;
 #   - laço do buscador: uma rodada a cada PRICEBUDDY_BUSCA_INTERVALO segundos,
-#     e o resumo por e-mail quando fizer uma semana do último.
+#     o resumo dos admins (semanal) e o e-mail de ofertas de cada pessoa
+#     (a cada PRICEBUDDY_OFERTAS_DIAS) por e-mail.
 # O depends_on espera o app ficar saudável (migrações feitas) antes de começar.
 cd /app || exit 1
 
@@ -21,5 +22,6 @@ cd /app || exit 1
 while true; do
   php artisan baratinho:buscar || echo "buscador: rodada terminou com erro"
   php artisan baratinho:resumo --se-for-hora || echo "buscador: resumo terminou com erro"
+  php artisan baratinho:ofertas --se-for-hora || echo "buscador: ofertas terminou com erro"
   sleep "${PRICEBUDDY_BUSCA_INTERVALO:-600}"
 done
