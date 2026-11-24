@@ -75,6 +75,9 @@ eq('códigos RTX 5060', Texto::codigos('Placa de Vídeo RTX 5060 8GB'), ['rtx506
 eq('cmp código junto', Comparador::decidir(['titulo' => 'MONDIAL Fritadeira Sem Óleo Air Fryer 4L, Preto/Inox, 1500W, 110V - AFN-40-BI', 'preco' => 239], $c('Fritadeira Elétrica Sem Óleo Air Fryer Mondial AFN40BI Family Inox 4L - Preta/Inox', 311))[0], 'sim');
 eq('cmp código diferente', Comparador::decidir(['titulo' => 'Placa de Vídeo RTX 5060 8GB Gigabyte', 'preco' => 2000], $c('Placa de Vídeo RTX 5070 12GB Gigabyte', 2900))[0], 'nao');
 
+eq('bloqueio: Amazon continuar comprando', (new Pagina('u', '<html><title>Amazon.com.br</title><form action="/errors/validateCaptcha"><button>Continuar comprando</button></form></html>'))->bloqueio(), 'validateCaptcha');
+eq('bloqueio: página normal com carrinho', (new Pagina('u', '<html><title>Produto X</title>'.str_repeat('<p>Descrição longa do produto com detalhes.</p>', 40).'<div>Produto adicionado! Continuar comprando</div></html>'))->bloqueio(), null);
+
 // Nome automático de loja nova.
 $pg = fn ($t, $site = '') => new Pagina('u', '<html><head><title>'.$t.'</title>'.($site ? '<meta property="og:site_name" content="'.$site.'">' : '').'</head></html>');
 eq('nome og:site_name', App\Baratinho\LojasNovas::nome($pg('SSD | Loja', 'Lognet Informática'), 'lognetinfo.com.br'), 'Lognet Informática');

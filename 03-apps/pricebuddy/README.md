@@ -149,7 +149,8 @@ Como decide:
 2. Procura no **SearXNG** pelo ISBN (ou EAN) e pelo título, e também **dentro das lojas com mais chance** de ter o
    produto (`site:kabum.com.br <título>`): as que já vendem produtos de títulos parecidos
    (`PRICEBUDDY_BUSCA_SITE_LOJAS`, 4).
-3. Fica com **páginas de produto** de lojas cadastradas que o produto ainda não tem. Saem: listagens (busca,
+3. Fica com **páginas de produto** de lojas cadastradas que o produto ainda não tem, até 3 anúncios por loja (o
+   primeiro pode ser outra cor sem estoque ou uma página sem preço). Saem: listagens (busca,
    categoria, página inicial), arquivos (PDF...) e URLs que você tirou do produto. Sites desconhecidos ficam anotados
    para classificar (abaixo).
 4. Lê cada candidata com a configuração da loja e compara ([`Comparador.php`](buscador/Baratinho/Comparador.php)):
@@ -165,10 +166,13 @@ Como decide:
      fica de fora.
 5. Acrescenta com o mesmo caminho da tela do app (`Url::createFromUrl`).
 
+Se uma loja pede verificação de robô (a tela "Continuar comprando" da Amazon, a verificação do Mercado Livre), o
+buscador não insiste nem tenta passar por ela: o produto volta para a fila em ~1 dia, em vez de 30.
+
 Testado em nov/2026, com a stack inteira e o `gemma3:4b`: o *1984* da Amazon ganhou Companhia das Letras, Martins
 Fontes, Magalu, Mercado Livre, Travessa e KaBuM (as duas últimas pelo ISBN); o SSD A400 240 GB ganhou KaBuM e Magalu,
 e a IA recusou um SSD "240 GB Kingston" sem o modelo. As regras (veredito de página, comparador, quantidade, EAN,
-listagens) têm 75 casos de teste ([`buscador/testes/`](buscador/testes/), `./buscador/testes/rodar.sh`).
+listagens) têm 77 casos de teste ([`buscador/testes/`](buscador/testes/), `./buscador/testes/rodar.sh`).
 
 O que já foi procurado fica na tabela `baratinho_buscas`. Depois de `PRICEBUDDY_BUSCA_REFAZER_DIAS` (30), o produto
 é procurado de novo, para achar lojas novas.

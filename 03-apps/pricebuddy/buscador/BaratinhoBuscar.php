@@ -61,6 +61,9 @@ class BaratinhoBuscar extends Command
 
     protected const TABELA = 'baratinho_buscas';
 
+    /** Anúncios tentados por loja, até um bater. */
+    protected const ANUNCIOS_POR_LOJA = 3;
+
     protected const SEARXNG = 'http://searxng:8080/search';
 
     /** Endereço do filtro da pesquisa do app (buscador/filtro.php), que esconde o que não é loja. */
@@ -186,10 +189,15 @@ class BaratinhoBuscar extends Command
 
                     continue;
                 }
-                if (in_array($loja->getKey(), $jaTem) || in_array($loja->getKey(), $fora) || isset($candidatos[$loja->getKey()])) {
+                if (in_array($loja->getKey(), $jaTem) || in_array($loja->getKey(), $fora)) {
                     continue;
                 }
-                $candidatos[$loja->getKey()] = ['url' => $url, 'loja' => $loja];
+                // Até 3 anúncios por loja: o primeiro pode ser outra cor sem
+                // estoque, outra versão ou página sem preço.
+                $candidatos[$loja->getKey()] ??= ['loja' => $loja, 'urls' => []];
+                if (count($candidatos[$loja->getKey()]['urls']) < self::ANUNCIOS_POR_LOJA && ! in_array($url, $candidatos[$loja->getKey()]['urls'], true)) {
+                    $candidatos[$loja->getKey()]['urls'][] = $url;
+                }
             }
         }
 
@@ -202,36 +210,49 @@ class BaratinhoBuscar extends Command
             if (! $lojas->contains(fn (Store $s) => $s->is($loja))) {
                 $lojas->push($loja);
             }
-            $candidatos[$loja->getKey()] = ['url' => $url, 'loja' => $loja];
+            $candidatos[$loja->getKey()] = ['loja' => $loja, 'urls' => [$url]];
         }
 
         $max = (int) env('PRICEBUDDY_BUSCA_MAX_LOJAS', 8);
         $adicionadas = [];
 
+        $bloqueadas = [];
         foreach (array_slice($candidatos, 0, max(1, $max * 2), true) as $c) {
             if (count($adicionadas) >= $max) {
                 break;
             }
-
-            [$ok, $motivo, $tituloC] = $this->avaliar($orig, $c);
-            $this->line(sprintf('  %s %s: %s', $ok ? '+' : '-', $c['loja']->name, $motivo));
-            if ($this->getOutput()->isVerbose()) {
-                $this->line('      '.$c['url']);
-            }
-            if (! $ok) {
-                continue;
-            }
-
-            if ($this->acrescentar($produto, $c['url'], $orig['titulo'], $tituloC)) {
-                $adicionadas[] = $c['url'];
+            foreach ($c['urls'] as $url) {
+                [$ok, $motivo, $tituloC, $bloqueio] = $this->avaliar($orig, ['url' => $url, 'loja' => $c['loja']]);
+                $this->line(sprintf('  %s %s: %s', $ok ? '+' : '-', $c['loja']->name, $motivo));
+                if ($this->getOutput()->isVerbose()) {
+                    $this->line('      '.$url);
+                }
+                if ($bloqueio) {
+                    // A loja pediu verificação de robô: não insiste agora.
+                    $bloqueadas[] = $c['loja']->name;
+                    break;
+                }
+                if ($ok) {
+                    if ($this->acrescentar($produto, $url, $orig['titulo'], $tituloC)) {
+                        $adicionadas[] = $url;
+                    }
+                    break;
+                }
             }
         }
 
-        $resumo = sprintf('%d consulta(s), %d candidata(s), %d acrescentada(s), %d site(s) novo(s) anotado(s)', count($consultas), count($candidatos), count($adicionadas), $desconhecidos);
+        $resumo = sprintf('%d consulta(s), %d loja(s) candidata(s), %d acrescentada(s), %d site(s) novo(s) anotado(s)', count($consultas), count($candidatos), count($adicionadas), $desconhecidos)
+            .($bloqueadas ? '; bloqueio em '.implode(', ', $bloqueadas).', procura de novo amanhã' : '');
         $this->line('  '.$resumo);
 
         if (! $this->option('simular')) {
             $this->registrar($produto, implode(' | ', $consultas), $isbn, $adicionadas, $resumo);
+            if ($bloqueadas) {
+                // Volta para a fila em ~1 dia, em vez de esperar REFAZER_DIAS.
+                $dias = max(1, (int) env('PRICEBUDDY_BUSCA_REFAZER_DIAS', 30));
+                DB::table(self::TABELA)->where('product_id', $produto->getKey())
+                    ->update(['buscado_em' => now()->subDays(max(0, $dias - 1))]);
+            }
         }
     }
 
@@ -326,6 +347,7 @@ class BaratinhoBuscar extends Command
         }
         $orig = $this->dadosOriginal($produto);
         [$ok, $motivo, $tituloC] = $this->avaliar($orig, ['url' => $url, 'loja' => $loja]);
+        // (bloqueio aqui: a loja nova é testada de novo quando o produto for procurado.)
         $this->line(sprintf('  %s %s no produto %d: %s', $ok ? '+' : '-', $loja->name, $produtoId, $motivo));
         if ($ok && $this->acrescentar($produto, $url, $orig['titulo'], $tituloC) && ! $this->option('simular')) {
             $this->registrarAdicionada($produto, $url);
@@ -335,13 +357,16 @@ class BaratinhoBuscar extends Command
     /**
      * Lê a candidata com a configuração da loja e compara com o original.
      *
-     * @return array{0: bool, 1: string, 2: string} aceita, motivo e o título da candidata
+     * @return array{0: bool, 1: string, 2: string, 3: bool} aceita, motivo, título da candidata e se a loja bloqueou
      */
     protected function avaliar(array $orig, array $c): array
     {
         $r = ScrapeUrl::new($c['url'])->setMaxAttempts(1)->scrape(['store' => $c['loja'], 'use_cache' => false]);
         $corpo = (string) ($r['body'] ?? '');
         $pagina = new Pagina($c['url'], $corpo);
+        if (($bloqueio = $pagina->bloqueio()) && ! Texto::numero($r['price'] ?? null)) {
+            return [false, "a loja pediu verificação de robô ({$bloqueio})", '', true];
+        }
         $cand = [
             'loja' => (string) $c['loja']->name,
             'titulo' => trim((string) ($r['title'] ?? '')) ?: $pagina->titulo(),
@@ -355,15 +380,15 @@ class BaratinhoBuscar extends Command
 
         [$decisao, $motivo] = Comparador::decidir($orig, $cand);
         if ($decisao !== 'duvida') {
-            return [$decisao === 'sim', $motivo, $cand['titulo']];
+            return [$decisao === 'sim', $motivo, $cand['titulo'], false];
         }
 
         $ia = $this->ia->mesmoProduto($orig + ['loja' => 'original'], $cand);
         if ($ia === null) {
-            return [false, $motivo.'; sem IA, fica de fora', $cand['titulo']];
+            return [false, $motivo.'; sem IA, fica de fora', $cand['titulo'], false];
         }
 
-        return [$ia['mesmo'], sprintf('%s; IA: %s (%s)', $motivo, $ia['mesmo'] ? 'mesmo produto' : 'outro produto', Str::limit($ia['motivo'], 120)), $cand['titulo']];
+        return [$ia['mesmo'], sprintf('%s; IA: %s (%s)', $motivo, $ia['mesmo'] ? 'mesmo produto' : 'outro produto', Str::limit($ia['motivo'], 120)), $cand['titulo'], false];
     }
 
     /**
