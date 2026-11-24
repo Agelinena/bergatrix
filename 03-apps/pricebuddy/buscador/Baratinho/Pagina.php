@@ -131,6 +131,23 @@ class Pagina
      */
     public function bloqueio(): ?string
     {
+        if ($robo = $this->verificacaoDeRobo()) {
+            return $robo;
+        }
+        $alvo = $this->titulo().' '.Str::limit($this->texto(600), 600, '');
+        if (preg_match('/(404 not found|p[áa]gina n[ãa]o encontrada|page not found)/iu', $alvo, $m)) {
+            return $m[1];
+        }
+
+        return strlen(trim($this->texto(200))) < 40 && ! $this->produto() ? 'página quase vazia' : null;
+    }
+
+    /**
+     * Só a verificação de robô (o site desconfiou do acesso), sem os erros de
+     * página: é o que põe o site em pausa no ritmo.
+     */
+    public function verificacaoDeRobo(): ?string
+    {
         // Verificação que só aparece no HTML, em página pequena (a página de
         // produto de verdade tem centenas de KB): Amazon ("Continuar comprando")
         // e Mercado Livre (account-verification).
@@ -140,11 +157,11 @@ class Pagina
             }
         }
         $alvo = $this->titulo().' '.Str::limit($this->texto(600), 600, '');
-        if (preg_match('/(just a moment|attention required|access denied|acesso negado|checking your browser|verifica[çc][ãa]o de seguran[çc]a|are you a (robot|human)|n[ãa]o sou um rob[ôo]|captcha|ddos-guard|cf-chl|request blocked|403 forbidden|404 not found|p[áa]gina n[ãa]o encontrada|page not found|tr[áa]fego suspeito|unusual traffic)/iu', $alvo, $m)) {
+        if (preg_match('/(just a moment|attention required|access denied|acesso negado|checking your browser|verifica[çc][ãa]o de seguran[çc]a|are you a (robot|human)|n[ãa]o sou um rob[ôo]|captcha|ddos-guard|cf-chl|request blocked|403 forbidden|tr[áa]fego suspeito|unusual traffic)/iu', $alvo, $m)) {
             return $m[1];
         }
 
-        return strlen(trim($this->texto(200))) < 40 && ! $this->produto() ? 'página quase vazia' : null;
+        return null;
     }
 
     /** Sinais de notícia, artigo, blog ou análise. */

@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Baratinho\Dominios;
 use App\Baratinho\Ia;
 use App\Baratinho\LojasNovas;
+use App\Baratinho\Saude;
 use App\Enums\Role;
 use App\Models\Store;
 use App\Models\User;
@@ -118,6 +119,17 @@ class BaratinhoResumo extends Command
                 $l[] = '  ? '.$r->host.': '.$r->motivo;
             }
             $l[] = '';
+        }
+
+        if (Schema::hasTable(Saude::TABELA)) {
+            $quebradas = DB::table(Saude::TABELA)->where('ok', false)->get();
+            if ($quebradas->isNotEmpty()) {
+                $l[] = 'LOJAS COM PROBLEMA ('.$quebradas->count().') - o teste semanal não achou preço; a regra pode ter quebrado (Stores → loja → testar)';
+                foreach ($quebradas as $q) {
+                    $l[] = '  ! '.($nomes[$q->store_id] ?? "loja {$q->store_id}").': '.$q->motivo.($q->falhas > 1 ? " ({$q->falhas} semanas seguidas)" : '').' - '.$q->url;
+                }
+                $l[] = '';
+            }
         }
 
         $sites = DB::table(Dominios::TABELA)->where('decidido_em', '>=', $desde)

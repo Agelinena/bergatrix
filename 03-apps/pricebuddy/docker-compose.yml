@@ -238,6 +238,16 @@ services:
       PRICEBUDDY_LOJAS_VERIFICAR_POR_RODADA: ${PRICEBUDDY_LOJAS_VERIFICAR_POR_RODADA:-5}
       # E-mail de ofertas de cada pessoa a cada N dias (1 = diário, para a Black Friday).
       PRICEBUDDY_OFERTAS_DIAS: ${PRICEBUDDY_OFERTAS_DIAS:-7}
+      # Ritmo por site (buscador/Baratinho/Ritmo.php): intervalo entre acessos ao
+      # mesmo site, teto por dia e pausa depois de uma verificação de robô.
+      PRICEBUDDY_RITMO_SEGUNDOS: ${PRICEBUDDY_RITMO_SEGUNDOS:-20}
+      PRICEBUDDY_RITMO_TETO_DIA: ${PRICEBUDDY_RITMO_TETO_DIA:-150}
+      PRICEBUDDY_RITMO_PAUSA_HORAS: ${PRICEBUDDY_RITMO_PAUSA_HORAS:-6}
+      # Lojas testadas por rodada (cada uma, uma vez por semana).
+      PRICEBUDDY_SAUDE_POR_RODADA: ${PRICEBUDDY_SAUDE_POR_RODADA:-3}
+      # Conserto de lojas pela IA do PriceBuddy: modelo com tool calling no
+      # Ollama (o gemma3 não tem). Vazio: desligado.
+      PRICEBUDDY_IA_CONSERTO_MODELO: ${PRICEBUDDY_IA_CONSERTO_MODELO:-}
       # IA local (Ollama) pela ponte "ia". Vazio desliga: os casos de dúvida
       # ficam de fora em vez de irem para a IA.
       PRICEBUDDY_IA_URL: ${PRICEBUDDY_IA_URL-http://ia:11434}

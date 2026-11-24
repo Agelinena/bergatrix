@@ -40,6 +40,8 @@ class LojasNovas
 
     protected int $criadas = 0;
 
+    protected int $salvas = 0;
+
     protected int $porRodada;
 
     /** @var callable(string): void */
@@ -67,6 +69,12 @@ class LojasNovas
             $t->timestamp('verificada_em')->nullable();
             $t->timestamp('atualizado_em')->nullable();
         });
+    }
+
+    /** Lojas criadas nesta rodada. */
+    public function salvas(): int
+    {
+        return $this->salvas;
     }
 
     public function ligada(): bool
@@ -164,6 +172,7 @@ class LojasNovas
         if (! $loja) {
             return $this->recusar($host, $url, 'o PriceBuddy recusou salvar a loja');
         }
+        $this->salvas++;
 
         DB::table(self::TABELA)->updateOrInsert(['host' => $host], [
             'store_id' => $loja->getKey(), 'status' => 'ativa', 'motivo' => sprintf('R$ %.2f na validação', $preco),
@@ -181,7 +190,7 @@ class LojasNovas
         $precos = [];
         for ($i = 0; $i < 2; $i++) {
             try {
-                $r = ScrapeUrl::new($url)->setMaxAttempts(1)->scrape(['store' => $loja, 'use_cache' => false]);
+                $r = Rede::ler($url, $loja);
             } catch (Throwable) {
                 return null;
             }
@@ -261,7 +270,12 @@ class LojasNovas
             $ok = false;
             foreach ($urls as $u) {
                 try {
-                    $r = ScrapeUrl::new($u)->setMaxAttempts(1)->scrape(['store' => $loja, 'use_cache' => false]);
+                    $r = Rede::ler($u, $loja);
+                    if (isset($r['ritmo']) || isset($r['bloqueio'])) {
+                        // Não é falha da loja: o site está em pausa ou pediu verificação.
+                        $ok = null;
+                        break;
+                    }
                     if (Texto::numero($r['price'] ?? null)) {
                         $ok = true;
                         break;
@@ -271,6 +285,9 @@ class LojasNovas
                 }
             }
 
+            if ($ok === null) {
+                continue;
+            }
             if ($ok) {
                 DB::table(self::TABELA)->where('host', $l->host)->update(['falhas' => 0, 'verificada_em' => now()]);
 

@@ -275,10 +275,54 @@ Testado em nov/2026: um SSD com histórico de R$ 300, que subiu para R$ 450 e "c
 fachada ("-27%", mediana R$ 300); uma queda de R$ 200 para R$ 160 saiu como menor preço em 90 dias, -20% na semana; um
 kit com 2 entrou com fator 2 e virou o menor preço por unidade do produto.
 
+### Ritmo por site (menos bloqueio de robô)
+
+O que faz uma loja pedir verificação de robô é uma rajada de acessos. O buscador acessa cada site no máximo a cada
+`PRICEBUDDY_RITMO_SEGUNDOS` (20), até `PRICEBUDDY_RITMO_TETO_DIA` (150) vezes por dia, e um site que pediu verificação
+fica em pausa por `PRICEBUDDY_RITMO_PAUSA_HORAS` (6) ([`Ritmo.php`](buscador/Baratinho/Ritmo.php), tabela
+`baratinho_ritmo`). Vale para tudo o que o buscador lê (busca, lojas novas, testes); a atualização de preços do
+próprio PriceBuddy segue o agendamento dele.
+
+O buscador **não tenta passar** por verificação de robô (captcha, "Continuar comprando", desafio do Cloudflare):
+espera e tenta de novo depois. Para uma loja que bloqueia muito, o caminho é usar a **sua** sessão, como no Mercado
+Livre: `./lojas/cookies-loja.sh ~/cookies.txt 'Amazon Brasil' amazon.com.br`.
+
+### Saúde das lojas e conserto por IA
+
+Toda loja cadastrada (as automáticas têm o teste diário delas) é testada **uma vez por semana** com a URL de teste
+dela ou a URL mais recente de um produto ([`Saude.php`](buscador/Baratinho/Saude.php), `PRICEBUDDY_SAUDE_POR_RODADA`,
+3). Sem preço = a regra pode ter quebrado (o site mudou): a loja aparece no resumo dos admins e no painel do Grafana.
+Loja sem produto e sem URL de teste não tem o que testar.
+
+**Conserto automático** (opcional): o PriceBuddy tem um agente de IA que, quando uma loja deixa de achar o preço, lê a
+página, testa seletores e troca a regra. Ele precisa de um modelo com *tool calling* no Ollama, e o `gemma3:4b` não
+tem. Para ligar:
+
+```bash
+docker exec ollama ollama pull qwen3:4b
+# no .env: PRICEBUDDY_IA_CONSERTO_MODELO=qwen3:4b
+docker compose up -d buscador
+```
+
+O buscador cadastra o provedor "Ollama (Baratinho)" nas configurações de IA do app (pela ponte `ia`) só para o
+conserto; a extração por IA a cada leitura fica desligada, para não pesar a GPU. O modelo só é carregado quando uma
+loja quebra, mas tira o do Berganews da GPU naquela hora (ela carrega um modelo por vez). Esvaziar a variável desliga.
+
+### Painel no Grafana
+
+O painel **Baratinho** da stack Monitor mostra lojas acrescentadas, lojas novas, bloqueios por loja, perguntas à IA,
+sites classificados e lojas com problema. Ele lê a linha que o buscador imprime a cada rodada:
+
+```
+baratinho_rodada produtos=2 acrescentadas=5 lojas_novas=1 bloqueios=0 ia=4 sites=5 lojas_quebradas=0
+```
+
+Mudou o formato dessa linha? Mude também o painel (`04-monitoring/monitor/dashboards/gerar.ts`).
+
 ### Resumo semanal (admins)
 
 Uma vez por semana, os admins do PriceBuddy recebem por e-mail (o mesmo SMTP de **Settings → Notifications → Email**)
-as lojas criadas, desativadas e recusadas, e quantos sites foram classificados. Sem e-mail ligado no app, não envia.
+as lojas criadas, desativadas e recusadas, as lojas com a regra quebrada e quantos sites foram classificados. Sem e-mail ligado no app, não envia.
 
 ```bash
 docker exec pricebuddy-buscador php artisan baratinho:resumo            # mostra, sem enviar

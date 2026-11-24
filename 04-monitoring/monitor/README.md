@@ -37,6 +37,7 @@ Ficam na pasta **Bergatrix** do Grafana. A *Visão geral* abre como página inic
 | **VPS e túnel** | Handshake e tráfego do WireGuard, latência casa ↔ SP, nftables (bloqueio geográfico), CAKE, HAProxy e tentativas de SSH |
 | **Logs** | Busca nos logs de tudo, por máquina, origem e container |
 | **Acessos** | Quem acessa os apps pelo Traefik: IP, país, cidade, operadora, app, erros, caminhos procurados e User-Agent. Clique num IP para ver só ele, ou abra a reputação dele no AbuseIPDB |
+| **Baratinho** | Buscador do PriceBuddy: lojas acrescentadas aos produtos, lojas novas, bloqueios por loja, perguntas à IA, sites classificados e lojas com a regra quebrada (pela linha `baratinho_rodada` do log do buscador) |
 
 ## Alertas
 

@@ -2,6 +2,8 @@
 
 namespace App\Baratinho;
 
+use App\Models\Store;
+use App\Services\ScrapeUrl;
 use Illuminate\Support\Facades\Http;
 use Throwable;
 
@@ -16,8 +18,11 @@ class Rede
      *
      * @return array{0: string, 1: string} HTML e o serviço que funcionou ('http' ou 'api')
      */
-    public static function baixar(string $url, bool $navegador = false): array
+    public static function baixar(string $url, bool $navegador = false, bool $comRitmo = true): array
     {
+        if ($comRitmo && ($motivo = Ritmo::licenca($url))) {
+            throw new \RuntimeException('ritmo: '.$motivo);
+        }
         if (! $navegador) {
             $proxy = env('HTTPS_PROXY');
             try {
@@ -56,7 +61,8 @@ class Rede
         $p = new Pagina($url, $html);
         if ($servico === 'http' && ($p->bloqueio() || ! $p->sinaisDeLoja())) {
             try {
-                [$html2] = self::baixar($url, true);
+                // Mesma página logo em seguida, pelo navegador: sem esperar o intervalo de novo.
+                [$html2] = self::baixar($url, true, false);
                 $p2 = new Pagina($url, $html2);
                 if (! $p2->bloqueio() && (count($p2->sinaisDeLoja()) > count($p->sinaisDeLoja()) || $p->bloqueio())) {
                     return [$p2, 'api'];
@@ -67,5 +73,26 @@ class Rede
         }
 
         return [$p, $servico];
+    }
+
+    /**
+     * Lê um produto com a configuração da loja (ScrapeUrl do PriceBuddy), dentro
+     * do ritmo por site. Se o site estiver em pausa ou no teto, não acessa e
+     * devolve ['ritmo' => motivo]. Se a página vier de verificação de robô, põe
+     * o site em pausa e devolve também ['bloqueio' => sinal].
+     */
+    public static function ler(string $url, ?Store $loja = null, bool $cache = false): array
+    {
+        if ($motivo = Ritmo::licenca($url)) {
+            return ['ritmo' => $motivo];
+        }
+        $opcoes = ['use_cache' => $cache] + ($loja ? ['store' => $loja] : []);
+        $r = ScrapeUrl::new($url)->setMaxAttempts(1)->scrape($opcoes);
+        if (! Texto::numero($r['price'] ?? null) && ($b = (new Pagina($url, (string) ($r['body'] ?? '')))->verificacaoDeRobo())) {
+            Ritmo::bloqueou($url);
+            $r['bloqueio'] = $b;
+        }
+
+        return $r;
     }
 }

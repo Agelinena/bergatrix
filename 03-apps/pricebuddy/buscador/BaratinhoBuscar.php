@@ -10,6 +10,8 @@ use App\Baratinho\Listas;
 use App\Baratinho\LojasNovas;
 use App\Baratinho\Pagina;
 use App\Baratinho\Rede;
+use App\Baratinho\Ritmo;
+use App\Baratinho\Saude;
 use App\Baratinho\Texto;
 use App\Models\Product;
 use App\Models\Store;
@@ -76,22 +78,35 @@ class BaratinhoBuscar extends Command
     /** @var array<int, array> Dados do original por produto, nesta rodada. */
     protected array $originais = [];
 
+    /** Números da rodada, para a linha baratinho_rodada (painel do Grafana). */
+    protected array $contagem = ['produtos' => 0, 'acrescentadas' => 0, 'bloqueios' => 0, 'sites' => 0];
+
+    /** Id fixo do provedor de IA que o buscador cadastra no app (conserto de lojas). */
+    protected const PROVEDOR_IA = 'baratinho-ollama';
+
     public function handle(): int
     {
         $this->garantirTabela();
         Dominios::garantirTabela();
         Ia::garantirTabela();
         LojasNovas::garantirTabela();
+        Ritmo::garantirTabela();
+        Saude::garantirTabela();
         $this->configurarSearxng();
+        $this->configurarIaDoApp();
         $this->ia = new Ia;
         // Simulando, não cria loja nenhuma.
         $this->lojasNovas = new LojasNovas(fn (string $m) => $this->line($m), $this->option('simular') ? 0 : null);
 
+        $quebradas = null;
         if (! $this->option('simular')) {
             $this->lojasNovas->verificar((int) env('PRICEBUDDY_LOJAS_VERIFICAR_POR_RODADA', 5));
+            $quebradas = Saude::verificar((int) env('PRICEBUDDY_SAUDE_POR_RODADA', 3), fn (string $m) => $this->line($m));
         }
         $this->classificarDominios();
         if ($this->option('so-dominios')) {
+            $this->linhaDaRodada($quebradas);
+
             return self::SUCCESS;
         }
 
@@ -113,8 +128,27 @@ class BaratinhoBuscar extends Command
         if ($this->ia->usadas()) {
             $this->line("IA: {$this->ia->usadas()} consulta(s) nesta rodada.");
         }
+        $this->linhaDaRodada($quebradas);
 
         return self::SUCCESS;
+    }
+
+    /**
+     * Uma linha por rodada em chave=valor (logfmt), que o painel "Baratinho" do
+     * Grafana soma pelo Loki. Não mudar o formato sem mudar o painel
+     * (04-monitoring/monitor/dashboards/gerar.ts).
+     */
+    protected function linhaDaRodada(?int $quebradas): void
+    {
+        if ($this->option('simular')) {
+            return;
+        }
+        $this->line(sprintf(
+            'baratinho_rodada produtos=%d acrescentadas=%d lojas_novas=%d bloqueios=%d ia=%d sites=%d lojas_quebradas=%s',
+            $this->contagem['produtos'], $this->contagem['acrescentadas'], $this->lojasNovas->salvas(),
+            $this->contagem['bloqueios'], $this->ia->usadas(), $this->contagem['sites'],
+            $quebradas === null ? '-1' : (string) $quebradas,
+        ));
     }
 
     /** Produtos nunca procurados (os mais novos primeiro) ou procurados há muito tempo. */
@@ -245,6 +279,9 @@ class BaratinhoBuscar extends Command
             .($bloqueadas ? '; bloqueio em '.implode(', ', $bloqueadas).', procura de novo amanhã' : '');
         $this->line('  '.$resumo);
 
+        $this->contagem['produtos']++;
+        $this->contagem['acrescentadas'] += count($adicionadas);
+        $this->contagem['bloqueios'] += count($bloqueadas);
         if (! $this->option('simular')) {
             $this->registrar($produto, implode(' | ', $consultas), $isbn, $adicionadas, $resumo);
             if ($bloqueadas) {
@@ -266,7 +303,7 @@ class BaratinhoBuscar extends Command
             return $this->originais[$produto->getKey()];
         }
         $original = $produto->urls()->orderBy('id')->first();
-        $r = $original ? ScrapeUrl::new($original->url)->setMaxAttempts(1)->scrape(['use_cache' => false]) : [];
+        $r = $original ? Rede::ler($original->url) : [];
         $pagina = new Pagina((string) $original?->url, (string) ($r['body'] ?? ''));
 
         return $this->originais[$produto->getKey()] = [
@@ -351,6 +388,7 @@ class BaratinhoBuscar extends Command
         $this->line(sprintf('  %s %s no produto %d: %s', $ok ? '+' : '-', $loja->name, $produtoId, $motivo));
         if ($ok && $this->acrescentar($produto, $url, $orig['titulo'], $tituloC) && ! $this->option('simular')) {
             $this->registrarAdicionada($produto, $url);
+            $this->contagem['acrescentadas']++;
         }
     }
 
@@ -361,12 +399,15 @@ class BaratinhoBuscar extends Command
      */
     protected function avaliar(array $orig, array $c): array
     {
-        $r = ScrapeUrl::new($c['url'])->setMaxAttempts(1)->scrape(['store' => $c['loja'], 'use_cache' => false]);
+        $r = Rede::ler($c['url'], $c['loja']);
+        if (isset($r['ritmo'])) {
+            return [false, 'não acessou agora: '.$r['ritmo'], '', true];
+        }
+        if (isset($r['bloqueio'])) {
+            return [false, "a loja pediu verificação de robô ({$r['bloqueio']}); site em pausa", '', true];
+        }
         $corpo = (string) ($r['body'] ?? '');
         $pagina = new Pagina($c['url'], $corpo);
-        if (($bloqueio = $pagina->bloqueio()) && ! Texto::numero($r['price'] ?? null)) {
-            return [false, "a loja pediu verificação de robô ({$bloqueio})", '', true];
-        }
         $cand = [
             'loja' => (string) $c['loja']->name,
             'titulo' => trim((string) ($r['title'] ?? '')) ?: $pagina->titulo(),
@@ -484,6 +525,7 @@ class BaratinhoBuscar extends Command
                 [$tipo, $motivo, $origem] = [$ia['tipo'], $ia['motivo'], 'ia'];
             }
             Dominios::decidir($d->host, $tipo, $origem, $motivo);
+            $this->contagem['sites']++;
             $this->line("Site {$d->host}: {$tipo} ({$origem}: {$motivo})");
             if ($tipo === 'loja' && $d->produto_id) {
                 try {
@@ -559,6 +601,64 @@ class BaratinhoBuscar extends Command
             $t->string('resumo')->nullable();
             $t->timestamp('buscado_em');
         });
+    }
+
+    /**
+     * Conserto de lojas pela IA do próprio PriceBuddy (AiConfigHealer): quando
+     * uma loja deixa de achar o preço, a IA lê a página, testa seletores e propõe
+     * a regra nova. Precisa de um modelo com tool calling no Ollama (o gemma3 não
+     * tem), em PRICEBUDDY_IA_CONSERTO_MODELO. Vazio: não mexe em nada (e desliga o
+     * conserto se o provedor do Baratinho estava configurado).
+     */
+    protected function configurarIaDoApp(): void
+    {
+        try {
+            $url = rtrim((string) env('PRICEBUDDY_IA_URL', ''), '/');
+            $modelo = trim((string) env('PRICEBUDDY_IA_CONSERTO_MODELO', ''));
+            $settings = AppSettings::new();
+            $servicos = (array) $settings->integrated_services;
+            $ai = (array) data_get($servicos, 'ai', []);
+            $antes = $ai;
+            $provedores = array_values(array_filter((array) ($ai['providers'] ?? []), fn ($p) => ($p['id'] ?? null) !== self::PROVEDOR_IA));
+            $nosso = collect((array) ($ai['providers'] ?? []))->firstWhere('id', self::PROVEDOR_IA);
+
+            if ($url === '' || $modelo === '') {
+                if (! $nosso) {
+                    return;
+                }
+                // Tirou o modelo do .env: desliga o conserto do Baratinho.
+                $ai['providers'] = $provedores;
+                if (($ai['default_provider_id'] ?? null) === self::PROVEDOR_IA) {
+                    $ai['default_provider_id'] = null;
+                }
+                data_set($ai, 'feature_providers.healing', '__disabled__');
+            } else {
+                $provedores[] = [
+                    'id' => self::PROVEDOR_IA, 'name' => 'Ollama (Baratinho)', 'type' => 'ollama',
+                    'model' => $modelo, 'base_url' => $url, 'api_key' => null,
+                    'timeout_seconds' => 180, 'max_tokens' => 2000, 'temperature' => 0.1,
+                ];
+                $ai['providers'] = $provedores;
+                $ai['enabled'] = true;
+                if (blank($ai['default_provider_id'] ?? null)) {
+                    $ai['default_provider_id'] = self::PROVEDOR_IA;
+                }
+                data_set($ai, 'feature_providers.healing', self::PROVEDOR_IA);
+                // Extração por IA a cada leitura sem preço pesaria a GPU: fica desligada.
+                if (blank(data_get($ai, 'feature_providers.extraction'))) {
+                    data_set($ai, 'feature_providers.extraction', '__disabled__');
+                }
+            }
+            if ($ai == $antes) {
+                return;
+            }
+            $servicos['ai'] = $ai;
+            $settings->integrated_services = $servicos;
+            $settings->save();
+            $this->line($modelo !== '' ? "Conserto de lojas pela IA ligado ({$modelo})." : 'Conserto de lojas pela IA do Baratinho desligado.');
+        } catch (Throwable $e) {
+            $this->warn('Não deu para configurar a IA do app: '.$e->getMessage());
+        }
     }
 
     /**

@@ -611,6 +611,62 @@ const dashboards: Record<string, unknown> = {};
 }
 
 // ════════════════════════════════════════════════════════════════
+// 08 · Baratinho (buscador do PriceBuddy)
+// ════════════════════════════════════════════════════════════════
+{
+  const g = new Grade();
+  // O buscador imprime uma linha "baratinho_rodada chave=valor" por rodada
+  // (03-apps/pricebuddy/buscador/BaratinhoBuscar.php, linhaDaRodada).
+  const B = '{job="docker", container="pricebuddy-buscador"}';
+  const R = `${B} |= "baratinho_rodada" | logfmt`;
+  const soma = (campo: string, janela: string) => `sum(sum_over_time(${R} | unwrap ${campo} [${janela}]))`;
+
+  g.add(5, 4, stat("Lojas acrescentadas", [li(`${soma("acrescentadas", "$__range")} or vector(0)`)], {
+    descricao: "URLs que o buscador acrescentou aos produtos (mesmo produto em outra loja)",
+  }));
+  g.add(5, 4, stat("Lojas novas", [li(`${soma("lojas_novas", "$__range")} or vector(0)`)], {
+    descricao: "Sites que viraram loja cadastrada sozinhos (baratinho:lojas)",
+  }));
+  g.add(5, 4, stat("Bloqueios", [li(`${soma("bloqueios", "$__range")} or vector(0)`)], {
+    thresholds: limites([null, OK], [5, ATENCAO]),
+    descricao: "Lojas que pediram verificação de robô; o site fica em pausa (PRICEBUDDY_RITMO_PAUSA_HORAS)",
+  }));
+  g.add(5, 4, stat("Perguntas à IA", [li(`${soma("ia", "$__range")} or vector(0)`)], {
+    descricao: "Casos de dúvida levados ao Ollama (loja ou notícia? mesmo produto?)",
+  }));
+  g.add(4, 4, stat("Lojas com problema", [li(`max(last_over_time(${R} | lojas_quebradas >= 0 | unwrap lojas_quebradas [$__range])) or vector(0)`)], {
+    thresholds: limites([null, OK], [1, ATENCAO]),
+    descricao: "No teste semanal, a loja não achou preço: a regra pode ter quebrado (resumo dos admins)",
+  }));
+
+  g.add(24, 8, serie("Por rodada", [
+    l(soma("acrescentadas", "$__auto"), "acrescentadas"),
+    l(soma("lojas_novas", "$__auto"), "lojas novas"),
+    l(soma("bloqueios", "$__auto"), "bloqueios"),
+    l(soma("sites", "$__auto"), "sites classificados"),
+    l(soma("ia", "$__auto"), "perguntas à IA"),
+  ], { barras: true, preencher: 80, legenda: "table" }));
+
+  g.add(12, 9, serie("Bloqueios por loja", [
+    // Regex entre crases (string crua da LogQL): sem escapar a barra.
+    l(`sum by (loja) (count_over_time(${B} |~ "pediu verificação de robô" | regexp ${"`"}^\\s+- (?P<loja>[^:]+):${"`"} [$__auto]))`, "{{loja}}"),
+  ], { barras: true, empilhar: true, preencher: 80, legenda: "table",
+    descricao: "Muitos bloqueios na mesma loja: aumente PRICEBUDDY_RITMO_SEGUNDOS ou use a sua sessão (lojas/cookies-loja.sh)" }));
+  g.add(12, 9, serie("Sites classificados", [
+    l(`sum by (tipo) (count_over_time(${B} |~ "^Site " | regexp ${"`"}^Site \\S+: (?P<tipo>loja|noticia|comparador|outro)${"`"} [$__auto]))`, "{{tipo}}"),
+  ], { barras: true, empilhar: true, preencher: 80, legenda: "table" }));
+
+  g.add(24, 12, logs("Eventos (lojas novas, desativadas, bloqueios, regras quebradas)",
+    `${B} |~ "loja nova|desativada|verificação de robô|a regra pode ter quebrado|^Produto |baratinho_rodada"`));
+  g.add(24, 12, logs("Tudo do buscador", B));
+
+  dashboards["08-baratinho"] = dashboard("bergatrix-baratinho", "Baratinho", g, {
+    descricao: "Buscador do PriceBuddy: lojas acrescentadas e criadas, bloqueios, IA e saúde das lojas",
+    de: "now-7d",
+  });
+}
+
+// ════════════════════════════════════════════════════════════════
 // Alertas (Grafana, e-mail)
 // ════════════════════════════════════════════════════════════════
 
