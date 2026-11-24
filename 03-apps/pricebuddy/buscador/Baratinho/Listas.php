@@ -46,6 +46,9 @@ class Listas
             'imdb.com', 'britannica.com', 'gutenberg.org', 'gutenberg.net.au', 'culturagenial.com', 'todamateria.com.br',
             'significados.com.br', 'mundoeducacao.uol.com.br', 'resumocompleto.com.br', 'livrosdominiopublico.com.br',
             'adorocinema.com', 'filmow.com', 'letterboxd.com', 'rottentomatoes.com',
+            // Catálogos, bibliotecas e metadados de livros (mostram preço, não vendem).
+            'bookinfometadados.com.br', 'cblservicos.org.br', 'isbnsearch.org', 'isbndb.com', 'pergamum.com.br',
+            'sophia.com.br', 'netgalley.com', 'pdfdrive.cc', 'pdfdrive.com', 'z-lib.org', 'annas-archive.org',
             // Acadêmico.
             'researchgate.net', 'scispace.com', 'academia.edu', 'scielo.br', 'scielo.org', 'scholar.google.com',
         ],
@@ -62,10 +65,18 @@ class Listas
         '~\.(pdf|docx?|xlsx?|pptx?|zip|rar|epub|mobi|mp4|mp3|jpe?g|png)(\?|$)~i',
     ];
 
+    /** Domínios de universidade e governo: nunca são loja. */
+    protected const SUFIXOS_OUTRO = ['.edu', '.edu.br', '.ac.uk', '.edu.pt', '.gov', '.gov.br', '.mil.br', '.jus.br', '.leg.br'];
+
     /** Tipo fixo do domínio ('noticia', 'comparador', 'outro') ou null quando não está na lista. */
     public static function tipoFixo(string $host): ?string
     {
         $host = self::normalizarHost($host);
+        foreach (self::SUFIXOS_OUTRO as $sufixo) {
+            if (str_ends_with($host, $sufixo)) {
+                return 'outro';
+            }
+        }
         foreach (self::NAO_LOJAS as $tipo => $dominios) {
             foreach ($dominios as $dominio) {
                 if (str_contains($dominio, '/')) {

@@ -144,7 +144,8 @@ e as classes de [`buscador/Baratinho/`](buscador/Baratinho/), montadas em `app/B
 
 Como decide:
 
-1. Lê a página da primeira URL do produto e tira os **identificadores**: ISBN (livros), EAN/GTIN e código do
+1. Lê a página da primeira URL do produto (links curtos de "compartilhar" funcionam: `a.co/d/...` e `amzn.to` da
+   Amazon, `mercadolivre.com/sec/...` do ML; o buscador acrescenta esses domínios às lojas) e tira os **identificadores**: ISBN (livros), EAN/GTIN e código do
    fabricante, dos dados estruturados ou do texto, conferidos pelo dígito verificador.
 2. Procura no **SearXNG** pelo ISBN (ou EAN) e pelo título, e também **dentro das lojas com mais chance** de ter o
    produto (`site:kabum.com.br <título>`): as que já vendem produtos de títulos parecidos
@@ -172,7 +173,7 @@ buscador não insiste nem tenta passar por ela: o produto volta para a fila em ~
 Testado em nov/2026, com a stack inteira e o `gemma3:4b`: o *1984* da Amazon ganhou Companhia das Letras, Martins
 Fontes, Magalu, Mercado Livre, Travessa e KaBuM (as duas últimas pelo ISBN); o SSD A400 240 GB ganhou KaBuM e Magalu,
 e a IA recusou um SSD "240 GB Kingston" sem o modelo. As regras (veredito de página, comparador, quantidade, EAN,
-listagens) têm 77 casos de teste ([`buscador/testes/`](buscador/testes/), `./buscador/testes/rodar.sh`).
+listagens) têm 83 casos de teste ([`buscador/testes/`](buscador/testes/), `./buscador/testes/rodar.sh`).
 
 O que já foi procurado fica na tabela `baratinho_buscas`. Depois de `PRICEBUDDY_BUSCA_REFAZER_DIAS` (30), o produto
 é procurado de novo, para achar lojas novas.
@@ -238,7 +239,11 @@ não ficar preço velho). A loja continua em **Stores**, com o motivo nas notas,
 docker exec pricebuddy-buscador php artisan baratinho:lojas                           # ativas, desativadas, recusadas
 docker exec pricebuddy-buscador php artisan baratinho:lojas reativar exemplo.com.br   # depois de consertar a loja
 docker exec pricebuddy-buscador php artisan baratinho:lojas tentar exemplo.com.br     # recusada: tenta de novo já
+docker exec pricebuddy-buscador php artisan baratinho:lojas desativar exemplo.com.br  # não é loja de verdade
 ```
+
+Site de fora do Brasil (`.com`, `.co.uk`...) sem preço em R$ vira "outro" e não é tentado de novo. Universidades,
+governo (`.edu`, `.gov`...), bibliotecas e catálogos de livros que mostram preço sem vender estão na lista fixa.
 
 Testado em nov/2026 com uma fritadeira e um SSD: 7 lojas criadas (Mondial, Lognet, Medina Distribuidora, Biostech,
 KingstonStore, Smarteletron, maiscorreios), 4 já entraram no SSD e a Mondial na fritadeira; Zema e MGS Shop recusadas

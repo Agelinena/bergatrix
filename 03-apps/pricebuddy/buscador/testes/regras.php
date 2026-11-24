@@ -78,6 +78,11 @@ eq('cmp código diferente', Comparador::decidir(['titulo' => 'Placa de Vídeo RT
 eq('bloqueio: Amazon continuar comprando', (new Pagina('u', '<html><title>Amazon.com.br</title><form action="/errors/validateCaptcha"><button>Continuar comprando</button></form></html>'))->bloqueio(), 'validateCaptcha');
 eq('bloqueio: página normal com carrinho', (new Pagina('u', '<html><title>Produto X</title>'.str_repeat('<p>Descrição longa do produto com detalhes.</p>', 40).'<div>Produto adicionado! Continuar comprando</div></html>'))->bloqueio(), null);
 
+eq('fixo .edu.br', Listas::tipoFixo('repositorio.ufsc.edu.br'), 'outro');
+eq('fixo .edu', Listas::tipoFixo('www.harvard.edu'), 'outro');
+eq('fixo pergamum', Listas::tipoFixo('ifsp.pergamum.com.br'), 'outro');
+eq('fixo catálogo de livros', Listas::tipoFixo('www.bookinfometadados.com.br'), 'outro');
+
 // Nome automático de loja nova.
 $pg = fn ($t, $site = '') => new Pagina('u', '<html><head><title>'.$t.'</title>'.($site ? '<meta property="og:site_name" content="'.$site.'">' : '').'</head></html>');
 eq('nome og:site_name', App\Baratinho\LojasNovas::nome($pg('SSD | Loja', 'Lognet Informática'), 'lognetinfo.com.br'), 'Lognet Informática');
@@ -86,6 +91,8 @@ eq('nome fim do título curto', App\Baratinho\LojasNovas::nome($pg('Memória SSD
 eq('nome sem relação', App\Baratinho\LojasNovas::nome($pg('SSD 240GB - Kingston'), 'zema.com'), 'Zema');
 eq('nome subdomínio genérico', App\Baratinho\LojasNovas::nome($pg('Livro X'), 'secure.livrariaunesp.com.br'), 'Livrariaunesp');
 eq('nome subdomínio genérico com título', App\Baratinho\LojasNovas::nome($pg('Livro X | Livraria Unesp'), 'secure.livrariaunesp.com.br'), 'Livraria Unesp');
+eq('nome og igual ao domínio', App\Baratinho\LojasNovas::nome($pg('Livro X', 'cliquebooks.com.br'), 'cliquebooks.com.br'), 'Cliquebooks');
+eq('nome og minúsculo', App\Baratinho\LojasNovas::nome($pg('Fone', 'qcymall'), 'qcymall.com'), 'Qcymall');
 eq('nome loja.x', App\Baratinho\LojasNovas::nome($pg('Produto'), 'loja.exemplo.com.br'), 'Exemplo');
 eq('texto com UTF-8 inválido', is_string((new Pagina('u', "<p>caf\xe9 R\$ 10</p>"))->texto()), true);
 

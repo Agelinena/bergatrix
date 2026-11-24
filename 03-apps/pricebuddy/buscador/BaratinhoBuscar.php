@@ -94,6 +94,7 @@ class BaratinhoBuscar extends Command
         Saude::garantirTabela();
         $this->configurarSearxng();
         $this->configurarIaDoApp();
+        $this->dominiosCurtos();
         $this->ia = new Ia;
         // Simulando, não cria loja nenhuma.
         $this->lojasNovas = new LojasNovas(fn (string $m) => $this->line($m), $this->option('simular') ? 0 : null);
@@ -601,6 +602,36 @@ class BaratinhoBuscar extends Command
             $t->string('resumo')->nullable();
             $t->timestamp('buscado_em');
         });
+    }
+
+    /**
+     * Links curtos de "compartilhar" (a.co/d/... da Amazon, mercadolivre.com/sec/...
+     * do ML) precisam ser reconhecidos como a loja. Acrescenta só os domínios que
+     * faltam, sem mexer no resto da loja (o buddy:create-stores --update
+     * reescreveria a configuração, como o User-Agent posto à mão no ML).
+     */
+    protected function dominiosCurtos(): void
+    {
+        // Pelo domínio principal: o slug muda quando a loja é salva pela tela.
+        $curtos = ['www.amazon.com.br' => ['a.co', 'amzn.to'], 'www.mercadolivre.com.br' => ['mercadolivre.com']];
+        $todas = Store::query()->get();
+        foreach ($curtos as $principal => $dominios) {
+            $loja = $todas->first(fn (Store $s) => $s->hasDomain($principal));
+            if (! $loja) {
+                continue;
+            }
+            $lista = (array) $loja->domains;
+            $faltam = array_filter($dominios, fn ($d) => ! $loja->hasDomain($d));
+            if (! $faltam) {
+                continue;
+            }
+            foreach ($faltam as $d) {
+                $lista[] = ['domain' => $d];
+            }
+            $loja->domains = $lista;
+            $loja->save();
+            $this->line("Loja {$loja->name}: links curtos reconhecidos (".implode(', ', $faltam).').');
+        }
     }
 
     /**

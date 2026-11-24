@@ -16,6 +16,7 @@ use Illuminate\Support\Str;
  *   php artisan baratinho:lojas --status=recusada        só um status
  *   php artisan baratinho:lojas reativar exemplo.com.br  volta a usar (depois de consertar a loja)
  *   php artisan baratinho:lojas tentar exemplo.com.br    recusada: tenta criar de novo na próxima vez
+ *   php artisan baratinho:lojas desativar exemplo.com.br não usa mais (site que não é loja de verdade)
  */
 class BaratinhoLojas extends Command
 {
@@ -53,7 +54,18 @@ class BaratinhoLojas extends Command
 
                 return self::SUCCESS;
             }
-            $this->error('Ação inválida: use reativar ou tentar.');
+            if ($acao === 'desativar') {
+                $loja = $linha->store_id ? Store::find($linha->store_id) : null;
+                if (! $loja) {
+                    $this->error('Essa loja não existe mais no PriceBuddy.');
+
+                    return self::FAILURE;
+                }
+                (new LojasNovas(fn (string $m) => $this->line($m)))->desativar($host, $loja, 'desativada à mão');
+
+                return self::SUCCESS;
+            }
+            $this->error('Ação inválida: use reativar, tentar ou desativar.');
 
             return self::FAILURE;
         }

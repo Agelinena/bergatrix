@@ -18,6 +18,9 @@ return [
             [
                 'domain' => 'amazon.com.br',
             ],
+            // Links curtos do app e do "compartilhar" da Amazon (a.co/d/...).
+            ['domain' => 'a.co'],
+            ['domain' => 'amzn.to'],
         ],
         'scrape_strategy' => [
             'title' => [
@@ -189,6 +192,8 @@ return [
             ['domain' => 'mercadolivre.com.br'],
             ['domain' => 'produto.mercadolivre.com.br'],
             ['domain' => 'lista.mercadolivre.com.br'],
+            // Link curto do "compartilhar" do app (mercadolivre.com/sec/...).
+            ['domain' => 'mercadolivre.com'],
         ],
         'scrape_strategy' => [
             'title' => ['type' => 'selector', 'value' => 'meta[property=og:title]|content'],

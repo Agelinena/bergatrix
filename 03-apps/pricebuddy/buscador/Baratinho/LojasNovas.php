@@ -140,6 +140,12 @@ class LojasNovas
             return $this->recusar($host, $url, "vende em {$moeda}");
         }
         if ($moeda === '' && ! preg_match('/R\$\s*\d/', $pagina->html)) {
+            // Site de fora (.com, .co.uk...) sem preço em reais: loja estrangeira,
+            // não volta a ser tentada. Site .br sem R$ pode ser só esta página.
+            if (! str_ends_with($host, '.br')) {
+                Dominios::decidir($host, 'outro', 'regra', 'loja estrangeira (sem preço em R$)');
+            }
+
             return $this->recusar($host, $url, 'sem preço em R$');
         }
         if ($pagina->naoNovo()) {
@@ -221,8 +227,11 @@ class LojasNovas
         $compacto = fn (string $s) => preg_replace('/[^a-z0-9]/', '', strtolower(Str::ascii($s)));
 
         $nome = trim((string) $p->meta('og:site_name'));
-        if ($nome !== '' && mb_strlen($nome) <= 40 && ! str_contains($nome, '|')) {
-            return $nome;
+        // og:site_name com o próprio domínio ("cliquebooks.com.br") não é nome.
+        $ehDominio = (bool) preg_match('/^[a-z0-9-]+(\.[a-z0-9-]+)+$/i', $nome);
+        if ($nome !== '' && ! $ehDominio && mb_strlen($nome) <= 40 && ! str_contains($nome, '|')) {
+            // "qcymall" → "Qcymall": nome todo em minúsculas ganha a primeira maiúscula.
+            return $nome === mb_strtolower($nome) ? ucfirst($nome) : $nome;
         }
         $pedacos = preg_split('/\s+[|–-]\s+/u', $p->titulo());
         $fim = trim((string) end($pedacos));
