@@ -139,28 +139,37 @@ ajuste o `brasil.php` e rode o script de novo.
 
 Cadastrou um produto (de qualquer loja)? Em até ~10 minutos o **buscador** procura o mesmo item nas outras lojas
 cadastradas e acrescenta ao produto as que baterem, sem nada a fazer. Ele roda num container próprio
-(`pricebuddy-buscador`, mesma imagem do app) com o comando [`buscador/BaratinhoBuscar.php`](buscador/BaratinhoBuscar.php).
+(`pricebuddy-buscador`, mesma imagem do app): o comando [`buscador/BaratinhoBuscar.php`](buscador/BaratinhoBuscar.php)
+e as classes de [`buscador/Baratinho/`](buscador/Baratinho/), montadas em `app/Baratinho`.
 
 Como decide:
 
-1. Lê a página da primeira URL do produto. Se for livro, tira o **ISBN** (dos dados estruturados ou do texto).
-2. Procura no **SearXNG** pelo ISBN (livros) ou pelo título.
-3. Fica só com resultados de **lojas cadastradas** que o produto ainda não tem. URLs que você tirou do produto não
-   voltam.
-4. Lê cada candidata com a configuração da loja e só aceita se for **o mesmo item**:
-   - livros: a página tem o mesmo ISBN;
-   - outros: título parecido (60% das palavras, pelo menos 3 em comum), os mesmos números de modelo (RTX **5060**,
-     **SA400S37**) e as mesmas medidas (**240 GB**, **55"**, **127 V**);
-   - em todos: preço entre 0,3× e 3× o do produto (corta acessório e kit).
+1. Lê a página da primeira URL do produto e tira os **identificadores**: ISBN (livros), EAN/GTIN e código do
+   fabricante, dos dados estruturados ou do texto, conferidos pelo dígito verificador.
+2. Procura no **SearXNG** pelo ISBN (ou EAN) e pelo título, e também **dentro das lojas com mais chance** de ter o
+   produto (`site:kabum.com.br <título>`): as que já vendem produtos de títulos parecidos
+   (`PRICEBUDDY_BUSCA_SITE_LOJAS`, 4).
+3. Fica com **páginas de produto** de lojas cadastradas que o produto ainda não tem. Saem: listagens (busca,
+   categoria, página inicial), arquivos (PDF...) e URLs que você tirou do produto. Sites desconhecidos ficam anotados
+   para classificar (abaixo).
+4. Lê cada candidata com a configuração da loja e compara ([`Comparador.php`](buscador/Baratinho/Comparador.php)):
+   - **identificador**: mesmo ISBN ou mesmo EAN, aceita; ISBN ou EAN diferente, recusa;
+   - **recusa certa**: preço fora de 0,3×–3× o do produto (acessório, kit), usado/recondicionado/vitrine, outra
+     quantidade (kit com 2 × unidade), outro número de modelo (RTX **5060** × **5070**), outra medida (**240** ×
+     **480 GB**, **127** × **220 V**; 110 e 127 V contam como iguais);
+   - **mesmo código do fabricante** sem conflito, aceita;
+   - **título** com 60% das palavras e pelo menos 3 em comum, aceita;
+   - **dúvida** (título parecido, mas não o bastante, ou sem o número do modelo): pergunta à **IA local**. Sem IA,
+     fica de fora.
 5. Acrescenta com o mesmo caminho da tela do app (`Url::createFromUrl`).
 
-Testado em nov/2026: um livro da Amazon (*1984*) ganhou KaBuM, Magalu, Travessa e Martins Fontes pelo ISBN; um SSD
-de 240 GB ganhou Pichau, Terabyte, KaBuM e Leroy Merlin; 240×480 GB, 55×65", RTX 5060×5070, 127×220 V e uma capinha
-de R$ 39 para um Echo Dot de R$ 399 foram recusados.
+Testado em nov/2026, com a stack inteira e o `gemma3:4b`: o *1984* da Amazon ganhou Companhia das Letras, Martins
+Fontes, Magalu, Mercado Livre, Travessa e KaBuM (as duas últimas pelo ISBN); o SSD A400 240 GB ganhou KaBuM e Magalu,
+e a IA recusou um SSD "240 GB Kingston" sem o modelo. As regras (veredito de página, comparador, quantidade, EAN,
+listagens) têm 54 casos de teste ([`buscador/testes/`](buscador/testes/), `./buscador/testes/rodar.sh`).
 
-O que já foi procurado fica na tabela `baratinho_buscas` do banco. Depois de `PRICEBUDDY_BUSCA_REFAZER_DIAS` (30), o
-produto é procurado de novo, para achar lojas novas. Ajustes no `.env`: intervalo, produtos por rodada e máximo de
-lojas por produto.
+O que já foi procurado fica na tabela `baratinho_buscas`. Depois de `PRICEBUDDY_BUSCA_REFAZER_DIAS` (30), o produto
+é procurado de novo, para achar lojas novas.
 
 ```bash
 docker logs -f pricebuddy-buscador                                        # o que ele decidiu, loja por loja
@@ -170,8 +179,58 @@ docker exec pricebuddy-buscador php artisan baratinho:buscar --produto=12       
 
 **SearXNG** (`pricebuddy-searxng`): metabuscador próprio, só na rede interna, saindo pelo proxy. Motores em
 [`searxng/settings.yml`](searxng/settings.yml): Bing, DuckDuckGo, Mojeek e Startpage (Google, Brave e Qwant recusam
-um IP doméstico). O buscador liga o SearXNG nas configurações do app sozinho, então a tela **Criar produto → buscar na
-web** também passa a funcionar.
+um IP doméstico). Quando um motor pede captcha e a resposta demora, o buscador espera até 60 s e tenta de novo uma vez.
+
+### Loja ou notícia: os sites que aparecem nas buscas
+
+Notícia, blog, review, comparador ou classificado também mostram preço, e a pesquisa do app os listava como se
+fossem lojas. Agora cada site que aparece nas buscas (do buscador e da tela do app) é classificado uma vez e a
+decisão fica guardada (tabela `baratinho_dominios`):
+
+1. **Lista fixa** ([`Listas.php`](buscador/Baratinho/Listas.php)): portais de notícia, sites de tecnologia,
+   comparadores, redes sociais, classificados, acadêmicos.
+2. **Regras da página** ([`Pagina.php`](buscador/Baratinho/Pagina.php)): dados estruturados de produto com oferta,
+   `og:type product`, botão de compra → loja; `NewsArticle`/`Article`/`Review`, `og:type article`, data de
+   publicação, sem carrinho próprio → notícia; preço em outra moeda → fora.
+3. **IA local**, só quando as regras não decidem: loja, notícia, comparador, outro ou bloqueio.
+
+Página de verificação de robô, captcha ou erro não decide nada: o site é tentado de novo depois, com outro endereço
+(e pelo navegador do scraper, para sites que só funcionam com JavaScript). São
+`PRICEBUDDY_BUSCA_DOMINIOS_POR_RODADA` (5) sites por rodada, os mais vistos primeiro.
+
+```bash
+docker exec pricebuddy-buscador php artisan baratinho:dominio                    # decisões, mais vistos primeiro
+docker exec pricebuddy-buscador php artisan baratinho:dominio --tipo=noticia     # só um tipo
+docker exec pricebuddy-buscador php artisan baratinho:dominio exemplo.com.br loja    # corrige (fica "manual")
+docker exec pricebuddy-buscador php artisan baratinho:dominio exemplo.com.br pendente  # classifica de novo
+```
+
+Os sites classificados como **loja** que ainda não estão cadastrados são os candidatos a loja nova automática (a
+próxima fase).
+
+### Pesquisa do app filtrada
+
+A tela **Criar produto → buscar na web** não fala mais direto com o SearXNG: o buscador aponta a configuração dela
+para o **filtro** ([`buscador/filtro.php`](buscador/filtro.php), `http://buscador:8081/search`), que repassa a busca
+e tira notícias, comparadores, redes sociais, listagens e arquivos. Site ainda não classificado continua aparecendo
+(e entra na fila). Nos testes, o filtro tirou de 7 a 15 dos ~35 resultados de cada busca. O filtro não grava nos logs
+o que foi pesquisado.
+
+Um endereço posto à mão em **Settings → SearXNG** (outro que não o da stack) é respeitado.
+
+### IA local (Ollama)
+
+O buscador usa o Ollama da stack `ollama` (a GPU), com o mesmo modelo do Berganews (`gemma3:4b`, que já fica baixado
+para ele), para não trocar de modelo na GPU a cada pergunta. Só pergunta nos casos de dúvida, no máximo
+`PRICEBUDDY_IA_POR_RODADA` (20) vezes por rodada, com resposta em JSON de formato fixo; a mesma pergunta nunca vai duas
+vezes (tabela `baratinho_ia`). Com o Ollama fora do ar, o buscador segue sem IA: os casos de dúvida ficam de fora.
+
+O buscador não tem internet, e a rede `bergatrix-ai` tem (para o `ollama pull`). Por isso ele não entra nela: fala
+com a **ponte** `pricebuddy-ia` ([`ia/nginx.conf`](ia/nginx.conf)), um nginx que é o único da stack nas duas redes e
+só deixa passar conversa com um modelo já baixado (`/api/chat`, `/api/generate`, e a lista de modelos). Baixar, apagar
+ou criar modelo dá 403.
+
+Desligar a IA: `PRICEBUDDY_IA_URL=` (vazio) no `.env`.
 
 ## Mercado Livre (com a sua conta)
 

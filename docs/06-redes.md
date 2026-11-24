@@ -12,7 +12,7 @@ Ficam em [`01-network/redes/docker-compose.yml`](../01-network/redes/docker-comp
 |---|---|---|
 | `bergatrix-proxy` | O Traefik, os serviços **com rota** e o CrowdSec, que o Traefik consulta | Sim |
 | `bergatrix-media` | Jellyfin, Seerr, *arr, SABnzbd, qBittorrent, indexadores, Legendarr e o Lidarr do bergastream | Sim |
-| `bergatrix-ai` | O Ollama e quem usa ele (worker do Legendarr, worker `ai` do Berganews) | Sim |
+| `bergatrix-ai` | O Ollama e quem usa ele (worker do Legendarr, worker `ai` do Berganews, ponte `ia` do PriceBuddy) | Sim |
 | `bergatrix-drop` | Só o Traefik e o Drop. O Drop é público, então fica fora da `bergatrix-proxy`: não alcança nenhum outro container | Não |
 | `bergatrix-tarantec` | Só o Traefik e o Tarantec (portfólio, público). Separada da do Drop: um público não alcança o outro | Não |
 | `bergatrix-office` | Só o Traefik e o Collabora (editor de documentos do Nextcloud). O Traefik tem nela o alias `storange.${DOMAIN}`, que é como o Collabora chega ao Nextcloud | Não |
@@ -33,7 +33,7 @@ Para ver as que existem: `docker network ls --format '{{.Name}}' | grep -E -- '-
 
 No Transcriptor, o worker (que baixa links enviados pelas pessoas) fica só na `transcriptor-internal` e sai para a internet por um proxy (smokescreen) que recusa destinos em redes privadas. É o modelo para qualquer serviço que busque URLs vindas de usuários, e o Berganews o segue (feeds, páginas e imagens cadastrados pelas pessoas).
 
-O PriceBuddy também, mas a interface e a busca rodam no mesmo container. Por isso o app não entra na `bergatrix-proxy`: ele divide com o Traefik só a `bergatrix-pricebuddy` (sem internet) e sai pelo proxy `pricebuddy-egress` (o e-mail, pelo relay `pricebuddy-smtp`, que só fala com o `SMTP_HOST`; o SearXNG e o buscador ficam só na `pricebuddy-internal` e também saem pelo proxy), com `HTTP_PROXY`/`HTTPS_PROXY` também em minúsculas, para o libcurl do Apache obedecer ([README](../03-apps/pricebuddy/README.md)).
+O PriceBuddy também, mas a interface e a busca rodam no mesmo container. Por isso o app não entra na `bergatrix-proxy`: ele divide com o Traefik só a `bergatrix-pricebuddy` (sem internet) e sai pelo proxy `pricebuddy-egress` (o e-mail, pelo relay `pricebuddy-smtp`, que só fala com o `SMTP_HOST`; o SearXNG e o buscador ficam só na `pricebuddy-internal` e também saem pelo proxy; o buscador chega ao Ollama pela ponte `pricebuddy-ia`, um nginx que é o único da stack na `bergatrix-ai` e só deixa conversar com um modelo já baixado, porque a `bergatrix-ai` tem internet), com `HTTP_PROXY`/`HTTPS_PROXY` também em minúsculas, para o libcurl do Apache obedecer ([README](../03-apps/pricebuddy/README.md)).
 
 ### Collabora (editor de documentos do Nextcloud)
 

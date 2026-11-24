@@ -1,6 +1,7 @@
 # Ollama — modelos de IA locais na GPU, sem rota no Traefik.
 # Quem usa entra na rede bergatrix-ai e chama http://ollama:11434
-# (hoje: o worker do Legendarr, na stack jellyfin).
+# (hoje: o worker do Legendarr, o worker ai do Berganews e a ponte ia do
+# PriceBuddy, que só deixa conversar com um modelo já baixado).
 services:
   ollama:
     image: ollama/ollama:0.40.16

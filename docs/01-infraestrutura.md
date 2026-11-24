@@ -16,7 +16,7 @@ Servidor físico ─ Proxmox VE
 └── VM Ubuntu Server (Docker)
     ├── HD 1 TB ───── /srv: appdata (configs e bancos) e cache
     ├── NFS ───────── /mnt/nas/media, /mnt/nas/userdata
-    └── GPU ───────── passthrough: Jellyfin, Ollama (Legendarr, Berganews), Transcriptor, optimizer, Immich (ML)
+    └── GPU ───────── passthrough: Jellyfin, Ollama (Legendarr, Berganews, PriceBuddy), Transcriptor, optimizer, Immich (ML)
 ```
 
 | Disco | Dono | Papel |
@@ -60,7 +60,7 @@ Rede local ───────────────────────
 | 03 | jellyfin | Jellyfin, Seerr, qBittorrent, Sonarr, Radarr, Prowlarr, Bazarr, SABnzbd, FlareSolverr, indexador BR, Recyclarr | `jellyflix`, `catalogo` e um por serviço *arr | appdata, cache, media |
 | 03 | legendarr | Legendas (Bazarr + tradução local pelo Ollama), verificação de áudio, optimizer (HEVC). Submódulo ([Agelinena/legendarr](https://github.com/Agelinena/legendarr)) + `03-apps/submodulos/legendarr.bergatrix.yml` | `legendarr` | appdata, cache, media |
 | 03 | nextcloud | Arquivos, agenda e contatos: Nextcloud (Apache), cron, Postgres, Redis | `storange` | appdata, userdata |
-| 03 | pricebuddy | PriceBuddy: preço de produtos com avisos de queda (app, scraper com Chrome, SearXNG, buscador automático nas outras lojas, proxy de saída, relay de e-mail, Postgres); rede isolada `bergatrix-pricebuddy` | `baratinho` | appdata |
+| 03 | pricebuddy | PriceBuddy: preço de produtos com avisos de queda (app, scraper com Chrome, SearXNG, buscador automático nas outras lojas com IA local, ponte para o Ollama, proxy de saída, relay de e-mail, Postgres); rede isolada `bergatrix-pricebuddy` | `baratinho` | appdata |
 | 03 | ollama | Ollama (GPU), sem rota | – | cache |
 | 03 | transcriptor | Transcrição com faster-whisper (GPU): API, worker, Postgres, proxy de saída. Submódulo ([Agelinena/transcriptor](https://github.com/Agelinena/transcriptor)) + `03-apps/submodulos/transcriptor.bergatrix.yml` | `transcriptor` | appdata, cache |
 | 04 | monitor | Grafana (painéis e alertas por e-mail), Prometheus, Loki, Alloy e exporters (servidor, containers, GPU, Proxmox, OPNsense, sites) | `grafana` (+ portas 5140 e 5141/tcp para o syslog do OPNsense e da VPS) | appdata, cache |
@@ -81,6 +81,7 @@ Elas se falam pelo nome do container, numa rede compartilhada ([06-redes.md](06-
 | Traefik (bouncer) | CrowdSec | `crowdsec:8080` | `bergatrix-proxy` |
 | CrowdSec | Log do Traefik | `${APPDATA_PATH}/traefik/logs` | (arquivo) |
 | Legendarr worker, Berganews (`ai`) | Ollama | `ollama:11434` | `bergatrix-ai` |
+| PriceBuddy (buscador, pela ponte `ia`) | Ollama | `ia:11434` → `ollama:11434` | `pricebuddy-internal` → `bergatrix-ai` |
 | Lidarr (bergastream) | SABnzbd e Prowlarr (stack jellyfin) | `sabnzbd:8080`, `prowlarr:9696` | `bergatrix-media` |
 | Lidarr (bergastream) | Downloads do SABnzbd | `${MEDIA_PATH}/downloads` | (mesma pasta) |
 | Lidarr (bergastream) | qBittorrent (stack jellyfin) | `qbittorrent:8080` | `bergatrix-media` |

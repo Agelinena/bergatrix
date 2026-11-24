@@ -38,8 +38,8 @@ networks:
   bergatrix-media:
     name: bergatrix-media
 
-  # Ollama e quem usa ele (worker do Legendarr). Com internet para o
-  # `ollama pull` baixar modelos.
+  # Ollama e quem usa ele (worker do Legendarr, worker ai do Berganews, ponte
+  # ia do PriceBuddy). Com internet para o `ollama pull` baixar modelos.
   bergatrix-ai:
     name: bergatrix-ai
 
