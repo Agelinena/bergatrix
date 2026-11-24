@@ -400,6 +400,10 @@ tempo), repita os passos. Quando a aplicação oficial sair (falando com o supor
 
 ## Particularidades
 
+- **Relay de e-mail e credencial trocada:** a imagem `boky/postfix` guarda `/etc/postfix` num volume que o compose
+  reaproveita, e o script dela não apaga a credencial antiga quando `SMTP_USERNAME`/`SMTP_PASSWORD` mudam: o login
+  velho continuava valendo (o provedor aceitava e o e-mail caía na conta antiga). O `command` do serviço `smtp` apaga
+  o arquivo de credenciais antes de subir.
 - **Log:** o `/start-app.sh` da imagem roda `printenv`. O compose roda o mesmo script sem essa linha, para a senha do
   banco e a `APP_KEY` não irem para o Loki. Ao atualizar a imagem, confira se o script mudou
   (`docker run --rm --entrypoint cat jez500/pricebuddy:<versão> /start-app.sh`).

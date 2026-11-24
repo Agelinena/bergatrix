@@ -174,6 +174,11 @@ services:
     security_opt:
       - no-new-privileges:true
     mem_limit: 128m
+    # A imagem guarda /etc/postfix num volume que o compose reaproveita, e o
+    # script dela não apaga a credencial antiga ao trocar (o sed trata o
+    # "[host]:porta" como classe de caracteres): o login velho continuava valendo.
+    # Apaga e deixa o script recriar só com a do .env.
+    command: ["/bin/sh", "-c", "rm -f /etc/postfix/sasl_passwd /etc/postfix/sasl_passwd.lmdb && exec /scripts/run.sh"]
     environment:
       TZ: ${TZ}
       RELAYHOST: "[${SMTP_HOST}]:${SMTP_PORT:-587}"
