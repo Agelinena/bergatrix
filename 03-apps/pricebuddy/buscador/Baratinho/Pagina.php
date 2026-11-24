@@ -89,10 +89,12 @@ class Pagina
     /** Texto visível, sem scripts e estilos, para a IA (resumido). */
     public function texto(int $max = 1500): string
     {
-        $h = preg_replace('/<(script|style|noscript|svg|nav|footer|header)\b.*?<\/\1>/is', ' ', $this->html);
-        $t = html_entity_decode(strip_tags((string) $h), ENT_QUOTES | ENT_HTML5);
+        // preg_replace devolve null em página enorme ou com UTF-8 inválido: aí fica com o original.
+        $h = preg_replace('/<(script|style|noscript|svg|nav|footer|header)\b.*?<\/\1>/is', ' ', $this->html) ?? $this->html;
+        $t = html_entity_decode(strip_tags($h), ENT_QUOTES | ENT_HTML5);
+        $t = preg_replace('/\s+/u', ' ', $t) ?? preg_replace('/\s+/', ' ', $t) ?? $t;
 
-        return Str::limit(trim(preg_replace('/\s+/u', ' ', $t)), $max, '…');
+        return Str::limit(trim($t), $max, '…');
     }
 
     public function isbn(): ?string

@@ -155,7 +155,7 @@ Como decide:
 4. Lê cada candidata com a configuração da loja e compara ([`Comparador.php`](buscador/Baratinho/Comparador.php)):
    - **identificador**: mesmo ISBN ou mesmo EAN, aceita; ISBN ou EAN diferente, recusa;
    - **recusa certa**: preço fora de 0,3×–3× o do produto (acessório, kit), usado/recondicionado/vitrine, outra
-     quantidade (kit com 2 × unidade), outro número de modelo (RTX **5060** × **5070**), outra medida (**240** ×
+     quantidade (kit com 2 × unidade), outro número de modelo (RTX **5060** × **5070**; `AFN-40-BI` e `AFN40BI` contam como o mesmo), outra medida (**240** ×
      **480 GB**, **127** × **220 V**; 110 e 127 V contam como iguais);
    - **mesmo código do fabricante** sem conflito, aceita;
    - **título** com 60% das palavras e pelo menos 3 em comum, aceita;
@@ -166,7 +166,7 @@ Como decide:
 Testado em nov/2026, com a stack inteira e o `gemma3:4b`: o *1984* da Amazon ganhou Companhia das Letras, Martins
 Fontes, Magalu, Mercado Livre, Travessa e KaBuM (as duas últimas pelo ISBN); o SSD A400 240 GB ganhou KaBuM e Magalu,
 e a IA recusou um SSD "240 GB Kingston" sem o modelo. As regras (veredito de página, comparador, quantidade, EAN,
-listagens) têm 54 casos de teste ([`buscador/testes/`](buscador/testes/), `./buscador/testes/rodar.sh`).
+listagens) têm 64 casos de teste ([`buscador/testes/`](buscador/testes/), `./buscador/testes/rodar.sh`).
 
 O que já foi procurado fica na tabela `baratinho_buscas`. Depois de `PRICEBUDDY_BUSCA_REFAZER_DIAS` (30), o produto
 é procurado de novo, para achar lojas novas.
@@ -205,8 +205,49 @@ docker exec pricebuddy-buscador php artisan baratinho:dominio exemplo.com.br loj
 docker exec pricebuddy-buscador php artisan baratinho:dominio exemplo.com.br pendente  # classifica de novo
 ```
 
-Os sites classificados como **loja** que ainda não estão cadastrados são os candidatos a loja nova automática (a
-próxima fase).
+Os sites classificados como **loja** que ainda não estão cadastrados viram lojas novas (abaixo).
+
+### Lojas novas automáticas
+
+Um site classificado como loja, que aparece numa busca com a página de um produto, vira loja cadastrada no PriceBuddy
+sozinho ([`LojasNovas.php`](buscador/Baratinho/LojasNovas.php)):
+
+1. Lê a página (leitura simples ou, se o site bloquear ou só funcionar com JavaScript, pelo navegador do scraper).
+2. Exige preço em R$ (site em outra moeda vira "outro") e anúncio de produto novo.
+3. O **AutoCreateStore** do próprio PriceBuddy descobre as regras de título, preço e imagem.
+4. Valida antes de salvar: lê o produto duas vezes com a loja ainda não salva; precisa de título e do mesmo preço nas
+   duas. Se a leitura simples do PriceBuddy falhar, tenta pelo navegador.
+5. Salva com o nome do site (`og:site_name`, o fim do título da página ou o domínio) e uma nota em **Notes** dizendo
+   que foi criada pelo Baratinho, a partir de que página.
+6. A página que originou a loja passa pelo comparador, como qualquer outra: se for o mesmo produto, entra nele.
+
+Até `PRICEBUDDY_LOJAS_NOVAS_POR_RODADA` (3) por rodada; `0` desliga. Site que não deu para criar ("recusada": leitura
+instável, sem regra detectável) é tentado de novo depois de 30 dias.
+
+**Saúde:** cada loja automática é testada uma vez por dia (a página de teste e, se falhar, outra URL dela). Três dias
+seguidos sem preço a **desativam**: o buscador para de usá-la e tira dos produtos as URLs que ele mesmo pôs nela (para
+não ficar preço velho). A loja continua em **Stores**, com o motivo nas notas, para consertar à mão.
+
+```bash
+docker exec pricebuddy-buscador php artisan baratinho:lojas                           # ativas, desativadas, recusadas
+docker exec pricebuddy-buscador php artisan baratinho:lojas reativar exemplo.com.br   # depois de consertar a loja
+docker exec pricebuddy-buscador php artisan baratinho:lojas tentar exemplo.com.br     # recusada: tenta de novo já
+```
+
+Testado em nov/2026 com uma fritadeira e um SSD: 7 lojas criadas (Mondial, Lognet, Medina Distribuidora, Biostech,
+KingstonStore, Smarteletron, maiscorreios), 4 já entraram no SSD e a Mondial na fritadeira; Zema e MGS Shop recusadas
+(preço mudando entre as leituras); um site japonês ficou de fora pela moeda; uma loja com a regra de preço quebrada de
+propósito foi desativada no terceiro dia, com a URL tirada do produto.
+
+### Resumo semanal
+
+Uma vez por semana, os admins do PriceBuddy recebem por e-mail (o mesmo SMTP de **Settings → Notifications → Email**)
+as lojas criadas, desativadas e recusadas, e quantos sites foram classificados. Sem e-mail ligado no app, não envia.
+
+```bash
+docker exec pricebuddy-buscador php artisan baratinho:resumo            # mostra, sem enviar
+docker exec pricebuddy-buscador php artisan baratinho:resumo --enviar   # envia agora
+```
 
 ### Pesquisa do app filtrada
 

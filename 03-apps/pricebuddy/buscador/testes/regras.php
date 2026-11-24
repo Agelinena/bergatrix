@@ -65,5 +65,19 @@ eq('cmp acessório barato', Comparador::decidir(['titulo' => 'Echo Dot 5ª gera�
 eq('cmp livro mesmo isbn', Comparador::decidir(['titulo' => '1984', 'preco' => 40, 'isbn' => '9788535914849'], $c('1984 George Orwell', 45, ['isbn_na_pagina' => true]))[0], 'sim');
 eq('cmp 127 x 220', Comparador::decidir(['titulo' => 'Air Fryer Mondial AFN-40-BI 4L 127V', 'preco' => 399], $c('Air Fryer Mondial AFN-40-BI 4L 220V', 399))[0], 'nao');
 eq('cmp livro sem isbn', Comparador::decidir(['titulo' => '1984', 'preco' => 40, 'isbn' => '9788535914849'], $c('1984 George Orwell', 45, ['isbn_na_pagina' => false]))[0], 'nao');
+eq('códigos AFN-40-BI', Texto::codigos('Fritadeira Air Fryer Mondial AFN-40-BI 4L 127V'), ['afn40bi']);
+eq('códigos RTX 5060', Texto::codigos('Placa de Vídeo RTX 5060 8GB'), ['rtx5060']);
+eq('cmp código junto', Comparador::decidir(['titulo' => 'MONDIAL Fritadeira Sem Óleo Air Fryer 4L, Preto/Inox, 1500W, 110V - AFN-40-BI', 'preco' => 239], $c('Fritadeira Elétrica Sem Óleo Air Fryer Mondial AFN40BI Family Inox 4L - Preta/Inox', 311))[0], 'sim');
+eq('cmp código diferente', Comparador::decidir(['titulo' => 'Placa de Vídeo RTX 5060 8GB Gigabyte', 'preco' => 2000], $c('Placa de Vídeo RTX 5070 12GB Gigabyte', 2900))[0], 'nao');
+
+// Nome automático de loja nova.
+$pg = fn ($t, $site = '') => new Pagina('u', '<html><head><title>'.$t.'</title>'.($site ? '<meta property="og:site_name" content="'.$site.'">' : '').'</head></html>');
+eq('nome og:site_name', App\Baratinho\LojasNovas::nome($pg('SSD | Loja', 'Lognet Informática'), 'lognetinfo.com.br'), 'Lognet Informática');
+eq('nome fim do título', App\Baratinho\LojasNovas::nome($pg('SSD 240GB KINGSTON | Medina Distribuidora'), 'medinadistribuidora.com.br'), 'Medina Distribuidora');
+eq('nome fim do título curto', App\Baratinho\LojasNovas::nome($pg('Memória SSD Kingston 240GB | Microtec'), 'www.microtecpapelaria.com.br'), 'Microtec');
+eq('nome sem relação', App\Baratinho\LojasNovas::nome($pg('SSD 240GB - Kingston'), 'zema.com'), 'Zema');
+eq('nome loja.x', App\Baratinho\LojasNovas::nome($pg('Produto'), 'loja.exemplo.com.br'), 'Exemplo');
+eq('texto com UTF-8 inválido', is_string((new Pagina('u', "<p>caf\xe9 R\$ 10</p>"))->texto()), true);
+
 echo $falhas ? "\n$falhas falha(s)\n" : "\ntudo certo\n";
 exit($falhas ? 1 : 0);

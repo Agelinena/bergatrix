@@ -30,6 +30,11 @@ class Dominios
     public static function garantirTabela(): void
     {
         if (Schema::hasTable(self::TABELA)) {
+            // Coluna nova (fase 3): o produto em que o site apareceu por último.
+            if (! Schema::hasColumn(self::TABELA, 'produto_id')) {
+                Schema::table(self::TABELA, fn (Blueprint $t) => $t->unsignedBigInteger('produto_id')->nullable());
+            }
+
             return;
         }
         Schema::create(self::TABELA, function (Blueprint $t) {
@@ -42,6 +47,7 @@ class Dominios
             $t->integer('tentativas')->default(0);
             $t->timestamp('visto_em')->nullable();
             $t->timestamp('decidido_em')->nullable();
+            $t->unsignedBigInteger('produto_id')->nullable();
         });
     }
 
@@ -57,8 +63,11 @@ class Dominios
         return $tipo && ! in_array($tipo, ['pendente', 'duvida'], true) ? $tipo : null;
     }
 
-    /** Anota um site desconhecido para classificar depois (ou conta mais uma aparição). */
-    public static function anotar(string $host, string $url): void
+    /**
+     * Anota um site desconhecido para classificar depois (ou conta mais uma
+     * aparição). Com o produto, a loja nova (se o site for loja) já é testada nele.
+     */
+    public static function anotar(string $host, string $url, ?int $produtoId = null): void
     {
         $host = Listas::normalizarHost($host);
         if ($host === '' || Listas::tipoFixo($host)) {
@@ -68,10 +77,12 @@ class Dominios
         $n = DB::table(self::TABELA)->where('host', $host)->increment('vezes', 1, ['visto_em' => $agora]);
         // Ainda sem decisão: o exemplo passa a ser o endereço mais recente (o
         // anterior pode ter sido uma página de erro ou de bloqueio).
-        DB::table(self::TABELA)->where('host', $host)->whereIn('tipo', ['pendente', 'duvida'])->update(['exemplo_url' => $url]);
+        DB::table(self::TABELA)->where('host', $host)->whereIn('tipo', ['pendente', 'duvida'])
+            ->update(array_filter(['exemplo_url' => $url, 'produto_id' => $produtoId]));
         if (! $n) {
             DB::table(self::TABELA)->insertOrIgnore([
                 'host' => $host, 'tipo' => 'pendente', 'exemplo_url' => $url, 'vezes' => 1, 'visto_em' => $agora,
+                'produto_id' => $produtoId,
             ]);
         }
     }

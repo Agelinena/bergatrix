@@ -213,8 +213,9 @@ services:
   # Buscador automático (buscador/): para cada produto novo, procura o mesmo
   # item nas outras lojas cadastradas e acrescenta as que baterem (ISBN, EAN,
   # modelo, medidas, preço; na dúvida, a IA local). Classifica os sites que
-  # aparecem nas buscas (loja ou notícia) e serve o filtro da pesquisa do app
-  # (http://buscador:8081/search). Mesma imagem do app.
+  # aparecem nas buscas (loja ou notícia), cria as lojas novas, manda o resumo
+  # semanal e serve o filtro da pesquisa do app (http://buscador:8081/search).
+  # Mesma imagem do app.
   buscador:
     image: jez500/pricebuddy:v1.0.57
     container_name: pricebuddy-buscador
@@ -231,6 +232,10 @@ services:
       PRICEBUDDY_BUSCA_MAX_LOJAS: ${PRICEBUDDY_BUSCA_MAX_LOJAS:-8}
       PRICEBUDDY_BUSCA_SITE_LOJAS: ${PRICEBUDDY_BUSCA_SITE_LOJAS:-4}
       PRICEBUDDY_BUSCA_DOMINIOS_POR_RODADA: ${PRICEBUDDY_BUSCA_DOMINIOS_POR_RODADA:-5}
+      # Lojas novas automáticas por rodada (0 desliga) e lojas automáticas
+      # testadas por rodada (cada uma, uma vez por dia).
+      PRICEBUDDY_LOJAS_NOVAS_POR_RODADA: ${PRICEBUDDY_LOJAS_NOVAS_POR_RODADA:-3}
+      PRICEBUDDY_LOJAS_VERIFICAR_POR_RODADA: ${PRICEBUDDY_LOJAS_VERIFICAR_POR_RODADA:-5}
       # IA local (Ollama) pela ponte "ia". Vazio desliga: os casos de dúvida
       # ficam de fora em vez de irem para a IA.
       PRICEBUDDY_IA_URL: ${PRICEBUDDY_IA_URL-http://ia:11434}
@@ -241,6 +246,8 @@ services:
       - ./buscador/Baratinho:/app/app/Baratinho:ro
       - ./buscador/BaratinhoBuscar.php:/app/app/Console/Commands/BaratinhoBuscar.php:ro
       - ./buscador/BaratinhoDominio.php:/app/app/Console/Commands/BaratinhoDominio.php:ro
+      - ./buscador/BaratinhoLojas.php:/app/app/Console/Commands/BaratinhoLojas.php:ro
+      - ./buscador/BaratinhoResumo.php:/app/app/Console/Commands/BaratinhoResumo.php:ro
     healthcheck:
       test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://localhost:8081/saude"]
       interval: 30s

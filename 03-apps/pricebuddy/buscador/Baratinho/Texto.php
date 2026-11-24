@@ -53,6 +53,28 @@ class Texto
         )));
     }
 
+    /**
+     * Códigos de modelo inteiros, sem hífen nem espaço: "AFN-40-BI" e "AFN40BI"
+     * viram "afn40bi"; "RTX 5060" vira "rtx5060"; "SA400S37/240G" vira "sa400s37".
+     *
+     * @return array<int, string>
+     */
+    public static function codigos(string $titulo): array
+    {
+        $t = strtolower(Str::ascii($titulo));
+        preg_match_all('/\b[a-z]{1,6}[- ]?\d{1,5}(?:[- ]?[a-z]{1,3}\d{0,3}\b|[a-z0-9]{0,4}\b)/', $t, $m);
+        $out = [];
+        foreach ($m[0] as $c) {
+            $c = preg_replace('/[- ]/', '', $c);
+            // Medida não é modelo (240gb, 127v, 4l).
+            if (preg_match('/\d/', $c) && ! self::unidade($c) && ! preg_match('/^\d/', $c)) {
+                $out[$c] = true;
+            }
+        }
+
+        return array_keys($out);
+    }
+
     public static function unidade(string $palavra): ?string
     {
         return preg_match('/^\d+(?:[.,]\d+)?('.self::UNIDADES.')$/', $palavra, $m) ? $m[1] : null;

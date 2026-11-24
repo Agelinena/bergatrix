@@ -7,7 +7,9 @@ use App\Baratinho\Dominios;
 use App\Baratinho\Ia;
 use App\Baratinho\Identificadores;
 use App\Baratinho\Listas;
+use App\Baratinho\LojasNovas;
 use App\Baratinho\Pagina;
+use App\Baratinho\Rede;
 use App\Baratinho\Texto;
 use App\Models\Product;
 use App\Models\Store;
@@ -29,14 +31,18 @@ use Throwable;
  *
  * A cada rodada:
  *
- *   1. Classifica alguns sites desconhecidos que apareceram nas buscas (loja,
- *      notícia, comparador...): regras da página e, na dúvida, a IA local.
- *   2. Para cada produto ainda não procurado:
+ *   1. Testa as lojas criadas automaticamente (uma vez por dia cada); as que
+ *      falham 3 dias seguidos são desativadas (LojasNovas).
+ *   2. Classifica alguns sites desconhecidos que apareceram nas buscas (loja,
+ *      notícia, comparador...): regras da página e, na dúvida, a IA local. Site
+ *      que é loja vira loja nova, já testada no produto em que apareceu.
+ *   3. Para cada produto ainda não procurado:
  *      a. lê a primeira URL dele (ISBN, EAN, código do fabricante);
  *      b. busca no SearXNG pelo ISBN ou título, e também dentro das lojas que
  *         vendem coisas parecidas (site:loja ...);
  *      c. fica com páginas de produto (não listagens) de lojas cadastradas que o
- *         produto ainda não tem; anota os sites desconhecidos;
+ *         produto ainda não tem; site já classificado como loja vira loja nova;
+ *         anota os sites desconhecidos;
  *      d. lê cada candidata e compara (Comparador): sim entra, não fica de fora,
  *         dúvida vai para a IA;
  *      e. acrescenta com Url::createFromUrl, como a tela do app.
@@ -62,14 +68,25 @@ class BaratinhoBuscar extends Command
 
     protected Ia $ia;
 
+    protected LojasNovas $lojasNovas;
+
+    /** @var array<int, array> Dados do original por produto, nesta rodada. */
+    protected array $originais = [];
+
     public function handle(): int
     {
         $this->garantirTabela();
         Dominios::garantirTabela();
         Ia::garantirTabela();
+        LojasNovas::garantirTabela();
         $this->configurarSearxng();
         $this->ia = new Ia;
+        // Simulando, não cria loja nenhuma.
+        $this->lojasNovas = new LojasNovas(fn (string $m) => $this->line($m), $this->option('simular') ? 0 : null);
 
+        if (! $this->option('simular')) {
+            $this->lojasNovas->verificar((int) env('PRICEBUDDY_LOJAS_VERIFICAR_POR_RODADA', 5));
+        }
         $this->classificarDominios();
         if ($this->option('so-dominios')) {
             return self::SUCCESS;
@@ -122,19 +139,8 @@ class BaratinhoBuscar extends Command
 
         $this->line("Produto {$produto->getKey()}: {$produto->title}");
 
-        // Sem cache: o resultado guardado pelo app não traz o HTML (ISBN, EAN, dados estruturados).
-        $r = ScrapeUrl::new($original->url)->setMaxAttempts(1)->scrape(['use_cache' => false]);
-        $pagina = new Pagina($original->url, (string) ($r['body'] ?? ''));
-        $titulo = Texto::limparTitulo((string) ($produto->title ?: ($r['title'] ?? '')));
-        $orig = [
-            'titulo' => $titulo,
-            'preco' => (float) ($produto->current_price ?: Texto::numero($r['price'] ?? null)),
-            'isbn' => $pagina->isbn(),
-            'gtins' => $pagina->gtins(),
-            'mpn' => $pagina->mpn(),
-            'nao_novo' => $pagina->naoNovo(),
-            'texto' => $pagina->texto(500),
-        ];
+        $orig = $this->dadosOriginal($produto);
+        $titulo = $orig['titulo'];
         $isbn = $orig['isbn'];
         $termo = $isbn ?: ($orig['gtins'] ? ltrim($orig['gtins'][0], '0') : null);
 
@@ -158,7 +164,9 @@ class BaratinhoBuscar extends Command
         }
 
         $candidatos = [];
+        $novas = [];
         $desconhecidos = 0;
+        $fora = LojasNovas::desativadas();
         foreach ($consultas as $consulta) {
             foreach ($this->searxng($consulta, str_starts_with($consulta, 'site:') ? 1 : 2) as $resultado) {
                 $url = Texto::semRastreio((string) ($resultado['url'] ?? ''));
@@ -168,18 +176,33 @@ class BaratinhoBuscar extends Command
                 }
                 $loja = $lojas->first(fn (Store $s) => $s->hasDomain($host));
                 if (! $loja) {
-                    if (! Dominios::tipo($host) && ! $this->option('simular')) {
-                        Dominios::anotar($host, $url);
+                    $tipo = Dominios::tipo($host);
+                    if ($tipo === 'loja') {
+                        $novas[Listas::normalizarHost($host)] ??= $url;
+                    } elseif (! $tipo && ! $this->option('simular')) {
+                        Dominios::anotar($host, $url, $produto->getKey());
                         $desconhecidos++;
                     }
 
                     continue;
                 }
-                if (in_array($loja->getKey(), $jaTem) || isset($candidatos[$loja->getKey()])) {
+                if (in_array($loja->getKey(), $jaTem) || in_array($loja->getKey(), $fora) || isset($candidatos[$loja->getKey()])) {
                     continue;
                 }
                 $candidatos[$loja->getKey()] = ['url' => $url, 'loja' => $loja];
             }
+        }
+
+        // Sites já classificados como loja, ainda sem cadastro: vira loja nova.
+        foreach ($novas as $url) {
+            $loja = $this->lojasNovas->criar($url, $produto->user_id);
+            if (! $loja || in_array($loja->getKey(), $jaTem) || in_array($loja->getKey(), $fora) || isset($candidatos[$loja->getKey()])) {
+                continue;
+            }
+            if (! $lojas->contains(fn (Store $s) => $s->is($loja))) {
+                $lojas->push($loja);
+            }
+            $candidatos[$loja->getKey()] = ['url' => $url, 'loja' => $loja];
         }
 
         $max = (int) env('PRICEBUDDY_BUSCA_MAX_LOJAS', 8);
@@ -199,12 +222,7 @@ class BaratinhoBuscar extends Command
                 continue;
             }
 
-            if ($this->option('simular')) {
-                $adicionadas[] = $c['url'];
-
-                continue;
-            }
-            if (Url::createFromUrl($c['url'], $produto->getKey(), $produto->user_id, false)) {
+            if ($this->acrescentar($produto, $c['url'])) {
                 $adicionadas[] = $c['url'];
             }
         }
@@ -214,6 +232,62 @@ class BaratinhoBuscar extends Command
 
         if (! $this->option('simular')) {
             $this->registrar($produto, implode(' | ', $consultas), $isbn, $adicionadas, $resumo);
+        }
+    }
+
+    /**
+     * Título, preço e identificadores da primeira URL do produto (lida sem cache:
+     * o resultado guardado pelo app não traz o HTML). Guardado nesta rodada.
+     */
+    protected function dadosOriginal(Product $produto): array
+    {
+        if (isset($this->originais[$produto->getKey()])) {
+            return $this->originais[$produto->getKey()];
+        }
+        $original = $produto->urls()->orderBy('id')->first();
+        $r = $original ? ScrapeUrl::new($original->url)->setMaxAttempts(1)->scrape(['use_cache' => false]) : [];
+        $pagina = new Pagina((string) $original?->url, (string) ($r['body'] ?? ''));
+
+        return $this->originais[$produto->getKey()] = [
+            'titulo' => Texto::limparTitulo((string) ($produto->title ?: ($r['title'] ?? ''))),
+            'preco' => (float) ($produto->current_price ?: Texto::numero($r['price'] ?? null)),
+            'isbn' => $pagina->isbn(),
+            'gtins' => $pagina->gtins(),
+            'mpn' => $pagina->mpn(),
+            'nao_novo' => $pagina->naoNovo(),
+            'texto' => $pagina->texto(500),
+        ];
+    }
+
+    /** Acrescenta a URL ao produto (simulando, só finge). */
+    protected function acrescentar(Product $produto, string $url): bool
+    {
+        if ($this->option('simular')) {
+            return true;
+        }
+
+        return (bool) Url::createFromUrl($url, $produto->getKey(), $produto->user_id, false);
+    }
+
+    /**
+     * Site recém-classificado como loja: cria a loja e testa a página em que ele
+     * apareceu no produto daquela busca.
+     */
+    protected function lojaNovaNoProduto(int $produtoId, string $url): void
+    {
+        $produto = Product::find($produtoId);
+        if (! $produto || $url === '' || Listas::pareceListagem($url) || ! $this->lojasNovas->ligada()) {
+            return;
+        }
+        $loja = $this->lojasNovas->criar($url, $produto->user_id);
+        if (! $loja || in_array($loja->getKey(), LojasNovas::desativadas())
+            || $produto->urls()->where('store_id', $loja->getKey())->exists()) {
+            return;
+        }
+        [$ok, $motivo] = $this->avaliar($this->dadosOriginal($produto), ['url' => $url, 'loja' => $loja]);
+        $this->line(sprintf('  %s %s no produto %d: %s', $ok ? '+' : '-', $loja->name, $produtoId, $motivo));
+        if ($ok && $this->acrescentar($produto, $url) && ! $this->option('simular')) {
+            $this->registrarAdicionada($produto, $url);
         }
     }
 
@@ -281,7 +355,7 @@ class BaratinhoBuscar extends Command
         arsort($pontos);
         arsort($total);
         $ordem = array_unique(array_merge(array_keys($pontos), array_keys($total)));
-        $ordem = array_values(array_diff($ordem, $jaTem));
+        $ordem = array_values(array_diff($ordem, $jaTem, LojasNovas::desativadas()));
 
         return collect(array_slice($ordem, 0, $max))
             ->map(fn ($id) => $lojas->firstWhere('id', $id))
@@ -302,7 +376,7 @@ class BaratinhoBuscar extends Command
                 continue;
             }
             try {
-                $html = $this->baixar((string) $d->exemplo_url);
+                [$html] = Rede::baixar((string) $d->exemplo_url);
             } catch (Throwable $e) {
                 Dominios::falhou($d->host, Str::limit($e->getMessage(), 100));
                 $this->line("Site {$d->host}: não abriu ({$e->getMessage()})");
@@ -314,7 +388,7 @@ class BaratinhoBuscar extends Command
             if ($pagina->bloqueio()) {
                 // Site que só funciona com JavaScript ou recusou a leitura simples: pelo navegador.
                 try {
-                    $pagina = new Pagina((string) $d->exemplo_url, $this->baixar((string) $d->exemplo_url, true));
+                    $pagina = new Pagina((string) $d->exemplo_url, Rede::baixar((string) $d->exemplo_url, true)[0]);
                 } catch (Throwable) {
                     // Fica com a página que já tem.
                 }
@@ -345,39 +419,14 @@ class BaratinhoBuscar extends Command
             }
             Dominios::decidir($d->host, $tipo, $origem, $motivo);
             $this->line("Site {$d->host}: {$tipo} ({$origem}: {$motivo})");
-        }
-    }
-
-    /** Baixa uma página pelo proxy de saída; se o site recusar (ou com $navegador), pelo navegador do scraper. */
-    protected function baixar(string $url, bool $navegador = false): string
-    {
-        $proxy = env('HTTPS_PROXY');
-        if (! $navegador) {
-            try {
-                $r = Http::timeout(25)
-                    ->withOptions($proxy ? ['proxy' => ['http' => $proxy, 'https' => $proxy]] : [])
-                    ->withHeaders([
-                        'User-Agent' => 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36',
-                        'Accept-Language' => 'pt-BR,pt;q=0.9',
-                    ])
-                    ->get($url);
-                if ($r->successful() && strlen($r->body()) > 2000) {
-                    return $r->body();
+            if ($tipo === 'loja' && $d->produto_id) {
+                try {
+                    $this->lojaNovaNoProduto((int) $d->produto_id, (string) $d->exemplo_url);
+                } catch (Throwable $e) {
+                    $this->warn("  loja nova {$d->host}: erro {$e->getMessage()}");
                 }
-            } catch (Throwable) {
-                // Tenta pelo navegador abaixo.
             }
         }
-
-        $r = Http::timeout(90)->get(rtrim((string) env('SCRAPER_BASE_URL', 'http://scraper:3000'), '/').'/api/article', [
-            'url' => $url, 'full-content' => 'true', 'cache' => 'false',
-        ]);
-        $html = (string) $r->json('fullContent');
-        if (! $r->successful() || $html === '') {
-            throw new \RuntimeException('HTTP '.$r->status());
-        }
-
-        return $html;
     }
 
     protected function searxng(string $consulta, int $paginas = 2): array
@@ -403,6 +452,9 @@ class BaratinhoBuscar extends Command
 
     protected function registrar(Product $produto, ?string $consulta, ?string $isbn, array $adicionadas, string $resumo): void
     {
+        // Soma às de rodadas anteriores: a desativação de loja usa essa lista.
+        $antes = (array) json_decode((string) DB::table(self::TABELA)->where('product_id', $produto->getKey())->value('adicionadas'), true);
+        $adicionadas = array_values(array_unique(array_merge($antes, $adicionadas)));
         DB::table(self::TABELA)->updateOrInsert(
             ['product_id' => $produto->getKey()],
             [
@@ -413,6 +465,19 @@ class BaratinhoBuscar extends Command
                 'buscado_em' => now(),
             ]
         );
+    }
+
+    /** Uma URL acrescentada fora da busca do produto (loja nova). */
+    protected function registrarAdicionada(Product $produto, string $url): void
+    {
+        $linha = DB::table(self::TABELA)->where('product_id', $produto->getKey())->first();
+        if (! $linha) {
+            $this->registrar($produto, null, null, [$url], 'loja nova');
+
+            return;
+        }
+        $lista = array_values(array_unique(array_merge((array) json_decode((string) $linha->adicionadas, true), [$url])));
+        DB::table(self::TABELA)->where('product_id', $produto->getKey())->update(['adicionadas' => json_encode($lista)]);
     }
 
     protected function garantirTabela(): void

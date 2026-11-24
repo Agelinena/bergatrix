@@ -61,7 +61,8 @@ class Comparador
         // Números de modelo (rtx 5060, sa400s37): os do original precisam aparecer.
         $modeloA = array_filter($a, fn ($p) => preg_match('/\d/', $p) && ! Texto::unidade($p));
         $modeloB = array_filter($b, fn ($p) => preg_match('/\d/', $p) && ! Texto::unidade($p));
-        if ($modeloA && $modeloB && ! array_intersect($modeloA, $modeloB)) {
+        $mesmoCodigo = (bool) array_intersect(Texto::codigos((string) ($orig['titulo'] ?? '')), Texto::codigos($tituloC));
+        if ($modeloA && $modeloB && ! array_intersect($modeloA, $modeloB) && ! $mesmoCodigo) {
             return ['nao', 'modelo diferente'];
         }
 
