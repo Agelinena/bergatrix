@@ -15,10 +15,13 @@ contactPoints:
           singleEmail: true
           subject: |-
             {{ if eq .Status "firing" }}🔴{{ else }}✅{{ end }} [Bergatrix] {{ if .CommonLabels.alertname }}{{ .CommonLabels.alertname }}{{ else }}{{ len .Alerts.Firing }} alertas críticos{{ end }}
+          # "Silenciar" é o ack: abre o Grafana com o silêncio já preenchido para
+          # este alerta; enquanto durar, ele não manda e-mail nem entra no resumo.
           message: |-
             {{ range .Alerts.Firing }}● {{ .Annotations.summary }}
             {{ if .Annotations.description }}  {{ .Annotations.description }}
-            {{ end }}{{ end }}{{ if .Alerts.Resolved }}
+            {{ end }}  Já sei, silenciar: {{ .SilenceURL }}
+            {{ end }}{{ if .Alerts.Resolved }}
             Resolvidos:
             {{ range .Alerts.Resolved }}✓ {{ .Annotations.summary }}
             {{ end }}{{ end }}

@@ -579,7 +579,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "max by (host) (100 * (1 - node_memory_MemAvailable_bytes{} / node_memory_MemTotal_bytes{}) or 100 * (1 - (node_memory_free_bytes{} + node_memory_inactive_bytes{}) / node_memory_size_bytes{}))",
+          "expr": "max by (host) (100 * (1 - (node_memory_MemAvailable_bytes{} + ((node_zfs_arc_size{} - node_zfs_arc_c_min{}) or node_memory_MemTotal_bytes{} * 0)) / node_memory_MemTotal_bytes{}) or 100 * (1 - (node_memory_free_bytes{} + node_memory_inactive_bytes{}) / node_memory_size_bytes{}))",
           "legendFormat": "{{host}}",
           "range": false,
           "instant": true

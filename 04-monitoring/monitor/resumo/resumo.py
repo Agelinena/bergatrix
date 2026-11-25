@@ -8,6 +8,11 @@ por dia (RESUMO_HORA, padrão 07:00), manda um e-mail com:
 Os críticos também chegam na hora pelo contact point "E-mail"; aqui entram só
 para o resumo ficar completo.
 
+Silêncio = "ack": na hora do resumo, este serviço pergunta ao Grafana quais
+alertas seguem ativos e quais estão silenciados. Silenciado sai da lista de
+ativos (vai para uma seção curta); o que o Grafana não tem mais como ativo é
+dado como resolvido (silenciado e depois resolvido não gera webhook).
+
 Só biblioteca padrão. Estado em /dados/estado.json.
 
   POST /alerta        webhook do Grafana
@@ -21,7 +26,9 @@ import os
 import re
 import smtplib
 import threading
+import base64
 import time
+import urllib.request
 from datetime import datetime, timedelta, timezone
 from email.message import EmailMessage
 from email.utils import formataddr
@@ -31,6 +38,10 @@ ARQUIVO = os.environ.get("RESUMO_ESTADO", "/dados/estado.json")
 HORA = os.environ.get("RESUMO_HORA", "07:00")
 ENVIAR_VAZIO = os.environ.get("RESUMO_ENVIAR_VAZIO", "false").lower() in ("1", "true", "sim")
 GRAFANA_URL = os.environ.get("GRAFANA_URL", "")
+# Grafana pela rede interna, para ler os alertas ativos e os silêncios
+GRAFANA_INTERNO = os.environ.get("GRAFANA_INTERNO", "http://monitor-grafana:3000")
+GRAFANA_USUARIO = os.environ.get("GRAFANA_ADMIN_USER", "admin")
+GRAFANA_SENHA = os.environ.get("GRAFANA_ADMIN_PASSWORD", "")
 
 trava = threading.Lock()
 
@@ -77,7 +88,7 @@ def duracao(seg: float) -> str:
 
 # ── Estado ───────────────────────────────────────────────────────
 # {"ultimo_resumo": iso, "alertas": {fingerprint: {titulo, resumo, gravidade,
-#   ocorrencias: [{inicio: iso, fim: iso|null}]}}}
+#   labels, silenciar (link), ocorrencias: [{inicio: iso, fim: iso|null}]}}}
 
 def carregar() -> dict:
     try:
@@ -112,8 +123,11 @@ def registrar(payload: dict) -> int:
             item = estado["alertas"].setdefault(fp, {"ocorrencias": []})
             item["titulo"] = labels.get("alertname", "Alerta")
             item["gravidade"] = labels.get("gravidade", "aviso")
+            item["labels"] = labels
             if anot.get("summary"):
                 item["resumo"] = anot["summary"]
+            if a.get("silenceURL"):
+                item["silenciar"] = a["silenceURL"]
 
             ocs = item["ocorrencias"]
             atual = next((o for o in ocs if o["inicio"] == inicio.isoformat()), None)
@@ -126,10 +140,58 @@ def registrar(payload: dict) -> int:
     return len(alertas)
 
 
+# ── Situação no Grafana (silêncios) ──────────────────────────────
+
+def chave_labels(labels: dict) -> str:
+    return json.dumps(labels or {}, sort_keys=True)
+
+
+def situacao_no_grafana() -> dict[str, str] | None:
+    """Alertas que o Grafana tem agora: {fingerprint ou labels: "active" |
+    "suppressed"}. None se não deu para perguntar (aí nada muda no resumo)."""
+    if not GRAFANA_SENHA:
+        return None
+    url = (GRAFANA_INTERNO.rstrip("/") + "/api/alertmanager/grafana/api/v2/alerts"
+           "?active=true&silenced=true&inhibited=true&unprocessed=true")
+    cred = base64.b64encode(f"{GRAFANA_USUARIO}:{GRAFANA_SENHA}".encode()).decode()
+    pedido = urllib.request.Request(url, headers={"Authorization": f"Basic {cred}"})
+    try:
+        with urllib.request.urlopen(pedido, timeout=20) as r:
+            alertas = json.load(r)
+    except Exception as e:  # noqa: BLE001
+        log(f"AVISO: não consegui ler os alertas do Grafana ({e!r}); resumo sem silêncios")
+        return None
+    sit: dict[str, str] = {}
+    for a in alertas:
+        estado = (a.get("status") or {}).get("state", "active")
+        if a.get("fingerprint"):
+            sit[a["fingerprint"]] = estado
+        sit[chave_labels(a.get("labels"))] = estado
+    return sit
+
+
+def sincronizar(estado: dict, ate: datetime, sit: dict[str, str] | None) -> None:
+    """Marca os silenciados e fecha o que o Grafana não tem mais como ativo."""
+    if sit is None:
+        return  # sem resposta do Grafana: vale o que se sabia no último resumo
+    for fp, item in estado["alertas"].items():
+        item["silenciado"] = False
+        aberto = any(o["fim"] is None for o in item["ocorrencias"])
+        s = sit.get(fp) or sit.get(chave_labels(item.get("labels")))
+        if s is None:
+            if aberto:
+                for o in item["ocorrencias"]:
+                    if o["fim"] is None:
+                        o["fim"] = ate.isoformat()
+        elif s == "suppressed":
+            item["silenciado"] = True
+
+
 # ── Resumo ───────────────────────────────────────────────────────
 
 def montar(estado: dict, desde: datetime, ate: datetime) -> tuple[str, str, int] | None:
     ativos: list[tuple] = []
+    silenciados: list[tuple] = []
     resolvidos: list[tuple] = []
 
     for item in estado["alertas"].values():
@@ -140,27 +202,32 @@ def montar(estado: dict, desde: datetime, ate: datetime) -> tuple[str, str, int]
 
         abertas = [i for i, f in ocs if f is None]
         fechadas = [(i, f) for i, f in ocs if f is not None and f >= desde]
-        if abertas:
-            ativos.append((not critico, titulo, resumo, min(abertas), critico))
+        if abertas and item.get("silenciado"):
+            silenciados.append((titulo, resumo, min(abertas)))
+        elif abertas:
+            ativos.append((not critico, titulo, resumo, min(abertas), critico, item.get("silenciar", "")))
         if fechadas:
             total = sum((f - i).total_seconds() for i, f in fechadas)
             resolvidos.append((not critico, titulo, resumo, len(fechadas), total, max(f for _, f in fechadas), critico))
 
     if not ativos and not resolvidos and not ENVIAR_VAZIO:
-        return None
+        return None  # só silenciados, ou nada: sem e-mail
 
     ativos.sort()
+    silenciados.sort()
     resolvidos.sort()
     marca = lambda c: "  [crítico, já avisado na hora]" if c else ""
 
     linhas = [f"Alertas de {fmt(desde)} a {fmt(ate)}.", ""]
     if ativos:
         linhas.append(f"AINDA ATIVOS ({len(ativos)})")
-        for _, titulo, resumo, inicio, c in ativos:
+        for _, titulo, resumo, inicio, c, silenciar in ativos:
             linhas.append(f"  ● {titulo}{marca(c)}")
             if resumo:
                 linhas.append(f"    {resumo}")
             linhas.append(f"    desde {fmt(inicio)} ({duracao((ate - inicio).total_seconds())})")
+            if silenciar:
+                linhas.append(f"    Já sei, silenciar: {silenciar}")
         linhas.append("")
     if resolvidos:
         linhas.append(f"ACONTECERAM E JÁ RESOLVERAM ({len(resolvidos)})")
@@ -170,6 +237,13 @@ def montar(estado: dict, desde: datetime, ate: datetime) -> tuple[str, str, int]
             if resumo:
                 linhas.append(f"    {resumo}")
             linhas.append(f"    {vez}, {duracao(total)} no total, a última até {fmt(ultimo)}")
+        linhas.append("")
+    if silenciados:
+        linhas.append(f"SILENCIADOS ({len(silenciados)}), ainda com problema")
+        for titulo, resumo, inicio in silenciados:
+            linhas.append(f"  ◌ {resumo or titulo} (desde {fmt(inicio)})")
+        if GRAFANA_URL:
+            linhas.append(f"  Silêncios: {GRAFANA_URL}/alerting/silences")
         linhas.append("")
     if not ativos and not resolvidos:
         linhas += ["Nada aconteceu no período.", ""]
@@ -182,6 +256,8 @@ def montar(estado: dict, desde: datetime, ate: datetime) -> tuple[str, str, int]
         partes.append(f"{len(ativos)} ativo(s)")
     if resolvidos:
         partes.append(f"{len(resolvidos)} resolvido(s)")
+    if silenciados:
+        partes.append(f"{len(silenciados)} silenciado(s)")
     assunto += ", ".join(partes) if partes else "tudo certo"
     return assunto, "\n".join(linhas), len(ativos) + len(resolvidos)
 
@@ -229,6 +305,7 @@ def resumir() -> str:
         estado = carregar()
         ate = agora()
         desde = ler_data(estado.get("ultimo_resumo")) or ate - timedelta(days=1)
+        sincronizar(estado, ate, situacao_no_grafana())
         r = montar(estado, desde, ate)
         if r is None:
             log("resumo: nada no período, e-mail não enviado")

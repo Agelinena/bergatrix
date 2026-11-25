@@ -23,8 +23,12 @@ const NET = 'device!~"lo.*|veth.*|br-.*|docker.*|tap.*|fwbr.*|fwln.*|fwpr.*|enc.
 
 const cpu = (sel: string) => `100 * (1 - avg by (host) (rate(node_cpu_seconds_total{mode="idle"${sel}}[$__rate_interval])))`;
 // Linux (MemAvailable) ou FreeBSD do OPNsense (livre + inativa)
+// No Linux, o cache do ZFS (ARC, no Proxmox) não entra no MemAvailable, mas é
+// devolvido quando falta memória: soma a parte que pode encolher (acima do mínimo).
+const arcLivre = (sel: string) =>
+  `((node_zfs_arc_size{${sel}} - node_zfs_arc_c_min{${sel}}) or node_memory_MemTotal_bytes{${sel}} * 0)`;
 const mem = (sel: string) =>
-  `max by (host) (100 * (1 - node_memory_MemAvailable_bytes{${sel}} / node_memory_MemTotal_bytes{${sel}})` +
+  `max by (host) (100 * (1 - (node_memory_MemAvailable_bytes{${sel}} + ${arcLivre(sel)}) / node_memory_MemTotal_bytes{${sel}})` +
   ` or 100 * (1 - (node_memory_free_bytes{${sel}} + node_memory_inactive_bytes{${sel}}) / node_memory_size_bytes{${sel}}))`;
 const disco = (sel: string) => `100 * (1 - node_filesystem_avail_bytes{${FS}${sel}} / node_filesystem_size_bytes{${FS}${sel}})`;
 // Latência do ping só quando ele respondeu (sem resposta, o blackbox grava 0 s)
@@ -677,8 +681,8 @@ type Regra = {
 
 // Templates do Grafana: $labels e $values com um $ só (o Grafana 13 não
 // troca $$ por $ nas regras de alerta provisionadas).
-const V = "{{ printf \"%.0f\" $values.A.Value }}";
-const V1 = "{{ printf \"%.1f\" $values.A.Value }}";
+const V = "{{ with $values.A }}{{ printf \"%.0f\" .Value }}{{ end }}";
+const V1 = "{{ with $values.A }}{{ printf \"%.1f\" .Value }}{{ end }}";
 const L = (x: string) => `{{ $labels.${x} }}`;
 
 const grupos: Record<string, Regra[]> = {
@@ -691,8 +695,7 @@ const grupos: Record<string, Regra[]> = {
       descricao: "Um exporter parou: os painéis dele ficam sem dados, a máquina pode estar bem." },
     { uid: "cpu-alta", titulo: "CPU alta", expr: '100 * (1 - avg by (host) (rate(node_cpu_seconds_total{mode="idle"}[5m])))', op: "gt", limite: 90, para: "15m",
       resumo: `CPU de ${L("host")} em ${V}% há 15 min` },
-    { uid: "memoria-alta", titulo: "Memória alta",
-      expr: "max by (host) (100 * (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) or 100 * (1 - (node_memory_free_bytes + node_memory_inactive_bytes) / node_memory_size_bytes))",
+    { uid: "memoria-alta", titulo: "Memória alta", expr: mem(""),
       op: "gt", limite: 90, para: "10m", resumo: `Memória de ${L("host")} em ${V}%` },
     { uid: "disco-cheio", titulo: "Disco quase cheio", expr: `100 * (1 - node_filesystem_avail_bytes{${FS}} / node_filesystem_size_bytes{${FS}})`,
       op: "gt", limite: 85, para: "10m", resumo: `${L("mountpoint")} em ${L("host")} com ${V}% de uso` },
@@ -761,8 +764,11 @@ const grupos: Record<string, Regra[]> = {
       resumo: `Tabela de estados do OPNsense em ${V}%` },
   ],
   "Sites": [
-    { uid: "site-fora", titulo: "Site fora do ar", expr: 'probe_success{job="sites"}', op: "lt", limite: 1, para: "3m",
-      gravidade: "critico", resumo: `${L("instance")} não responde pelo caminho público há 3 min` },
+    // Fora = nenhum teste respondeu nos últimos 10 min, e continua assim por mais
+    // 5 (15 min no total). Uma resposta no meio zera a contagem: queda curta,
+    // reinício de container ou um teste perdido não mandam e-mail.
+    { uid: "site-fora", titulo: "Site fora do ar", expr: 'max_over_time(probe_success{job="sites"}[10m])', op: "lt", limite: 1, para: "5m",
+      gravidade: "critico", resumo: `${L("instance")} não responde pelo caminho público há 15 min` },
     { uid: "certificado", titulo: "Certificado perto de vencer", expr: '(probe_ssl_earliest_cert_expiry{job="sites"} - time()) / 86400', op: "lt", limite: 14, para: "1h",
       resumo: `O certificado de ${L("instance")} vence em ${V} dias`, descricao: "O Traefik renova sozinho com 30 dias; se chegou aqui, a renovação está falhando (deSEC)." },
   ],
@@ -814,7 +820,10 @@ function regraGrafana(r: Regra) {
       },
     ],
     noDataState: "OK",
-    execErrState: "Error",
+    // Se o Prometheus ou o Loki não responderem (reinício, atualização), a regra
+    // fica como estava. Com "Error", cada regra virava um alerta DatasourceError
+    // (e os críticos mandavam e-mail na hora, sem dados: "[no value]").
+    execErrState: "KeepLast",
     for: r.para,
     labels: { gravidade: r.gravidade ?? "aviso" },
     annotations: { summary: r.resumo, ...(r.descricao ? { description: r.descricao } : {}) },

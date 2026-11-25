@@ -436,7 +436,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "max by (host) (100 * (1 - node_memory_MemAvailable_bytes{host=\"vps\"} / node_memory_MemTotal_bytes{host=\"vps\"}) or 100 * (1 - (node_memory_free_bytes{host=\"vps\"} + node_memory_inactive_bytes{host=\"vps\"}) / node_memory_size_bytes{host=\"vps\"}))",
+          "expr": "max by (host) (100 * (1 - (node_memory_MemAvailable_bytes{host=\"vps\"} + ((node_zfs_arc_size{host=\"vps\"} - node_zfs_arc_c_min{host=\"vps\"}) or node_memory_MemTotal_bytes{host=\"vps\"} * 0)) / node_memory_MemTotal_bytes{host=\"vps\"}) or 100 * (1 - (node_memory_free_bytes{host=\"vps\"} + node_memory_inactive_bytes{host=\"vps\"}) / node_memory_size_bytes{host=\"vps\"}))",
           "legendFormat": "__auto",
           "range": true,
           "instant": false

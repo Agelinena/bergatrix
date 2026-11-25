@@ -315,6 +315,9 @@ services:
       RESUMO_HORA: ${RESUMO_HORA:-07:00}
       RESUMO_ENVIAR_VAZIO: ${RESUMO_ENVIAR_VAZIO:-false}
       GRAFANA_URL: https://grafana.${DOMAIN}
+      # Lê os alertas ativos e os silêncios pela rede interna (silêncio = ack)
+      GRAFANA_INTERNO: http://monitor-grafana:3000
+      GRAFANA_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
       SMTP_HOST: ${SMTP_HOST}
       SMTP_PORT: ${SMTP_PORT:-587}
       SMTP_USERNAME: ${SMTP_USERNAME}

@@ -48,11 +48,23 @@ Os e-mails vão para `ALERTAS_EMAIL`, de dois jeitos:
 
 Para mudar o que é crítico, troque a `gravidade` da regra em [`dashboards/gerar.ts`](dashboards/gerar.ts).
 
+Se o Prometheus ou o Loki ficarem fora por um momento (reinício, atualização), as regras mantêm o último estado. Elas não viram alerta de erro.
+
 Para testar o resumo sem esperar a manhã:
 
 ```bash
 docker exec monitor-resumo wget -qO- --post-data= http://localhost:8080/enviar-agora
 ```
+
+### Já sei do problema: silenciar (ack)
+
+Problema conhecido, que vai demorar a resolver (site ainda não publicado, serviço que falha e você vai arrumar depois): **silencie o alerta**. Enquanto o silêncio durar, ele não manda e-mail nem entra no resumo. Continua aparecendo nos painéis.
+
+- **Pelo e-mail:** cada alerta tem o link *"Já sei, silenciar"*, com o silêncio já preenchido para aquele alerta. Escolha a duração (2 h, 1 dia, 1 semana…), escreva o motivo em *Comment* e salve.
+- **Pelo Grafana:** *Alerting → Alert rules*, abra a regra, e em cada instância use *Silence*. Para silenciar várias de uma vez, use *Alerting → Silences → New silence* com um filtro, por exemplo `alertname = Serviço do systemd falhou` e `host = omv`.
+- **Desfazer:** *Alerting → Silences*, *Expire* no silêncio. Quando o silêncio vence e o problema continua, o alerta volta a avisar normalmente.
+
+O resumo diário lista os silenciados numa seção curta (*Silenciados, ainda com problema*), para nada ficar esquecido. O que resolver enquanto estava silenciado aparece em *Já resolveram*.
 
 | Grupo | Alertas |
 |---|---|
@@ -60,7 +72,7 @@ docker exec monitor-resumo wget -qO- --post-data= http://localhost:8080/enviar-a
 | Proxmox | VM com início automático parada, storage > 85 %, SMART reprovado, setores realocados ou pendentes, disco > 55 °C, SSD com menos de 20 % de vida útil, aviso crítico de NVMe |
 | Servidor Docker | Container reiniciando (mais de 2 vezes em 15 min), GPU > 85 °C, mais de 10 % de 5xx num serviço, processo morto por falta de memória (log) |
 | Rede | Túnel sem handshake há 5 min, máquina sem responder ao ping, túnel > 100 ms, gateway com problema, perda > 10 %, serviço do OPNsense parado, tabela de estados > 80 %, link renegociou a velocidade, internet abaixo de 50 % do normal da semana |
-| Sites | Site fora pelo caminho público, certificado vencendo em menos de 14 dias |
+| Sites | Site fora pelo caminho público (nenhuma resposta por 15 min seguidos), certificado vencendo em menos de 14 dias |
 | Acessos | IP de fora do Brasil, mais de 30 logins recusados (401/403) em 10 min, mais de 100 caminhos inexistentes (404) em 10 min, mais de 5000 requisições de um IP em 10 min |
 
 ## Subir

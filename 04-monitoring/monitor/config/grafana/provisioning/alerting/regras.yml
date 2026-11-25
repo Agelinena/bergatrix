@@ -35,7 +35,7 @@ groups:
                     params:
                       - 1
         noDataState: OK
-        execErrState: Error
+        execErrState: KeepLast
         for: 5m
         labels:
           gravidade: critico
@@ -71,7 +71,7 @@ groups:
                     params:
                       - 1
         noDataState: OK
-        execErrState: Error
+        execErrState: KeepLast
         for: 10m
         labels:
           gravidade: aviso
@@ -107,12 +107,12 @@ groups:
                     params:
                       - 90
         noDataState: OK
-        execErrState: Error
+        execErrState: KeepLast
         for: 15m
         labels:
           gravidade: aviso
         annotations:
-          summary: 'CPU de {{ $labels.host }} em {{ printf "%.0f" $values.A.Value }}% há 15 min'
+          summary: 'CPU de {{ $labels.host }} em {{ with $values.A }}{{ printf "%.0f" .Value }}{{ end }}% há 15 min'
         isPaused: false
       - uid: memoria-alta
         title: Memória alta
@@ -125,7 +125,7 @@ groups:
             datasourceUid: prometheus
             model:
               refId: A
-              expr: max by (host) (100 * (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) or 100 * (1 - (node_memory_free_bytes + node_memory_inactive_bytes) / node_memory_size_bytes))
+              expr: 'max by (host) (100 * (1 - (node_memory_MemAvailable_bytes{} + ((node_zfs_arc_size{} - node_zfs_arc_c_min{}) or node_memory_MemTotal_bytes{} * 0)) / node_memory_MemTotal_bytes{}) or 100 * (1 - (node_memory_free_bytes{} + node_memory_inactive_bytes{}) / node_memory_size_bytes{}))'
               instant: true
               range: false
               intervalMs: 1000
@@ -142,12 +142,12 @@ groups:
                     params:
                       - 90
         noDataState: OK
-        execErrState: Error
+        execErrState: KeepLast
         for: 10m
         labels:
           gravidade: aviso
         annotations:
-          summary: 'Memória de {{ $labels.host }} em {{ printf "%.0f" $values.A.Value }}%'
+          summary: 'Memória de {{ $labels.host }} em {{ with $values.A }}{{ printf "%.0f" .Value }}{{ end }}%'
         isPaused: false
       - uid: disco-cheio
         title: Disco quase cheio
@@ -177,12 +177,12 @@ groups:
                     params:
                       - 85
         noDataState: OK
-        execErrState: Error
+        execErrState: KeepLast
         for: 10m
         labels:
           gravidade: aviso
         annotations:
-          summary: '{{ $labels.mountpoint }} em {{ $labels.host }} com {{ printf "%.0f" $values.A.Value }}% de uso'
+          summary: '{{ $labels.mountpoint }} em {{ $labels.host }} com {{ with $values.A }}{{ printf "%.0f" .Value }}{{ end }}% de uso'
         isPaused: false
       - uid: disco-critico
         title: Disco cheio
@@ -212,12 +212,12 @@ groups:
                     params:
                       - 95
         noDataState: OK
-        execErrState: Error
+        execErrState: KeepLast
         for: 5m
         labels:
           gravidade: critico
         annotations:
-          summary: '{{ $labels.mountpoint }} em {{ $labels.host }} com {{ printf "%.0f" $values.A.Value }}% de uso'
+          summary: '{{ $labels.mountpoint }} em {{ $labels.host }} com {{ with $values.A }}{{ printf "%.0f" .Value }}{{ end }}% de uso'
         isPaused: false
       - uid: disco-enche-24h
         title: Disco vai encher em 24 h
@@ -247,7 +247,7 @@ groups:
                     params:
                       - 0
         noDataState: OK
-        execErrState: Error
+        execErrState: KeepLast
         for: 1h
         labels:
           gravidade: aviso
@@ -282,12 +282,12 @@ groups:
                     params:
                       - 85
         noDataState: OK
-        execErrState: Error
+        execErrState: KeepLast
         for: 5m
         labels:
           gravidade: critico
         annotations:
-          summary: '{{ $labels.host }} ({{ $labels.chip }} {{ $labels.sensor }}) a {{ printf "%.0f" $values.A.Value }} °C'
+          summary: '{{ $labels.host }} ({{ $labels.chip }} {{ $labels.sensor }}) a {{ with $values.A }}{{ printf "%.0f" .Value }}{{ end }} °C'
         isPaused: false
       - uid: systemd-falhou
         title: Serviço do systemd falhou
@@ -317,7 +317,7 @@ groups:
                     params:
                       - 0
         noDataState: OK
-        execErrState: Error
+        execErrState: KeepLast
         for: 5m
         labels:
           gravidade: aviso
@@ -357,7 +357,7 @@ groups:
                     params:
                       - 1
         noDataState: OK
-        execErrState: Error
+        execErrState: KeepLast
         for: 5m
         labels:
           gravidade: critico
@@ -393,12 +393,12 @@ groups:
                     params:
                       - 85
         noDataState: OK
-        execErrState: Error
+        execErrState: KeepLast
         for: 15m
         labels:
           gravidade: aviso
         annotations:
-          summary: '{{ $labels.id }} com {{ printf "%.0f" $values.A.Value }}% de uso'
+          summary: '{{ $labels.id }} com {{ with $values.A }}{{ printf "%.0f" .Value }}{{ end }}% de uso'
         isPaused: false
       - uid: smart-falha
         title: Disco com falha SMART
@@ -428,7 +428,7 @@ groups:
                     params:
                       - 1
         noDataState: OK
-        execErrState: Error
+        execErrState: KeepLast
         for: 0s
         labels:
           gravidade: critico
@@ -464,12 +464,12 @@ groups:
                     params:
                       - 0
         noDataState: OK
-        execErrState: Error
+        execErrState: KeepLast
         for: 0s
         labels:
           gravidade: aviso
         annotations:
-          summary: 'O disco {{ $labels.disk }} tem {{ printf "%.0f" $values.A.Value }} setores realocados ou pendentes'
+          summary: 'O disco {{ $labels.disk }} tem {{ with $values.A }}{{ printf "%.0f" .Value }}{{ end }} setores realocados ou pendentes'
         isPaused: false
       - uid: disco-quente
         title: Disco quente
@@ -499,12 +499,12 @@ groups:
                     params:
                       - 55
         noDataState: OK
-        execErrState: Error
+        execErrState: KeepLast
         for: 10m
         labels:
           gravidade: aviso
         annotations:
-          summary: 'O disco {{ $labels.disk }} está a {{ printf "%.0f" $values.A.Value }} °C'
+          summary: 'O disco {{ $labels.disk }} está a {{ with $values.A }}{{ printf "%.0f" .Value }}{{ end }} °C'
         isPaused: false
       - uid: ssd-desgaste
         title: SSD perto do fim da vida útil
@@ -534,12 +534,12 @@ groups:
                     params:
                       - 20
         noDataState: OK
-        execErrState: Error
+        execErrState: KeepLast
         for: 1h
         labels:
           gravidade: aviso
         annotations:
-          summary: 'O SSD {{ $labels.disk }} tem {{ printf "%.0f" $values.A.Value }}% de vida útil restante'
+          summary: 'O SSD {{ $labels.disk }} tem {{ with $values.A }}{{ printf "%.0f" .Value }}{{ end }}% de vida útil restante'
           description: Planeje a troca; abaixo de 10% o fabricante não garante mais nada.
         isPaused: false
       - uid: nvme-aviso
@@ -570,12 +570,12 @@ groups:
                     params:
                       - 0
         noDataState: OK
-        execErrState: Error
+        execErrState: KeepLast
         for: 0s
         labels:
           gravidade: critico
         annotations:
-          summary: 'O NVMe {{ $labels.device }} acendeu o aviso crítico (código {{ printf "%.0f" $values.A.Value }})'
+          summary: 'O NVMe {{ $labels.device }} acendeu o aviso crítico (código {{ with $values.A }}{{ printf "%.0f" .Value }}{{ end }})'
           description: 'Pode ser falta de blocos reserva, temperatura, modo só leitura ou falha de backup de energia. Faça backup.'
         isPaused: false
   - orgId: 1
@@ -611,12 +611,12 @@ groups:
                     params:
                       - 2
         noDataState: OK
-        execErrState: Error
+        execErrState: KeepLast
         for: 0s
         labels:
           gravidade: aviso
         annotations:
-          summary: '{{ $labels.name }} reiniciou {{ printf "%.0f" $values.A.Value }} vezes em 15 min'
+          summary: '{{ $labels.name }} reiniciou {{ with $values.A }}{{ printf "%.0f" .Value }}{{ end }} vezes em 15 min'
         isPaused: false
       - uid: gpu-quente
         title: GPU quente
@@ -646,12 +646,12 @@ groups:
                     params:
                       - 85
         noDataState: OK
-        execErrState: Error
+        execErrState: KeepLast
         for: 5m
         labels:
           gravidade: aviso
         annotations:
-          summary: 'GPU a {{ printf "%.0f" $values.A.Value }} °C'
+          summary: 'GPU a {{ with $values.A }}{{ printf "%.0f" .Value }}{{ end }} °C'
         isPaused: false
       - uid: traefik-5xx
         title: Muitos erros 5xx
@@ -681,12 +681,12 @@ groups:
                     params:
                       - 10
         noDataState: OK
-        execErrState: Error
+        execErrState: KeepLast
         for: 10m
         labels:
           gravidade: aviso
         annotations:
-          summary: '{{ $labels.service }} com {{ printf "%.0f" $values.A.Value }}% de respostas 5xx'
+          summary: '{{ $labels.service }} com {{ with $values.A }}{{ printf "%.0f" .Value }}{{ end }}% de respostas 5xx'
         isPaused: false
       - uid: oom
         title: Processo morto por falta de memória
@@ -715,7 +715,7 @@ groups:
                     params:
                       - 0
         noDataState: OK
-        execErrState: Error
+        execErrState: KeepLast
         for: 0s
         labels:
           gravidade: aviso
@@ -756,12 +756,12 @@ groups:
                     params:
                       - 300
         noDataState: OK
-        execErrState: Error
+        execErrState: KeepLast
         for: 2m
         labels:
           gravidade: critico
         annotations:
-          summary: 'Túnel SP ↔ casa sem handshake há {{ printf "%.0f" $values.A.Value }} s ({{ $labels.allowed_ips }})'
+          summary: 'Túnel SP ↔ casa sem handshake há {{ with $values.A }}{{ printf "%.0f" .Value }}{{ end }} s ({{ $labels.allowed_ips }})'
           description: Os sites ficam fora do ar para quem vem pela VPS.
         isPaused: false
       - uid: ping-falhou
@@ -792,7 +792,7 @@ groups:
                     params:
                       - 1
         noDataState: OK
-        execErrState: Error
+        execErrState: KeepLast
         for: 5m
         labels:
           gravidade: aviso
@@ -827,7 +827,7 @@ groups:
                     params:
                       - 0
         noDataState: OK
-        execErrState: Error
+        execErrState: KeepLast
         for: 0s
         labels:
           gravidade: aviso
@@ -863,12 +863,12 @@ groups:
                     params:
                       - 50
         noDataState: OK
-        execErrState: Error
+        execErrState: KeepLast
         for: 2h
         labels:
           gravidade: aviso
         annotations:
-          summary: 'Download em {{ printf "%.0f" $values.A.Value }}% do normal da última semana há 2 h'
+          summary: 'Download em {{ with $values.A }}{{ printf "%.0f" .Value }}{{ end }}% do normal da última semana há 2 h'
           description: Pelo teste de velocidade de hora em hora.
         isPaused: false
       - uid: tunel-lento
@@ -899,12 +899,12 @@ groups:
                     params:
                       - 100
         noDataState: OK
-        execErrState: Error
+        execErrState: KeepLast
         for: 10m
         labels:
           gravidade: aviso
         annotations:
-          summary: 'Latência casa → VPS em {{ printf "%.0f" $values.A.Value }} ms'
+          summary: 'Latência casa → VPS em {{ with $values.A }}{{ printf "%.0f" .Value }}{{ end }} ms'
         isPaused: false
       - uid: gateway
         title: Gateway com problema
@@ -934,12 +934,12 @@ groups:
                     params:
                       - 1
         noDataState: OK
-        execErrState: Error
+        execErrState: KeepLast
         for: 3m
         labels:
           gravidade: critico
         annotations:
-          summary: 'Gateway {{ $labels.name }} não está "no ar" (código {{ printf "%.0f" $values.A.Value }})'
+          summary: 'Gateway {{ $labels.name }} não está "no ar" (código {{ with $values.A }}{{ printf "%.0f" .Value }}{{ end }})'
           description: '0 fora, 2 desconhecido, 3 aguardando, 4 perda, 5 latência, 6 desligado.'
         isPaused: false
       - uid: gateway-perda
@@ -970,12 +970,12 @@ groups:
                     params:
                       - 10
         noDataState: OK
-        execErrState: Error
+        execErrState: KeepLast
         for: 5m
         labels:
           gravidade: aviso
         annotations:
-          summary: 'Gateway {{ $labels.name }} com {{ printf "%.0f" $values.A.Value }}% de perda'
+          summary: 'Gateway {{ $labels.name }} com {{ with $values.A }}{{ printf "%.0f" .Value }}{{ end }}% de perda'
         isPaused: false
       - uid: opnsense-servico
         title: Serviço do OPNsense parado
@@ -1005,7 +1005,7 @@ groups:
                     params:
                       - 1
         noDataState: OK
-        execErrState: Error
+        execErrState: KeepLast
         for: 5m
         labels:
           gravidade: aviso
@@ -1040,12 +1040,12 @@ groups:
                     params:
                       - 80
         noDataState: OK
-        execErrState: Error
+        execErrState: KeepLast
         for: 10m
         labels:
           gravidade: aviso
         annotations:
-          summary: 'Tabela de estados do OPNsense em {{ printf "%.0f" $values.A.Value }}%'
+          summary: 'Tabela de estados do OPNsense em {{ with $values.A }}{{ printf "%.0f" .Value }}{{ end }}%'
         isPaused: false
   - orgId: 1
     name: Sites
@@ -1063,7 +1063,7 @@ groups:
             datasourceUid: prometheus
             model:
               refId: A
-              expr: 'probe_success{job="sites"}'
+              expr: 'max_over_time(probe_success{job="sites"}[10m])'
               instant: true
               range: false
               intervalMs: 1000
@@ -1080,12 +1080,12 @@ groups:
                     params:
                       - 1
         noDataState: OK
-        execErrState: Error
-        for: 3m
+        execErrState: KeepLast
+        for: 5m
         labels:
           gravidade: critico
         annotations:
-          summary: '{{ $labels.instance }} não responde pelo caminho público há 3 min'
+          summary: '{{ $labels.instance }} não responde pelo caminho público há 15 min'
         isPaused: false
       - uid: certificado
         title: Certificado perto de vencer
@@ -1115,12 +1115,12 @@ groups:
                     params:
                       - 14
         noDataState: OK
-        execErrState: Error
+        execErrState: KeepLast
         for: 1h
         labels:
           gravidade: aviso
         annotations:
-          summary: 'O certificado de {{ $labels.instance }} vence em {{ printf "%.0f" $values.A.Value }} dias'
+          summary: 'O certificado de {{ $labels.instance }} vence em {{ with $values.A }}{{ printf "%.0f" .Value }}{{ end }} dias'
           description: 'O Traefik renova sozinho com 30 dias; se chegou aqui, a renovação está falhando (deSEC).'
         isPaused: false
   - orgId: 1
@@ -1155,12 +1155,12 @@ groups:
                     params:
                       - 0
         noDataState: OK
-        execErrState: Error
+        execErrState: KeepLast
         for: 0s
         labels:
           gravidade: aviso
         annotations:
-          summary: '{{ $labels.ip }} ({{ $labels.pais }}, {{ $labels.asn_org }}) fez {{ printf "%.0f" $values.A.Value }} requisições em 15 min'
+          summary: '{{ $labels.ip }} ({{ $labels.pais }}, {{ $labels.asn_org }}) fez {{ with $values.A }}{{ printf "%.0f" .Value }}{{ end }} requisições em 15 min'
           description: 'A VPS bloqueia fora do Brasil: veio por outro caminho (VPN, rede local) ou a base de países discorda. Painel Acessos, filtre pelo IP.'
         isPaused: false
       - uid: forca-bruta
@@ -1190,12 +1190,12 @@ groups:
                     params:
                       - 30
         noDataState: OK
-        execErrState: Error
+        execErrState: KeepLast
         for: 0s
         labels:
           gravidade: aviso
         annotations:
-          summary: '{{ $labels.ClientHost }} teve {{ printf "%.0f" $values.A.Value }} respostas 401/403 em 10 min'
+          summary: '{{ $labels.ClientHost }} teve {{ with $values.A }}{{ printf "%.0f" .Value }}{{ end }} respostas 401/403 em 10 min'
           description: 'Pode ser alguém tentando senhas, ou um app com a senha antiga salva. O CrowdSec costuma banir sozinho.'
         isPaused: false
       - uid: varredura
@@ -1225,12 +1225,12 @@ groups:
                     params:
                       - 100
         noDataState: OK
-        execErrState: Error
+        execErrState: KeepLast
         for: 0s
         labels:
           gravidade: aviso
         annotations:
-          summary: '{{ $labels.ClientHost }} pediu {{ printf "%.0f" $values.A.Value }} caminhos inexistentes em 10 min'
+          summary: '{{ $labels.ClientHost }} pediu {{ with $values.A }}{{ printf "%.0f" .Value }}{{ end }} caminhos inexistentes em 10 min'
           description: 'Robô procurando falhas conhecidas (/.env, /wp-admin…). Veja no painel Acessos o que ele tentou.'
         isPaused: false
       - uid: volume-ip
@@ -1260,11 +1260,11 @@ groups:
                     params:
                       - 5000
         noDataState: OK
-        execErrState: Error
+        execErrState: KeepLast
         for: 0s
         labels:
           gravidade: aviso
         annotations:
-          summary: '{{ $labels.ClientHost }} fez {{ printf "%.0f" $values.A.Value }} requisições em 10 min'
+          summary: '{{ $labels.ClientHost }} fez {{ with $values.A }}{{ printf "%.0f" .Value }}{{ end }} requisições em 10 min'
           description: 'Raspagem, abuso ou um app seu em loop. Rede local fica de fora.'
         isPaused: false
