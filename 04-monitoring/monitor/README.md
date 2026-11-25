@@ -68,7 +68,7 @@ O resumo diário lista os silenciados numa seção curta (*Silenciados, ainda co
 
 | Grupo | Alertas |
 |---|---|
-| Máquinas | Máquina fora do ar, coleta de um exporter parou, CPU > 90 % (15 min), memória > 90 %, disco > 85 % e > 95 %, disco vai encher em 24 h, temperatura > 85 °C, serviço do systemd falhou |
+| Máquinas | Máquina fora do ar, coleta de um exporter parou, CPU > 90 % (15 min), memória > 90 % (menos no Proxmox, onde a memória usada é a das VMs), falta de memória (processos travados esperando RAM mais de 5 % do tempo), disco > 85 % e > 95 %, disco vai encher em 24 h, temperatura > 85 °C, serviço do systemd falhou |
 | Proxmox | VM com início automático parada, storage > 85 %, SMART reprovado, setores realocados ou pendentes, disco > 55 °C, SSD com menos de 20 % de vida útil, aviso crítico de NVMe |
 | Servidor Docker | Container reiniciando (mais de 2 vezes em 15 min), GPU > 85 °C, mais de 10 % de 5xx num serviço, processo morto por falta de memória (log) |
 | Rede | Túnel sem handshake há 5 min, máquina sem responder ao ping, túnel > 100 ms, gateway com problema, perda > 10 %, serviço do OPNsense parado, tabela de estados > 80 %, link renegociou a velocidade, internet abaixo de 50 % do normal da semana |

@@ -21,12 +21,13 @@ const FS = 'fstype!~"tmpfs|devtmpfs|devfs|fdescfs|procfs|linprocfs|overlay|squas
 // Interfaces que importam (sem as virtuais do Docker e do Proxmox)
 const NET = 'device!~"lo.*|veth.*|br-.*|docker.*|tap.*|fwbr.*|fwln.*|fwpr.*|enc.*|pflog.*|pfsync.*"';
 
-const cpu = (sel: string) => `100 * (1 - avg by (host) (rate(node_cpu_seconds_total{mode="idle"${sel}}[$__rate_interval])))`;
+// clamp: em VM o tempo ocioso às vezes passa do real e a conta dava CPU negativa
+const cpu = (sel: string) => `clamp(100 * (1 - avg by (host) (rate(node_cpu_seconds_total{mode="idle"${sel}}[$__rate_interval]))), 0, 100)`;
 // Linux (MemAvailable) ou FreeBSD do OPNsense (livre + inativa)
 // No Linux, o cache do ZFS (ARC, no Proxmox) não entra no MemAvailable, mas é
 // devolvido quando falta memória: soma a parte que pode encolher (acima do mínimo).
 const arcLivre = (sel: string) =>
-  `((node_zfs_arc_size{${sel}} - node_zfs_arc_c_min{${sel}}) or node_memory_MemTotal_bytes{${sel}} * 0)`;
+  `(clamp_min(node_zfs_arc_size{${sel}} - node_zfs_arc_c_min{${sel}}, 0) or node_memory_MemTotal_bytes{${sel}} * 0)`;
 const mem = (sel: string) =>
   `max by (host) (100 * (1 - (node_memory_MemAvailable_bytes{${sel}} + ${arcLivre(sel)}) / node_memory_MemTotal_bytes{${sel}})` +
   ` or 100 * (1 - (node_memory_free_bytes{${sel}} + node_memory_inactive_bytes{${sel}}) / node_memory_size_bytes{${sel}}))`;
@@ -171,6 +172,13 @@ const dashboards: Record<string, unknown> = {};
   g.add(12, 7, serie("Carga", [
     q(`node_load1{${h}}`, "1 min"), q(`node_load5{${h}}`, "5 min"), q(`node_load15{${h}}`, "15 min"),
   ], { decimals: 2 }));
+  g.add(12, 7, serie("Pressão de memória", [
+    q(`100 * rate(node_pressure_memory_waiting_seconds_total{${h}}[$__rate_interval])`, "Algum processo esperando"),
+    q(`100 * rate(node_pressure_memory_stalled_seconds_total{${h}}[$__rate_interval])`, "Todos travados"),
+  ], {
+    unit: "percent", min: 0, thresholds: limites([null, OK], [5, CRITICO]), linhaLimite: true,
+    descricao: "% do tempo em que processos ficaram parados esperando memória (PSI do kernel). Perto de zero = sobra RAM, mesmo que a memória pareça cheia. Só Linux.",
+  }));
   g.add(12, 7, serie("Erros e descartes de rede", [
     q(`rate(node_network_receive_errs_total{${h}, ${NET}}[$__rate_interval]) + rate(node_network_transmit_errs_total{${h}, ${NET}}[$__rate_interval])`, "{{device}} erros"),
     q(`rate(node_network_receive_drop_total{${h}, ${NET}}[$__rate_interval]) + rate(node_network_transmit_drop_total{${h}, ${NET}}[$__rate_interval])`, "{{device}} descartes"),
@@ -695,8 +703,14 @@ const grupos: Record<string, Regra[]> = {
       descricao: "Um exporter parou: os painéis dele ficam sem dados, a máquina pode estar bem." },
     { uid: "cpu-alta", titulo: "CPU alta", expr: '100 * (1 - avg by (host) (rate(node_cpu_seconds_total{mode="idle"}[5m])))', op: "gt", limite: 90, para: "15m",
       resumo: `CPU de ${L("host")} em ${V}% há 15 min` },
-    { uid: "memoria-alta", titulo: "Memória alta", expr: mem(""),
+    // O Proxmox fica de fora: a memória "usada" dele é a RAM entregue às VMs. Nele
+    // (e em todas as máquinas Linux) vale a pressão de memória, logo abaixo.
+    { uid: "memoria-alta", titulo: "Memória alta", expr: mem('host!="proxmox"'),
       op: "gt", limite: 90, para: "10m", resumo: `Memória de ${L("host")} em ${V}%` },
+    { uid: "pressao-memoria", titulo: "Falta de memória (processos travados)",
+      expr: "max by (host) (100 * rate(node_pressure_memory_stalled_seconds_total[5m]))", op: "gt", limite: 5, para: "10m",
+      resumo: `Em ${L("host")}, os processos passam ${V}% do tempo parados esperando memória`,
+      descricao: "Pressão de memória do kernel (PSI): sinal de falta de RAM de verdade, mesmo no Proxmox, onde a memória usada é quase toda das VMs. Veja o painel Máquina." },
     { uid: "disco-cheio", titulo: "Disco quase cheio", expr: `100 * (1 - node_filesystem_avail_bytes{${FS}} / node_filesystem_size_bytes{${FS}})`,
       op: "gt", limite: 85, para: "10m", resumo: `${L("mountpoint")} em ${L("host")} com ${V}% de uso` },
     { uid: "disco-critico", titulo: "Disco cheio", expr: `100 * (1 - node_filesystem_avail_bytes{${FS}} / node_filesystem_size_bytes{${FS}})`,
@@ -706,7 +720,8 @@ const grupos: Record<string, Regra[]> = {
       resumo: `${L("mountpoint")} em ${L("host")} enche em menos de 24 h no ritmo atual` },
     { uid: "temperatura-cpu", titulo: "Temperatura alta", expr: "max by (host, chip, sensor) (node_hwmon_temp_celsius)", op: "gt", limite: 85, para: "5m",
       gravidade: "critico", resumo: `${L("host")} (${L("chip")} ${L("sensor")}) a ${V} °C` },
-    { uid: "systemd-falhou", titulo: "Serviço do systemd falhou", expr: 'node_systemd_unit_state{state="failed"}', op: "gt", limite: 0, para: "5m",
+    // "== 1": só as units que falharam (sem isso, a regra avaliava as ~600 units)
+    { uid: "systemd-falhou", titulo: "Serviço do systemd falhou", expr: 'node_systemd_unit_state{state="failed"} == 1', op: "gt", limite: 0, para: "5m",
       resumo: `${L("name")} falhou em ${L("host")}` },
   ],
   "Proxmox": [

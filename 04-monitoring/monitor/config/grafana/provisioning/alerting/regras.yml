@@ -125,7 +125,7 @@ groups:
             datasourceUid: prometheus
             model:
               refId: A
-              expr: 'max by (host) (100 * (1 - (node_memory_MemAvailable_bytes{} + ((node_zfs_arc_size{} - node_zfs_arc_c_min{}) or node_memory_MemTotal_bytes{} * 0)) / node_memory_MemTotal_bytes{}) or 100 * (1 - (node_memory_free_bytes{} + node_memory_inactive_bytes{}) / node_memory_size_bytes{}))'
+              expr: 'max by (host) (100 * (1 - (node_memory_MemAvailable_bytes{host!="proxmox"} + (clamp_min(node_zfs_arc_size{host!="proxmox"} - node_zfs_arc_c_min{host!="proxmox"}, 0) or node_memory_MemTotal_bytes{host!="proxmox"} * 0)) / node_memory_MemTotal_bytes{host!="proxmox"}) or 100 * (1 - (node_memory_free_bytes{host!="proxmox"} + node_memory_inactive_bytes{host!="proxmox"}) / node_memory_size_bytes{host!="proxmox"}))'
               instant: true
               range: false
               intervalMs: 1000
@@ -148,6 +148,42 @@ groups:
           gravidade: aviso
         annotations:
           summary: 'Memória de {{ $labels.host }} em {{ with $values.A }}{{ printf "%.0f" .Value }}{{ end }}%'
+        isPaused: false
+      - uid: pressao-memoria
+        title: Falta de memória (processos travados)
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: 'max by (host) (100 * rate(node_pressure_memory_stalled_seconds_total[5m]))'
+              instant: true
+              range: false
+              intervalMs: 1000
+              maxDataPoints: 43200
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params:
+                      - 5
+        noDataState: OK
+        execErrState: KeepLast
+        for: 10m
+        labels:
+          gravidade: aviso
+        annotations:
+          summary: 'Em {{ $labels.host }}, os processos passam {{ with $values.A }}{{ printf "%.0f" .Value }}{{ end }}% do tempo parados esperando memória'
+          description: 'Pressão de memória do kernel (PSI): sinal de falta de RAM de verdade, mesmo no Proxmox, onde a memória usada é quase toda das VMs. Veja o painel Máquina.'
         isPaused: false
       - uid: disco-cheio
         title: Disco quase cheio
@@ -300,7 +336,7 @@ groups:
             datasourceUid: prometheus
             model:
               refId: A
-              expr: 'node_systemd_unit_state{state="failed"}'
+              expr: 'node_systemd_unit_state{state="failed"} == 1'
               instant: true
               range: false
               intervalMs: 1000

@@ -497,7 +497,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "100 * (1 - avg by (host) (rate(node_cpu_seconds_total{mode=\"idle\"}[$__rate_interval])))",
+          "expr": "clamp(100 * (1 - avg by (host) (rate(node_cpu_seconds_total{mode=\"idle\"}[$__rate_interval]))), 0, 100)",
           "legendFormat": "{{host}}",
           "range": false,
           "instant": true
@@ -579,7 +579,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "max by (host) (100 * (1 - (node_memory_MemAvailable_bytes{} + ((node_zfs_arc_size{} - node_zfs_arc_c_min{}) or node_memory_MemTotal_bytes{} * 0)) / node_memory_MemTotal_bytes{}) or 100 * (1 - (node_memory_free_bytes{} + node_memory_inactive_bytes{}) / node_memory_size_bytes{}))",
+          "expr": "max by (host) (100 * (1 - (node_memory_MemAvailable_bytes{} + (clamp_min(node_zfs_arc_size{} - node_zfs_arc_c_min{}, 0) or node_memory_MemTotal_bytes{} * 0)) / node_memory_MemTotal_bytes{}) or 100 * (1 - (node_memory_free_bytes{} + node_memory_inactive_bytes{}) / node_memory_size_bytes{}))",
           "legendFormat": "{{host}}",
           "range": false,
           "instant": true
@@ -972,7 +972,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "100 * (1 - avg by (host) (rate(node_cpu_seconds_total{mode=\"idle\"}[$__rate_interval])))",
+          "expr": "clamp(100 * (1 - avg by (host) (rate(node_cpu_seconds_total{mode=\"idle\"}[$__rate_interval]))), 0, 100)",
           "legendFormat": "{{host}}",
           "range": true,
           "instant": false
