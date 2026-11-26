@@ -260,27 +260,6 @@ No `setupchecks`, alguns avisos podem ficar:
 - "*Email test*": só some depois de configurar o SMTP.
 - "*AppAPI deploy daemon*": é para Ex-Apps, que não usamos.
 
-## Tema "Drive" (web)
-
-A interface web usa um tema limpo, parecido com o Google Drive. Ele é aplicado **sozinho a cada start** do app, pelo hook [`hooks/before-starting/20-tema.sh`](hooks/before-starting/20-tema.sh):
-
-- **Tema do Nextcloud:** cor principal `#0b57d0`, fundo liso `#f8fafd` (sem imagem) e tema igual para todos (o usuário não troca).
-- **CSS próprio** ([`tema/drive.css`](tema/drive.css)), pelo app *Custom CSS* (`theming_customcss`), que o hook instala da loja se faltar:
-  - área de arquivos num cartão branco;
-  - navegação e busca em pílula;
-  - botão **Novo** branco com sombra;
-  - pastas cinza e lista sem divisórias;
-  - a caixa de seleção e o botão de compartilhar só aparecem ao passar o mouse. O aviso "Compartilhado" fica sempre visível.
-- **Sem o bloco de Readme** no topo das pastas (`text workspace_available = 0`).
-
-O hook só grava o que mudou, e um erro nele só gera um `AVISO (tema)` no log, sem derrubar o Nextcloud.
-
-**Para mudar o tema:** edite o `tema/drive.css` e recrie o app com `docker compose up -d --force-recreate app`. Se precisar desfazer na hora, desligue o app com `occ app:disable theming_customcss`. O hook liga de novo no próximo start.
-
-**O tema só vale para a web.** O app Android usa só a cor principal. O cliente de desktop não muda.
-
-**Depois de cada atualização major,** confira a lista de arquivos, o menu do botão direito e a tela no celular. O CSS segue as classes do app Arquivos do Nextcloud 34, e uma versão nova pode mudar algumas delas.
-
 ## Atualizar
 
 - **Uma versão major por vez**, sempre a partir do último patch da atual: `34.0.x` → último `34` → `35.0.x`. O container se recusa a pular uma major e a fazer downgrade.

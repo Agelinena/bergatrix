@@ -52,10 +52,8 @@ services:
       - ${APPDATA_PATH:?}/nextcloud/html:/var/www/html
       # Arquivos dos usuários, fora da pasta web (NFS; dono 1000 no NAS pelo all_squash)
       - ${USERDATA_PATH:?}/nextcloud/data:/var/www/data
-      # Não deixa o Apache subir sem o Nextcloud instalado, e aplica o tema (ver os scripts)
+      # Não deixa o Apache subir sem o Nextcloud instalado (ver o script)
       - ./hooks/before-starting:/docker-entrypoint-hooks.d/before-starting:ro
-      # Tema "Drive" da web (CSS aplicado pelo hook 20-tema.sh)
-      - ./tema:/tema:ro
     networks:
       - nextcloud-internal
       - bergatrix-proxy
