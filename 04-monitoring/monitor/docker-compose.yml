@@ -13,7 +13,7 @@ services:
   # o Prometheus e o pve-exporter não leem variáveis de ambiente na config.
   # Grava em ${CACHE_PATH}/monitor/gerado e termina.
   config:
-    image: busybox:1.36
+    image: busybox:1.38
     container_name: monitor-config
     restart: "no"
     network_mode: none
@@ -34,7 +34,7 @@ services:
   # Baixa as bases de país e operadora dos IPs (DB-IP Lite, grátis, formato
   # MaxMind) para o Alloy. Só baixa de novo quando passam de 32 dias. Termina.
   geoip:
-    image: alpine:3.20
+    image: alpine:3.24
     container_name: monitor-geoip
     restart: "no"
     user: "${PUID}:${PGID}"
@@ -46,7 +46,7 @@ services:
     command: ["sh", "/baixar-geoip.sh"]
 
   grafana:
-    image: grafana/grafana:13.2.6
+    image: grafana/grafana:13.3.2
     container_name: monitor-grafana
     restart: unless-stopped
     security_opt:
@@ -130,7 +130,7 @@ services:
       - "traefik.http.services.grafana.loadbalancer.server.port=3000"
 
   prometheus:
-    image: prom/prometheus:v3.15.1
+    image: prom/prometheus:v3.16.0
     container_name: monitor-prometheus
     restart: unless-stopped
     security_opt:
@@ -166,7 +166,7 @@ services:
         condition: service_completed_successfully
 
   loki:
-    image: grafana/loki:3.7.9
+    image: grafana/loki:3.7.10
     container_name: monitor-loki
     restart: unless-stopped
     security_opt:
@@ -183,7 +183,7 @@ services:
   # Coleta os logs: containers, journal do servidor, access.log do Traefik e o
   # syslog do OPNsense (5140) e da VPS (5141), e manda para o Loki.
   alloy:
-    image: grafana/alloy:v1.21.3
+    image: grafana/alloy:v1.22.0
     container_name: monitor-alloy
     restart: unless-stopped
     security_opt:
@@ -221,7 +221,7 @@ services:
   # verdade; escuta só no IP do host na docker0 (172.17.0.1), que é onde o
   # Prometheus chega por "host-gateway". Não fica exposto na rede local.
   node-exporter:
-    image: prom/node-exporter:v1.12.1
+    image: prom/node-exporter:v1.13.1
     container_name: monitor-node-exporter
     restart: unless-stopped
     security_opt:
@@ -240,7 +240,7 @@ services:
 
   # Métricas por container (CPU, memória, rede, disco)
   cadvisor:
-    image: ghcr.io/google/cadvisor:v0.60.6
+    image: ghcr.io/google/cadvisor:v0.61.1
     container_name: monitor-cadvisor
     restart: unless-stopped
     privileged: true
@@ -304,7 +304,7 @@ services:
   # Resumo diário dos alertas (um e-mail de manhã). O Grafana manda todo
   # alerta para cá por webhook; os críticos também saem na hora por e-mail.
   resumo:
-    image: python:3.13.9-alpine
+    image: python:3.15.2-alpine
     container_name: monitor-resumo
     restart: unless-stopped
     security_opt:
@@ -356,7 +356,7 @@ services:
 
   # API do Proxmox: estado e consumo de cada VM, storages
   pve-exporter:
-    image: prompve/prometheus-pve-exporter:3.10.2
+    image: prompve/prometheus-pve-exporter:3.12.0
     container_name: monitor-pve-exporter
     restart: unless-stopped
     security_opt:
@@ -375,7 +375,7 @@ services:
 
   # API do OPNsense: gateways, interfaces, pf, serviços, WireGuard, firmware
   opnsense-exporter:
-    image: ghcr.io/athennamind/opnsense-exporter:0.0.19
+    image: ghcr.io/athennamind/opnsense-exporter:0.0.20
     container_name: monitor-opnsense-exporter
     restart: unless-stopped
     security_opt:

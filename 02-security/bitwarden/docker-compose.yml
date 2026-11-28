@@ -6,7 +6,7 @@ services:
   vaultwarden:
     # SSO existe desde a 1.35.0; apps do Bitwarden 2026.8+ exigem a 1.37.2+.
     # Antes de trocar a versão, confira a que está rodando: nunca faça downgrade.
-    image: vaultwarden/server:1.37.4
+    image: vaultwarden/server:1.37.5
     container_name: bitwarden
     restart: unless-stopped
     volumes:

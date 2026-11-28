@@ -116,7 +116,7 @@ services:
   # Dívida (docs/03-padrao-stacks.md): sem no-new-privileges e com MKNOD, porque o
   # Collabora monta um jail por documento com capabilities de arquivo.
   collabora:
-    image: collabora/code:26.04.5.2.1
+    image: collabora/code:26.04.6.2.1
     container_name: nextcloud-collabora
     restart: unless-stopped
     cap_add:
